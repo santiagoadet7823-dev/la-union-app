@@ -1,0 +1,51 @@
+id_producto,descripcion,precio_unitario,peso_kg
+PROD-01,Pack Gaseosa Cola 1.5L (x6),8500.0,9.5
+PROD-02,Pack Gaseosa Lima 1.5L (x6),8500.0,9.5
+PROD-03,Pack Agua Mineral Sin Gas 2L (x6),5200.0,12.5
+PROD-04,Pack Agua Saborizada Pomelo 1.5L (x6),6800.0,9.5
+PROD-05,Caja Jugo de Naranja 1L (x12),14400.0,12.8
+PROD-06,Pack Cerveza Rubia Lata 473ml (x24),28000.0,11.8
+PROD-07,Pack Cerveza Negra Lata 473ml (x24),31000.0,11.8
+PROD-08,Caja Vino Tinto Clásico 1L (x12),18500.0,12.5
+PROD-09,Pack Energizante Lata 250ml (x12),11000.0,3.3
+PROD-10,Pack Soda Sifón 1.5L (x6),4800.0,9.6
+PROD-11,Harina 000 (Caja 10x1kg),14000.0,10.2
+PROD-12,Harina 0000 (Caja 10x1kg),17500.0,10.2
+PROD-13,Azúcar Común Tipo A (Fardo 10x1kg),12000.0,10.1
+PROD-14,Aceite de Girasol 900ml (Caja x12),22000.0,11.2
+PROD-15,Aceite de Maíz 1.5L (Caja x6),18500.0,9.3
+PROD-16,Arroz Largo Fino 00000 (Fardo 10x1kg),15500.0,10.1
+PROD-17,Fideos Tallarín (Caja 20x500g),19000.0,10.3
+PROD-18,Fideos Guiseros Terneados (Caja 20x500g),19000.0,10.3
+PROD-19,Yerba Mate Con Palo 1kg (Bulto x10),34000.0,10.2
+PROD-20,Yerba Mate Selección Especial 500g (Bulto x20),26000.0,10.2
+PROD-21,Puré de Tomate Tetrabrik 520g (Caja x24),16800.0,13.0
+PROD-22,Lata Tomate Perita Pelado (Caja x24),21000.0,10.5
+PROD-23,Sal Fina Mesa Celusal 500g (Caja x12),8400.0,6.2
+PROD-24,Mayonesa Clásica Doypack 475g (Caja x12),14200.0,6.0
+PROD-25,Mostaza Tipo Americana 250g (Caja x12),9800.0,3.3
+PROD-26,Pack Leche Entera UAT 1L (x12),18000.0,12.6
+PROD-27,Pack Leche Descremada UAT 1L (x12),18500.0,12.6
+PROD-28,Dulce de Leche Clásico Familiar 400g (Caja x12),16200.0,5.2
+PROD-29,Mantecas Primerísima Calidad 200g (Caja x20),24000.0,4.1
+PROD-30,Queso Cremoso Barra (Por Pieza),32000.0,4.0
+PROD-31,Queso Rallado Deshidratado 40g (Caja x30),19500.0,1.4
+PROD-32,Yogurt Entero Frutilla 1L (Caja x6),9600.0,6.3
+PROD-33,Pack Galletitas Dulces Rellenas (Caja x36),24500.0,4.5
+PROD-34,Pack Galletitas de Agua Familiares (Caja x24),15600.0,7.6
+PROD-35,Bizcochitos de Grasa Salados (Caja x30),18000.0,6.2
+PROD-36,Lavandina Concentrada 1L (Caja x12),9400.0,12.6
+PROD-37,Detergente Lavavajillas Líquido 500ml (Caja x12),11200.0,6.4
+PROD-38,Jabón Líquido Para Ropa Botellón 3L (Caja x4),26000.0,12.8
+PROD-39,Suavizante Para Ropa Doypack 900ml (Caja x12),15400.0,11.1
+PROD-40,Desodorante de Ambientes Aerosol (Caja x12),13800.0,4.2
+PROD-41,Limpiador de Pisos Pino 1L (Caja x12),8900.0,12.4
+PROD-42,Pack Jabón de Tocador 3x90g (Caja x16),14800.0,4.6
+PROD-43,Shampoo Cuidado Diario 400ml (Caja x12),22400.0,5.2
+PROD-44,Acondicionador Cuidado Diario 400ml (Caja x12),22400.0,5.2
+PROD-45,Crema Dental Protección Caries 90g (Caja x12),11500.0,1.5
+PROD-46,Rollo de Cocina Pack 3 Unidades (Bulto x8),13200.0,2.8
+PROD-47,Papel Higiénico Hoja Simple 4x30m (Bulto x10),16500.0,4.2
+PROD-48,Bolsas de Consorcio 60x90 (Paquete x20),9200.0,1.8
+PROD-49,Pack Esponjas de Fibra Multiuso (Caja x24),7800.0,0.6
+PROD-50,Trapo de Piso Blanco Reforzado (Docena),11000.0,1.2

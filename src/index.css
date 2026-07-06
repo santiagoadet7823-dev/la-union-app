@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   DESIGN SYSTEM — Distribuidora LA UNIÓN
+   Tokens duales (Light Tiffany / Dark teal) tal como los definió
+   el diseñador en el handoff. Fuente de verdad del sistema visual.
+   Estética "sala de control" (TradingView): mono tabular, grillas
+   finas, sparklines, deltas verde/rojo.
+   ============================================================ */
+
+:root {
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* --- LIGHT: Tiffany con degradado a blanco --- */
+html[data-theme='light'] {
+  --bg-app: linear-gradient(180deg, #ffffff 0%, #f2fbfa 60%, #edf9f7 100%);
+  --bg-solid: #fbfefd;
+  --surface: #ffffff;
+  --surface2: #f4faf9;
+  --line: #e2efee;
+  --line2: #c9e0de;
+  --text: #0b2b2a;
+  --muted: #5a7371;
+  --faint: #93a9a7;
+  --primary: #0abab5;
+  --on-primary: #ffffff;
+  --deep: #06807c;
+  --tclassic: #81d8d0;
+  --tlight: #a7e8e3;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #0ea5e9;
+  --primary-tint: rgba(10, 186, 181, 0.1);
+  --success-tint: rgba(16, 185, 129, 0.12);
+  --warning-tint: rgba(245, 158, 11, 0.14);
+  --danger-tint: rgba(239, 68, 68, 0.1);
+  --info-tint: rgba(14, 165, 233, 0.12);
+  --shadow: 0 2px 8px rgba(11, 43, 42, 0.06);
+  --shadow-lg: 0 10px 28px rgba(11, 43, 42, 0.12);
+  --grid: rgba(11, 43, 42, 0.06);
+  --map-bg: #e7f3f1;
+  --map-block: #dcebe8;
+  --map-road: #ffffff;
+  --scrim: rgba(11, 43, 42, 0.35);
+  --console-bg: #0b2b2a;
+  --console-fg: #a7e8e3;
+  color-scheme: light;
+}
+
+/* --- DARK: base #0C0C0C + #0D1F1E con marcos blancos --- */
+html[data-theme='dark'] {
+  --bg-app: #0c0c0c;
+  --bg-solid: #0c0c0c;
+  --surface: #0d1f1e;
+  --surface2: #12302e;
+  --line: rgba(255, 255, 255, 0.12);
+  --line2: rgba(255, 255, 255, 0.2);
+  --text: #ecf5f4;
+  --muted: #8fa9a6;
+  --faint: #5c7370;
+  --primary: #2dd4ce;
+  --on-primary: #04211f;
+  --deep: #2dd4ce;
+  --tclassic: #175753;
+  --tlight: #0f3b38;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #38bdf8;
+  --primary-tint: rgba(45, 212, 206, 0.14);
+  --success-tint: rgba(52, 211, 153, 0.14);
+  --warning-tint: rgba(251, 191, 36, 0.14);
+  --danger-tint: rgba(248, 113, 113, 0.14);
+  --info-tint: rgba(56, 189, 248, 0.14);
+  --shadow: none;
+  --shadow-lg: none;
+  --grid: rgba(255, 255, 255, 0.06);
+  --map-bg: #0a1414;
+  --map-block: #0e1d1c;
+  --map-road: #1a3230;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --console-bg: #081414;
+  --console-fg: #5fd9d3;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Ocultar scrollbars dentro de los marcos móviles */
+.lu-mob *::-webkit-scrollbar {
+  display: none;
+}
+.lu-mob * {
+  scrollbar-width: none;
+}
+.lu-tabs::-webkit-scrollbar {
+  display: none;
+}
+.lu-tabs {
+  scrollbar-width: none;
+}
+
+@keyframes lu-ping {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes lu-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
