@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt } from '../../lib/format'
 import { useTheme } from '../../context/ThemeContext'
 import LeafletMap from '../../components/LeafletMap'
+import { suscribirPosiciones, estadoConexion } from '../../services/telemetry'
 import { DEPOSITO, CLIENTES_GEO, statusColor, ROUTE_COLOR } from '../../data/demoGeo'
 
 const TAB_DEFS = [
@@ -24,13 +25,10 @@ const ORDENES = [
 ]
 
 const CLIENTES = [
-  ['CLI-0417', 'Almacén Don Carlos', 'Villa Ballester', 'LU · JU', 'Semanal', '-34.5478, -58.5561'],
-  ['CLI-0233', 'Autoservicio La Esquina', 'San Andrés', 'MA · VI', 'Semanal', '-34.5602, -58.5389'],
-  ['CLI-0521', 'Kiosco El Trébol', 'Villa Ballester', 'MI', 'Quincenal', '-34.5443, -58.5498'],
-  ['CLI-0088', 'Almacén El Progreso', 'San Martín', 'LU · JU', 'Semanal', '-34.5710, -58.5352'],
-  ['CLI-0342', 'Autoservicio Belgrano', 'San Martín', 'MA', 'Quincenal', '-34.5745, -58.5290'],
-  ['CLI-0155', 'Despensa Marta', 'Villa Maipú', 'VI', 'Mensual', '-34.5820, -58.5225'],
-  ['CLI-0464', 'Súper Mi Barrio', 'Villa Lynch', 'LU · MI · VI', 'Semanal', '-34.5891, -58.5310'],
+  ['CLI-001', 'Kiosco EBEN-EZER', 'Las Lajitas', 'LU · JU', 'Semanal', '-24.72232, -64.19114'],
+  ['CLI-002', 'Kiosco Los 2 Gauchos', 'Las Lajitas', 'MA · VI', 'Semanal', '-24.71998, -64.19754'],
+  ['CLI-003', 'Kiosco catalina', 'Las Lajitas', 'MI', 'Quincenal', '-24.71831, -64.19544'],
+  ['CLI-004', 'Kiosco tenefe', 'Las Lajitas', 'VI', 'Mensual', '-24.71972, -64.19840'],
 ]
 
 const FALTANTES = [
@@ -77,6 +75,8 @@ export default function AdminView() {
   const [diasSel, setDiasSel] = useState({ LU: true, JU: true })
   const [freqSel, setFreqSel] = useState('Semanal')
   const [faltVacio, setFaltVacio] = useState(false)
+  const [vendorLive, setVendorLive] = useState(null)
+  const [mqttOn, setMqttOn] = useState(false)
   const [toast, setToast] = useState(null)
   const [events, setEvents] = useState([
     { ts: '11:58:12', tag: '[GPS]', msg: 'CAM-12 reporta posición · Av. San Martín y Ayacucho' },
@@ -98,6 +98,13 @@ export default function AdminView() {
       setEvents((prev) => [{ ...e, ts }, ...prev].slice(0, 12))
     }, 4000)
     return () => { clearInterval(iv); clearTimeout(toastRef.current) }
+  }, [])
+
+  // Telemetría en vivo: recibe la posición del vendedor (teléfono) en tiempo real.
+  useEffect(() => {
+    const offPos = suscribirPosiciones((p) => setVendorLive(p))
+    const offConn = estadoConexion(setMqttOn)
+    return () => { offPos(); offConn() }
   }, [])
 
   function showToast(msg) {
@@ -303,11 +310,19 @@ export default function AdminView() {
               </div>
             </div>
 
+            <div style={{ ...sx('display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;font-size:12px;font-weight:500'), background: vendorLive ? 'var(--success-tint)' : 'var(--surface)', border: `1px solid ${vendorLive ? 'var(--success)' : 'var(--line)'}`, color: vendorLive ? 'var(--success)' : 'var(--muted)' }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: vendorLive ? 'var(--success)' : mqttOn ? 'var(--info)' : 'var(--faint)', animation: vendorLive ? 'lu-blink 1.4s infinite' : 'none' }} />
+              {vendorLive
+                ? `${vendorLive.nombre || 'Vendedor'} — GPS en vivo · ${vendorLive.lat.toFixed(5)}, ${vendorLive.lng.toFixed(5)} · hace ${Math.max(0, Math.round((Date.now() - vendorLive.ts) / 1000))} s`
+                : `Esperando posición del vendedor… · telemetría ${mqttOn ? 'conectada' : 'conectando…'}`}
+            </div>
+
             <LeafletMap
               theme={theme}
               markers={mapMarkers}
               depot={DEPOSITO}
-              live={{ lat: -34.5680, lng: -58.5430 }}
+              live={vendorLive ? { lat: vendorLive.lat, lng: vendorLive.lng } : { lat: -24.72155, lng: -64.19560 }}
+              followLive={!!vendorLive}
               route={ruta}
               routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
               optimize

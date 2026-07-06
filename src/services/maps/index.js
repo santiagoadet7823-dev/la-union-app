@@ -9,9 +9,9 @@
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 export const hasMapsKey = () => Boolean(GOOGLE_MAPS_API_KEY)
 
-// Centro operativo por defecto (Distribuidora LA UNIÓN · Las Lajitas, Anta).
-// El mapa igual hace fitBounds a los marcadores cuando hay varios.
-export const CENTRO_DEFECTO = { lat: -24.72289863920126, lng: -64.19319293677272 }
+// Centro operativo por defecto = ubicación real de la Distribuidora LA UNIÓN
+// (Las Lajitas, Anta). El mapa igual hace fitBounds cuando hay varios marcadores.
+export const CENTRO_DEFECTO = { lat: -24.723078317901223, lng: -64.1943288188819 }
 
 // Estilo "Google Maps clásico" en dark, alineado a los tokens (#0C0C0C / teal).
 export const DARK_STYLE = [

@@ -10,6 +10,8 @@ export default defineConfig({
   // GitHub Pages sirve el proyecto bajo /<nombre-repo>/. Para otro host estático
   // (Netlify/Vercel) o Capacitor, volver a base: './'.
   base: '/la-union-app/',
+  // mqtt.js (telemetría en vivo) espera `global` en el navegador.
+  define: { global: 'globalThis' },
   plugins: [
     react(),
     tailwindcss(),

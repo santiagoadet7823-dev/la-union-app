@@ -5,6 +5,7 @@ import { Home, Pin, Box, User, Search, Check, Route } from '../../components/ico
 import LeafletMap from '../../components/LeafletMap'
 import { useTheme } from '../../context/ThemeContext'
 import { useLivePosition } from '../../hooks/useLivePosition'
+import { publicarPosicion } from '../../services/telemetry'
 import { CLIENTES_GEO, statusColor, ROUTE_COLOR } from '../../data/demoGeo'
 
 // Coordenadas por id de cliente (mismo dataset que usa el Admin) para el mapa real.
@@ -30,14 +31,10 @@ const PRODUCTS = [
 ]
 
 const CLIENTS_INIT = [
-  { id: 'CLI-0417', name: 'Almacén Don Carlos', loc: 'Villa Ballester', status: 'visitado', monto: 186400, hora: '08:42' },
-  { id: 'CLI-0233', name: 'Autoservicio La Esquina', loc: 'San Andrés', status: 'visitado', monto: 341850, hora: '09:15' },
-  { id: 'CLI-0521', name: 'Kiosco El Trébol', loc: 'Villa Ballester', status: 'sin_pedido', motivo: 'Stock suficiente', hora: '09:40' },
-  { id: 'CLI-0088', name: 'Almacén El Progreso', loc: 'San Martín', status: 'pendiente', dist: '650 m' },
-  { id: 'CLI-0342', name: 'Autoservicio Belgrano', loc: 'San Martín', status: 'pendiente', dist: '1,2 km' },
-  { id: 'CLI-0155', name: 'Despensa Marta', loc: 'Villa Maipú', status: 'pendiente', dist: '2,0 km' },
-  { id: 'CLI-0290', name: 'Maxikiosco Central', loc: 'San Martín', status: 'pendiente', dist: '2,8 km' },
-  { id: 'CLI-0464', name: 'Súper Mi Barrio', loc: 'Villa Lynch', status: 'pendiente', dist: '3,5 km' },
+  { id: 'CLI-001', name: 'Kiosco EBEN-EZER', loc: 'Las Lajitas', status: 'visitado', monto: 186400, hora: '08:42' },
+  { id: 'CLI-002', name: 'Kiosco Los 2 Gauchos', loc: 'Las Lajitas', status: 'visitado', monto: 341850, hora: '09:15' },
+  { id: 'CLI-003', name: 'Kiosco catalina', loc: 'Las Lajitas', status: 'sin_pedido', motivo: 'Stock suficiente', hora: '09:40' },
+  { id: 'CLI-004', name: 'Kiosco tenefe', loc: 'Las Lajitas', status: 'pendiente', dist: '600 m' },
 ]
 
 const MOTIVOS = ['Stock suficiente', 'Precio / condición', 'Comercio cerrado', 'Otro']
@@ -69,6 +66,11 @@ export default function VendedorView() {
   const toastRef = useRef(null)
 
   useEffect(() => () => { clearInterval(timerRef.current); clearTimeout(toastRef.current) }, [])
+
+  // Publica la posición real a la telemetría en vivo (la ve el Admin en su mapa).
+  useEffect(() => {
+    if (livePos) publicarPosicion({ id: 'VEND-07', nombre: 'Martín Ríos', lat: livePos.lat, lng: livePos.lng, ts: Date.now() })
+  }, [livePos])
 
   function showToast(msg) {
     clearTimeout(toastRef.current)
@@ -116,7 +118,7 @@ export default function VendedorView() {
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
   const pend = clients.map((c, i) => ({ c, i })).filter((x) => x.c.status === 'pendiente')
-  const LIVE = { lat: -34.5680, lng: -58.5430 }
+  const LIVE = { lat: -24.72155, lng: -64.19560 }
   const pendingCoords = pend.map((x) => GEO[x.c.id]).filter(Boolean).map((g) => ({ lat: g.lat, lng: g.lng }))
   const meta = Math.min(100, Math.round((montoHoy / 900000) * 100))
   const efect = done ? Math.round((conPedido.length / done) * 100) : 0

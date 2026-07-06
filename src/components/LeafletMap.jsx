@@ -56,6 +56,7 @@ export default function LeafletMap({
   onRouteInfo,
   circle = null,
   height = 460,
+  followLive = false,
   onMarkerClick,
 }) {
   const routeInfoRef = useRef(onRouteInfo)
@@ -134,7 +135,10 @@ export default function LeafletMap({
         })
     }
 
-    if (bounds && bounds.isValid()) {
+    if (followLive && live) {
+      // Modo seguimiento: la cámara sigue al vendedor en vivo (Admin observando el teléfono).
+      map.setView([live.lat, live.lng], Math.max(map.getZoom() || zoom, 16))
+    } else if (bounds && bounds.isValid()) {
       const single = !circle && markers.length + (depot ? 1 : 0) <= 1
       if (single) map.setView(bounds.getCenter(), zoom)
       else map.fitBounds(bounds, { padding: [40, 40] })

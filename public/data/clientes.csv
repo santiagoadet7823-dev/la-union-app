@@ -1,9 +1,5 @@
 id_cliente,nombre_comercio,latitud,longitud,localidad
-CLI-0417,Almacén Don Carlos,-34.5478,-58.5561,Villa Ballester
-CLI-0233,Autoservicio La Esquina,-34.5602,-58.5389,San Andrés
-CLI-0521,Kiosco El Trébol,-34.5443,-58.5498,Villa Ballester
-CLI-0088,Almacén El Progreso,-34.5710,-58.5352,San Martín
-CLI-0342,Autoservicio Belgrano,-34.5745,-58.5290,San Martín
-CLI-0155,Despensa Marta,-34.5820,-58.5225,Villa Maipú
-CLI-0290,Maxikiosco Central,-34.5665,-58.5450,San Martín
-CLI-0464,Súper Mi Barrio,-34.5891,-58.5310,Villa Lynch
+CLI-001,Kiosco EBEN-EZER,-24.72232137457981,-64.19113576412745,Las Lajitas
+CLI-002,Kiosco Los 2 Gauchos,-24.71998266936364,-64.19753630437107,Las Lajitas
+CLI-003,Kiosco catalina,-24.718314994459114,-64.19544328486015,Las Lajitas
+CLI-004,Kiosco tenefe,-24.71972456252089,-64.1984024483027,Las Lajitas
