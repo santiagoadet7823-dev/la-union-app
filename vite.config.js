@@ -7,9 +7,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 // y en la mayoría de hosts estáticos. Para GitHub Pages en subruta de proyecto,
 // cambiar a '/<nombre-repo>/'.
 export default defineConfig({
-  // GitHub Pages sirve el proyecto bajo /<nombre-repo>/. Para otro host estático
-  // (Netlify/Vercel) o Capacitor, volver a base: './'.
-  base: '/la-union-app/',
+  // GitHub Pages sirve el proyecto bajo /<nombre-repo>/ → base '/la-union-app/'.
+  // Para el APK (Capacitor) los assets se sirven desde la raíz del WebView, así
+  // que hay que compilar con base relativa './'. Se activa con CAP_BUILD=1
+  // (usar el script `npm run build:app`). Ver GUIA_APK_ANDROID.md.
+  base: process.env.CAP_BUILD ? './' : '/la-union-app/',
   // mqtt.js (telemetría en vivo) espera `global` en el navegador.
   define: { global: 'globalThis' },
   plugins: [

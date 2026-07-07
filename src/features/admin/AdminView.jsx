@@ -2,14 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt } from '../../lib/format'
 import { useTheme } from '../../context/ThemeContext'
+import { useAuth } from '../../context/AuthContext'
 import LeafletMap from '../../components/LeafletMap'
-import { suscribirPosiciones, estadoConexion } from '../../services/telemetry'
+import { supabase } from '../../services/supabase'
+import { colorPorId } from '../../lib/colors'
+import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../../services/sync/realtime'
 import { DEPOSITO, CLIENTES_GEO, statusColor, ROUTE_COLOR } from '../../data/demoGeo'
-
-const TAB_DEFS = [
-  ['dash', 'Dashboard'], ['mapa', 'Mapa operativo'], ['ruteo', 'Ruteo'],
-  ['ordenes', 'Órdenes'], ['clientes', 'Clientes'], ['faltante', 'Faltante'],
-]
+import { useCatalog } from '../../context/CatalogContext'
+import UsuariosView from './UsuariosView'
+import EmpresasView from './EmpresasView'
+import ReplayJornada from './components/ReplayJornada'
+import NuevoCliente from '../catalog/NuevoCliente'
+import NuevoProducto from '../catalog/NuevoProducto'
 
 const ORDENES = [
   ['PED-2031', 'Autoservicio La Esquina', 'San Andrés', 'M. Ríos', 12, 121.3, 341850, 'Entregado', '11:02'],
@@ -63,49 +67,89 @@ const pill = (estado) => {
 
 export default function AdminView() {
   const { theme } = useTheme()
-  const [tab, setTab] = useState('dash')
+  const { rol, idEmpresa } = useAuth()
+  const { clientes: cartera, productos, loading: catLoading, updateCliente } = useCatalog()
+  const [tab, setTab] = useState('mapa')
+  const [nombres, setNombres] = useState({}) // { [id_usuario]: nombre }
+  const [modalCliente, setModalCliente] = useState(false)
+  const [modalProducto, setModalProducto] = useState(false)
+
+  const tabs = useMemo(() => {
+    const base = [
+      ['mapa', 'Mapa operativo'], ['reproduccion', 'Reproducción'],
+      ['clientes', 'Clientes'], ['catalogo', 'Catálogo'], ['dash', 'Dashboard'],
+      ['ordenes', 'Órdenes'], ['faltante', 'Faltante'],
+    ]
+    if (rol === 'admin' || rol === 'superadmin') base.push(['usuarios', 'Usuarios'])
+    if (rol === 'superadmin') base.push(['empresas', 'Empresas'])
+    return base
+  }, [rol])
   const [selPin, setSelPin] = useState(0)
   const [objetivo, setObjetivo] = useState('Minimizar distancia')
   const [optState, setOptState] = useState('idle')
   const [selOrders, setSelOrders] = useState({ 0: true, 1: true, 2: true, 3: true, 4: true })
   const [ordFilter, setOrdFilter] = useState('Todas')
   const [ordSearch, setOrdSearch] = useState('')
-  const [selCli, setSelCli] = useState(0)
+  const [selCli, setSelCli] = useState(null) // id del cliente seleccionado en la ficha
   const [geoRadio, setGeoRadio] = useState(75)
   const [diasSel, setDiasSel] = useState({ LU: true, JU: true })
   const [freqSel, setFreqSel] = useState('Semanal')
-  const [faltVacio, setFaltVacio] = useState(false)
-  const [vendorLive, setVendorLive] = useState(null)
+  const [faltVacio, setFaltVacio] = useState(true)
+  const [movers, setMovers] = useState({}) // { [id]: {id, nombre, rol, lat, lng, ts} }
+  const [gpsOff, setGpsOff] = useState({}) // { [id]: {nombre, rol, ts} } usuarios con GPS apagado
   const [mqttOn, setMqttOn] = useState(false)
   const [toast, setToast] = useState(null)
-  const [events, setEvents] = useState([
-    { ts: '11:58:12', tag: '[GPS]', msg: 'CAM-12 reporta posición · Av. San Martín y Ayacucho' },
-    { ts: '11:56:40', tag: '[PED]', msg: 'PED-2043 confirmado · Despensa Marta · $ 87.300' },
-    { ts: '11:54:03', tag: '[RUTA]', msg: 'RUTA-N-042 · parada 17/24 completada' },
-    { ts: '11:51:22', tag: '[ALERTA]', msg: 'Faltante declarado · Harina 000 ×10 · 2 u. sin stock' },
-    { ts: '11:49:57', tag: '[GPS]', msg: 'VEND-07 check-in geofence · Almacén El Progreso (23 m)' },
-    { ts: '11:47:10', tag: '[PED]', msg: 'PED-2042 entregado · firma registrada · 11:47' },
-  ])
+  const [events, setEvents] = useState([]) // consola: solo eventos reales (GPS on/off)
   const toastRef = useRef(null)
-  const poolIdx = useRef(0)
 
+  useEffect(() => () => clearTimeout(toastRef.current), [])
+
+  // Nombres de los usuarios de la empresa (para etiquetar los móviles en el mapa).
   useEffect(() => {
-    const iv = setInterval(() => {
-      poolIdx.current = (poolIdx.current + 1) % EVENT_POOL.length
-      const e = EVENT_POOL[poolIdx.current]
+    supabase.from('perfiles').select('id, nombre').then(({ data }) => {
+      const m = {}
+      ;(data || []).forEach((u) => { m[u.id] = u.nombre })
+      setNombres(m)
+    })
+  }, [])
+
+  // Telemetría en vivo (Supabase Realtime): posición de los móviles en tiempo real.
+  useEffect(() => {
+    const offPos = suscribirPosiciones((p) => {
+      if (!p || !p.id_usuario) return
+      setMovers((m) => ({ ...m, [p.id_usuario]: { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() } }))
+    })
+    const offConn = estadoConexion(setMqttOn)
+    const offAlert = suscribirAlertas((a) => {
+      if (!a || !a.id) return
+      const off = a.tipo === 'gps-off'
+      setGpsOff((g) => {
+        const n = { ...g }
+        if (off) n[a.id] = { nombre: a.nombre, rol: a.rol, ts: a.ts }
+        else delete n[a.id]
+        return n
+      })
       const d = new Date()
       const ts = [d.getHours(), d.getMinutes(), d.getSeconds()].map((x) => String(x).padStart(2, '0')).join(':')
-      setEvents((prev) => [{ ...e, ts }, ...prev].slice(0, 12))
-    }, 4000)
-    return () => { clearInterval(iv); clearTimeout(toastRef.current) }
-  }, [])
+      setEvents((prev) => [{ ts, tag: '[ALERTA]', msg: `${a.nombre || a.id} (${a.rol}) ${off ? 'DESACTIVÓ su GPS' : 'reactivó su GPS'}` }, ...prev].slice(0, 12))
+      showToast(`${a.nombre || a.id} (${a.rol}) ${off ? '⚠ desactivó su GPS' : 'reactivó su GPS'}`)
+    }, idEmpresa)
+    return () => { offPos(); offConn(); offAlert() }
+  }, [idEmpresa])
 
-  // Telemetría en vivo: recibe la posición del vendedor (teléfono) en tiempo real.
+  // Sincroniza los controles de la ficha (geofence/días/frecuencia) con el cliente elegido.
   useEffect(() => {
-    const offPos = suscribirPosiciones((p) => setVendorLive(p))
-    const offConn = estadoConexion(setMqttOn)
-    return () => { offPos(); offConn() }
-  }, [])
+    const c = cartera.find((x) => x.id === selCli)
+    if (!c) return
+    setGeoRadio(c.geofence || 75)
+    setFreqSel(c.frecuencia || 'Semanal')
+    const ds = {}
+    ;(c.dias || '').split('·').map((s) => s.trim()).filter(Boolean).forEach((d) => { ds[d] = true })
+    setDiasSel(ds)
+  }, [selCli, cartera])
+
+  const moversArr = Object.values(movers)
+  const gpsOffArr = Object.values(gpsOff)
 
   function showToast(msg) {
     clearTimeout(toastRef.current)
@@ -141,20 +185,16 @@ export default function AdminView() {
     { id: 'RUTA-E-009', who: 'S. Molina · CAM-15', pct: 100, visitas: '19/20', kg: '987', monto: fmtPesos(2214500), estado: 'Terminada', ...pill('Entregado'), barColor: 'var(--success)' },
   ]
 
-  // ---------- Mapa ----------
-  const sel = CLIENTES_GEO[selPin]
-  const mapMarkers = CLIENTES_GEO.map((c, i) => ({
-    lat: c.lat, lng: c.lng, label: c.n, title: c.name,
-    color: statusColor(c.st, theme),
-    labelColor: c.st === 'pendiente' ? (theme === 'dark' ? '#ECF5F4' : '#0B2B2A') : '#fff',
-    selected: i === selPin,
+  // ---------- Mapa (cartera real) ----------
+  const carteraGeo = cartera.filter((c) => c.lat != null && c.lng != null)
+  const sel = carteraGeo[selPin] || null
+  const primaryPin = theme === 'dark' ? '#2DD4CE' : '#0ABAB5'
+  const mapMarkers = carteraGeo.map((c, i) => ({
+    lat: c.lat, lng: c.lng, label: String(i + 1).padStart(2, '0'), title: c.name,
+    color: primaryPin, labelColor: '#fff', selected: i === selPin,
   }))
-  const ruta = useMemo(() => {
-    // Recorrido del día: depósito + paradas con pedido. El orden óptimo (TSP) y el
-    // regreso al depósito los resuelve OSRM (optimize + roundtrip en el mapa).
-    const visitados = CLIENTES_GEO.filter((c) => c.st === 'visitado')
-    return [DEPOSITO, ...visitados]
-  }, [])
+  // Recorrido sugerido sobre la cartera (orden óptimo + regreso al depósito vía OSRM).
+  const ruta = carteraGeo.length >= 1 ? [DEPOSITO, ...carteraGeo.map((c) => ({ lat: c.lat, lng: c.lng }))] : null
   const eventsColored = events.map((e) => ({
     ...e,
     tagColor: e.tag === '[ALERTA]' ? 'var(--warning)' : e.tag === '[PED]' ? 'var(--success)' : e.tag === '[RUTA]' ? 'var(--primary)' : 'var(--info)',
@@ -178,9 +218,11 @@ export default function AdminView() {
   const ordFiltered = ORDENES.filter((o) => (ordFilter === 'Todas' || o[7] === ordFilter) && (!q || o[0].toLowerCase().includes(q) || o[1].toLowerCase().includes(q)))
 
   // ---------- Clientes ----------
-  const fc = CLIENTES[selCli]
-  const fcCoords = fc[5].split(',').map((s) => parseFloat(s.trim()))
+  const fc = cartera.find((c) => c.id === selCli) || null
   const diasAll = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
+  // Clientes sin confirmar (los cargó un vendedor/repartidor) primero.
+  const carteraSorted = [...cartera].sort((a, b) => (a.activo === b.activo ? a.name.localeCompare(b.name) : a.activo ? 1 : -1))
+  const porConfirmar = cartera.filter((c) => !c.activo).length
 
   // ---------- Faltante ----------
   const faltRows = FALTANTES.map((f) => {
@@ -204,7 +246,7 @@ export default function AdminView() {
       {/* Barra secundaria de pestañas del Admin */}
       <div style={sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);padding:0 20px;display:flex;align-items:center;gap:14px;height:48px;position:sticky;top:52px;z-index:30')}>
         <div className="lu-tabs" style={sx('display:flex;gap:2px;flex:1;overflow-x:auto')}>
-          {TAB_DEFS.map(([k, label]) => {
+          {tabs.map(([k, label]) => {
             const active = tab === k
             return (
               <button key={k} onClick={() => setTab(k)} style={{ ...sx('flex:none;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font-body)'), color: active ? 'var(--deep)' : 'var(--muted)', background: active ? 'var(--primary-tint)' : 'transparent', border: `1px solid ${active ? 'var(--primary)' : 'transparent'}` }}>{label}</button>
@@ -219,75 +261,18 @@ export default function AdminView() {
         </div>
       </div>
 
+      {gpsOffArr.length > 0 && (
+        <div style={sx('flex:none;background:var(--danger-tint);border-bottom:1px solid var(--danger);color:var(--danger);padding:9px 20px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:10px')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
+          Alerta GPS: {gpsOffArr.map((u) => `${u.nombre} (${u.rol})`).join(', ')} {gpsOffArr.length > 1 ? 'tienen' : 'tiene'} el GPS DESACTIVADO.
+        </div>
+      )}
+
       {/* ========== DASHBOARD ========== */}
       {tab === 'dash' && (
-        <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;overflow-x:auto')}>
-          <div style={sx('display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 340px;gap:12px;align-items:stretch;min-width:1180px')}>
-            {kpis.map((k) => (
-              <div key={k.label} style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={sx('display:flex;justify-content:space-between;align-items:baseline;gap:6px')}>
-                  <span style={sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{k.label}</span>
-                  <span style={{ ...sx('font-family:var(--font-mono);font-size:11px;font-weight:600;white-space:nowrap'), color: k.deltaColor }}>{k.delta}</span>
-                </div>
-                <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:24px;font-weight:600;line-height:1.1')}>{k.value}</div>
-                <div style={sx('font-size:10.5px;color:var(--faint)')}>{k.sub}</div>
-                <svg viewBox="0 0 120 34" style={sx('width:100%;height:34px;margin-top:auto')}>
-                  <path d="M0 9 H120 M0 17 H120 M0 25 H120" stroke="var(--grid)" strokeWidth=".8" />
-                  <polyline points={k.pts} fill="none" stroke={k.lineColor} strokeWidth="1.6" strokeLinejoin="round" />
-                </svg>
-              </div>
-            ))}
-            <div style={{ ...panel, gridRow: 'span 2', display: 'flex', flexDirection: 'column' }}>
-              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)')}>Efectividad en ruta</div>
-              <div style={sx('position:relative;width:170px;height:170px;margin:14px auto')}>
-                <svg viewBox="0 0 150 150" style={sx('width:100%;height:100%')}>
-                  <circle cx="75" cy="75" r="62" fill="none" stroke="var(--surface2)" strokeWidth="14" />
-                  {donutSegs.map((seg, i) => (
-                    <circle key={i} cx="75" cy="75" r="62" fill="none" stroke={seg.color} strokeWidth="14" strokeDasharray={seg.dash} strokeDashoffset={seg.off} transform="rotate(-90 75 75)" />
-                  ))}
-                </svg>
-                <div style={sx('position:absolute;inset:0;display:grid;place-items:center')}>
-                  <div style={sx('text-align:center')}>
-                    <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600')}>83%</div>
-                    <div style={sx('font-size:10px;color:var(--faint)')}>142 visitas</div>
-                  </div>
-                </div>
-              </div>
-              <div style={sx('display:flex;flex-direction:column;gap:7px')}>
-                {donutLegend.map((l) => (
-                  <div key={l.label} style={sx('display:flex;align-items:center;gap:8px;font-size:12px')}>
-                    <span style={{ ...sx('width:8px;height:8px;border-radius:3px;flex:none'), background: l.color }} />
-                    <span style={sx('flex:1;color:var(--muted)')}>{l.label}</span>
-                    <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600')}>{l.value}</span>
-                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);width:34px;text-align:right')}>{l.pct}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ ...panel, gridColumn: '1 / span 4' }}>
-              <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px')}>
-                <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)')}>Rutas activas</div>
-                <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>3 en curso · 6 terminadas</div>
-              </div>
-              <div style={{ ...rutasGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-                <span>Ruta</span><span>Vendedor / Chofer</span><span>Progreso</span><span style={sx('text-align:right')}>Visitas</span><span style={sx('text-align:right')}>Kilos</span><span style={sx('text-align:right')}>Monto</span><span style={sx('text-align:right')}>Estado</span>
-              </div>
-              {rutas.map((r) => (
-                <div key={r.id} style={{ ...rutasGrid, ...sx('padding:10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px') }}>
-                  <span style={sx('font-family:var(--font-mono);font-size:11.5px;color:var(--deep);font-weight:600')}>{r.id}</span>
-                  <span style={sx('font-weight:500')}>{r.who}</span>
-                  <span style={sx('display:flex;align-items:center;gap:8px')}>
-                    <span style={sx('flex:1;height:4px;border-radius:99px;background:var(--surface2);overflow:hidden;display:block')}><span style={{ ...sx('display:block;height:100%;border-radius:99px'), width: `${r.pct}%`, background: r.barColor }} /></span>
-                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{r.pct}%</span>
-                  </span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{r.visitas}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{r.kg}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600')}>{r.monto}</span>
-                  <span style={sx('display:flex;justify-content:flex-end')}><span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), background: r.pillBg, color: r.pillColor }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: r.pillColor }} />{r.estado}</span></span>
-                </div>
-              ))}
-            </div>
+        <div style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box')}>
+          <div style={panel}>
+            <EmptyState titulo="Los indicadores se completan con la operación" texto="El dashboard (rutas, recaudación, efectividad) se arma a partir de los pedidos y entregas reales. Vas a verlo cobrar vida cuando el módulo de ventas esté cargando pedidos. Mientras tanto, seguí el equipo en vivo desde “Mapa operativo” y “Reproducción”." />
           </div>
         </div>
       )}
@@ -297,32 +282,35 @@ export default function AdminView() {
         <div style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start')}>
           <div style={sx('display:flex;flex-direction:column;gap:12px;min-width:0')}>
             <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
-              {[['Distancia', '34,2 km'], ['Tiempo', '5 h 12 m'], ['Visitas', '18/24']].map(([l, v]) => (
+              {[['Clientes', String(carteraGeo.length)], ['En vivo', String(moversArr.length)], ['GPS apagado', String(gpsOffArr.length)]].map(([l, v]) => (
                 <div key={l} style={sx('background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:7px 11px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px')}>
                   <span style={sx('color:var(--faint);font-size:9.5px;display:block;font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:.05em')}>{l}</span>{v}
                 </div>
               ))}
               <div style={sx('flex:1')} />
-              <div style={sx('display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 11px')}>
-                {[['Visitado', 'var(--success)'], ['Sin pedido', 'var(--warning)'], ['Pendiente', 'var(--faint)']].map(([l, c]) => (
-                  <span key={l} style={sx('display:flex;align-items:center;gap:5px')}><span style={{ ...sx('width:7px;height:7px;border-radius:99px'), background: c }} />{l}</span>
-                ))}
-              </div>
+              <button onClick={() => setModalCliente(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:7px 11px;font-size:11.5px;font-weight:600;color:var(--deep);cursor:pointer')}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo cliente
+              </button>
             </div>
 
-            <div style={{ ...sx('display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;font-size:12px;font-weight:500'), background: vendorLive ? 'var(--success-tint)' : 'var(--surface)', border: `1px solid ${vendorLive ? 'var(--success)' : 'var(--line)'}`, color: vendorLive ? 'var(--success)' : 'var(--muted)' }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: vendorLive ? 'var(--success)' : mqttOn ? 'var(--info)' : 'var(--faint)', animation: vendorLive ? 'lu-blink 1.4s infinite' : 'none' }} />
-              {vendorLive
-                ? `${vendorLive.nombre || 'Vendedor'} — GPS en vivo · ${vendorLive.lat.toFixed(5)}, ${vendorLive.lng.toFixed(5)} · hace ${Math.max(0, Math.round((Date.now() - vendorLive.ts) / 1000))} s`
-                : `Esperando posición del vendedor… · telemetría ${mqttOn ? 'conectada' : 'conectando…'}`}
+            <div style={{ ...sx('display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;font-size:12px;font-weight:500;flex-wrap:wrap'), background: moversArr.length ? 'var(--success-tint)' : 'var(--surface)', border: `1px solid ${moversArr.length ? 'var(--success)' : 'var(--line)'}`, color: moversArr.length ? 'var(--success)' : 'var(--muted)' }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: moversArr.length ? 'var(--success)' : mqttOn ? 'var(--info)' : 'var(--faint)', animation: moversArr.length ? 'lu-blink 1.4s infinite' : 'none' }} />
+              {moversArr.length
+                ? moversArr.map((m, i) => (
+                    <span key={m.id} style={sx('display:inline-flex;align-items:center;gap:5px')}>
+                      {i > 0 && <span style={sx('opacity:.4;margin:0 4px')}>·</span>}
+                      <span style={{ width: 9, height: 9, borderRadius: 99, background: colorPorId(m.id), border: '1px solid #fff' }} />
+                      {`${nombres[m.id] || m.rol} (${m.rol}) · hace ${Math.max(0, Math.round((Date.now() - m.ts) / 1000))}s`}
+                    </span>
+                  ))
+                : `Esperando ubicación de vendedores/repartidores… · telemetría ${mqttOn ? 'conectada' : 'conectando…'}`}
             </div>
 
             <LeafletMap
               theme={theme}
               markers={mapMarkers}
               depot={DEPOSITO}
-              live={vendorLive ? { lat: vendorLive.lat, lng: vendorLive.lng } : { lat: -24.72155, lng: -64.19560 }}
-              followLive={!!vendorLive}
+              movers={moversArr.map((m) => ({ lat: m.lat, lng: m.lng, rol: m.rol, nombre: nombres[m.id] || m.rol, color: colorPorId(m.id) }))}
               route={ruta}
               routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
               optimize
@@ -346,38 +334,35 @@ export default function AdminView() {
 
           <div style={sx('display:flex;flex-direction:column;gap:12px')}>
             <div style={panel}>
-              <div style={label10}>Auditoría de pedido</div>
-              <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px')}>
-                <div style={sx('font-weight:600;font-size:14px')}>{sel.name}</div>
-                <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{sel.id}</div>
-              </div>
-              <div style={sx('font-size:11px;color:var(--faint);margin-bottom:12px')}>{sel.loc} · {sel.st === 'visitado' ? 'Visitado' : sel.st === 'sin_pedido' ? 'Sin pedido' : 'Pendiente'}</div>
-              {sel.items.length > 0 ? (
+              <div style={label10}>Ficha del cliente</div>
+              {sel ? (
                 <>
-                  <div style={{ ...auditGrid, ...sx('padding:6px 0;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}><span>Artículo</span><span style={sx('text-align:right')}>Cant</span><span style={sx('text-align:right')}>Subtotal</span></div>
-                  {sel.items.map((it, i) => (
-                    <div key={i} style={{ ...auditGrid, ...sx('padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;align-items:center') }}>
-                      <span style={sx('white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{it[0]}</span>
-                      <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{it[1]}</span>
-                      <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{fmtPesos(it[2])}</span>
-                    </div>
-                  ))}
-                  <div style={sx('display:flex;justify-content:space-between;padding-top:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12.5px')}>
-                    <span style={sx('color:var(--muted)')}>{kgFmt(sel.kg)} kg</span>
-                    <span style={sx('font-weight:600;color:var(--deep)')}>{fmtPesos(sel.total)}</span>
+                  <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 2px')}>
+                    <div style={sx('font-weight:600;font-size:14px')}>{sel.name}</div>
+                    <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{sel.codigo || '—'}</div>
                   </div>
+                  <div style={sx('font-size:11px;color:var(--faint);margin-bottom:12px')}>{sel.loc || 'Sin localidad'}</div>
+                  <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
+                    <MiniStat label="Días de visita" value={sel.dias || '—'} />
+                    <MiniStat label="Frecuencia" value={sel.frecuencia || '—'} />
+                    <MiniStat label="Horario" value={sel.horario || '—'} />
+                    <MiniStat label="Geofence" value={`${sel.geofence} m`} />
+                  </div>
+                  <div style={sx('margin-top:10px;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{sel.lat?.toFixed(5)}, {sel.lng?.toFixed(5)}</div>
                 </>
               ) : (
-                <div style={sx('padding:18px 0 8px;text-align:center;color:var(--faint);font-size:12px')}>Sin pedido registrado en esta visita.</div>
+                <div style={sx('padding:24px 4px;text-align:center;color:var(--faint);font-size:12.5px')}>Tocá un cliente en el mapa para ver su ficha.</div>
               )}
             </div>
             <div style={panel}>
-              <div style={label10}>Cierre de carga · RUTA-N-042</div>
+              <div style={label10}>Cartera</div>
               <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
-                <MiniStat label="Con pedido" value={<>18<span style={sx('color:var(--faint);font-size:13px')}>/24</span></>} />
-                <MiniStat label="Kilos" value="1.243" />
-                <MiniStat label="Recaudación estimada" value="$ 4.862.300" color="var(--deep)" span />
+                <MiniStat label="Clientes con ubicación" value={carteraGeo.length} />
+                <MiniStat label="En vivo ahora" value={moversArr.length} color="var(--deep)" />
               </div>
+              <button onClick={() => setModalCliente(true)} style={sx('margin-top:12px;width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo cliente
+              </button>
             </div>
           </div>
         </div>
@@ -461,109 +446,140 @@ export default function AdminView() {
 
       {/* ========== ÓRDENES ========== */}
       {tab === 'ordenes' && (
-        <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;overflow-x:auto')}>
-          <div style={{ ...panel, minWidth: 1040 }}>
-            <div style={sx('display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap')}>
-              <div style={sx('display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:0 12px;height:38px;width:260px')}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.4-3.4" /></svg>
-                <input value={ordSearch} onChange={(e) => setOrdSearch(e.target.value)} placeholder="Buscar pedido o cliente…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:12.5px;color:var(--text)')} />
-              </div>
-              {filters.map((label) => {
-                const on = ordFilter === label
-                const count = label === 'Todas' ? ORDENES.length : ORDENES.filter((o) => o[7] === label).length
-                return <div key={label} onClick={() => setOrdFilter(label)} style={{ ...sx('padding:8px 13px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--deep)' : 'var(--muted)' }}>{label} <span style={sx('font-family:var(--font-mono);font-size:10.5px;opacity:.7')}>{count}</span></div>
-              })}
-            </div>
-            <div style={{ ...ordGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Pedido</span><span>Cliente</span><span>Localidad</span><span>Vendedor</span><span style={sx('text-align:right')}>Arts</span><span style={sx('text-align:right')}>Kilos</span><span style={sx('text-align:right')}>Monto</span><span>Estado</span><span style={sx('text-align:right')}>Hora</span>
-            </div>
-            {ordFiltered.map((o) => {
-              const p = pill(o[7])
-              return (
-                <div key={o[0]} style={{ ...ordGrid, ...sx('padding:9px 10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px') }}>
-                  <span style={sx('font-family:var(--font-mono);font-size:11.5px;color:var(--deep);font-weight:600')}>{o[0]}</span>
-                  <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{o[1]}</span>
-                  <span style={sx('color:var(--muted)')}>{o[2]}</span>
-                  <span style={sx('color:var(--muted)')}>{o[3]}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{o[4]}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{kgFmt(o[5])}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600')}>{fmtPesos(o[6])}</span>
-                  <span><span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), background: p.pillBg, color: p.pillColor }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: p.pillColor }} />{o[7]}</span></span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{o[8]}</span>
-                </div>
-              )
-            })}
+        <div style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box')}>
+          <div style={panel}>
+            <EmptyState titulo="Todavía no hay pedidos" texto="Acá vas a ver los pedidos que carguen los vendedores y su estado (pendiente, en camino, entregado). El módulo de pedidos se conecta en la próxima etapa." />
           </div>
         </div>
       )}
 
-      {/* ========== CLIENTES ========== */}
+      {/* ========== CLIENTES (cartera real) ========== */}
       {tab === 'clientes' && (
         <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;grid-template-columns:minmax(560px,1fr) 400px;gap:14px;align-items:start;overflow-x:auto')}>
           <div style={{ ...panel, minWidth: 0 }}>
             <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
-              <div style={label10}>Clientes · 24 activos</div>
-              <div style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <div style={sx('display:flex;align-items:center;gap:10px')}>
+                <div style={label10}>Clientes · {cartera.length}</div>
+                {porConfirmar > 0 && <span style={sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600;color:var(--warning);background:var(--warning-tint)')}>{porConfirmar} por confirmar</span>}
+              </div>
+              <button onClick={() => setModalCliente(true)} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo cliente
-              </div>
+              </button>
             </div>
-            <div style={{ ...cliGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Código</span><span>Razón social</span><span>Localidad</span><span>Días de visita</span><span>Frecuencia</span><span>Estado</span>
-            </div>
-            {CLIENTES.map((c, i) => (
-              <div key={c[0]} onClick={() => setSelCli(i)} style={{ ...cliGrid, ...sx('padding:10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer'), background: i === selCli ? 'var(--primary-tint)' : 'transparent' }}>
-                <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--deep);font-weight:600')}>{c[0]}</span>
-                <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c[1]}</span>
-                <span style={sx('color:var(--muted)')}>{c[2]}</span>
-                <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.04em')}>{c[3]}</span>
-                <span style={sx('color:var(--muted);font-size:12px')}>{c[4]}</span>
-                <span><span style={sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;background:var(--success-tint);font-size:10.5px;font-weight:600;color:var(--success)')}><span style={sx('width:5px;height:5px;border-radius:99px;background:var(--success)')} />Activo</span></span>
-              </div>
-            ))}
+            {catLoading ? (
+              <div style={sx('padding:40px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando cartera…</div>
+            ) : cartera.length === 0 ? (
+              <EmptyState titulo="Todavía no cargaste clientes" texto="Agregá tu primer comercio con “Nuevo cliente”. También los pueden cargar los vendedores y repartidores desde su celular." />
+            ) : (
+              <>
+                <div style={{ ...cliGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
+                  <span>Código</span><span>Razón social</span><span>Localidad</span><span>Días de visita</span><span>Frecuencia</span><span>Estado</span>
+                </div>
+                {carteraSorted.map((c) => (
+                  <div key={c.id} onClick={() => setSelCli(c.id)} style={{ ...cliGrid, ...sx('padding:10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer'), background: c.id === selCli ? 'var(--primary-tint)' : 'transparent' }}>
+                    <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--deep);font-weight:600')}>{c.codigo || '—'}</span>
+                    <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</span>
+                    <span style={sx('color:var(--muted)')}>{c.loc || '—'}</span>
+                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.04em')}>{c.dias || '—'}</span>
+                    <span style={sx('color:var(--muted);font-size:12px')}>{c.frecuencia || '—'}</span>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      {c.activo ? (
+                        <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), background: 'var(--success-tint)', color: 'var(--success)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: 'var(--success)' }} />Confirmado</span>
+                      ) : (
+                        <button onClick={async () => { const { ok, error } = await updateCliente(c.id, { activo: true }); showToast(ok ? `${c.name} confirmado` : 'Error: ' + (error?.message || '')) }} style={sx('display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--warning);border-radius:99px;background:var(--warning-tint);color:var(--warning);font-size:10.5px;font-weight:700;cursor:pointer')}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>Confirmar
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
 
           <div style={panel}>
-            <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px')}>
-              <div style={label10}>Ficha de cliente · Editar</div>
-              <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--deep);font-weight:600')}>{fc[0]}</div>
-            </div>
-            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>{fc[1]}</div>
-            <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono);margin:3px 0 14px')}>{fc[5]}</div>
+            {fc ? (
+              <>
+                <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px')}>
+                  <div style={label10}>Ficha de cliente · Editar</div>
+                  <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--deep);font-weight:600')}>{fc.codigo || '—'}</div>
+                </div>
+                <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>{fc.name}</div>
+                <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono);margin:3px 0 14px')}>{fc.lat != null ? `${fc.lat.toFixed(5)}, ${fc.lng.toFixed(5)}` : 'Sin ubicación'}</div>
 
-            <div style={sx('margin-bottom:8px')}>
-              <LeafletMap theme={theme} height={190} zoom={16}
-                center={{ lat: fcCoords[0], lng: fcCoords[1] }}
-                markers={[{ lat: fcCoords[0], lng: fcCoords[1], color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5', title: fc[1] }]}
-                circle={{ lat: fcCoords[0], lng: fcCoords[1], radiusM: geoRadio, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5' }}
-              />
-            </div>
-            <div style={sx('margin-bottom:14px')}>
-              <div style={sx('display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px')}><span>Radio de geofence</span><span style={sx('font-family:var(--font-mono);color:var(--deep)')}>{geoRadio} m</span></div>
-              <input type="range" min="50" max="100" step="5" value={geoRadio} onChange={(e) => setGeoRadio(+e.target.value)} style={{ width: '100%', accentColor: '#0ABAB5' }} />
-              <div style={sx('display:flex;justify-content:space-between;font-size:10px;color:var(--faint);font-family:var(--font-mono)')}><span>50 m</span><span>100 m</span></div>
-            </div>
+                {fc.lat != null && (
+                  <div style={sx('margin-bottom:8px')}>
+                    <LeafletMap theme={theme} height={190} zoom={16}
+                      center={{ lat: fc.lat, lng: fc.lng }}
+                      markers={[{ lat: fc.lat, lng: fc.lng, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5', title: fc.name }]}
+                      circle={{ lat: fc.lat, lng: fc.lng, radiusM: geoRadio, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5' }}
+                    />
+                  </div>
+                )}
+                <div style={sx('margin-bottom:14px')}>
+                  <div style={sx('display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px')}><span>Radio de geofence</span><span style={sx('font-family:var(--font-mono);color:var(--deep)')}>{geoRadio} m</span></div>
+                  <input type="range" min="50" max="150" step="5" value={geoRadio} onChange={(e) => setGeoRadio(+e.target.value)} style={{ width: '100%', accentColor: '#0ABAB5' }} />
+                </div>
 
-            <div style={fieldLabel}>Días de visita</div>
-            <div style={sx('display:flex;gap:5px;margin-bottom:14px')}>
-              {diasAll.map((d) => {
-                const on = !!diasSel[d]
-                return <div key={d} onClick={() => setDiasSel((v) => ({ ...v, [d]: !v[d] }))} style={{ ...sx('flex:1;min-height:36px;display:grid;place-items:center;border-radius:9px;font-family:var(--font-mono);font-size:10.5px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--deep)' : 'var(--faint)' }}>{d}</div>
-              })}
-            </div>
+                <div style={fieldLabel}>Días de visita</div>
+                <div style={sx('display:flex;gap:5px;margin-bottom:14px')}>
+                  {diasAll.map((d) => {
+                    const on = !!diasSel[d]
+                    return <div key={d} onClick={() => setDiasSel((v) => ({ ...v, [d]: !v[d] }))} style={{ ...sx('flex:1;min-height:36px;display:grid;place-items:center;border-radius:9px;font-family:var(--font-mono);font-size:10.5px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--deep)' : 'var(--faint)' }}>{d}</div>
+                  })}
+                </div>
 
-            <div style={fieldLabel}>Frecuencia</div>
-            <div style={sx('display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px')}>
-              {['Semanal', 'Quincenal', 'Mensual'].map((f) => {
-                const on = freqSel === f
-                return <div key={f} onClick={() => setFreqSel(f)} style={{ ...sx('min-height:38px;display:grid;place-items:center;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--deep)' : 'var(--muted)' }}>{f}</div>
-              })}
-            </div>
+                <div style={fieldLabel}>Frecuencia</div>
+                <div style={sx('display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px')}>
+                  {['Semanal', 'Quincenal', 'Mensual'].map((f) => {
+                    const on = freqSel === f
+                    return <div key={f} onClick={() => setFreqSel(f)} style={{ ...sx('min-height:38px;display:grid;place-items:center;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--deep)' : 'var(--muted)' }}>{f}</div>
+                  })}
+                </div>
 
-            <div style={sx('display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px')}>
-              <div style={sx('font-size:12px;font-weight:500;color:var(--muted)')}>Horario de atención</div>
-              <div style={sx('font-family:var(--font-mono);font-size:12px;font-weight:600')}>08:00 – 13:00</div>
+                <button onClick={async () => {
+                  const dias_visita = diasAll.filter((d) => diasSel[d]).join(' · ')
+                  const { ok, error } = await updateCliente(fc.id, { geofence_radio: geoRadio, dias_visita: dias_visita || null, frecuencia: freqSel })
+                  showToast(ok ? `${fc.name} actualizado` : 'Error: ' + (error?.message || ''))
+                }} style={sx('width:100%;min-height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer')}>Guardar cambios</button>
+              </>
+            ) : (
+              <div style={sx('padding:40px 10px;text-align:center;color:var(--faint);font-size:12.5px')}>Seleccioná un cliente de la lista para ver y editar su ficha.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========== CATÁLOGO (productos reales) ========== */}
+      {tab === 'catalogo' && (
+        <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;overflow-x:auto')}>
+          <div style={{ ...panel, minWidth: 700 }}>
+            <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
+              <div style={label10}>Catálogo · {productos.length} productos</div>
+              <button onClick={() => setModalProducto(true)} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo producto
+              </button>
             </div>
-            <div onClick={() => showToast(`${fc[0]} actualizado · geofence ${geoRadio} m`)} style={sx('min-height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer')}>Guardar cambios</div>
+            {catLoading ? (
+              <div style={sx('padding:40px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando catálogo…</div>
+            ) : productos.length === 0 ? (
+              <EmptyState titulo="El catálogo está vacío" texto="Cargá los productos de la distribuidora con “Nuevo producto”. Los vendedores los verán al tomar pedidos." />
+            ) : (
+              <>
+                <div style={{ ...catGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
+                  <span>Código</span><span>Descripción</span><span>Categoría</span><span style={sx('text-align:right')}>Precio</span><span style={sx('text-align:right')}>Peso</span>
+                </div>
+                {productos.map((p) => (
+                  <div key={p.id} style={{ ...catGrid, ...sx('padding:10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px') }}>
+                    <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--deep);font-weight:600')}>{p.codigo || '—'}</span>
+                    <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p.name}</span>
+                    <span style={sx('color:var(--muted)')}>{p.cat}</span>
+                    <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600')}>{fmtPesos(p.price)}</span>
+                    <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--muted)')}>{kgFmt(p.kg)} kg</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -574,9 +590,8 @@ export default function AdminView() {
           <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
             <div>
               <div style={sx('font-family:var(--font-display);font-weight:600;font-size:18px')}>Reporte de faltante de stock</div>
-              <div style={sx('font-size:12px;color:var(--muted);margin-top:2px')}>Pedidos generados vs entregados · Martes 07 JUL 2026</div>
+              <div style={sx('font-size:12px;color:var(--muted);margin-top:2px')}>Pedidos generados vs entregados</div>
             </div>
-            <div onClick={() => setFaltVacio((v) => !v)} style={sx('padding:8px 13px;border:1px solid var(--line2);border-radius:10px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer')}>{faltVacio ? 'Ver con datos' : 'Ver estado vacío'}</div>
           </div>
 
           {faltVacio ? (
@@ -644,6 +659,18 @@ export default function AdminView() {
         </div>
       )}
 
+      {/* ========== REPRODUCCIÓN DE JORNADA ========== */}
+      {tab === 'reproduccion' && <ReplayJornada onToast={showToast} />}
+
+      {/* ========== USUARIOS (admin/superadmin) ========== */}
+      {tab === 'usuarios' && (rol === 'admin' || rol === 'superadmin') && <UsuariosView onToast={showToast} />}
+
+      {/* ========== EMPRESAS (superadmin) ========== */}
+      {tab === 'empresas' && rol === 'superadmin' && <EmpresasView onToast={showToast} />}
+
+      {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={sel ? { lat: sel.lat, lng: sel.lng } : null} />}
+      {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
+
       {toast && (
         <div style={sx('position:fixed;top:68px;right:20px;z-index:60;background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:12px 16px;display:flex;align-items:center;gap:9px')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -662,7 +689,18 @@ const auditGrid = { display: 'grid', gridTemplateColumns: '1fr 44px 84px', gap: 
 const asignGrid = { display: 'grid', gridTemplateColumns: '40px 110px 1.5fr 1fr 80px 110px 120px', gap: 10 }
 const ordGrid = { display: 'grid', gridTemplateColumns: '110px 1.5fr 1fr 130px 70px 100px 120px 120px 80px', gap: 10 }
 const cliGrid = { display: 'grid', gridTemplateColumns: '90px 1.6fr 1fr 150px 110px 90px', gap: 10 }
+const catGrid = { display: 'grid', gridTemplateColumns: '100px 1.8fr 1fr 120px 90px', gap: 10 }
 const faltGrid = { display: 'grid', gridTemplateColumns: '1.6fr 80px 80px 80px 120px', gap: 10 }
+
+function EmptyState({ titulo, texto }) {
+  return (
+    <div style={sx('padding:48px 20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center')}>
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="M3.29 7 12 12l8.71-5" /><path d="M12 22V12" /></svg>
+      <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px')}>{titulo}</div>
+      <div style={sx('font-size:12.5px;color:var(--muted);max-width:380px;line-height:1.5')}>{texto}</div>
+    </div>
+  )
+}
 
 function MiniStat({ label, value, color, span }) {
   return (

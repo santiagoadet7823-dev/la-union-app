@@ -20,6 +20,26 @@ export async function watchPosition(onUpdate, onError = () => {}) {
   return watchWeb(onUpdate, onError)
 }
 
+/**
+ * Pide la ubicación UNA vez. Debe llamarse desde un gesto del usuario (tap) para
+ * que iOS/Android muestren el prompt de permiso. Una vez concedido, el watch
+ * empieza a entregar posiciones sin volver a preguntar.
+ * @returns {Promise<{lat:number,lng:number,ts:number}>}
+ */
+export function pedirUbicacionUnaVez() {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      reject(new Error('Geolocalización no disponible en este navegador'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, ts: p.timestamp }),
+      reject,
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    )
+  })
+}
+
 function watchWeb(onUpdate, onError) {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     onError(new Error('Geolocalización no disponible en este navegador'))

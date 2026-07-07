@@ -12,6 +12,7 @@ import mqtt from 'mqtt'
 const BROKER = 'wss://broker.emqx.io:8084/mqtt'
 // Tópico único de esta app (evita cruces con otros demos del broker público).
 export const TOPIC = 'launion/lajitas/telemetria/v1'
+export const TOPIC_ALERTAS = 'launion/lajitas/alertas/v1'
 
 let client = null
 
@@ -43,6 +44,33 @@ export function suscribirPosiciones(handler) {
 
   const onMsg = (topic, buf) => {
     if (topic !== TOPIC) return
+    try {
+      handler(JSON.parse(buf.toString()))
+    } catch {
+      /* mensaje inválido: ignorar */
+    }
+  }
+  c.on('message', onMsg)
+  return () => c.off('message', onMsg)
+}
+
+/** Publica una alerta (ej. GPS desactivado). payload: {id, nombre, rol, tipo, ts} */
+export function publicarAlerta(payload) {
+  const c = getClient()
+  const msg = JSON.stringify(payload)
+  if (c.connected) c.publish(TOPIC_ALERTAS, msg, { qos: 1 })
+  else c.once('connect', () => c.publish(TOPIC_ALERTAS, msg, { qos: 1 }))
+}
+
+/** Se suscribe a las alertas entrantes (para el Admin). Devuelve función de baja. */
+export function suscribirAlertas(handler) {
+  const c = getClient()
+  const sub = () => c.subscribe(TOPIC_ALERTAS)
+  if (c.connected) sub()
+  else c.on('connect', sub)
+
+  const onMsg = (topic, buf) => {
+    if (topic !== TOPIC_ALERTAS) return
     try {
       handler(JSON.parse(buf.toString()))
     } catch {

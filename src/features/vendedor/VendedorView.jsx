@@ -4,47 +4,18 @@ import { fmtPesos } from '../../lib/format'
 import { Home, Pin, Box, User, Search, Check, Route } from '../../components/icons'
 import LeafletMap from '../../components/LeafletMap'
 import { useTheme } from '../../context/ThemeContext'
-import { useLivePosition } from '../../hooks/useLivePosition'
-import { publicarPosicion } from '../../services/telemetry'
-import { CLIENTES_GEO, statusColor, ROUTE_COLOR } from '../../data/demoGeo'
-
-// Coordenadas por id de cliente (mismo dataset que usa el Admin) para el mapa real.
-const GEO = Object.fromEntries(CLIENTES_GEO.map((c) => [c.id, c]))
-
-const PRODUCTS = [
-  { id: 'P-1042', cat: 'Bebidas', name: 'Gaseosa Cola 2.25 L ×6', price: 14800, kg: 13.5 },
-  { id: 'P-1055', cat: 'Bebidas', name: 'Agua Mineral 2 L ×6', price: 6900, kg: 12 },
-  { id: 'P-1061', cat: 'Bebidas', name: 'Cerveza Rubia 1 L ×12', price: 21600, kg: 18 },
-  { id: 'P-1078', cat: 'Bebidas', name: 'Jugo Naranja 1 L ×8', price: 9400, kg: 8 },
-  { id: 'P-2010', cat: 'Almacén', name: 'Yerba Mate 1 kg ×10', price: 38500, kg: 10 },
-  { id: 'P-2024', cat: 'Almacén', name: 'Aceite Girasol 1.5 L ×12', price: 32400, kg: 16.6 },
-  { id: 'P-2031', cat: 'Almacén', name: 'Harina 000 1 kg ×10', price: 7800, kg: 10 },
-  { id: 'P-2047', cat: 'Almacén', name: 'Arroz Largo Fino 1 kg ×10', price: 13200, kg: 10 },
-  { id: 'P-2052', cat: 'Almacén', name: 'Azúcar 1 kg ×10', price: 10900, kg: 10 },
-  { id: 'P-2066', cat: 'Almacén', name: 'Fideos Guiseros 500 g ×20', price: 12600, kg: 10 },
-  { id: 'P-3005', cat: 'Galletitas y snacks', name: 'Galletitas Surtidas 400 g ×12', price: 16300, kg: 4.8 },
-  { id: 'P-3012', cat: 'Galletitas y snacks', name: 'Papas Fritas 145 g ×15', price: 19500, kg: 2.2 },
-  { id: 'P-3020', cat: 'Galletitas y snacks', name: 'Alfajor Triple ×24', price: 14400, kg: 1.9 },
-  { id: 'P-4008', cat: 'Limpieza', name: 'Lavandina 2 L ×6', price: 7200, kg: 12.6 },
-  { id: 'P-4015', cat: 'Limpieza', name: 'Detergente 750 ml ×12', price: 15800, kg: 9 },
-  { id: 'P-4022', cat: 'Limpieza', name: 'Rollo de Cocina ×12', price: 11900, kg: 3.1 },
-]
-
-const CLIENTS_INIT = [
-  { id: 'CLI-001', name: 'Kiosco EBEN-EZER', loc: 'Las Lajitas', status: 'visitado', monto: 186400, hora: '08:42' },
-  { id: 'CLI-002', name: 'Kiosco Los 2 Gauchos', loc: 'Las Lajitas', status: 'visitado', monto: 341850, hora: '09:15' },
-  { id: 'CLI-003', name: 'Kiosco catalina', loc: 'Las Lajitas', status: 'sin_pedido', motivo: 'Stock suficiente', hora: '09:40' },
-  { id: 'CLI-004', name: 'Kiosco tenefe', loc: 'Las Lajitas', status: 'pendiente', dist: '600 m' },
-]
+import { useGps } from '../../context/GpsContext'
+import { useAuth } from '../../context/AuthContext'
+import { useCatalog } from '../../context/CatalogContext'
+import { ROUTE_COLOR, CENTRO } from '../../data/demoGeo'
+import NuevoCliente from '../catalog/NuevoCliente'
 
 const MOTIVOS = ['Stock suficiente', 'Precio / condición', 'Comercio cerrado', 'Otro']
-const PIN_XY = [[14, 16], [42, 14], [76, 18], [18, 42], [48, 40], [80, 44], [30, 68], [68, 70]]
-
-const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]
 const now = () => {
   const d = new Date()
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
 }
+const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
 
 export default function VendedorView() {
   const [tab, setTab] = useState('inicio')
@@ -58,19 +29,18 @@ export default function VendedorView() {
   const [gps, setGps] = useState(true)
   const [toast, setToast] = useState(null)
   const [rutaInfo, setRutaInfo] = useState(null)
-  const [clients, setClients] = useState(CLIENTS_INIT)
+  const [modalCliente, setModalCliente] = useState(false)
+  const [visitState, setVisitState] = useState({}) // { [idCliente]: {status, hora, monto, motivo} }
   const { theme } = useTheme()
-  const { pos: livePos, error: gpsError } = useLivePosition(gps)
+  const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
+  const { perfil } = useAuth()
+  const { productos: PRODUCTS, clientes: cartera, loading: catLoading } = useCatalog()
 
+  const nombre = perfil?.nombre || 'Vendedor'
   const timerRef = useRef(null)
   const toastRef = useRef(null)
 
   useEffect(() => () => { clearInterval(timerRef.current); clearTimeout(toastRef.current) }, [])
-
-  // Publica la posición real a la telemetría en vivo (la ve el Admin en su mapa).
-  useEffect(() => {
-    if (livePos) publicarPosicion({ id: 'VEND-07', nombre: 'Martín Ríos', lat: livePos.lat, lng: livePos.lng, ts: Date.now() })
-  }, [livePos])
 
   function showToast(msg) {
     clearTimeout(toastRef.current)
@@ -82,11 +52,11 @@ export default function VendedorView() {
     setSeconds(0)
     timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
     setVisit(id); setCart({}); setTab('catalogo')
-    showToast('Geofence OK · check-in a 23 m del comercio')
+    showToast('Check-in registrado en el comercio')
   }
   function endVisit(status, extra) {
     clearInterval(timerRef.current)
-    setClients((cs) => cs.map((c) => (c.id === visit ? { ...c, status, hora: now(), ...extra } : c)))
+    setVisitState((v) => ({ ...v, [visit]: { status, hora: now(), ...extra } }))
     setVisit(null); setSeconds(0); setCart({}); setSheet(false); setMotivo(null); setTab('inicio')
   }
   function addCart(id, d) {
@@ -98,36 +68,33 @@ export default function VendedorView() {
     })
   }
 
-  // --- derivados ---
+  // --- clientes (cartera real) + estado de visita del día ---
+  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, ...(visitState[c.id] || { status: 'pendiente' }) }))
   const nextId = (clients.find((c) => c.status === 'pendiente') || {}).id
   const done = clients.filter((c) => c.status !== 'pendiente').length
   const conPedido = clients.filter((c) => c.status === 'visitado')
   const montoHoy = conPedido.reduce((a, c) => a + (c.monto || 0), 0)
   const visitC = clients.find((c) => c.id === visit)
 
+  // --- catálogo real ---
+  const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]
   const q = search.trim().toLowerCase()
   const groups = CATS.map((cat) => {
     const items = PRODUCTS.filter((p) => p.cat === cat && (!q || p.name.toLowerCase().includes(q)))
     return { cat, items, count: String(items.length).padStart(2, '0') }
   }).filter((g) => g.items.length)
 
+  const prodById = (id) => PRODUCTS.find((p) => p.id === id)
   const entries = Object.entries(cart)
   const cartCount = entries.reduce((a, [, v]) => a + v, 0)
-  const cartKg = entries.reduce((a, [id, v]) => a + v * PRODUCTS.find((p) => p.id === id).kg, 0)
-  const cartTotal = entries.reduce((a, [id, v]) => a + v * PRODUCTS.find((p) => p.id === id).price, 0)
+  const cartKg = entries.reduce((a, [id, v]) => a + v * (prodById(id)?.kg || 0), 0)
+  const cartTotal = entries.reduce((a, [id, v]) => a + v * (prodById(id)?.price || 0), 0)
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
   const pend = clients.map((c, i) => ({ c, i })).filter((x) => x.c.status === 'pendiente')
-  const LIVE = { lat: -24.72155, lng: -64.19560 }
-  const pendingCoords = pend.map((x) => GEO[x.c.id]).filter(Boolean).map((g) => ({ lat: g.lat, lng: g.lng }))
+  const pendingCoords = pend.map((x) => x.c).filter((c) => c.lat != null).map((c) => ({ lat: c.lat, lng: c.lng }))
   const meta = Math.min(100, Math.round((montoHoy / 900000) * 100))
   const efect = done ? Math.round((conPedido.length / done) * 100) : 0
-
-  const pinFor = (c, i) => ({
-    n: String(i + 1).padStart(2, '0'), name: c.name, dist: c.dist || c.hora || '', x: PIN_XY[i][0], y: PIN_XY[i][1],
-    bg: c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : c.id === nextId ? 'var(--primary)' : 'var(--surface2)',
-    fg: c.status === 'pendiente' && c.id !== nextId ? 'var(--muted)' : c.id === nextId ? 'var(--on-primary)' : '#fff',
-  })
 
   const navItem = (t) => (tab === t ? 'var(--primary)' : 'var(--faint)')
 
@@ -142,58 +109,92 @@ export default function VendedorView() {
               <div style={logo}>U</div>
               <div style={sx("font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em")}>LA UNIÓN</div>
             </div>
-            <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>MAR 07 JUL</div>
+            <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{hoy()}</div>
           </div>
+
+          {/* Activación de GPS — en móvil el permiso se pide con un toque del usuario */}
+          {!livePos ? (
+            <button
+              onClick={() => pedirGps().catch(() => {})}
+              style={sx('width:100%;margin-bottom:6px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--primary);color:var(--on-primary);border:none;border-radius:14px;font-weight:600;font-size:14px;cursor:pointer')}
+            >
+              <Pin size={18} />
+              {gpsError ? 'Reintentar — activar ubicación' : 'Activar GPS en vivo · compartir ubicación'}
+            </button>
+          ) : (
+            <div style={sx('width:100%;margin-bottom:14px;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:var(--success-tint);border:1px solid var(--success);color:var(--success);font-size:12px;font-weight:500')}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: 'var(--success)', animation: 'lu-blink 1.4s infinite' }} />
+              GPS activo · el panel ve tu ubicación en vivo
+            </div>
+          )}
+          {gpsError && !livePos && (
+            <div style={sx('margin:2px 0 14px;font-size:11px;color:var(--danger)')}>
+              Permiso de ubicación denegado. Habilitalo en los ajustes del navegador/app y tocá de nuevo.
+            </div>
+          )}
 
           <div style={card}>
             <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px')}>
-              <div style={sx('font-size:12px;color:var(--muted);font-weight:500')}>Resumen del día · Martín Ríos</div>
-              <div style={sx('display:flex;align-items:center;gap:5px;font-size:11px;color:var(--success)')}>
-                <span style={sx('width:6px;height:6px;border-radius:99px;background:var(--success);display:inline-block;animation:lu-blink 2s infinite')} />GPS activo
-              </div>
+              <div style={sx('font-size:12px;color:var(--muted);font-weight:500')}>Resumen del día · {nombre}</div>
             </div>
             <div style={sx('display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px')}>
               <Stat label="Paradas" value={<>{done}<span style={sx('color:var(--faint);font-size:13px')}>/{clients.length}</span></>} />
               <Stat label="Pedidos" value={conPedido.length} />
               <Stat label="Monto" value={fmtPesos(montoHoy)} color="var(--deep)" />
             </div>
-            <div style={sx('margin-top:12px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
-              <div style={{ ...sx('height:100%;border-radius:99px;background:var(--primary);transition:width .4s'), width: `${Math.round((done / clients.length) * 100)}%` }} />
-            </div>
-          </div>
-
-          <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 10px')}>
-            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Hoja de ruta</div>
-            <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>RUTA-N-042</div>
-          </div>
-
-          {clients.map((c, i) => {
-            const isNext = c.id === nextId
-            const pill = c.status === 'visitado' ? ['Visitado', 'var(--success)', 'var(--success-tint)']
-              : c.status === 'sin_pedido' ? ['Sin pedido', 'var(--warning)', 'var(--warning-tint)']
-              : ['Pendiente', 'var(--faint)', 'var(--surface2)']
-            const nBg = c.status === 'visitado' ? 'var(--success-tint)' : c.status === 'sin_pedido' ? 'var(--warning-tint)' : isNext ? 'var(--primary-tint)' : 'var(--surface2)'
-            const nColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
-            const subColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
-            const sub = c.status === 'visitado' ? `${c.hora} · ${fmtPesos(c.monto)}` : c.status === 'sin_pedido' ? `${c.hora} · ${c.motivo || ''}` : isNext ? `Próxima parada · a ${c.dist || '—'}` : `a ${c.dist || '—'}`
-            return (
-              <div key={c.id} style={{ ...sx('display:flex;gap:10px;align-items:center;background:var(--surface);border-radius:16px;padding:12px;margin-bottom:8px;box-shadow:var(--shadow)'), border: `1px solid ${isNext ? 'var(--primary)' : 'var(--line)'}` }}>
-                <div style={{ ...sx('width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600'), background: nBg, color: nColor }}>{String(i + 1).padStart(2, '0')}</div>
-                <div style={sx('flex:1;min-width:0')}>
-                  <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
-                  <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc} · <span style={sx('font-family:var(--font-mono)')}>{c.id}</span></div>
-                  <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
-                </div>
-                {isNext ? (
-                  <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 16px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
-                ) : (
-                  <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
-                    <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
-                  </div>
-                )}
+            {clients.length > 0 && (
+              <div style={sx('margin-top:12px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
+                <div style={{ ...sx('height:100%;border-radius:99px;background:var(--primary);transition:width .4s'), width: `${Math.round((done / clients.length) * 100)}%` }} />
               </div>
-            )
-          })}
+            )}
+          </div>
+
+          <div style={sx('display:flex;justify-content:space-between;align-items:center;margin:0 2px 10px')}>
+            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Mis clientes</div>
+            <button onClick={() => setModalCliente(true)} style={sx('display:flex;align-items:center;gap:5px;background:var(--primary-tint);border:1px solid var(--primary);color:var(--deep);border-radius:10px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer')}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo
+            </button>
+          </div>
+
+          {catLoading ? (
+            <div style={sx('padding:30px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando clientes…</div>
+          ) : clients.length === 0 ? (
+            <div style={{ ...card, textAlign: 'center', padding: '30px 18px' }}>
+              <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px')}>Todavía no tenés clientes</div>
+              <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>Agregá tu primer comercio con el botón <b>Nuevo</b>. Se marca en el mapa con tu ubicación actual.</div>
+            </div>
+          ) : (
+            clients.map((c, i) => {
+              const isNext = c.id === nextId
+              const pill = c.status === 'visitado' ? ['Visitado', 'var(--success)', 'var(--success-tint)']
+                : c.status === 'sin_pedido' ? ['Sin pedido', 'var(--warning)', 'var(--warning-tint)']
+                  : ['Pendiente', 'var(--faint)', 'var(--surface2)']
+              const nBg = c.status === 'visitado' ? 'var(--success-tint)' : c.status === 'sin_pedido' ? 'var(--warning-tint)' : isNext ? 'var(--primary-tint)' : 'var(--surface2)'
+              const nColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
+              const subColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
+              const sub = c.status === 'visitado' ? `${c.hora} · ${fmtPesos(c.monto)}` : c.status === 'sin_pedido' ? `${c.hora} · ${c.motivo || ''}` : isNext ? 'Próxima parada' : 'Pendiente'
+              return (
+                <div key={c.id} style={{ ...sx('display:flex;gap:10px;align-items:center;background:var(--surface);border-radius:16px;padding:12px;margin-bottom:8px;box-shadow:var(--shadow)'), border: `1px solid ${isNext ? 'var(--primary)' : 'var(--line)'}` }}>
+                  <div style={{ ...sx('width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600'), background: nBg, color: nColor }}>{String(i + 1).padStart(2, '0')}</div>
+                  <div style={sx('flex:1;min-width:0')}>
+                    <div style={sx('display:flex;align-items:center;gap:6px')}>
+                      <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
+                      {!c.activo && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
+                    </div>
+                    <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
+                    <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
+                  </div>
+                  {c.status === 'pendiente' ? (
+                    <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 16px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
+                  ) : (
+                    <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
+                      <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       )}
 
@@ -211,7 +212,7 @@ export default function VendedorView() {
               <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:6px')}>
                 <div>
                   <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>{visitC.name}</div>
-                  <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{visitC.id} · {visitC.loc}</div>
+                  <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{visitC.codigo || ''} · {visitC.loc || ''}</div>
                 </div>
                 <div style={sx('display:flex;gap:6px')}>
                   <button onClick={() => setSheet(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--warning);cursor:pointer;background:transparent')}>Sin pedido</button>
@@ -222,7 +223,7 @@ export default function VendedorView() {
           ) : (
             <div style={sx('flex:none;margin:12px 14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--info-tint);color:var(--muted);font-size:12px;display:flex;gap:8px;align-items:center')}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--info)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
-              Modo consulta — hacé check-in en una parada para tomar un pedido.
+              Modo consulta — hacé check-in en un cliente para tomar un pedido.
             </div>
           )}
 
@@ -234,33 +235,40 @@ export default function VendedorView() {
           </div>
 
           <div style={sx('flex:1;overflow-y:auto;padding:0 14px 180px')}>
-            {groups.map((g) => (
-              <div key={g.cat}>
-                <div style={sx('display:flex;align-items:center;gap:8px;margin:14px 2px 8px')}>
-                  <span style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--deep)')}>{g.cat}</span>
-                  <span style={sx('flex:1;height:1px;background:var(--line)')} />
-                  <span style={sx('font-family:var(--font-mono);font-size:10px;color:var(--faint)')}>{g.count}</span>
-                </div>
-                {g.items.map((p) => {
-                  const qty = cart[p.id] || 0
-                  return (
-                    <div key={p.id} style={{ ...sx('display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:14px;padding:10px 12px;margin-bottom:7px'), border: `1px solid ${qty > 0 ? 'var(--primary)' : 'var(--line)'}` }}>
-                      <div style={sx('flex:1;min-width:0')}>
-                        <div style={sx('font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p.name}</div>
-                        <div style={sx('font-size:11px;color:var(--faint);margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
-                          <span style={sx('color:var(--deep);font-weight:600')}>{fmtPesos(p.price)}</span> · {String(p.kg).replace('.', ',')} kg
+            {PRODUCTS.length === 0 ? (
+              <div style={{ ...card, textAlign: 'center', padding: '34px 18px', marginTop: 12 }}>
+                <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px')}>El catálogo está vacío</div>
+                <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>El administrador todavía no cargó los productos. En cuanto los cargue, vas a poder armar pedidos.</div>
+              </div>
+            ) : (
+              groups.map((g) => (
+                <div key={g.cat}>
+                  <div style={sx('display:flex;align-items:center;gap:8px;margin:14px 2px 8px')}>
+                    <span style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--deep)')}>{g.cat}</span>
+                    <span style={sx('flex:1;height:1px;background:var(--line)')} />
+                    <span style={sx('font-family:var(--font-mono);font-size:10px;color:var(--faint)')}>{g.count}</span>
+                  </div>
+                  {g.items.map((p) => {
+                    const qty = cart[p.id] || 0
+                    return (
+                      <div key={p.id} style={{ ...sx('display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:14px;padding:10px 12px;margin-bottom:7px'), border: `1px solid ${qty > 0 ? 'var(--primary)' : 'var(--line)'}` }}>
+                        <div style={sx('flex:1;min-width:0')}>
+                          <div style={sx('font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p.name}</div>
+                          <div style={sx('font-size:11px;color:var(--faint);margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                            <span style={sx('color:var(--deep);font-weight:600')}>{fmtPesos(p.price)}</span> · {String(p.kg).replace('.', ',')} kg
+                          </div>
+                        </div>
+                        <div style={sx('display:flex;align-items:center;gap:2px')}>
+                          <button onClick={() => addCart(p.id, -1)} style={sx('width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:18px;user-select:none;background:transparent')}>−</button>
+                          <div style={{ ...sx('width:34px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600'), color: qty > 0 ? 'var(--deep)' : 'var(--faint)' }}>{qty}</div>
+                          <button onClick={() => addCart(p.id, 1)} style={sx('width:38px;height:38px;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
                         </div>
                       </div>
-                      <div style={sx('display:flex;align-items:center;gap:2px')}>
-                        <button onClick={() => addCart(p.id, -1)} style={sx('width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:18px;user-select:none;background:transparent')}>−</button>
-                        <div style={{ ...sx('width:34px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600'), color: qty > 0 ? 'var(--deep)' : 'var(--faint)' }}>{qty}</div>
-                        <button onClick={() => addCart(p.id, 1)} style={sx('width:38px;height:38px;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
+                    )
+                  })}
+                </div>
+              ))
+            )}
           </div>
 
           {cartCount > 0 && (
@@ -271,7 +279,7 @@ export default function VendedorView() {
               </div>
               {visitC ? (
                 <button
-                  onClick={() => { const n = 'PED-' + (2040 + conPedido.length + 1); const total = cartTotal; endVisit('visitado', { monto: total }); showToast(`Pedido ${n} confirmado · ${fmtPesos(total)}`) }}
+                  onClick={() => { const total = cartTotal; endVisit('visitado', { monto: total }); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
                   style={sx('width:100%;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;border:none')}
                 >Confirmar pedido y finalizar visita</button>
               ) : (
@@ -289,20 +297,18 @@ export default function VendedorView() {
           <LeafletMap
             theme={theme}
             height={330}
+            center={livePos || CENTRO}
             markers={clients
+              .filter((c) => c.lat != null)
               .map((c, i) => {
-                const g = GEO[c.id]
-                if (!g) return null
                 const esProxima = c.id === nextId
                 return {
-                  lat: g.lat, lng: g.lng, label: String(i + 1).padStart(2, '0'), title: c.name,
-                  color: esProxima ? (theme === 'dark' ? '#2DD4CE' : '#0ABAB5') : statusColor(c.status, theme),
-                  labelColor: c.status === 'pendiente' && !esProxima ? (theme === 'dark' ? '#ECF5F4' : '#0B2B2A') : '#fff',
-                  selected: esProxima,
+                  lat: c.lat, lng: c.lng, label: String(i + 1).padStart(2, '0'), title: c.name,
+                  color: esProxima ? (theme === 'dark' ? '#2DD4CE' : '#0ABAB5') : c.status === 'visitado' ? (theme === 'dark' ? '#34D399' : '#10B981') : c.status === 'sin_pedido' ? (theme === 'dark' ? '#FBBF24' : '#F59E0B') : (theme === 'dark' ? '#5C7370' : '#93A9A7'),
+                  labelColor: '#fff', selected: esProxima,
                 }
-              })
-              .filter(Boolean)}
-            live={livePos || LIVE}
+              })}
+            live={livePos}
             route={routeCalc ? pendingCoords : null}
             routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
             optimize
@@ -316,9 +322,7 @@ export default function VendedorView() {
               ? `GPS en vivo · ${livePos.lat.toFixed(5)}, ${livePos.lng.toFixed(5)}`
               : gpsError
                 ? 'GPS sin permiso — activá la ubicación del navegador'
-                : gps
-                  ? 'Buscando señal GPS…'
-                  : 'GPS apagado (Perfil → Tracking GPS)'}
+                : 'Buscando señal GPS…'}
           </div>
           {routeCalc && (
             <div style={sx('display:flex;gap:6px;margin-top:8px')}>
@@ -327,21 +331,21 @@ export default function VendedorView() {
               ))}
             </div>
           )}
-          <button onClick={() => setRouteCalc((v) => !v)} style={{ ...sx('width:100%;margin-top:12px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer'), background: routeCalc ? 'var(--surface)' : 'var(--primary)', color: routeCalc ? 'var(--deep)' : 'var(--on-primary)' }}>
-            <Route />{routeCalc ? 'Ruta calculada — recalcular' : 'Calcular ruta óptima'}
-          </button>
+          {pendingCoords.length >= 1 && (
+            <button onClick={() => setRouteCalc((v) => !v)} style={{ ...sx('width:100%;margin-top:12px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer'), background: routeCalc ? 'var(--surface)' : 'var(--primary)', color: routeCalc ? 'var(--deep)' : 'var(--on-primary)' }}>
+              <Route />{routeCalc ? 'Ruta calculada — recalcular' : 'Calcular ruta óptima'}
+            </button>
+          )}
           <div style={sx('margin-top:14px')}>
             <div style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:0 2px 8px')}>Paradas pendientes</div>
-            {pend.map((x) => {
-              const p = pinFor(x.c, x.i)
-              return (
-                <div key={x.c.id} style={sx('display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:6px')}>
-                  <span style={{ ...sx('width:22px;height:22px;border-radius:8px;display:grid;place-items:center;font-family:var(--font-mono);font-size:10px;font-weight:600'), background: p.bg, color: p.fg }}>{p.n}</span>
-                  <span style={sx('flex:1;font-size:12.5px;font-weight:500')}>{x.c.name}</span>
-                  <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{x.c.dist}</span>
-                </div>
-              )
-            })}
+            {pend.length === 0 && <div style={sx('font-size:12px;color:var(--faint);padding:8px 2px')}>No hay paradas pendientes.</div>}
+            {pend.map((x) => (
+              <div key={x.c.id} style={sx('display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:6px')}>
+                <span style={{ ...sx('width:22px;height:22px;border-radius:8px;display:grid;place-items:center;font-family:var(--font-mono);font-size:10px;font-weight:600'), background: x.c.id === nextId ? 'var(--primary)' : 'var(--surface2)', color: x.c.id === nextId ? 'var(--on-primary)' : 'var(--muted)' }}>{String(x.i + 1).padStart(2, '0')}</span>
+                <span style={sx('flex:1;font-size:12.5px;font-weight:500')}>{x.c.name}</span>
+                <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{x.c.loc || ''}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -350,24 +354,15 @@ export default function VendedorView() {
       {tab === 'perfil' && (
         <div style={sx('flex:1;overflow-y:auto;padding:14px 14px 92px')}>
           <div style={sx('display:flex;align-items:center;gap:12px;margin:4px 2px 16px')}>
-            <div style={sx('width:44px;height:44px;border-radius:14px;background:var(--tlight);color:var(--deep);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:16px')}>MR</div>
+            <div style={sx('width:44px;height:44px;border-radius:14px;background:var(--tlight);color:var(--deep);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:16px')}>{nombre.slice(0, 2).toUpperCase()}</div>
             <div>
-              <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>Martín Ríos</div>
-              <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono)')}>VEND-07 · Zona Norte GBA</div>
+              <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>{nombre}</div>
+              <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono)')}>Vendedor · LA UNIÓN</div>
             </div>
           </div>
           <div style={card}>
-            <div style={sx('display:flex;justify-content:space-between;align-items:baseline')}>
-              <div style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)')}>Venta del día</div>
-              <div style={sx('font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--success)')}>▲ +12,4%</div>
-            </div>
+            <div style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)')}>Venta del día</div>
             <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;margin:4px 0 10px')}>{fmtPesos(montoHoy)}</div>
-            <svg viewBox="0 0 260 56" style={sx('width:100%;height:56px;display:block')}>
-              <path d="M0 14 H260 M0 28 H260 M0 42 H260" stroke="var(--grid)" strokeWidth="1" />
-              <path d="M0 50 L26 46 L52 47 L78 40 L104 42 L130 33 L156 36 L182 26 L208 28 L234 16 L260 10" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" />
-              <path d="M0 50 L26 46 L52 47 L78 40 L104 42 L130 33 L156 36 L182 26 L208 28 L234 16 L260 10 V56 H0 Z" fill="var(--primary-tint)" />
-              <circle cx="260" cy="10" r="3" fill="var(--primary)" />
-            </svg>
           </div>
           <div style={sx('display:flex;gap:10px;margin-bottom:10px')}>
             <div style={{ ...card, marginBottom: 0, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -400,7 +395,7 @@ export default function VendedorView() {
             <div style={sx('display:flex;align-items:center;justify-content:space-between;padding:12px 0')}>
               <div>
                 <div style={sx('font-size:13.5px;font-weight:500')}>Tracking GPS</div>
-                <div style={sx('font-size:11px;color:var(--faint)')}>Envía tu posición cada 30 s</div>
+                <div style={sx('font-size:11px;color:var(--faint)')}>Envía tu posición al moverte</div>
               </div>
               <div onClick={() => setGps((v) => !v)} style={{ ...sx('width:48px;height:28px;border-radius:99px;padding:3px;cursor:pointer;transition:background .2s'), background: gps ? 'var(--primary)' : 'var(--line2)' }}>
                 <div style={{ ...sx('width:22px;height:22px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s'), transform: `translateX(${gps ? 20 : 0}px)` }} />
@@ -439,6 +434,8 @@ export default function VendedorView() {
           <span style={sx('font-size:12.5px;font-weight:500')}>{toast}</span>
         </div>
       )}
+
+      {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={livePos} />}
 
       {/* ===== BOTTOM NAV ===== */}
       <div style={sx('flex:none;position:absolute;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding:6px 8px 14px;z-index:10')}>

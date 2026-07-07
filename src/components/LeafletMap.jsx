@@ -57,7 +57,12 @@ export default function LeafletMap({
   circle = null,
   height = 460,
   followLive = false,
+  movers = [],
+  trail = null,
+  trailColor = '#2DD4CE',
+  liveColor = null,
   onMarkerClick,
+  onMapClick,
 }) {
   const routeInfoRef = useRef(onRouteInfo)
   routeInfoRef.current = onRouteInfo
@@ -67,6 +72,8 @@ export default function LeafletMap({
   const layerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
   clickRef.current = onMarkerClick
+  const mapClickRef = useRef(onMapClick)
+  mapClickRef.current = onMapClick
 
   // Init único.
   useEffect(() => {
@@ -75,6 +82,7 @@ export default function LeafletMap({
     mapRef.current = map
     tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
+    map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     setTimeout(() => map.invalidateSize(), 60)
     return () => { map.remove(); mapRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,7 +96,7 @@ export default function LeafletMap({
   }, [theme])
 
   // Redibujar overlays.
-  const key = JSON.stringify({ markers, depot, live, route, circle })
+  const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail })
   useEffect(() => {
     const map = mapRef.current
     const layer = layerRef.current
@@ -112,11 +120,30 @@ export default function LeafletMap({
     if (live) {
       // Posición GPS en vivo. No se incluye en el fitBounds para no descuadrar el
       // encuadre del recorrido si el dispositivo está lejos del área de trabajo.
-      L.circleMarker([live.lat, live.lng], { radius: 7, color: '#fff', weight: 3, fillColor: theme === 'dark' ? '#38BDF8' : '#0EA5E9', fillOpacity: 1 }).addTo(layer)
+      const lc = liveColor || (theme === 'dark' ? '#38BDF8' : '#0EA5E9')
+      L.circleMarker([live.lat, live.lng], { radius: 7, color: '#fff', weight: 3, fillColor: lc, fillOpacity: 1 }).addTo(layer)
     }
+    // Movers = personas en vivo (vendedor/repartidor) que el Admin sigue. Cada uno
+    // con su color propio (mv.color) para diferenciarlos; si no viene, por rol.
+    movers.forEach((mv) => {
+      const color = mv.color || (mv.rol === 'repartidor'
+        ? (theme === 'dark' ? '#FBBF24' : '#F59E0B')
+        : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
+      const m = L.circleMarker([mv.lat, mv.lng], { radius: 8, color: '#fff', weight: 3, fillColor: color, fillOpacity: 1 })
+      if (mv.nombre) m.bindTooltip(mv.nombre, { direction: 'top', offset: [0, -6] })
+      m.addTo(layer)
+      extend([mv.lat, mv.lng])
+    })
     if (circle) {
       const c = L.circle([circle.lat, circle.lng], { radius: circle.radiusM, color: circle.color, weight: 1.5, fillColor: circle.color, fillOpacity: 0.12 }).addTo(layer)
       bounds = bounds ? bounds.extend(c.getBounds()) : c.getBounds()
+    }
+
+    // Rastro crudo (recorrido GPS grabado): polilínea literal, sin ruteo por calles.
+    if (trail && trail.length >= 2) {
+      const pts = trail.map((p) => [p.lat, p.lng])
+      L.polyline(pts, { color: trailColor, weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(layer)
+      pts.forEach((ll) => extend(ll))
     }
 
     // Ruteo por calles (OSRM). optimize=true → orden óptimo (TSP). Si falla la red,

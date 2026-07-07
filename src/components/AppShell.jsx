@@ -1,14 +1,25 @@
-import { useRole } from '../context/RoleContext'
+import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Sun, Moon } from './icons'
 
+const ROLE_META = {
+  superadmin: { label: 'Superadmin', color: 'var(--info)' },
+  admin: { label: 'Administrador', color: 'var(--primary)' },
+  encargado: { label: 'Encargado', color: 'var(--primary)' },
+  vendedor: { label: 'Vendedor', color: 'var(--success)' },
+  repartidor: { label: 'Repartidor', color: 'var(--warning)' },
+}
+
 /**
- * Marco global: topbar con logo, selector de rol y toggle de tema.
- * Réplica fiel del shell del diseñador (LA UNION.dc.html).
+ * Marco global: topbar con logo, identidad del usuario logueado + su rol, toggle
+ * de tema y salir. Ya no hay selector manual de rol: la app degrada según el rol
+ * real del perfil (RBAC).
  */
 export default function AppShell({ children }) {
-  const { currentRole, setCurrentRole, roles } = useRole()
+  const { perfil, user, rol, signOut } = useAuth()
   const { isDark, toggleTheme } = useTheme()
+  const meta = ROLE_META[rol] || { label: rol || '—', color: 'var(--muted)' }
+  const nombre = perfil?.nombre || user?.email || 'Usuario'
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
@@ -28,28 +39,22 @@ export default function AppShell({ children }) {
           </div>
         </div>
 
-        <nav style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'wrap' }}>
-          {Object.values(roles).map((r) => {
-            const active = currentRole === r.id
-            return (
-              <button
-                key={r.id}
-                onClick={() => setCurrentRole(r.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 7, padding: '7px 15px', borderRadius: 10,
-                  fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)',
-                  color: active ? 'var(--deep)' : 'var(--muted)',
-                  background: active ? 'var(--primary-tint)' : 'transparent',
-                  border: `1px solid ${active ? 'var(--primary)' : 'transparent'}`,
-                }}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: 99, background: active ? 'var(--primary)' : 'var(--line2)' }} />
-                {r.label}
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--faint)', fontWeight: 500 }}>{r.device}</span>
-              </button>
-            )
-          })}
-        </nav>
+        <div style={{ flex: 1 }} />
+
+        {/* Identidad + rol */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 'none' }}>
+          <div style={{ textAlign: 'right', lineHeight: 1.15 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
+            <div style={{ fontSize: 9.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{user?.email}</div>
+          </div>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 99,
+            fontSize: 11, fontWeight: 600, color: meta.color, background: 'var(--surface2)', border: '1px solid var(--line)',
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: meta.color }} />
+            {meta.label}
+          </span>
+        </div>
 
         <button
           onClick={toggleTheme}
@@ -62,6 +67,19 @@ export default function AppShell({ children }) {
         >
           {isDark ? <Sun /> : <Moon />}
           {isDark ? 'Dark' : 'Light'}
+        </button>
+
+        <button
+          onClick={() => signOut()}
+          title="Cerrar sesión"
+          style={{
+            flex: 'none', display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--line)',
+            borderRadius: 10, padding: '7px 12px', cursor: 'pointer', color: 'var(--muted)', fontSize: 12,
+            fontWeight: 600, background: 'transparent', fontFamily: 'var(--font-body)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></svg>
+          Salir
         </button>
       </header>
 

@@ -1,27 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt, horaActual } from '../../lib/format'
-import { Truck, Check } from '../../components/icons'
-
-const DELIVERIES_INIT = [
-  { id: 'PED-2031', client: 'Autoservicio La Esquina', loc: 'San Andrés · Int. Casares 1420', status: 'entregado', tomado: '09:15', entregado: '11:02', firma: null, monto: 341850, kg: 121.3, items: [{ name: 'Gaseosa Cola 2.25 L ×6', gen: 4 }, { name: 'Yerba Mate 1 kg ×10', gen: 3 }, { name: 'Aceite Girasol 1.5 L ×12', gen: 2 }, { name: 'Papas Fritas 145 g ×15', gen: 3 }] },
-  { id: 'PED-2029', client: 'Almacén Don Carlos', loc: 'Villa Ballester · Alvear 2145', status: 'en_camino', tomado: '08:42', monto: 186400, kg: 84.5, items: [{ name: 'Harina 000 1 kg ×10', gen: 5 }, { name: 'Azúcar 1 kg ×10', gen: 3 }, { name: 'Fideos Guiseros 500 g ×20', gen: 2 }, { name: 'Lavandina 2 L ×6', gen: 2 }] },
-  { id: 'PED-2034', client: 'Despensa El Ombú', loc: 'San Martín · Belgrano 5230', status: 'pendiente', tomado: '09:58', monto: 98700, kg: 52, items: [{ name: 'Arroz Largo Fino 1 kg ×10', gen: 3 }, { name: 'Agua Mineral 2 L ×6', gen: 2 }, { name: 'Galletitas Surtidas 400 g ×12', gen: 2 }] },
-  { id: 'PED-2038', client: 'Súper Mi Barrio', loc: 'Villa Lynch · Av. de Mayo 880', status: 'pendiente', tomado: '10:21', monto: 412300, kg: 164.2, items: [{ name: 'Gaseosa Cola 2.25 L ×6', gen: 6 }, { name: 'Cerveza Rubia 1 L ×12', gen: 4 }, { name: 'Yerba Mate 1 kg ×10', gen: 4 }, { name: 'Detergente 750 ml ×12', gen: 3 }, { name: 'Alfajor Triple ×24', gen: 2 }] },
-  { id: 'PED-2040', client: 'Maxikiosco Central', loc: 'San Martín · Ayacucho 2310', status: 'pendiente', tomado: '10:45', monto: 64150, kg: 18.9, items: [{ name: 'Papas Fritas 145 g ×15', gen: 2 }, { name: 'Alfajor Triple ×24', gen: 2 }, { name: 'Jugo Naranja 1 L ×8', gen: 1 }] },
-]
+import { Truck, Check, Pin } from '../../components/icons'
+import { useGps } from '../../context/GpsContext'
+import { useAuth } from '../../context/AuthContext'
 
 const MOTIVO_CHIPS = ['Sin stock', 'Rechazado', 'Otro']
 const ORDER = { pendiente: 0, en_camino: 1, entregado: 2 }
+const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
 
 export default function RepartidorView() {
-  const [deliveries, setDeliveries] = useState(DELIVERIES_INIT)
+  // Las entregas reales llegarán de los pedidos asignados (módulo de ventas, próxima etapa).
+  const [deliveries, setDeliveries] = useState([])
   const [modal, setModal] = useState(null) // id
   const [step, setStep] = useState('cant')
   const [qty, setQty] = useState({})
   const [motivos, setMotivos] = useState({})
   const [hasInk, setHasInk] = useState(false)
   const [toast, setToast] = useState(null)
+
+  // El repartidor emite su ubicación en vivo (GPS del contexto) para que el Admin lo siga.
+  const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
+  const { perfil } = useAuth()
+  const nombre = perfil?.nombre || 'Repartidor'
 
   const canvasRef = useRef(null)
   const ctxRef = useRef(null)
@@ -88,7 +89,7 @@ export default function RepartidorView() {
   // --- derivados ---
   const sorted = [...deliveries].sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.tomado.localeCompare(b.tomado))
   const porEntregar = deliveries.filter((d) => d.status !== 'entregado').length
-  const progressPct = Math.round(((deliveries.length - porEntregar) / deliveries.length) * 100)
+  const progressPct = deliveries.length ? Math.round(((deliveries.length - porEntregar) / deliveries.length) * 100) : 0
   const md = deliveries.find((d) => d.id === modal)
 
   return (
@@ -100,7 +101,7 @@ export default function RepartidorView() {
             <div style={logo}>U</div>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em')}>LA UNIÓN</div>
           </div>
-          <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>CAM-12 · MAR 07 JUL</div>
+          <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {hoy()}</div>
         </div>
         <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-top:12px')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:18px')}>Hoja de entregas</div>
@@ -111,10 +112,35 @@ export default function RepartidorView() {
         <div style={sx('margin-top:10px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
           <div style={{ ...sx('height:100%;border-radius:99px;background:var(--success);transition:width .4s'), width: `${progressPct}%` }} />
         </div>
+
+        {/* GPS en vivo — el repartidor envía su ubicación al panel aunque no vea el mapa */}
+        {!livePos ? (
+          <button
+            onClick={() => pedirGps().catch(() => {})}
+            style={sx('width:100%;margin-top:12px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:13px;cursor:pointer')}
+          >
+            <Pin size={16} />
+            {gpsError ? 'Reintentar — activar ubicación' : 'Activar GPS · enviar mi ubicación al panel'}
+          </button>
+        ) : (
+          <div style={sx('margin-top:12px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--success);font-family:var(--font-mono)')}>
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: 'var(--success)', animation: 'lu-blink 1.6s infinite' }} />
+            Enviando ubicación en vivo · {livePos.lat.toFixed(5)}, {livePos.lng.toFixed(5)}
+          </div>
+        )}
       </div>
 
       {/* LISTA */}
       <div style={sx('flex:1;overflow-y:auto;padding:12px 14px 28px')}>
+        {deliveries.length === 0 && (
+          <div style={sx('margin-top:20px;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:34px 20px;text-align:center')}>
+            <div style={sx('width:52px;height:52px;margin:0 auto 12px;border-radius:99px;background:var(--surface2);display:grid;place-items:center')}>
+              <Truck />
+            </div>
+            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px')}>No tenés entregas asignadas</div>
+            <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>Cuando el panel te asigne pedidos vas a verlos acá. Mientras, tu ubicación se envía en vivo al panel.</div>
+          </div>
+        )}
         {sorted.map((d) => {
           const arts = d.items.reduce((a, it) => a + it.gen, 0)
           const pill = d.status === 'pendiente' ? ['Pendiente', 'var(--warning)', 'var(--warning-tint)', 'none']
