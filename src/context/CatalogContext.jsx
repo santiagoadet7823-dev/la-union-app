@@ -26,6 +26,8 @@ function mapCliente(c) {
     geofence: c.geofence_radio || 75,
     horario: c.horario || '',
     activo: c.activo,
+    idZona: c.id_zona || null,
+    idVendedor: c.id_vendedor || null,
   }
 }
 
@@ -42,22 +44,26 @@ function mapProducto(p) {
 }
 
 export function CatalogProvider({ children }) {
-  const { idEmpresa, rol } = useAuth()
-  const esMovil = rol === 'vendedor' || rol === 'repartidor'
+  const { idEmpresa, rol, user } = useAuth()
+  // El encargado también carga clientes como preventista (quedan como "suyos").
+  const esMovil = rol === 'vendedor' || rol === 'repartidor' || rol === 'encargado'
   const [productos, setProductos] = useState([])
   const [clientes, setClientes] = useState([])
+  const [zonas, setZonas] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const recargar = useCallback(async () => {
     setLoading(true)
-    const [{ data: prod, error: e1 }, { data: cli, error: e2 }] = await Promise.all([
+    const [{ data: prod, error: e1 }, { data: cli, error: e2 }, { data: zon }] = await Promise.all([
       supabase.from('productos').select('*').order('descripcion'),
       supabase.from('clientes').select('*').order('nombre_comercio'),
+      supabase.from('zonas').select('*').order('nombre'),
     ])
     if (e1 || e2) setError(e1 || e2)
     setProductos((prod || []).map(mapProducto))
     setClientes((cli || []).map(mapCliente))
+    setZonas(zon || [])
     setLoading(false)
   }, [])
 
@@ -80,13 +86,17 @@ export function CatalogProvider({ children }) {
       frecuencia: c.frecuencia || null,
       geofence_radio: c.geofence_radio || 75,
       horario: c.horario || null,
-      activo: !esMovil, // vendedor/repartidor → pendiente de confirmación del admin
+      // El alta desde un preventista (vendedor/repartidor/encargado) queda a su
+      // nombre (dueño) para que solo él lo vea, y pendiente de confirmación del admin.
+      id_vendedor: esMovil ? (user?.id || null) : (c.id_vendedor || null),
+      id_zona: c.id_zona || null,
+      activo: !esMovil,
     }
     const { data, error } = await supabase.from('clientes').insert(row).select().single()
     if (error) return { ok: false, error }
     setClientes((prev) => [...prev, mapCliente(data)].sort((a, b) => a.name.localeCompare(b.name)))
     return { ok: true, cliente: mapCliente(data), requiereConfirmacion: esMovil }
-  }, [idEmpresa, esMovil])
+  }, [idEmpresa, esMovil, user])
 
   /** Alta de producto (admin/encargado). Devuelve {ok, error}. */
   const addProducto = useCallback(async (p) => {
@@ -112,8 +122,25 @@ export function CatalogProvider({ children }) {
     return { ok: true }
   }, [])
 
+  /** Alta de zona (admin/encargado). Devuelve {ok, error}. */
+  const addZona = useCallback(async (z) => {
+    const row = { id_empresa: idEmpresa, nombre: z.nombre, color: z.color || null }
+    const { data, error } = await supabase.from('zonas').insert(row).select().single()
+    if (error) return { ok: false, error }
+    setZonas((prev) => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    return { ok: true, zona: data }
+  }, [idEmpresa])
+
+  /** Edición de zona (nombre/color). */
+  const updateZona = useCallback(async (id, patch) => {
+    const { data, error } = await supabase.from('zonas').update(patch).eq('id', id).select().single()
+    if (error) return { ok: false, error }
+    setZonas((prev) => prev.map((z) => (z.id === id ? data : z)).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    return { ok: true }
+  }, [])
+
   return (
-    <CatalogContext.Provider value={{ productos, clientes, loading, error, recargar, addCliente, addProducto, updateCliente }}>
+    <CatalogContext.Provider value={{ productos, clientes, zonas, loading, error, recargar, addCliente, addProducto, updateCliente, addZona, updateZona }}>
       {children}
     </CatalogContext.Provider>
   )

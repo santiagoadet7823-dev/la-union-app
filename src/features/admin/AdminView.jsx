@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt } from '../../lib/format'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
+import { useDevice } from '../../context/DeviceContext'
 import LeafletMap from '../../components/LeafletMap'
 import { supabase } from '../../services/supabase'
 import { colorPorId } from '../../lib/colors'
@@ -11,6 +12,7 @@ import { DEPOSITO, CLIENTES_GEO, statusColor, ROUTE_COLOR } from '../../data/dem
 import { useCatalog } from '../../context/CatalogContext'
 import UsuariosView from './UsuariosView'
 import EmpresasView from './EmpresasView'
+import ZonasView from './ZonasView'
 import ReplayJornada from './components/ReplayJornada'
 import NuevoCliente from '../catalog/NuevoCliente'
 import NuevoProducto from '../catalog/NuevoProducto'
@@ -68,7 +70,8 @@ const pill = (estado) => {
 export default function AdminView() {
   const { theme } = useTheme()
   const { rol, idEmpresa } = useAuth()
-  const { clientes: cartera, productos, loading: catLoading, updateCliente } = useCatalog()
+  const { isMobile } = useDevice()
+  const { clientes: cartera, productos, zonas, loading: catLoading, updateCliente } = useCatalog()
   const [tab, setTab] = useState('mapa')
   const [nombres, setNombres] = useState({}) // { [id_usuario]: nombre }
   const [modalCliente, setModalCliente] = useState(false)
@@ -77,7 +80,7 @@ export default function AdminView() {
   const tabs = useMemo(() => {
     const base = [
       ['mapa', 'Mapa operativo'], ['reproduccion', 'Reproducción'],
-      ['clientes', 'Clientes'], ['catalogo', 'Catálogo'], ['dash', 'Dashboard'],
+      ['clientes', 'Clientes'], ['zonas', 'Zonas'], ['catalogo', 'Catálogo'], ['dash', 'Dashboard'],
       ['ordenes', 'Órdenes'], ['faltante', 'Faltante'],
     ]
     if (rol === 'admin' || rol === 'superadmin') base.push(['usuarios', 'Usuarios'])
@@ -189,9 +192,14 @@ export default function AdminView() {
   const carteraGeo = cartera.filter((c) => c.lat != null && c.lng != null)
   const sel = carteraGeo[selPin] || null
   const primaryPin = theme === 'dark' ? '#2DD4CE' : '#0ABAB5'
+  const zonaColor = useMemo(() => {
+    const m = {}
+    zonas.forEach((z) => { if (z.color) m[z.id] = z.color })
+    return m
+  }, [zonas])
   const mapMarkers = carteraGeo.map((c, i) => ({
     lat: c.lat, lng: c.lng, label: String(i + 1).padStart(2, '0'), title: c.name,
-    color: primaryPin, labelColor: '#fff', selected: i === selPin,
+    color: (c.idZona && zonaColor[c.idZona]) || primaryPin, labelColor: '#fff', selected: i === selPin,
   }))
   // Recorrido sugerido sobre la cartera (orden óptimo + regreso al depósito vía OSRM).
   const ruta = carteraGeo.length >= 1 ? [DEPOSITO, ...carteraGeo.map((c) => ({ lat: c.lat, lng: c.lng }))] : null
@@ -279,7 +287,7 @@ export default function AdminView() {
 
       {/* ========== MAPA OPERATIVO ========== */}
       {tab === 'mapa' && (
-        <div style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start')}>
+        <div style={{ ...sx('flex:1;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;gap:14px;align-items:start'), padding: isMobile ? 12 : 20, gridTemplateColumns: isMobile ? '1fr' : '1fr 340px' }}>
           <div style={sx('display:flex;flex-direction:column;gap:12px;min-width:0')}>
             <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
               {[['Clientes', String(carteraGeo.length)], ['En vivo', String(moversArr.length)], ['GPS apagado', String(gpsOffArr.length)]].map(([l, v]) => (
@@ -315,9 +323,15 @@ export default function AdminView() {
               routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
               optimize
               roundtrip
-              height={460}
+              height={isMobile ? 300 : 460}
               onMarkerClick={setSelPin}
             />
+
+            {carteraGeo.length >= 1 && (
+              <div style={sx('font-size:11px;color:var(--faint);line-height:1.5;padding:0 2px')}>
+                La línea es el <b>recorrido sugerido</b>: orden óptimo por calles desde el depósito visitando toda la cartera con ubicación. Los pines se colorean por zona. Tocá un pin para ver la ficha.
+              </div>
+            )}
 
             <div style={sx('background:var(--console-bg);border:1px solid var(--line2);border-radius:14px;padding:12px 14px;font-family:var(--font-mono);font-size:11px;line-height:1.8;color:var(--console-fg);height:150px;overflow-y:auto;display:flex;flex-direction:column-reverse')}>
               <div>
@@ -455,7 +469,7 @@ export default function AdminView() {
 
       {/* ========== CLIENTES (cartera real) ========== */}
       {tab === 'clientes' && (
-        <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;grid-template-columns:minmax(560px,1fr) 400px;gap:14px;align-items:start;overflow-x:auto')}>
+        <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;gap:14px;align-items:start;overflow-x:auto'), padding: isMobile ? 12 : 20, gridTemplateColumns: isMobile ? '1fr' : 'minmax(560px,1fr) 400px' }}>
           <div style={{ ...panel, minWidth: 0 }}>
             <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
               <div style={sx('display:flex;align-items:center;gap:10px')}>
@@ -658,6 +672,9 @@ export default function AdminView() {
           )}
         </div>
       )}
+
+      {/* ========== ZONAS ========== */}
+      {tab === 'zonas' && (rol === 'admin' || rol === 'encargado' || rol === 'superadmin') && <ZonasView onToast={showToast} />}
 
       {/* ========== REPRODUCCIÓN DE JORNADA ========== */}
       {tab === 'reproduccion' && <ReplayJornada onToast={showToast} />}

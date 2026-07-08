@@ -18,8 +18,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      // 'prompt': no auto-recarga; mostramos un banner "Actualizar" (UpdatePrompt).
+      registerType: 'prompt',
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'oauth.html'],
       manifest: {
         name: 'Distribuidora LA UNIÓN',
         short_name: 'LA UNIÓN',

@@ -324,17 +324,27 @@ export default function VendedorView() {
                 ? 'GPS sin permiso — activá la ubicación del navegador'
                 : 'Buscando señal GPS…'}
           </div>
-          {routeCalc && (
-            <div style={sx('display:flex;gap:6px;margin-top:8px')}>
-              {[rutaInfo ? `${(rutaInfo.distancia / 1000).toFixed(1).replace('.', ',')} km` : '—', rutaInfo ? `~${Math.round(rutaInfo.duracion / 60)} min` : '—', `${pend.length} paradas · orden óptimo`].map((t) => (
+          {routeCalc && !rutaInfo?.error && (
+            <div style={sx('display:flex;gap:6px;margin-top:8px;flex-wrap:wrap')}>
+              {[rutaInfo && rutaInfo.distancia != null ? `${(rutaInfo.distancia / 1000).toFixed(1).replace('.', ',')} km` : 'calculando…', rutaInfo && rutaInfo.duracion != null ? `~${Math.round(rutaInfo.duracion / 60)} min` : '—', `${pend.length} paradas · orden óptimo`].map((t) => (
                 <div key={t} style={sx('background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:6px 10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11px;color:var(--text)')}>{t}</div>
               ))}
             </div>
           )}
+          {routeCalc && rutaInfo?.error && (
+            <div style={sx('margin-top:8px;font-size:11.5px;color:var(--warning);background:var(--warning-tint);border:1px solid var(--warning);border-radius:10px;padding:8px 10px;line-height:1.4')}>
+              Sin conexión para calcular la ruta por calles ahora. Se muestra la línea directa entre paradas. Reintentá cuando tengas señal.
+            </div>
+          )}
           {pendingCoords.length >= 1 && (
-            <button onClick={() => setRouteCalc((v) => !v)} style={{ ...sx('width:100%;margin-top:12px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer'), background: routeCalc ? 'var(--surface)' : 'var(--primary)', color: routeCalc ? 'var(--deep)' : 'var(--on-primary)' }}>
-              <Route />{routeCalc ? 'Ruta calculada — recalcular' : 'Calcular ruta óptima'}
-            </button>
+            <>
+              <button onClick={() => setRouteCalc((v) => !v)} style={{ ...sx('width:100%;margin-top:12px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer'), background: routeCalc ? 'var(--surface)' : 'var(--primary)', color: routeCalc ? 'var(--deep)' : 'var(--on-primary)' }}>
+                <Route />{routeCalc ? 'Ruta calculada — recalcular' : 'Calcular ruta óptima'}
+              </button>
+              <div style={sx('margin-top:6px;font-size:11px;color:var(--faint);line-height:1.5')}>
+                Ordena tus <b>paradas pendientes</b> por el camino más corto siguiendo las calles (desde tu ubicación actual). No incluye las visitas ya hechas.
+              </div>
+            </>
           )}
           <div style={sx('margin-top:14px')}>
             <div style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:0 2px 8px')}>Paradas pendientes</div>

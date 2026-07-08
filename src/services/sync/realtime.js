@@ -17,12 +17,12 @@ import { supabase, hasSupabase } from '../supabase'
 
 // ---------- Posiciones: vivo + persistencia ----------
 
-/** Publica/persiste una posición. payload: {id, rol, lat, lng, idEmpresa} */
-export async function publicarPosicion({ id, rol, lat, lng, idEmpresa }) {
+/** Publica/persiste una posición. payload: {id, rol, lat, lng, accuracy?, idEmpresa} */
+export async function publicarPosicion({ id, rol, lat, lng, accuracy, idEmpresa }) {
   if (!hasSupabase || !id || !idEmpresa) return
-  const { error } = await supabase.from('posiciones').insert({
-    id_usuario: id, rol, lat, lng, id_empresa: idEmpresa,
-  })
+  const row = { id_usuario: id, rol, lat, lng, id_empresa: idEmpresa }
+  if (typeof accuracy === 'number') row.accuracy = accuracy
+  const { error } = await supabase.from('posiciones').insert(row)
   if (error) console.warn('[realtime] publicarPosicion:', error.message)
 }
 

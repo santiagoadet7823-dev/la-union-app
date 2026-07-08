@@ -7,6 +7,9 @@
  * Devuelve una función para cancelar el watch.
  */
 import { isNative } from '../platform'
+import { registerPlugin } from '@capacitor/core'
+
+const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
 
 /**
  * @param {(pos:{lat:number,lng:number,ts:number}) => void} onUpdate
@@ -33,7 +36,7 @@ export function pedirUbicacionUnaVez() {
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, ts: p.timestamp }),
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, ts: p.timestamp, accuracy: p.coords.accuracy }),
       reject,
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     )
@@ -46,24 +49,26 @@ function watchWeb(onUpdate, onError) {
     return () => {}
   }
   const id = navigator.geolocation.watchPosition(
-    (p) => onUpdate({ lat: p.coords.latitude, lng: p.coords.longitude, ts: p.timestamp }),
+    (p) => onUpdate({ lat: p.coords.latitude, lng: p.coords.longitude, ts: p.timestamp, accuracy: p.coords.accuracy }),
     onError,
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
   )
   return () => navigator.geolocation.clearWatch(id)
 }
 
-/*
- * INTEGRACIÓN NATIVA (fase Capacitor):
- * import { registerPlugin } from '@capacitor/core'
- * const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
- * const id = await BackgroundGeolocation.addWatcher(
- *   { backgroundMessage: 'LA UNIÓN registra tu ruta', distanceFilter: 20 },
- *   (loc) => onUpdate({ lat: loc.latitude, lng: loc.longitude, ts: Date.now() })
- * )
- * return () => BackgroundGeolocation.removeWatcher({ id })
- */
 async function watchNative(onUpdate, onError) {
-  // Fallback funcional hasta cablear el plugin nativo (ver bloque de arriba).
-  return watchWeb(onUpdate, onError)
+  const id = await BackgroundGeolocation.addWatcher(
+    {
+      backgroundMessage: 'LA UNIÓN registra tu ruta',
+      backgroundTitle: 'Tracking activo',
+      requestPermissions: true,
+      stale: false,
+      distanceFilter: 12, // metros → coincide con el "por movimiento" del panel
+    },
+    (location, error) => {
+      if (error) return onError(error)
+      onUpdate({ lat: location.latitude, lng: location.longitude, ts: Date.now(), accuracy: location.accuracy })
+    }
+  )
+  return () => BackgroundGeolocation.removeWatcher({ id })
 }

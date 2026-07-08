@@ -313,6 +313,9 @@ Y volvés a repartir el nuevo `app-release.apk`.
 | El login de Google no vuelve a la app | Falta el `intent-filter` (paso 5.1) o la Redirect URL `com.launion.app://auth` en Supabase (paso 5.2). |
 | El GPS se corta con la pantalla apagada | Falta el permiso "Permitir siempre" y/o los permisos de foreground service (paso 4), o no activaste `watchNative` (paso 6). |
 | `gradlew` no ejecuta | Usá `./gradlew` en Git Bash o `gradlew.bat` en CMD; verificá JDK 17. |
+| `lintVitalAnalyzeRelease` FAILED / `Already disposed: MessageBus` | Bug de lint con JDK nuevo (21/25). Ya está desactivado con `lint { checkReleaseBuilds false }` en `android/app/build.gradle`. No es un error de la app. |
+| `Unsupported class file major version 69` | Tu `JAVA_HOME` apunta a JDK 25 (incompatible con Gradle 8.2.1). Usá el JBR de Android Studio: compilá con `./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Android\Android Studio\jbr"` (o seteá `JAVA_HOME` a ese JBR). |
+| `Keystore file ... not found` | La ruta en `android/keystore.properties` → `storeFile` debe ser **`launion.keystore`** (relativa al módulo `app`, donde está el archivo), no `app/launion.keystore`. |
 | Google marca "app no verificada" | Es normal en apps propias sin verificación de marca. Se puede continuar; para quitarlo hay que verificar la app en Google Cloud (opcional). |
 
 ---

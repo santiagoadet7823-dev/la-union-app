@@ -3,23 +3,30 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { CatalogProvider } from './context/CatalogContext'
 import { VentasProvider } from './context/VentasContext'
 import { GpsProvider } from './context/GpsContext'
+import { DeviceProvider } from './context/DeviceContext'
 import AppShell from './components/AppShell'
 import PhoneFrame from './components/PhoneFrame'
 import GpsGate from './components/GpsGate'
+import UpdatePrompt from './components/UpdatePrompt'
 import LoginView from './features/auth/LoginView'
 import PendienteView from './features/auth/PendienteView'
-import VendedorView from './features/vendedor/VendedorView'
-import RepartidorView from './features/repartidor/RepartidorView'
-import AdminView from './features/admin/AdminView'
+import { lazy, Suspense, useState } from 'react'
 import { sx } from './lib/sx'
+
+// Vistas pesadas (incluyen Leaflet / el panel completo) cargadas bajo demanda para
+// que la pantalla de login aparezca sin bajar todo el bundle de una.
+const VendedorView = lazy(() => import('./features/vendedor/VendedorView'))
+const RepartidorView = lazy(() => import('./features/repartidor/RepartidorView'))
+const AdminView = lazy(() => import('./features/admin/AdminView'))
 
 /**
  * Enrutado por rol real (una sola app que degrada):
  *  - vendedor / repartidor → vista móvil con GPS obligatorio (GpsGate).
- *  - encargado / admin / superadmin → panel de escritorio (AdminView),
- *    que a su vez muestra más o menos módulos según el rol.
+ *  - encargado → es preventista Y auditor: alterna entre "Mi jornada" (misma
+ *    vista del vendedor, con GPS) y "Panel" (auditoría). El switch vive en AppShell.
+ *  - admin / superadmin → panel de escritorio (AdminView).
  */
-function RoleRouter() {
+function RoleRouter({ vista }) {
   const { rol } = useAuth()
 
   if (rol === 'vendedor' || rol === 'repartidor') {
@@ -27,6 +34,15 @@ function RoleRouter() {
       <PhoneFrame>
         <GpsGate>
           {rol === 'repartidor' ? <RepartidorView /> : <VendedorView />}
+        </GpsGate>
+      </PhoneFrame>
+    )
+  }
+  if (rol === 'encargado' && vista === 'jornada') {
+    return (
+      <PhoneFrame>
+        <GpsGate>
+          <VendedorView />
         </GpsGate>
       </PhoneFrame>
     )
@@ -42,6 +58,30 @@ function Cargando() {
   )
 }
 
+/**
+ * App ya autenticada. Mantiene el estado del switch del encargado (Mi jornada /
+ * Panel), persistido en localStorage. Para el resto de roles el switch no aplica.
+ */
+function AuthedApp() {
+  const { rol } = useAuth()
+  const esEncargado = rol === 'encargado'
+  const [vista, setVista] = useState(() => {
+    try { return localStorage.getItem('lu-encargado-vista') || 'panel' } catch (_) { return 'panel' }
+  })
+  const cambiarVista = (v) => {
+    try { localStorage.setItem('lu-encargado-vista', v) } catch (_) {}
+    setVista(v)
+  }
+
+  return (
+    <AppShell encargadoVista={esEncargado ? vista : null} onCambiarVista={cambiarVista}>
+      <Suspense fallback={<Cargando />}>
+        <RoleRouter vista={vista} />
+      </Suspense>
+    </AppShell>
+  )
+}
+
 function Gate() {
   const { loading, session, aprobado } = useAuth()
   if (loading) return <Cargando />
@@ -52,9 +92,7 @@ function Gate() {
     <CatalogProvider>
       <VentasProvider>
         <GpsProvider>
-          <AppShell>
-            <RoleRouter />
-          </AppShell>
+          <AuthedApp />
         </GpsProvider>
       </VentasProvider>
     </CatalogProvider>
@@ -64,9 +102,12 @@ function Gate() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
+      <DeviceProvider>
+        <AuthProvider>
+          <Gate />
+          <UpdatePrompt />
+        </AuthProvider>
+      </DeviceProvider>
     </ThemeProvider>
   )
 }

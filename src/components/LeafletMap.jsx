@@ -14,11 +14,15 @@ import { CENTRO_DEFECTO } from '../services/maps'
  *        circle{lat,lng,radiusM,color}, height, onMarkerClick(index)
  */
 
+// CARTO Voyager: basemap con nombres de calles, POIs y color (mucho más fiel a
+// Google Maps que los estilos minimalistas *_all). Para dark usamos la variante
+// "voyager" igual con etiquetas (más legible que dark_nolabels). crossOrigin
+// habilita exportar el mapa a PNG (informe de recorridos) sin "tainted canvas".
 const TILES = {
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
 }
-const TILE_OPTS = { subdomains: 'abcd', maxZoom: 20, attribution: '&copy; OpenStreetMap &copy; CARTO' }
+const TILE_OPTS = { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' }
 
 function pinIcon(color, label, labelColor, selected) {
   const size = selected ? 26 : 22
@@ -158,7 +162,9 @@ export default function LeafletMap({
         })
         .catch(() => {
           if (cancelled || !layerRef.current) return
+          // Sin red / OSRM caído: línea directa punteada y aviso a la vista.
           L.polyline(route.map((p) => [p.lat, p.lng]), { color: routeColor, weight: 3, opacity: 0.5, dashArray: '6 6' }).addTo(layerRef.current)
+          routeInfoRef.current?.({ error: true })
         })
     }
 

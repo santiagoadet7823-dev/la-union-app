@@ -9,6 +9,39 @@
 
 const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 const OSRM_TRIP = 'https://router.project-osrm.org/trip/v1/driving'
+const OSRM_MATCH = 'https://router.project-osrm.org/match/v1/driving'
+
+/**
+ * SNAP-TO-ROAD (map matching). Toma el rastro GPS crudo (con saltos por señal) y lo
+ * "pega" a la red de calles real usando el servicio `match` de OSRM. Devuelve la
+ * geometría corregida para dibujar/exportar un recorrido limpio.
+ *
+ * @param {Array<{lat,lng}>} puntos  rastro crudo (>=2)
+ * @returns {Promise<{coords:[number,number][]}>}  coords en [lat,lng]
+ */
+export async function matchTrail(puntos) {
+  if (!puntos || puntos.length < 2) return { coords: [] }
+  // OSRM `match` acepta ~100 coordenadas por consulta: si hay más, muestreamos
+  // uniformemente conservando el primer y último punto.
+  let pts = puntos
+  const MAX = 100
+  if (pts.length > MAX) {
+    const step = pts.length / MAX
+    const sampled = []
+    for (let i = 0; i < MAX; i++) sampled.push(pts[Math.floor(i * step)])
+    sampled[sampled.length - 1] = pts[pts.length - 1]
+    pts = sampled
+  }
+  const coordsStr = pts.map((p) => `${p.lng},${p.lat}`).join(';')
+  const radiuses = pts.map(() => 30).join(';') // tolerancia de matcheo por punto (m)
+  const url = `${OSRM_MATCH}/${coordsStr}?geometries=geojson&overview=full&radiuses=${radiuses}&tidy=true`
+  const res = await fetch(url)
+  const data = await res.json()
+  if (data.code !== 'Ok' || !data.matchings?.length) throw new Error('OSRM match sin resultado')
+  const coords = []
+  data.matchings.forEach((m) => m.geometry.coordinates.forEach(([lng, lat]) => coords.push([lat, lng])))
+  return { coords }
+}
 
 /**
  * Ruta punto a punto.

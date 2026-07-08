@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>LA UNIÓN · Volviendo a la app…</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center; background: #0e1d1c; color: #d7efed;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; text-align: center; padding: 24px;
+    }
+    .box { max-width: 320px; }
+    .logo {
+      width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; background: #2DD4CE; color: #04211F;
+      display: grid; place-items: center; font-weight: 800; font-size: 26px;
+    }
+    h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+    p { font-size: 13px; color: #9fb6b4; margin: 0 0 18px; line-height: 1.5; }
+    a.btn {
+      display: inline-block; background: #2DD4CE; color: #04211F; text-decoration: none;
+      padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 14px;
+    }
+    .spin {
+      width: 26px; height: 26px; margin: 0 auto 16px; border: 3px solid rgba(45,212,206,.25);
+      border-top-color: #2DD4CE; border-radius: 50%; animation: r 0.9s linear infinite;
+    }
+    @keyframes r { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">U</div>
+    <div class="spin" id="spin"></div>
+    <h1>Volviendo a la app…</h1>
+    <p id="msg">Estamos completando tu ingreso a LA UNIÓN.</p>
+    <a class="btn" id="manual" style="display:none">Abrir LA UNIÓN</a>
+  </div>
+  <script>
+    // Página puente del login nativo: Google → callback de Supabase → redirige acá
+    // (HTTPS) → saltamos al esquema propio de la app con una navegación del lado del
+    // cliente (que el navegador SÍ respeta, a diferencia de un 302 del servidor a un
+    // esquema custom). Eso reabre el APK vía intent-filter y dispara appUrlOpen.
+    (function () {
+      var deep = 'com.launion.app://auth' + (window.location.search || '') + (window.location.hash || '');
+      var manual = document.getElementById('manual');
+      manual.href = deep;
+      try {
+        window.location.replace(deep);
+      } catch (e) {}
+      // Fallback: si en 1.2s seguimos acá, mostramos el botón manual.
+      setTimeout(function () {
+        document.getElementById('spin').style.display = 'none';
+        document.getElementById('msg').textContent = 'Si no volviste automáticamente, tocá el botón:';
+        manual.style.display = 'inline-block';
+      }, 1200);
+    })();
+  </script>
+</body>
+</html>

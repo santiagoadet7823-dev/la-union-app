@@ -1,4 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { App as CapApp } from '@capacitor/app'
+import { Browser } from '@capacitor/browser'
 import { supabase, hasSupabase } from '../services/supabase'
 
 /**
@@ -12,6 +15,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [perfil, setPerfil] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState(null) // error del login nativo (deep link)
 
   const cargarPerfil = useCallback(async (userId) => {
     if (!userId) { setPerfil(null); return }
@@ -39,11 +43,73 @@ export function AuthProvider({ children }) {
     return () => { active = false; sub.subscription.unsubscribe() }
   }, [cargarPerfil])
 
-  const signInWithGoogle = () =>
-    supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin + (import.meta.env.BASE_URL || '/') },
+  // Captura el retorno del login de Google cuando la app corre en nativo (deep link
+  // com.launion.app://auth). Google → callback de Supabase → 302 al deep link, que
+  // reabre la app con ?code=... (PKCE) o, como fallback, #access_token=...
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    const sub = CapApp.addListener('appUrlOpen', async ({ url }) => {
+      if (!url || !url.includes('auth')) return
+      try { await Browser.close() } catch (_) {}
+      try {
+        const parsed = new URL(url)
+        // 1) Error explícito devuelto por el proveedor / Supabase.
+        const err = parsed.searchParams.get('error_description') || parsed.searchParams.get('error')
+        if (err) { setAuthError(decodeURIComponent(err)); return }
+
+        // 2) Flujo PKCE normal: ?code=... → intercambio por sesión.
+        const code = parsed.searchParams.get('code')
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) setAuthError(error.message)
+          else setAuthError(null)
+          return
+        }
+
+        // 3) Fallback flujo implícito: #access_token=...&refresh_token=...
+        const hash = (parsed.hash || '').replace(/^#/, '')
+        const hp = new URLSearchParams(hash)
+        const access_token = hp.get('access_token')
+        const refresh_token = hp.get('refresh_token')
+        if (access_token && refresh_token) {
+          const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+          if (error) setAuthError(error.message)
+          else setAuthError(null)
+          return
+        }
+
+        setAuthError('No se recibió el código de acceso de Google. Revisá que com.launion.app://auth esté en las Redirect URLs de Supabase.')
+      } catch (e) {
+        setAuthError(e?.message || 'Error procesando el retorno del login.')
+      }
     })
+    return () => { sub.then((s) => s.remove()) }
+  }, [])
+
+  const signInWithGoogle = async () => {
+    setAuthError(null)
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        // En nativo NO redirigimos directo al esquema propio (Chrome Custom Tabs
+        // bloquea el 302 del servidor hacia com.launion.app://). Redirigimos a una
+        // página puente HTTPS del PWA que salta al esquema con una navegación
+        // client-side (que sí reabre el APK vía intent-filter). Ver public/oauth.html.
+        redirectTo: Capacitor.isNativePlatform()
+          ? 'https://santiagoadet7823-dev.github.io/la-union-app/oauth.html'
+          : window.location.origin + (import.meta.env.BASE_URL || '/'),
+        skipBrowserRedirect: Capacitor.isNativePlatform(),
+      },
+    })
+    if (error) { setAuthError(error.message); return { data, error } }
+    // En nativo, skipBrowserRedirect evita la redirección automática: hay que
+    // abrir data.url nosotros mismos en el navegador del sistema.
+    if (Capacitor.isNativePlatform() && data?.url) {
+      try { await Browser.open({ url: data.url }) }
+      catch (e) { setAuthError(e?.message || 'No se pudo abrir el navegador de Google.') }
+    }
+    return { data, error }
+  }
 
   const signOut = () => supabase.auth.signOut()
 
@@ -57,6 +123,7 @@ export function AuthProvider({ children }) {
     aprobado: !!perfil?.activo && !!perfil?.rol,
     loading,
     hasSupabase,
+    authError,
     signInWithGoogle,
     signOut,
     refetchPerfil: () => cargarPerfil(session?.user?.id),

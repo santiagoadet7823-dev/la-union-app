@@ -13,7 +13,9 @@ const GpsContext = createContext(null)
 
 export function GpsProvider({ children }) {
   const { user, perfil, rol, idEmpresa } = useAuth()
-  const esMovil = rol === 'vendedor' || rol === 'repartidor'
+  // El encargado también es preventista y se trackea: publica su posición como los
+  // roles móviles (aunque en modo "Panel" no haya GpsGate bloqueando la pantalla).
+  const esMovil = rol === 'vendedor' || rol === 'repartidor' || rol === 'encargado'
   const id = user?.id || null
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 

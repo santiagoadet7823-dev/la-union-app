@@ -15,6 +15,9 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 
+# Config local de Claude/preview (no versionar)
+.claude/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

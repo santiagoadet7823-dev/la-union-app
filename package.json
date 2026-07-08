@@ -14,10 +14,10 @@
     "cap:ios": "cap sync ios && cap open ios"
   },
   "dependencies": {
-    "@googlemaps/js-api-loader": "^1.16.8",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/browser": "^6.0.6",
     "@supabase/supabase-js": "^2.110.0",
     "leaflet": "^1.9.4",
-    "mqtt": "^5.15.2",
     "papaparse": "^5.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
@@ -32,6 +32,7 @@
     "@tailwindcss/vite": "^4.1.0",
     "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.1.0",
+    "typescript": "^6.0.3",
     "vite": "^7.0.0",
     "vite-plugin-pwa": "^1.0.0"
   }

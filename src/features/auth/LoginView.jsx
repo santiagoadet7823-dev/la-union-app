@@ -13,7 +13,7 @@ function GoogleIcon() {
 }
 
 export default function LoginView() {
-  const { signInWithGoogle, hasSupabase } = useAuth()
+  const { signInWithGoogle, hasSupabase, authError } = useAuth()
 
   return (
     <div style={sx('min-height:100vh;display:grid;place-items:center;background:var(--bg-app);color:var(--text);padding:24px')}>
@@ -33,6 +33,12 @@ export default function LoginView() {
         {!hasSupabase && (
           <div style={sx('margin-top:14px;font-size:11.5px;color:var(--danger)')}>
             Falta configurar Supabase (VITE_SUPABASE_URL / ANON_KEY).
+          </div>
+        )}
+
+        {authError && (
+          <div style={sx('margin-top:14px;text-align:left;font-size:11.5px;color:var(--danger);background:var(--danger-tint);border:1px solid var(--danger);border-radius:10px;padding:10px 12px;line-height:1.5')}>
+            <b>No se pudo completar el ingreso.</b><br />{authError}
           </div>
         )}
 

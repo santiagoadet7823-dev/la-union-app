@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { supabase } from '../../../services/supabase'
 import { useTheme } from '../../../context/ThemeContext'
+import { useDevice } from '../../../context/DeviceContext'
 import { historialPosiciones } from '../../../services/sync/realtime'
+import { matchTrail } from '../../../services/routing'
+import { exportarRutaPng } from '../../../services/report/rutaPng'
 import { distanciaMetros } from '../../../services/geolocation/geofence'
 import { colorPorId } from '../../../lib/colors'
 import LeafletMap from '../../../components/LeafletMap'
@@ -22,6 +25,7 @@ const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit',
 
 export default function ReplayJornada({ onToast }) {
   const { theme } = useTheme()
+  const { isMobile } = useDevice()
   const [users, setUsers] = useState([])
   const [userId, setUserId] = useState('')
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
@@ -30,11 +34,13 @@ export default function ReplayJornada({ onToast }) {
   const [idx, setIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [vel, setVel] = useState(2)
+  const [snapOn, setSnapOn] = useState(true)   // pegar el rastro a las calles (map matching)
+  const [snapped, setSnapped] = useState(null) // rastro corregido [{lat,lng}]
   const timerRef = useRef(null)
 
   // Usuarios móviles de la empresa (RLS ya limita al tenant).
   useEffect(() => {
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'repartidor']).eq('activo', true)
+    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'repartidor', 'encargado']).eq('activo', true)
       .then(({ data }) => {
         setUsers(data || [])
         if (data && data.length && !userId) setUserId(data[0].id)
@@ -65,6 +71,17 @@ export default function ReplayJornada({ onToast }) {
     return () => clearInterval(timerRef.current)
   }, [playing, vel, pts.length])
 
+  // Snap-to-road del rastro completo (una vez por carga / toggle). No bloquea la
+  // reproducción: si falla o está apagado, se usa el rastro crudo.
+  useEffect(() => {
+    let cancel = false
+    if (!snapOn || pts.length < 2) { setSnapped(null); return }
+    matchTrail(pts)
+      .then((r) => { if (!cancel) setSnapped(r.coords.length ? r.coords.map(([lat, lng]) => ({ lat, lng })) : null) })
+      .catch(() => { if (!cancel) setSnapped(null) })
+    return () => { cancel = true }
+  }, [pts, snapOn])
+
   const stats = useMemo(() => {
     if (pts.length < 2) return { km: 0, desde: null, hasta: null }
     let m = 0
@@ -75,11 +92,40 @@ export default function ReplayJornada({ onToast }) {
   const parcial = useMemo(() => pts.slice(0, idx + 1), [pts, idx])
   const actual = pts[idx]
   const colorUser = colorPorId(userId)
+  const [exporting, setExporting] = useState(false)
+
+  async function exportarPng() {
+    if (pts.length < 2) { onToast?.('Cargá primero un recorrido'); return }
+    setExporting(true)
+    try {
+      const u = users.find((x) => x.id === userId)
+      const nombre = u?.nombre || 'Vendedor'
+      // Preferimos el rastro pegado a calles; si no está, el crudo.
+      const coords = snapped && snapped.length >= 2 ? snapped : pts.map((p) => ({ lat: p.lat, lng: p.lng }))
+      await exportarRutaPng({
+        coords,
+        titulo: nombre,
+        subtitulo: `${u?.rol || ''} · ${new Date(fecha + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}`,
+        stats: [
+          { label: 'Distancia', value: `${stats.km.toFixed(2)} km` },
+          { label: 'Horario', value: stats.desde ? `${hhmm(stats.desde)}–${hhmm(stats.hasta)}` : '—' },
+          { label: 'Puntos', value: String(pts.length) },
+        ],
+        color: colorUser,
+        filename: `recorrido_${nombre.replace(/\s+/g, '_')}_${fecha}.png`,
+      })
+      onToast?.('PNG del recorrido descargado')
+    } catch (e) {
+      onToast?.('No se pudo exportar: ' + (e?.message || 'error'))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const btn = (active) => ({ ...sx('padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'), border: `1px solid ${active ? 'var(--primary)' : 'var(--line2)'}`, background: active ? 'var(--primary-tint)' : 'transparent', color: active ? 'var(--deep)' : 'var(--muted)' })
 
   return (
-    <div style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start')}>
+    <div style={{ ...sx('flex:1;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;display:grid;gap:14px;align-items:start'), padding: isMobile ? 12 : 20, gridTemplateColumns: isMobile ? '1fr' : '1fr 320px' }}>
       <div style={sx('display:flex;flex-direction:column;gap:12px;min-width:0')}>
         {/* Controles superiores */}
         <div style={{ ...panel, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
@@ -97,6 +143,12 @@ export default function ReplayJornada({ onToast }) {
           <button onClick={cargar} disabled={loading} style={sx('padding:9px 16px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             {loading ? 'Cargando…' : 'Cargar recorrido'}
           </button>
+          <button onClick={() => setSnapOn((v) => !v)} title="Corrige los saltos de GPS pegando el recorrido a las calles" style={btn(snapOn)}>
+            {snapOn ? '✓ Pegado a calles' : 'Pegar a calles'}
+          </button>
+          <button onClick={exportarPng} disabled={exporting || pts.length < 2} style={sx('padding:9px 14px;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--deep);font-size:13px;font-weight:600;cursor:pointer')}>
+            {exporting ? 'Generando…' : '⤓ Exportar PNG'}
+          </button>
           <div style={sx('flex:1')} />
           <div style={sx('font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-align:right')}>
             {pts.length ? <>{pts.length} puntos · {stats.km.toFixed(2)} km<br />{stats.desde && `${hhmm(stats.desde)} – ${hhmm(stats.hasta)}`}</> : 'Sin datos cargados'}
@@ -105,8 +157,8 @@ export default function ReplayJornada({ onToast }) {
 
         <LeafletMap
           theme={theme}
-          height={440}
-          trail={parcial.length >= 2 ? parcial : null}
+          height={isMobile ? 300 : 440}
+          trail={snapOn && snapped ? snapped : (parcial.length >= 2 ? parcial : null)}
           trailColor={colorUser}
           live={actual ? { lat: actual.lat, lng: actual.lng } : null}
           liveColor={colorUser}
