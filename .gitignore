@@ -26,3 +26,6 @@ pnpm-debug.log*
 
 # Trabajos de diseño (no forman parte de la app)
 trabajo diseñador ui ux/
+
+# Artefacto de release OTA
+bundle.zip

@@ -21,7 +21,9 @@ CAP_BUILD=1 npm run build
 
 echo "→ Empaquetando dist → bundle.zip…"
 rm -f bundle.zip
-( cd dist && zip -qr ../bundle.zip . )
+# Se usa Python (zipfile) para garantizar rutas con '/' e index.html en la raíz
+# (Compress-Archive de Windows usa '\' y rompe el unzip en Android).
+python -c "import zipfile,os; root='dist'; z=zipfile.ZipFile('bundle.zip','w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(b,f), os.path.relpath(os.path.join(b,f),root).replace(os.sep,'/')) for b,_,fs in os.walk(root) for f in fs]; z.close(); print('  ok')"
 
 echo "→ Publicando release $TAG en GitHub…"
 if gh release create "$TAG" bundle.zip --repo "$REPO" --title "OTA $VER" --notes "Actualización de contenido $VER" 2>/dev/null; then
