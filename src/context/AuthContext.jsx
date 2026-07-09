@@ -141,10 +141,15 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
-    // En nativo, cerrar también la sesión de Google borra la cuenta cacheada, así
-    // el próximo ingreso vuelve a mostrar el selector para elegir otra cuenta.
+    // En nativo, cerrar también la sesión de Google borra la cuenta cacheada (así
+    // el próximo ingreso deja elegir otra cuenta). OJO: el plugin no inicializa el
+    // cliente solo; si no se llamó signIn en esta sesión, signOut() crashea (cliente
+    // null). Por eso initialize() primero.
     if (Capacitor.isNativePlatform()) {
-      try { await GoogleAuth.signOut() } catch (_) {}
+      try {
+        await GoogleAuth.initialize({ clientId: GOOGLE_WEB_CLIENT_ID, scopes: ['profile', 'email'], grantOfflineAccess: false })
+        await GoogleAuth.signOut()
+      } catch (_) {}
     }
     setAuthStatus(null)
     setAuthError(null)

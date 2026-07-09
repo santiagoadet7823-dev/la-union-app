@@ -450,8 +450,11 @@ export default function VendedorView() {
 
       {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={livePos} />}
 
-      {/* ===== BOTTOM NAV (glass + safe-area) ===== */}
-      <div style={{ ...sx('flex:none;position:absolute;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:10'), ...glassSurface(theme === 'dark'), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
+      {/* ===== BOTTOM NAV (glass + safe-area). En mobile va FIXED al fondo real de
+              la pantalla (el 100vh se desborda bajo la topbar del AppShell, así que
+              'absolute' quedaba fuera de vista). En escritorio, absolute dentro del
+              marco de teléfono. ===== */}
+      <div style={{ ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:40'), position: isMobile ? 'fixed' : 'absolute', ...glassSurface(theme === 'dark'), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
         {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box], ['perfil', 'Perfil', User]].map(([t, label, Icon]) => (
           <div key={t} onClick={() => setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
             <Icon />
