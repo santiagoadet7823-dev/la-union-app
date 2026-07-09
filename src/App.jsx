@@ -8,6 +8,7 @@ import AppShell from './components/AppShell'
 import PhoneFrame from './components/PhoneFrame'
 import GpsGate from './components/GpsGate'
 import UpdatePrompt from './components/UpdatePrompt'
+import DeviceBanner from './components/DeviceBanner'
 import LoginView from './features/auth/LoginView'
 import PendienteView from './features/auth/PendienteView'
 import { lazy, Suspense, useState } from 'react'
@@ -106,6 +107,7 @@ export default function App() {
         <AuthProvider>
           <Gate />
           <UpdatePrompt />
+          <DeviceBanner />
         </AuthProvider>
       </DeviceProvider>
     </ThemeProvider>

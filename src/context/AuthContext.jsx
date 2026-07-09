@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { Capacitor } from '@capacitor/core'
 import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
 
 /**
@@ -88,26 +89,35 @@ export function AuthProvider({ children }) {
 
   const signInWithGoogle = async () => {
     setAuthError(null)
+
+    // NATIVO (APK): login con el selector de cuentas de Android (sin navegador ni
+    // deep link, que no funcionaban en estos equipos). El idToken se canjea por
+    // sesión de Supabase con signInWithIdToken.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const res = await GoogleAuth.signIn()
+        const idToken = res?.authentication?.idToken
+        if (!idToken) {
+          setAuthError('Google no devolvió un token. Revisá el cliente OAuth Android (SHA-1) en Google Cloud.')
+          return { error: true }
+        }
+        const { error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken })
+        if (error) setAuthError(error.message)
+        return { error }
+      } catch (e) {
+        const msg = e?.message || String(e)
+        // No mostramos error si el usuario simplemente canceló el selector.
+        if (!/cancel/i.test(msg)) setAuthError('No se pudo iniciar sesión con Google: ' + msg)
+        return { error: e }
+      }
+    }
+
+    // WEB / PWA: flujo OAuth por redirección del navegador (funciona en la web).
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        // En nativo NO redirigimos directo al esquema propio (Chrome Custom Tabs
-        // bloquea el 302 del servidor hacia com.launion.app://). Redirigimos a una
-        // página puente HTTPS del PWA que salta al esquema con una navegación
-        // client-side (que sí reabre el APK vía intent-filter). Ver public/oauth.html.
-        redirectTo: Capacitor.isNativePlatform()
-          ? 'https://santiagoadet7823-dev.github.io/la-union-app/oauth.html'
-          : window.location.origin + (import.meta.env.BASE_URL || '/'),
-        skipBrowserRedirect: Capacitor.isNativePlatform(),
-      },
+      options: { redirectTo: window.location.origin + (import.meta.env.BASE_URL || '/') },
     })
-    if (error) { setAuthError(error.message); return { data, error } }
-    // En nativo, skipBrowserRedirect evita la redirección automática: hay que
-    // abrir data.url nosotros mismos en el navegador del sistema.
-    if (Capacitor.isNativePlatform() && data?.url) {
-      try { await Browser.open({ url: data.url }) }
-      catch (e) { setAuthError(e?.message || 'No se pudo abrir el navegador de Google.') }
-    }
+    if (error) setAuthError(error.message)
     return { data, error }
   }
 

@@ -1,7 +1,6 @@
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useDevice } from '../context/DeviceContext'
-import DeviceBanner from './DeviceBanner'
 import { Sun, Moon } from './icons'
 
 const ROLE_META = {
@@ -115,8 +114,6 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       </header>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
-
-      <DeviceBanner />
     </div>
   )
 }

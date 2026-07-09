@@ -13,6 +13,7 @@ import { useCatalog } from '../../context/CatalogContext'
 import UsuariosView from './UsuariosView'
 import EmpresasView from './EmpresasView'
 import ZonasView from './ZonasView'
+import ConsultasView from './ConsultasView'
 import ReplayJornada from './components/ReplayJornada'
 import NuevoCliente from '../catalog/NuevoCliente'
 import NuevoProducto from '../catalog/NuevoProducto'
@@ -81,7 +82,7 @@ export default function AdminView() {
     const base = [
       ['mapa', 'Mapa operativo'], ['reproduccion', 'Reproducción'],
       ['clientes', 'Clientes'], ['zonas', 'Zonas'], ['catalogo', 'Catálogo'], ['dash', 'Dashboard'],
-      ['ordenes', 'Órdenes'], ['faltante', 'Faltante'],
+      ['ordenes', 'Órdenes'], ['faltante', 'Faltante'], ['consultas', 'Consultas'],
     ]
     if (rol === 'admin' || rol === 'superadmin') base.push(['usuarios', 'Usuarios'])
     if (rol === 'superadmin') base.push(['empresas', 'Empresas'])
@@ -675,6 +676,9 @@ export default function AdminView() {
 
       {/* ========== ZONAS ========== */}
       {tab === 'zonas' && (rol === 'admin' || rol === 'encargado' || rol === 'superadmin') && <ZonasView onToast={showToast} />}
+
+      {/* ========== CONSULTAS (heatmap de uso) ========== */}
+      {tab === 'consultas' && <ConsultasView />}
 
       {/* ========== REPRODUCCIÓN DE JORNADA ========== */}
       {tab === 'reproduccion' && <ReplayJornada onToast={showToast} />}
