@@ -1,5 +1,6 @@
 import { sx } from '../../lib/sx'
 import { useAuth } from '../../context/AuthContext'
+import { APP_VERSION } from '../../version'
 
 function GoogleIcon() {
   return (
@@ -52,6 +53,8 @@ export default function LoginView() {
           Al ingresar por primera vez tu cuenta queda <b>pendiente de aprobación</b>. Un administrador
           te asignará tu rol (vendedor, repartidor, encargado o admin).
         </div>
+
+        <div style={sx('margin-top:12px;font-size:10px;color:var(--faint);font-family:var(--font-mono)')}>v{APP_VERSION}</div>
       </div>
     </div>
   )

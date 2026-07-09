@@ -31,8 +31,16 @@ export async function otaCheck() {
   } catch (_) { return null }
 }
 
-// Descarga y aplica el bundle nuevo. `set` recarga la app con el contenido nuevo.
-export async function otaApply({ version, url }) {
+// Descarga el bundle nuevo y lo DEJA LISTO para el próximo reinicio (next). No
+// recarga acá: así podemos mostrar "listo → reiniciar" y aplicar con otaReload().
+export async function otaDownload({ version, url }) {
   const bundle = await CapacitorUpdater.download({ url, version })
-  await CapacitorUpdater.set(bundle)
+  if (!bundle?.id) throw new Error('La descarga no devolvió el paquete.')
+  await CapacitorUpdater.next({ id: bundle.id })
+  return bundle
+}
+
+// Aplica el bundle encolado y reinicia la app con el contenido nuevo.
+export async function otaReload() {
+  await CapacitorUpdater.reload()
 }
