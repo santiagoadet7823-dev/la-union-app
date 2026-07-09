@@ -37,6 +37,17 @@ export function useLivePosition(enabled) {
     }
   }, [enabled, nonce])
 
+  // Latido: aunque el usuario esté QUIETO (el watch nativo solo emite al moverse
+  // ~12 m), refrescamos la posición cada 40 s para que el fix no quede "viejo" y el
+  // GpsGate no crea, erróneamente, que el GPS se apagó (y el admin lo siga viendo).
+  useEffect(() => {
+    if (!enabled) return
+    const iv = setInterval(() => {
+      pedirUbicacionUnaVez().then((p) => setPos(p)).catch(() => {})
+    }, 40000)
+    return () => clearInterval(iv)
+  }, [enabled])
+
   const request = useCallback(() => {
     return pedirUbicacionUnaVez()
       .then((p) => {

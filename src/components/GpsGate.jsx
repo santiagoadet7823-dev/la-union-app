@@ -4,7 +4,8 @@ import { useGps } from '../context/GpsContext'
 import { publicarAlerta } from '../services/sync/realtime'
 import { Pin } from './icons'
 
-const STALE_MS = 60000 // sin fix nuevo por 60s => se considera GPS desactivado
+const STALE_MS = 120000 // sin fix nuevo por 2 min => se considera GPS desactivado
+                        // (el latido de useLivePosition refresca cada 40s aunque esté quieto)
 
 /**
  * Puerta de GPS obligatorio para las vistas móviles. Si el GPS no está activo
