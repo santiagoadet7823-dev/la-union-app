@@ -5,6 +5,7 @@ import { Home, Pin, Box, User, Search, Check, Route } from '../../components/ico
 import LeafletMap from '../../components/LeafletMap'
 import { glassSurface } from '../../lib/glass'
 import { useTheme } from '../../context/ThemeContext'
+import { useDevice } from '../../context/DeviceContext'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
@@ -33,6 +34,7 @@ export default function VendedorView() {
   const [modalCliente, setModalCliente] = useState(false)
   const [visitState, setVisitState] = useState({}) // { [idCliente]: {status, hora, monto, motivo} }
   const { theme } = useTheme()
+  const { isMobile } = useDevice()
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
   const { perfil } = useAuth()
   const { productos: PRODUCTS, clientes: cartera, loading: catLoading } = useCatalog()
@@ -100,7 +102,7 @@ export default function VendedorView() {
   const navItem = (t) => (tab === t ? 'var(--primary)' : 'var(--faint)')
 
   return (
-    <div className="lu-mob" style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box')}>
+    <div className="lu-mob" style={{ ...sx('min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100dvh' : '100%' }}>
 
       {/* ===== INICIO ===== */}
       {tab === 'inicio' && (

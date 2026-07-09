@@ -88,7 +88,10 @@ export default function LeafletMap({
     layerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     setTimeout(() => map.invalidateSize(), 60)
-    return () => { map.remove(); mapRef.current = null }
+    // Reajustar el mapa al rotar / cambiar tamaño (alturas en vh).
+    const onResize = () => map.invalidateSize()
+    window.addEventListener('resize', onResize)
+    return () => { window.removeEventListener('resize', onResize); map.remove(); mapRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -327,7 +327,7 @@ export default function AdminView() {
               routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
               optimize
               roundtrip
-              height={isMobile ? 300 : 460}
+              height={isMobile ? '54vh' : '68vh'}
               onMarkerClick={setSelPin}
             />
 

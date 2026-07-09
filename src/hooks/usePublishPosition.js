@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useLivePosition } from './useLivePosition'
-import { publicarPosicion } from '../services/sync/realtime'
+import { enqueuePosicion, flushPosiciones } from '../services/sync/queue'
 import { distanciaMetros } from '../services/geolocation/geofence'
 
 /**
@@ -47,8 +47,24 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     if (!movio && !keepAlive) return
 
     lastRef.current = { lat: pos.lat, lng: pos.lng, ts: pos.ts, sentAt: Date.now() }
-    publicarPosicion({ id, rol, lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, idEmpresa })
+    // Guardar SIEMPRE en la cola local (no se pierde aunque no haya red) y luego
+    // intentar subir. Cada punto conserva su hora real (pos.ts).
+    const row = { id_usuario: id, rol, lat: pos.lat, lng: pos.lng, id_empresa: idEmpresa, ts: new Date(pos.ts || Date.now()).toISOString() }
+    if (typeof pos.accuracy === 'number') row.accuracy = pos.accuracy
+    enqueuePosicion(row)
+    flushPosiciones()
   }, [pos, id, rol, idEmpresa])
+
+  // Reintentar la subida al recuperar conexión y cada tanto (por si el flush por
+  // movimiento no alcanzó a vaciar la cola).
+  useEffect(() => {
+    if (!enabled) return
+    flushPosiciones()
+    const onOnline = () => flushPosiciones()
+    window.addEventListener('online', onOnline)
+    const iv = setInterval(() => flushPosiciones(), 30000)
+    return () => { window.removeEventListener('online', onOnline); clearInterval(iv) }
+  }, [enabled])
 
   return { pos, error, request }
 }

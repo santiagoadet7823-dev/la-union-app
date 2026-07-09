@@ -176,7 +176,7 @@ export default function ReplayJornada({ onToast }) {
 
         <LeafletMap
           theme={theme}
-          height={isMobile ? 300 : 440}
+          height={isMobile ? '54vh' : '68vh'}
           trail={snapOn && snapped ? snapped : (parcial.length >= 2 ? parcial : null)}
           trailColor={colorUser}
           live={actual ? { lat: actual.lat, lng: actual.lng } : null}
