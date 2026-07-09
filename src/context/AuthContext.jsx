@@ -16,7 +16,8 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [perfil, setPerfil] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [authError, setAuthError] = useState(null) // error del login nativo (deep link)
+  const [authError, setAuthError] = useState(null) // error del login nativo
+  const [authStatus, setAuthStatus] = useState(null) // diagnóstico en pantalla del login nativo
 
   const cargarPerfil = useCallback(async (userId) => {
     if (!userId) { setPerfil(null); return }
@@ -95,19 +96,25 @@ export function AuthProvider({ children }) {
     // sesión de Supabase con signInWithIdToken.
     if (Capacitor.isNativePlatform()) {
       try {
+        setAuthStatus('1/3 · Abriendo Google…')
         const res = await GoogleAuth.signIn()
-        const idToken = res?.authentication?.idToken
+        const idToken = res?.authentication?.idToken || res?.idToken || null
+        setAuthStatus(`2/3 · Cuenta: ${res?.email || '¿?'} · idToken ${idToken ? 'OK (' + idToken.length + ')' : 'FALTA'}`)
         if (!idToken) {
-          setAuthError('Google no devolvió un token. Revisá el cliente OAuth Android (SHA-1) en Google Cloud.')
+          setAuthError('Google no devolvió idToken. res=' + JSON.stringify(res).slice(0, 260))
           return { error: true }
         }
-        const { error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken })
-        if (error) setAuthError(error.message)
-        return { error }
+        const { data, error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken })
+        if (error) {
+          setAuthError(`Supabase rechazó el token: ${error.message} (status ${error.status ?? '?'})`)
+          setAuthStatus(null)
+          return { error }
+        }
+        setAuthStatus(`3/3 · Sesión ${data?.session ? 'creada' : 'NO'} · ${data?.user?.email || '¿?'}`)
+        return { error: null }
       } catch (e) {
-        const msg = e?.message || String(e)
-        // No mostramos error si el usuario simplemente canceló el selector.
-        if (!/cancel/i.test(msg)) setAuthError('No se pudo iniciar sesión con Google: ' + msg)
+        setAuthError('Excepción en el login: ' + (e?.message || JSON.stringify(e) || String(e)).slice(0, 260))
+        setAuthStatus(null)
         return { error: e }
       }
     }
@@ -134,6 +141,7 @@ export function AuthProvider({ children }) {
     loading,
     hasSupabase,
     authError,
+    authStatus,
     signInWithGoogle,
     signOut,
     refetchPerfil: () => cargarPerfil(session?.user?.id),

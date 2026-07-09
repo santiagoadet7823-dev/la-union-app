@@ -13,7 +13,7 @@ function GoogleIcon() {
 }
 
 export default function LoginView() {
-  const { signInWithGoogle, hasSupabase, authError } = useAuth()
+  const { signInWithGoogle, hasSupabase, authError, authStatus } = useAuth()
 
   return (
     <div style={sx('min-height:100vh;display:grid;place-items:center;background:var(--bg-app);color:var(--text);padding:24px')}>
@@ -36,9 +36,15 @@ export default function LoginView() {
           </div>
         )}
 
+        {authStatus && (
+          <div style={sx('margin-top:12px;text-align:left;font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;font-family:var(--font-mono);line-height:1.5;word-break:break-word')}>
+            {authStatus}
+          </div>
+        )}
+
         {authError && (
-          <div style={sx('margin-top:14px;text-align:left;font-size:11.5px;color:var(--danger);background:var(--danger-tint);border:1px solid var(--danger);border-radius:10px;padding:10px 12px;line-height:1.5')}>
-            <b>No se pudo completar el ingreso.</b><br />{authError}
+          <div style={sx('margin-top:12px;text-align:left;font-size:11px;color:var(--danger);background:var(--danger-tint);border:1px solid var(--danger);border-radius:10px;padding:10px 12px;line-height:1.5;font-family:var(--font-mono);word-break:break-word')}>
+            <b>Diagnóstico del ingreso:</b><br />{authError}
           </div>
         )}
 
