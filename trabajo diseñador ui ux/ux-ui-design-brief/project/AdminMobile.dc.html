@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+html[data-theme='light']{--bg-app:linear-gradient(180deg,#FFFFFF 0%,#F2FBFA 60%,#EDF9F7 100%);--bg-solid:#FBFEFD;--surface:#FFFFFF;--surface2:#F4FAF9;--line:#E2EFEE;--line2:#C9E0DE;--text:#0B2B2A;--muted:#5A7371;--faint:#93A9A7;--primary:#0ABAB5;--on-primary:#FFFFFF;--deep:#06807C;--tclassic:#81D8D0;--tlight:#A7E8E3;--success:#10B981;--warning:#F59E0B;--danger:#EF4444;--info:#0EA5E9;--primary-tint:rgba(10,186,181,.10);--success-tint:rgba(16,185,129,.12);--warning-tint:rgba(245,158,11,.14);--danger-tint:rgba(239,68,68,.10);--info-tint:rgba(14,165,233,.12);--shadow:0 2px 8px rgba(11,43,42,.06);--shadow-lg:0 10px 28px rgba(11,43,42,.12);--grid:rgba(11,43,42,.06);--map-bg:#E7F3F1;--map-block:#DCEBE8;--map-road:#FFFFFF;--scrim:rgba(11,43,42,.35);--console-bg:#0B2B2A;--console-fg:#A7E8E3;--hm0:#EAF4F3;--hm1:#B6E7E3;--hm2:#7FD9D3;--hm3:#38C6BF;--hm4:#0ABAB5}
+html[data-theme='dark']{--bg-app:#0C0C0C;--bg-solid:#0C0C0C;--surface:#0D1F1E;--surface2:#12302E;--line:rgba(255,255,255,0.12);--line2:rgba(255,255,255,0.20);--text:#ECF5F4;--muted:#8FA9A6;--faint:#5C7370;--primary:#2DD4CE;--on-primary:#04211F;--deep:#2DD4CE;--tclassic:#175753;--tlight:#0F3B38;--success:#34D399;--warning:#FBBF24;--danger:#F87171;--info:#38BDF8;--primary-tint:rgba(45,212,206,.14);--success-tint:rgba(52,211,153,.14);--warning-tint:rgba(251,191,36,.14);--danger-tint:rgba(248,113,113,.14);--info-tint:rgba(56,189,248,.14);--shadow:none;--shadow-lg:none;--grid:rgba(255,255,255,.06);--map-bg:#0A1414;--map-block:#0E1D1C;--map-road:#1A3230;--scrim:rgba(0,0,0,.6);--console-bg:#081414;--console-fg:#5FD9D3;--hm0:#12302E;--hm1:#134E4A;--hm2:#0E7C77;--hm3:#1BA89F;--hm4:#2DD4CE}
+.am *{scrollbar-width:none}.am *::-webkit-scrollbar{display:none}
+@keyframes lu-ping{0%{transform:scale(.5);opacity:.9}100%{transform:scale(2.8);opacity:0}}
+@keyframes lu-blink{0%,100%{opacity:1}50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important}}
+</style>
+</helmet>
+<div class="am" style="height:100%;min-height:640px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative">
+
+  <!-- TOPBAR -->
+  <div style="flex:none;padding:12px 14px 0;background:var(--surface);border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:26px;height:26px;border-radius:8px;background:var(--info);color:#fff;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px">U</div>
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;letter-spacing:.03em;line-height:1.1">Panel · LA UNIÓN</div>
+          <div style="font-size:9px;color:var(--faint);font-family:'IBM Plex Mono',monospace">Las Lajitas, Salta · admin</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--success);display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:99px;background:var(--success);animation:lu-blink 2s infinite"></span>live</div>
+        <div onClick="{{ toggleTheme }}" style="width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;cursor:pointer;color:var(--muted)">
+          <sc-if value="{{ isDark }}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></sc-if>
+          <sc-if value="{{ isLight }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg></sc-if>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:3px;overflow-x:auto;margin:10px -14px 0;padding:0 14px 10px">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="9">
+        <div onClick="{{ t.go }}" style="flex:none;padding:7px 12px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;color:{{ t.fg }};background:{{ t.bg }};border:1px solid {{ t.border }}">{{ t.label }}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex:1;overflow-y:auto;overflow-x:hidden">
+
+  <!-- ============ MAPA OPERATIVO ============ -->
+  <sc-if value="{{ showMapa }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="AdminMobile · Mapa operativo" style="padding:12px 14px 24px">
+      <div style="position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;height:300px;background:var(--map-bg)">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+          <rect x="3" y="4" width="20" height="16" rx="1" fill="var(--map-block)"></rect><rect x="28" y="4" width="28" height="16" rx="1" fill="var(--map-block)"></rect><rect x="61" y="4" width="36" height="16" rx="1" fill="var(--map-block)"></rect>
+          <rect x="3" y="25" width="20" height="24" rx="1" fill="var(--map-block)"></rect><rect x="28" y="25" width="28" height="24" rx="1" fill="var(--map-block)"></rect><rect x="61" y="25" width="36" height="24" rx="1" fill="var(--map-block)"></rect>
+          <rect x="3" y="54" width="20" height="20" rx="1" fill="var(--map-block)"></rect><rect x="28" y="54" width="28" height="20" rx="1" fill="var(--map-block)"></rect><rect x="61" y="54" width="36" height="20" rx="1" fill="var(--map-block)"></rect>
+          <rect x="3" y="79" width="20" height="17" rx="1" fill="var(--map-block)"></rect><rect x="28" y="79" width="28" height="17" rx="1" fill="var(--map-block)"></rect><rect x="61" y="79" width="36" height="17" rx="1" fill="var(--map-block)"></rect>
+          <path d="M0 22 H100 M0 51 H100 M0 76 H100 M25 0 V100 M58 0 V100" stroke="var(--map-road)" stroke-width="2.2" fill="none"></path>
+          <polyline points="10,90 25,90 25,51 44,51 44,22 58,22" fill="none" stroke="var(--info)" stroke-width="1.2" stroke-dasharray="2 1.6" stroke-linecap="round"></polyline>
+          <polyline points="10,90 25,90 25,76 72,76 72,60" fill="none" stroke="var(--warning)" stroke-width="1.2" stroke-dasharray="2 1.6" stroke-linecap="round"></polyline>
+        </svg>
+        <sc-for list="{{ mapPins }}" as="p" hint-placeholder-count="6">
+          <div onClick="{{ p.pick }}" style="position:absolute;left:{{ p.x }}%;top:{{ p.y }}%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:99px 99px 99px 3px;background:{{ p.bg }};border:2px solid {{ p.ring }};display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:8.5px;font-weight:600;color:{{ p.fg }};cursor:pointer;box-shadow:var(--shadow)">{{ p.n }}</div>
+        </sc-for>
+        <div style="position:absolute;left:10%;top:90%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:7px;background:var(--text);color:var(--bg-solid);display:grid;place-items:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-6 9 6v12"></path><path d="M9 21v-8h6v8"></path></svg></div>
+        <div style="position:absolute;left:58%;top:22%;transform:translate(-50%,-50%)"><div style="position:absolute;inset:-9px;border-radius:99px;background:var(--info);opacity:.4;animation:lu-ping 1.8s ease-out infinite"></div><div style="position:relative;width:13px;height:13px;border-radius:99px;background:var(--info);border:2.5px solid #fff"></div></div>
+        <div style="position:absolute;left:72%;top:60%;transform:translate(-50%,-50%)"><div style="position:absolute;inset:-9px;border-radius:99px;background:var(--warning);opacity:.4;animation:lu-ping 2.2s ease-out infinite"></div><div style="position:relative;width:13px;height:13px;border-radius:99px;background:var(--warning);border:2.5px solid #fff"></div></div>
+        <div style="position:absolute;left:10px;top:10px;background:var(--surface);border:1px solid var(--line2);border-radius:9px;padding:5px 9px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)">📍 Las Lajitas · área operativa</div>
+        <div style="position:absolute;right:10px;bottom:10px;background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:5px 9px;font-size:9px;color:var(--faint);max-width:150px;text-align:right">Mapa Leaflet/OSRM se integra en código</div>
+      </div>
+
+      <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin:16px 2px 8px">Móviles en vivo</div>
+      <sc-for list="{{ moviles }}" as="m" hint-placeholder-count="3">
+        <div style="display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:7px;box-shadow:var(--shadow)">
+          <span style="width:10px;height:10px;border-radius:99px;background:{{ m.color }};flex:none;box-shadow:0 0 0 3px {{ m.tint }}"></span>
+          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.name }}</div><div style="font-size:10.5px;color:var(--faint);font-family:'IBM Plex Mono',monospace">{{ m.role }} · {{ m.veh }}</div></div>
+          <div style="text-align:right"><div style="font-size:11px;font-weight:600;color:{{ m.stColor }}">{{ m.st }}</div><div style="font-size:10px;color:var(--faint);font-family:'IBM Plex Mono',monospace">hace {{ m.ago }}s</div></div>
+        </div>
+      </sc-for>
+
+      <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin:16px 2px 8px">Consola de eventos</div>
+      <div style="background:var(--console-bg);border:1px solid var(--line2);border-radius:12px;padding:11px 13px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.9;color:var(--console-fg);height:150px;overflow-y:auto;display:flex;flex-direction:column-reverse">
+        <div>
+          <sc-for list="{{ events }}" as="e" hint-placeholder-count="6">
+            <div style="display:flex;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="opacity:.5">{{ e.ts }}</span><span style="color:{{ e.tagColor }};font-weight:600">{{ e.tag }}</span><span style="opacity:.85">{{ e.msg }}</span></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ REPRODUCCIÓN ============ -->
+  <sc-if value="{{ showRepro }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Reproducción" style="padding:12px 14px 24px">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line2);border-radius:11px;padding:10px 12px;font-size:12.5px;background:var(--surface)"><span style="color:var(--muted)">Usuario</span><span style="font-weight:600">M. Ríos</span></div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line2);border-radius:11px;padding:10px 12px;font-size:12.5px;background:var(--surface)"><span style="color:var(--muted)">Fecha</span><span style="font-family:'IBM Plex Mono',monospace;font-weight:600">07/07</span></div>
+      </div>
+
+      <sc-if value="{{ reproVacio }}" hint-placeholder-val="{{ false }}">
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:48px 20px;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:var(--shadow)">
+          <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5M12 22V12"></path></svg>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px">Sin recorrido grabado</div>
+          <div style="font-size:12px;color:var(--muted);text-align:center;max-width:260px">No hay telemetría para este usuario en la fecha elegida. Probá otro día.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ reproData }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;height:280px;background:var(--map-bg)">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+            <rect x="4" y="5" width="24" height="18" rx="1" fill="var(--map-block)"></rect><rect x="33" y="5" width="30" height="18" rx="1" fill="var(--map-block)"></rect><rect x="68" y="5" width="28" height="18" rx="1" fill="var(--map-block)"></rect>
+            <rect x="4" y="28" width="24" height="26" rx="1" fill="var(--map-block)"></rect><rect x="33" y="28" width="30" height="26" rx="1" fill="var(--map-block)"></rect><rect x="68" y="28" width="28" height="26" rx="1" fill="var(--map-block)"></rect>
+            <rect x="4" y="59" width="24" height="22" rx="1" fill="var(--map-block)"></rect><rect x="33" y="59" width="30" height="22" rx="1" fill="var(--map-block)"></rect><rect x="68" y="59" width="28" height="22" rx="1" fill="var(--map-block)"></rect>
+            <path d="M0 25.5 H100 M0 56.5 H100 M30 0 V100 M65 0 V100" stroke="var(--map-road)" stroke-width="2" fill="none"></path>
+            <path d="M8 88 L8 56.5 L30 56.5 L30 25.5 L65 25.5 L65 14 L90 14" fill="none" stroke="var(--primary)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></path>
+          </svg>
+          <div style="position:absolute;left:8%;top:88%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:99px;background:var(--success);border:2px solid #fff"></div>
+          <div style="position:absolute;left:{{ scrubX }}%;top:{{ scrubY }}%;transform:translate(-50%,-50%);transition:left .1s,top .1s"><div style="width:15px;height:15px;border-radius:99px;background:var(--primary);border:2.5px solid #fff;box-shadow:var(--shadow)"></div></div>
+          <div style="position:absolute;left:10px;top:10px;background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:5px 9px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)">▶ recorrido del día</div>
+        </div>
+
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:10px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div onClick="{{ togglePlay }}" style="width:44px;height:44px;flex:none;border-radius:12px;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;cursor:pointer">
+              <sc-if value="{{ playing }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></sc-if>
+              <sc-if value="{{ paused }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"></path></svg></sc-if>
+            </div>
+            <div style="flex:1">
+              <input type="range" min="0" max="100" value="{{ scrub }}" onChange="{{ onScrub }}" style="width:100%;accent-color:#0ABAB5">
+              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--faint)"><span>08:00</span><span>{{ scrubTime }}</span><span>13:00</span></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <sc-for list="{{ speeds }}" as="sp" hint-placeholder-count="3">
+              <div onClick="{{ sp.pick }}" style="flex:1;min-height:34px;display:grid;place-items:center;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;border:1px solid {{ sp.border }};background:{{ sp.bg }};color:{{ sp.fg }}">{{ sp.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px"><div style="font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Distancia</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;margin-top:2px">34,2 km</div></div>
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px"><div style="font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Paradas</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;margin-top:2px">18</div></div>
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px"><div style="font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Activo</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;margin-top:2px">4 h 51</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <div style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line2);border-radius:12px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4"></path><path d="m15 4 6 8-6 8"></path></svg>Pegar a calles</div>
+          <div onClick="{{ exportPng }}" style="flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--primary);color:var(--on-primary);border-radius:12px;font-size:12.5px;font-weight:600;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5M12 15V3"></path></svg>Exportar PNG</div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- ============ CLIENTES ============ -->
+  <sc-if value="{{ showClientes }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Clientes" style="padding:12px 14px 24px">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 12px;height:42px;margin-bottom:10px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.4-3.4"></path></svg>
+        <input value="{{ cliSearch }}" onChange="{{ onCliSearch }}" placeholder="Buscar cliente…" style="flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13px;color:var(--text)">
+      </div>
+      <sc-for list="{{ cliCards }}" as="c" hint-placeholder-count="6">
+        <div style="background:var(--surface);border:1px solid {{ c.border }};border-radius:14px;padding:13px;margin-bottom:8px;box-shadow:var(--shadow)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="min-width:0"><div style="font-size:14px;font-weight:600">{{ c.name }}</div><div style="font-size:11px;color:var(--faint);font-family:'IBM Plex Mono',monospace;margin-top:2px">{{ c.code }} · {{ c.loc }}</div></div>
+            <div style="flex:none;display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;background:{{ c.pillBg }};font-size:10.5px;font-weight:600;color:{{ c.pillColor }}"><span style="width:5px;height:5px;border-radius:99px;background:{{ c.pillColor }}"></span>{{ c.estado }}</div>
+          </div>
+          <div style="display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--muted)">
+            <div><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.05em;display:block">Días</span><span style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ c.dias }}</span></div>
+            <div><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.05em;display:block">Frecuencia</span><span style="font-weight:600">{{ c.freq }}</span></div>
+            <div><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.05em;display:block">Zona</span><span style="font-weight:600;color:{{ c.zonaColor }}">{{ c.zona }}</span></div>
+          </div>
+          <sc-if value="{{ c.porConfirmar }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ c.confirm }}" style="margin-top:11px;min-height:42px;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--warning-tint);border:1px solid var(--warning);color:var(--warning);border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Confirmar alta de cliente</div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ ZONAS ============ -->
+  <sc-if value="{{ showZonas }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Zonas" style="padding:12px 14px 24px">
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:10px">Crear zona</div>
+        <input value="{{ zonaNombre }}" onChange="{{ onZonaNombre }}" placeholder="Nombre de la zona…" style="width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:11px;padding:11px 12px;font-family:Inter,sans-serif;font-size:13px;color:var(--text);background:var(--surface2);outline:none;margin-bottom:10px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:7px">Color</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <sc-for list="{{ zonaColores }}" as="zc" hint-placeholder-count="6">
+            <div onClick="{{ zc.pick }}" style="width:32px;height:32px;border-radius:9px;background:{{ zc.color }};cursor:pointer;border:2.5px solid {{ zc.ring }};display:grid;place-items:center"><sc-if value="{{ zc.sel }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></div>
+          </sc-for>
+        </div>
+        <div onClick="{{ crearZona }}" style="min-height:44px;display:grid;place-items:center;background:{{ crearBg }};color:{{ crearFg }};border-radius:11px;font-weight:600;font-size:13.5px;cursor:pointer">Crear zona</div>
+      </div>
+
+      <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin:0 2px 8px">Zonas activas</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <sc-for list="{{ zonasList }}" as="z" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:99px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)"><span style="width:10px;height:10px;border-radius:99px;background:{{ z.color }}"></span><span style="font-size:12.5px;font-weight:600">{{ z.name }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--faint)">{{ z.count }}</span></div>
+        </sc-for>
+      </div>
+
+      <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin:0 2px 8px">Asignación de clientes</div>
+      <sc-for list="{{ asignCli }}" as="a" hint-placeholder-count="4">
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:8px;box-shadow:var(--shadow)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">{{ a.name }}</div>
+          <div style="font-size:10.5px;color:var(--faint);font-family:'IBM Plex Mono',monospace;margin-bottom:10px">{{ a.code }} · {{ a.loc }}</div>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line2);border-radius:10px;padding:9px 11px;font-size:12px"><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.04em">Zona</span><span style="display:flex;align-items:center;gap:5px;font-weight:600"><span style="width:8px;height:8px;border-radius:99px;background:{{ a.zonaColor }}"></span>{{ a.zona }}</span></div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line2);border-radius:10px;padding:9px 11px;font-size:12px"><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.04em">Vendedor</span><span style="font-weight:600">{{ a.vend }}</span></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ CONSULTAS / HEATMAP ============ -->
+  <sc-if value="{{ showConsultas }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Consultas" style="padding:12px 14px 24px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;box-shadow:var(--shadow)">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)">Mes</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;color:{{ mesColor }}">{{ mesPct }}%</span></div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:19px;font-weight:600;margin-top:3px">3.847 <span style="color:var(--faint);font-size:12px">/ 5.000</span></div>
+          <div style="margin-top:9px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden"><div style="height:100%;width:{{ mesPct }}%;background:{{ mesColor }};border-radius:99px"></div></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;box-shadow:var(--shadow)">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)">Semana</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;color:{{ semColor }}">{{ semPct }}%</span></div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:19px;font-weight:600;margin-top:3px">1.104 <span style="color:var(--faint);font-size:12px">/ 1.250</span></div>
+          <div style="margin-top:9px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden"><div style="height:100%;width:{{ semPct }}%;background:{{ semColor }};border-radius:99px"></div></div>
+        </div>
+      </div>
+      <sc-if value="{{ semAlerta }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;background:var(--warning-tint);border:1px solid var(--warning);border-radius:11px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--warning);font-weight:500"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4M12 17h.01"></path></svg>Cerca del límite semanal de consultas de rutas.</div>
+      </sc-if>
+
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow)">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:12px">Consultas de rutas por día</div>
+        <div style="display:flex;gap:8px">
+          <div style="display:flex;flex-direction:column;justify-content:space-between;padding:2px 0;font-family:'IBM Plex Mono',monospace;font-size:8.5px;color:var(--faint)">
+            <span>Lu</span><span>Mi</span><span>Vi</span><span>Do</span>
+          </div>
+          <div style="flex:1;overflow-x:auto"><div style="display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);gap:3px;min-width:max-content">
+            <sc-for list="{{ heatCells }}" as="h" hint-placeholder-count="140">
+              <div title="{{ h.title }}" style="width:12px;height:12px;border-radius:3px;background:{{ h.color }}"></div>
+            </sc-for>
+          </div></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:12px;font-size:10px;color:var(--faint)">
+          <span>menos</span>
+          <span style="width:12px;height:12px;border-radius:3px;background:var(--hm0)"></span>
+          <span style="width:12px;height:12px;border-radius:3px;background:var(--hm1)"></span>
+          <span style="width:12px;height:12px;border-radius:3px;background:var(--hm2)"></span>
+          <span style="width:12px;height:12px;border-radius:3px;background:var(--hm3)"></span>
+          <span style="width:12px;height:12px;border-radius:3px;background:var(--hm4)"></span>
+          <span>más</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ USUARIOS ============ -->
+  <sc-if value="{{ showUsuarios }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Usuarios" style="padding:12px 14px 24px">
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <sc-for list="{{ usrFilters }}" as="uf" hint-placeholder-count="3">
+          <div onClick="{{ uf.pick }}" style="flex:1;min-height:36px;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid {{ uf.border }};background:{{ uf.bg }};color:{{ uf.fg }}">{{ uf.label }} <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:.7">{{ uf.count }}</span></div>
+        </sc-for>
+      </div>
+      <sc-for list="{{ usrCards }}" as="u" hint-placeholder-count="5">
+        <div style="background:var(--surface);border:1px solid {{ u.border }};border-radius:14px;padding:13px;margin-bottom:8px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:11px">
+            <div style="width:40px;height:40px;flex:none;border-radius:12px;background:{{ u.avBg }};color:{{ u.avFg }};display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px">{{ u.initials }}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">{{ u.name }}</div><div style="font-size:11px;color:var(--faint);font-family:'IBM Plex Mono',monospace">{{ u.email }}</div></div>
+            <div style="flex:none;display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;background:{{ u.pillBg }};font-size:10.5px;font-weight:600;color:{{ u.pillColor }}">{{ u.estado }}</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:11px">
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line2);border-radius:10px;padding:8px 11px;font-size:12px"><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.04em">Rol</span><span style="font-weight:600">{{ u.rol }}</span></div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line2);border-radius:10px;padding:8px 11px;font-size:12px"><span style="color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.04em">Empresa</span><span style="font-weight:600">{{ u.empresa }}</span></div>
+          </div>
+          <sc-if value="{{ u.pendiente }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;margin-top:9px">
+              <div onClick="{{ u.aprobar }}" style="flex:1;min-height:42px;display:grid;place-items:center;background:var(--success);color:#04211F;border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer">Aprobar</div>
+              <div style="flex:none;min-height:42px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);color:var(--muted);border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer">Rechazar</div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ DASHBOARD (compacto) ============ -->
+  <sc-if value="{{ showDash }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Dashboard" style="padding:12px 14px 24px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;box-shadow:var(--shadow)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px"><span style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.label }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:{{ k.deltaColor }}">{{ k.delta }}</span></div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;margin-top:3px">{{ k.value }}</div>
+            <svg viewBox="0 0 120 26" style="width:100%;height:26px;margin-top:6px"><polyline points="{{ k.pts }}" fill="none" stroke="{{ k.lineColor }}" stroke-width="1.6" stroke-linejoin="round"></polyline></svg>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow)">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:10px">Rutas activas</div>
+        <sc-for list="{{ rutas }}" as="r" hint-placeholder-count="3">
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--deep);font-weight:600">{{ r.id }}</span><span style="font-size:11px;color:var(--muted)">{{ r.who }}</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden;display:block"><span style="display:block;height:100%;width:{{ r.pct }}%;background:{{ r.barColor }};border-radius:99px"></span></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--faint)">{{ r.visitas }}</span></div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ ÓRDENES (cards) ============ -->
+  <sc-if value="{{ showOrdenes }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Órdenes" style="padding:12px 14px 24px">
+      <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px">
+        <sc-for list="{{ ordFilters }}" as="f" hint-placeholder-count="4">
+          <div onClick="{{ f.pick }}" style="flex:none;padding:7px 12px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }}">{{ f.label }}</div>
+        </sc-for>
+      </div>
+      <sc-for list="{{ ordCards }}" as="o" hint-placeholder-count="6">
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:8px;box-shadow:var(--shadow)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div style="font-size:13.5px;font-weight:600">{{ o.client }}</div><div style="font-size:10.5px;color:var(--faint);font-family:'IBM Plex Mono',monospace;margin-top:2px">{{ o.id }} · {{ o.loc }}</div></div><div style="flex:none;display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;background:{{ o.pillBg }};font-size:10.5px;font-weight:600;color:{{ o.pillColor }}"><span style="width:5px;height:5px;border-radius:99px;background:{{ o.pillColor }}"></span>{{ o.estado }}</div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums"><span style="font-size:11px;color:var(--muted)">{{ o.arts }} art · {{ o.kg }} kg · {{ o.vendedor }}</span><span style="font-size:14px;font-weight:600;color:var(--deep)">{{ o.monto }}</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ FALTANTE (compacto) ============ -->
+  <sc-if value="{{ showFaltante }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="AdminMobile · Faltante" style="padding:12px 14px 24px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)"><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)">Faltantes</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--danger);margin-top:3px">26</div></div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)"><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)">Cumpl.</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--success);margin-top:3px">90,8%</div></div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)"><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)">Motivo</div><div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;margin-top:5px">Sin stock</div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow)">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">Detalle por producto</div>
+        <sc-for list="{{ faltRows }}" as="f" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+            <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</div><div style="font-size:10.5px;color:var(--faint);font-family:'IBM Plex Mono',monospace;margin-top:1px">gen {{ f.gen }} · ent {{ f.ent }}</div></div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;color:{{ f.faltColor }}">{{ f.faltTxt }}</div>
+            <div style="flex:none;padding:3px 9px;border-radius:99px;background:{{ f.motBg }};font-size:10px;font-weight:600;color:{{ f.motFg }}">{{ f.motivo }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+
+  <!-- FICHA CLIENTE (bottom-sheet) -->
+  <sc-if value="{{ ficha }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end">
+      <div onClick="{{ closeFicha }}" style="position:absolute;inset:0;background:var(--scrim)"></div>
+      <div style="position:relative;background:var(--surface);border:1px solid var(--line2);border-bottom:none;border-radius:20px 20px 0 0;padding:10px 16px 24px">
+        <div style="width:36px;height:4px;border-radius:99px;background:var(--line2);margin:2px auto 14px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px">{{ fichaName }}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--deep);font-weight:600">{{ fichaCode }}</div></div>
+        <div style="font-size:11.5px;color:var(--faint);font-family:'IBM Plex Mono',monospace;margin-bottom:14px">{{ fichaLoc }} · {{ fichaSt }}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div style="padding:10px;background:var(--surface2);border:1px solid var(--line);border-radius:11px"><div style="font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Pedido</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;margin-top:2px;color:var(--deep)">{{ fichaMonto }}</div></div>
+          <div style="padding:10px;background:var(--surface2);border:1px solid var(--line);border-radius:11px"><div style="font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Kilos</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;margin-top:2px">{{ fichaKg }}</div></div>
+          <div style="padding:10px;background:var(--surface2);border:1px solid var(--line);border-radius:11px"><div style="font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em">Artículos</div><div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;margin-top:2px">{{ fichaArts }}</div></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- TOAST -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:12px;left:14px;right:14px;z-index:30;background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 14px;display:flex;align-items:center;gap:9px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg><span style="font-size:12.5px;font-weight:500">{{ toast }}</span></div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 393, &quot;height&quot;: 852}}">
+class Component extends DCLogic {
+  state = {
+    tab: 'mapa', toast: null, ficha: null,
+    cliSearch: '', reproVacio: false, playing: false, scrub: 34, speed: '1×',
+    zonaNombre: '', zonaColor: '#0EA5E9', ordFilter: 'Todas', usrFilter: 'Todos',
+    confirmados: {},
+    events: [
+      { ts: '11:58:12', tag: '[GPS]', msg: 'CAM-12 · Av. San Martín y Ayacucho' },
+      { ts: '11:56:40', tag: '[PED]', msg: 'PED-2043 · Despensa Marta · $ 87.300' },
+      { ts: '11:54:03', tag: '[RUTA]', msg: 'RUTA-N-042 · parada 17/24' },
+      { ts: '11:51:22', tag: '[ALERTA]', msg: 'Faltante · Harina 000 ×10 · 2 u.' },
+      { ts: '11:49:57', tag: '[GPS]', msg: 'VEND-07 check-in geofence (23 m)' }
+    ]
+  };
+
+  pool = [
+    { tag: '[GPS]', msg: 'CAM-12 · RP 8 km 14' },
+    { tag: '[PED]', msg: 'PED-2044 · Maxikiosco Central · $ 64.150' },
+    { tag: '[RUTA]', msg: 'ETA próxima parada 6 min' },
+    { tag: '[ALERTA]', msg: 'Capacidad dinero 82% · CAM-12' }
+  ];
+
+  mapPins = [
+    { n: '01', name: 'Almacén Don Carlos', code: 'CLI-0417', loc: 'Las Lajitas centro', x: 22, y: 14, st: 'visitado', monto: 186400, kg: 84.5, arts: 8 },
+    { n: '02', name: 'Autoservicio La Esquina', code: 'CLI-0233', loc: 'B° San José', x: 48, y: 30, st: 'visitado', monto: 341850, kg: 121.3, arts: 12 },
+    { n: '03', name: 'Kiosco El Trébol', code: 'CLI-0521', loc: 'Las Lajitas centro', x: 78, y: 18, st: 'sin_pedido', monto: 0, kg: 0, arts: 0 },
+    { n: '04', name: 'Almacén El Progreso', code: 'CLI-0088', loc: 'Ruta 5', x: 30, y: 62, st: 'visitado', monto: 214600, kg: 96.2, arts: 9 },
+    { n: '05', name: 'Despensa Marta', code: 'CLI-0155', loc: 'B° El Milagro', x: 72, y: 60, st: 'pendiente', monto: 0, kg: 0, arts: 0 },
+    { n: '06', name: 'Súper Mi Barrio', code: 'CLI-0464', loc: 'Ruta 5', x: 84, y: 84, st: 'pendiente', monto: 0, kg: 0, arts: 0 }
+  ];
+
+  moviles = [
+    { name: 'Martín Ríos', role: 'Vendedor', veh: 'moto', color: '#0EA5E9', st: 'En visita', ago: 4 },
+    { name: 'Luis Paz', role: 'Repartidor', veh: 'CAM-12', color: '#F59E0B', st: 'En camino', ago: 12 },
+    { name: 'Jorge Vera', role: 'Repartidor', veh: 'CAM-07', color: '#10B981', st: 'En depósito', ago: 48 }
+  ];
+
+  clientes = [
+    ['CLI-0417', 'Almacén Don Carlos', 'Las Lajitas centro', 'LU · JU', 'Semanal', 'Centro', 'activo'],
+    ['CLI-0233', 'Autoservicio La Esquina', 'B° San José', 'MA · VI', 'Semanal', 'Sur', 'activo'],
+    ['CLI-0620', 'Fiambrería La Salteña', 'B° El Milagro', '—', 'A definir', 'Sin zona', 'nuevo'],
+    ['CLI-0088', 'Almacén El Progreso', 'Ruta 5', 'LU · JU', 'Semanal', 'Ruta', 'activo'],
+    ['CLI-0521', 'Kiosco El Trébol', 'Las Lajitas centro', 'MI', 'Quincenal', 'Centro', 'activo'],
+    ['CLI-0705', 'Autoservicio del Norte', 'B° San José', '—', 'A definir', 'Sin zona', 'nuevo']
+  ];
+
+  zonasBase = [
+    { name: 'Centro', color: '#0EA5E9', count: 9 },
+    { name: 'Sur', color: '#0ABAB5', count: 6 },
+    { name: 'Ruta', color: '#F59E0B', count: 5 },
+    { name: 'El Milagro', color: '#8B5CF6', count: 4 }
+  ];
+
+  paleta = ['#0EA5E9', '#0ABAB5', '#F59E0B', '#8B5CF6', '#EF4444', '#10B981'];
+
+  usuarios = [
+    ['Martín Ríos', 'm.rios@launion.com', 'Vendedor', 'LA UNIÓN', 'activo'],
+    ['Luis Paz', 'l.paz@launion.com', 'Repartidor', 'LA UNIÓN', 'activo'],
+    ['Sofía Delgado', 's.delgado@gmail.com', 'Sin asignar', '—', 'pendiente'],
+    ['Jorge Vera', 'j.vera@launion.com', 'Repartidor', 'LA UNIÓN', 'activo'],
+    ['Raúl Ibáñez', 'r.ibanez@gmail.com', 'Sin asignar', '—', 'pendiente']
+  ];
+
+  ordenes = [
+    ['PED-2031', 'Autoservicio La Esquina', 'B° San José', 'M. Ríos', 12, 121.3, 341850, 'Entregado'],
+    ['PED-2029', 'Almacén Don Carlos', 'Las Lajitas', 'M. Ríos', 8, 84.5, 186400, 'En camino'],
+    ['PED-2034', 'Despensa El Ombú', 'Ruta 5', 'L. Paz', 6, 52.0, 98700, 'Pendiente'],
+    ['PED-2038', 'Súper Mi Barrio', 'Ruta 5', 'M. Ríos', 15, 164.2, 412300, 'Pendiente'],
+    ['PED-2027', 'Kiosco Rivadavia', 'B° San José', 'L. Paz', 5, 24.6, 58200, 'Entregado'],
+    ['PED-2022', 'Kiosco El Faro', 'B° El Milagro', 'L. Paz', 3, 12.2, 41300, 'No entregado']
+  ];
+
+  faltantes = [
+    ['Harina 000 1 kg ×10', 48, 41, 'Sin stock'],
+    ['Gaseosa Cola 2.25 L ×6', 62, 58, 'Sin stock'],
+    ['Cerveza Rubia 1 L ×12', 36, 30, 'Sin stock'],
+    ['Aceite Girasol 1.5 L ×12', 30, 27, 'Rechazado'],
+    ['Detergente 750 ml ×12', 24, 22, 'Otro']
+  ];
+
+  componentDidMount() {
+    this._th = () => this.forceUpdate();
+    window.addEventListener('lu-theme', this._th);
+    this._ev = setInterval(() => {
+      const e = this.pool[this._pi = ((this._pi || 0) + 1) % this.pool.length];
+      const d = new Date();
+      const ts = [d.getHours(), d.getMinutes(), d.getSeconds()].map(x => String(x).padStart(2, '0')).join(':');
+      this.setState(s => ({ events: [{ ...e, ts }, ...s.events].slice(0, 10) }));
+    }, 4200);
+  }
+  componentWillUnmount() {
+    clearInterval(this._ev); clearInterval(this._play);
+    window.removeEventListener('lu-theme', this._th);
+  }
+
+  fmt(n) { return '$ ' + n.toLocaleString('es-AR'); }
+  kg(n) { return n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+  showToast(m) { clearTimeout(this._t); this.setState({ toast: m }); this._t = setTimeout(() => this.setState({ toast: null }), 2800); }
+
+  pill(e) {
+    const m = { 'Pendiente': ['var(--warning)', 'var(--warning-tint)'], 'En camino': ['var(--info)', 'var(--info-tint)'], 'Entregado': ['var(--success)', 'var(--success-tint)'], 'No entregado': ['var(--danger)', 'var(--danger-tint)'] }[e] || ['var(--faint)', 'var(--surface2)'];
+    return { pillColor: m[0], pillBg: m[1] };
+  }
+
+  setPlay(v) {
+    clearInterval(this._play);
+    if (v) this._play = setInterval(() => this.setState(s => {
+      const n = s.scrub + (s.speed === '4×' ? 4 : s.speed === '2×' ? 2 : 1);
+      if (n >= 100) { clearInterval(this._play); return { scrub: 100, playing: false }; }
+      return { scrub: n };
+    }), 120);
+    this.setState({ playing: v });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const tabDefs = [['mapa', 'Mapa'], ['repro', 'Reproducción'], ['clientes', 'Clientes'], ['zonas', 'Zonas'], ['consultas', 'Consultas'], ['dash', 'Dashboard'], ['ordenes', 'Órdenes'], ['faltante', 'Faltante'], ['usuarios', 'Usuarios']];
+    const tabs = tabDefs.map(([k, label]) => ({ label, go: () => this.setState({ tab: k }), fg: s.tab === k ? 'var(--deep)' : 'var(--muted)', bg: s.tab === k ? 'var(--primary-tint)' : 'var(--surface2)', border: s.tab === k ? 'var(--primary)' : 'var(--line)' }));
+
+    // Mapa
+    const zColor = { Centro: '#0EA5E9', Sur: '#0ABAB5', Ruta: '#F59E0B', 'El Milagro': '#8B5CF6', 'Sin zona': 'var(--faint)' };
+    const mapPins = this.mapPins.map((p, i) => ({ ...p, bg: p.st === 'visitado' ? 'var(--success)' : p.st === 'sin_pedido' ? 'var(--warning)' : 'var(--surface2)', fg: p.st === 'pendiente' ? 'var(--muted)' : '#fff', ring: s.ficha === i ? 'var(--primary)' : 'var(--surface)', pick: () => this.setState({ ficha: i }) }));
+    const moviles = this.moviles.map(m => ({ ...m, tint: m.color + '33', stColor: m.st === 'En camino' ? 'var(--info)' : m.st === 'En visita' ? 'var(--primary)' : 'var(--muted)' }));
+    const events = s.events.map(e => ({ ...e, tagColor: e.tag === '[ALERTA]' ? 'var(--warning)' : e.tag === '[PED]' ? 'var(--success)' : e.tag === '[RUTA]' ? 'var(--primary)' : 'var(--info)' }));
+    const fp = s.ficha != null ? this.mapPins[s.ficha] : null;
+
+    // Repro
+    const path = [[8, 88], [8, 56.5], [30, 56.5], [30, 25.5], [65, 25.5], [65, 14], [90, 14]];
+    const segTotal = path.length - 1;
+    const t = s.scrub / 100 * segTotal;
+    const si = Math.min(segTotal - 1, Math.floor(t));
+    const fr = t - si;
+    const scrubX = path[si][0] + (path[si + 1][0] - path[si][0]) * fr;
+    const scrubY = path[si][1] + (path[si + 1][1] - path[si][1]) * fr;
+    const totalMin = 300;
+    const mins = Math.round(s.scrub / 100 * totalMin);
+    const hh = 8 + Math.floor(mins / 60), mm = mins % 60;
+    const speeds = ['1×', '2×', '4×'].map(label => ({ label, pick: () => this.setState({ speed: label }), border: s.speed === label ? 'var(--primary)' : 'var(--line2)', bg: s.speed === label ? 'var(--primary-tint)' : 'var(--surface)', fg: s.speed === label ? 'var(--deep)' : 'var(--muted)' }));
+
+    // Clientes
+    const q = s.cliSearch.trim().toLowerCase();
+    const cliCards = this.clientes.filter(c => !q || c[1].toLowerCase().includes(q) || c[0].toLowerCase().includes(q)).map(c => {
+      const nuevo = c[6] === 'nuevo' && !s.confirmados[c[0]];
+      return {
+        code: c[0], name: c[1], loc: c[2], dias: c[3], freq: c[4], zona: c[5],
+        zonaColor: zColor[c[5]] || 'var(--faint)',
+        estado: nuevo ? 'A CONFIRMAR' : 'Activo',
+        pillColor: nuevo ? 'var(--warning)' : 'var(--success)',
+        pillBg: nuevo ? 'var(--warning-tint)' : 'var(--success-tint)',
+        border: nuevo ? 'var(--warning)' : 'var(--line)',
+        porConfirmar: nuevo,
+        confirm: () => { this.setState(v => ({ confirmados: { ...v.confirmados, [c[0]]: true } })); this.showToast(c[1] + ' confirmado'); }
+      };
+    });
+
+    // Zonas
+    const zonaColores = this.paleta.map(color => ({ color, sel: s.zonaColor === color, ring: s.zonaColor === color ? 'var(--text)' : 'transparent', pick: () => this.setState({ zonaColor: color }) }));
+    const asignCli = this.clientes.slice(0, 4).map(c => ({ name: c[1], code: c[0], loc: c[2], zona: c[5], zonaColor: zColor[c[5]] || 'var(--faint)', vend: c[5] === 'Sin zona' ? 'Asignar' : 'M. Ríos' }));
+
+    // Consultas / heatmap
+    const rng = (seed => () => (seed = (seed * 9301 + 49297) % 233280) / 233280)(7);
+    const heatCells = [];
+    for (let w = 0; w < 20; w++) for (let d = 0; d < 7; d++) {
+      const r = rng(); const lvl = r < .28 ? 0 : r < .5 ? 1 : r < .72 ? 2 : r < .9 ? 3 : 4;
+      heatCells.push({ color: 'var(--hm' + lvl + ')', title: (lvl * 12 + Math.round(r * 11)) + ' consultas' });
+    }
+    const mesPct = Math.round(3847 / 5000 * 100);
+    const semPct = Math.round(1104 / 1250 * 100);
+
+    // Usuarios
+    const usrFilters = ['Todos', 'Activos', 'Pendientes'].map(label => ({ label, count: label === 'Todos' ? this.usuarios.length : label === 'Activos' ? this.usuarios.filter(u => u[4] === 'activo').length : this.usuarios.filter(u => u[4] === 'pendiente').length, pick: () => this.setState({ usrFilter: label }), border: s.usrFilter === label ? 'var(--primary)' : 'var(--line)', bg: s.usrFilter === label ? 'var(--primary-tint)' : 'var(--surface)', fg: s.usrFilter === label ? 'var(--deep)' : 'var(--muted)' }));
+    const usrCards = this.usuarios.filter(u => s.usrFilter === 'Todos' || (s.usrFilter === 'Activos' && u[4] === 'activo') || (s.usrFilter === 'Pendientes' && u[4] === 'pendiente')).map(u => {
+      const pend = u[4] === 'pendiente';
+      return {
+        name: u[0], email: u[1], rol: u[2], empresa: u[3],
+        initials: u[0].split(' ').map(x => x[0]).join('').slice(0, 2),
+        avBg: pend ? 'var(--warning-tint)' : 'var(--tlight)', avFg: pend ? 'var(--warning)' : 'var(--deep)',
+        estado: pend ? 'Pendiente' : 'Activo',
+        pillColor: pend ? 'var(--warning)' : 'var(--success)', pillBg: pend ? 'var(--warning-tint)' : 'var(--success-tint)',
+        border: pend ? 'var(--warning)' : 'var(--line)', pendiente: pend,
+        aprobar: () => this.showToast(u[0] + ' aprobado · rol asignado')
+      };
+    });
+
+    // Dashboard
+    const kpis = [
+      { label: 'Rutas', value: '6/8', delta: '▲ +2', deltaColor: 'var(--success)', lineColor: 'var(--primary)', pts: '0,20 20,18 40,19 60,14 80,15 100,9 120,5' },
+      { label: 'Visitados', value: '142', delta: '▲ +8%', deltaColor: 'var(--success)', lineColor: 'var(--primary)', pts: '0,22 20,20 40,16 60,17 80,12 100,10 120,6' },
+      { label: 'Recaudación', value: '$ 4,86M', delta: '▲ +12%', deltaColor: 'var(--success)', lineColor: 'var(--primary)', pts: '0,23 20,21 40,22 60,16 80,17 100,9 120,5' },
+      { label: 'Entregadas', value: '96/118', delta: '▼ −2%', deltaColor: 'var(--danger)', lineColor: 'var(--info)', pts: '0,9 20,11 40,8 60,13 80,10 100,15 120,13' }
+    ];
+    const rutas = [
+      { id: 'RUTA-N-042', who: 'M. Ríos', pct: 71, visitas: '17/24', barColor: 'var(--info)' },
+      { id: 'RUTA-S-018', who: 'L. Paz', pct: 88, visitas: '21/24', barColor: 'var(--info)' },
+      { id: 'RUTA-O-031', who: 'J. Vera', pct: 100, visitas: '22/22', barColor: 'var(--success)' }
+    ];
+
+    // Órdenes
+    const ordFilters = ['Todas', 'Pendiente', 'En camino', 'Entregado', 'No entregado'].map(label => ({ label, pick: () => this.setState({ ordFilter: label }), border: s.ordFilter === label ? 'var(--primary)' : 'var(--line)', bg: s.ordFilter === label ? 'var(--primary-tint)' : 'var(--surface)', fg: s.ordFilter === label ? 'var(--deep)' : 'var(--muted)' }));
+    const ordCards = this.ordenes.filter(o => s.ordFilter === 'Todas' || o[7] === s.ordFilter).map(o => ({ id: o[0], client: o[1], loc: o[2], vendedor: o[3], arts: o[4], kg: this.kg(o[5]), monto: this.fmt(o[6]), estado: o[7], ...this.pill(o[7]) }));
+
+    // Faltante
+    const faltRows = this.faltantes.map(f => { const d = f[1] - f[2]; return { name: f[0], gen: f[1], ent: f[2], faltTxt: d > 0 ? '−' + d : '0', faltColor: d > 0 ? 'var(--danger)' : 'var(--faint)', motivo: f[3], motBg: f[3] === 'Sin stock' ? 'var(--danger-tint)' : f[3] === 'Rechazado' ? 'var(--warning-tint)' : 'var(--surface2)', motFg: f[3] === 'Sin stock' ? 'var(--danger)' : f[3] === 'Rechazado' ? 'var(--warning)' : 'var(--faint)' }; });
+
+    return {
+      isDark, isLight: !isDark, toggleTheme: () => window.__luSetTheme(isDark ? 'light' : 'dark'),
+      tabs,
+      showMapa: s.tab === 'mapa', showRepro: s.tab === 'repro', showClientes: s.tab === 'clientes',
+      showZonas: s.tab === 'zonas', showConsultas: s.tab === 'consultas', showDash: s.tab === 'dash',
+      showOrdenes: s.tab === 'ordenes', showFaltante: s.tab === 'faltante', showUsuarios: s.tab === 'usuarios',
+      mapPins, moviles, events,
+      ficha: fp != null, closeFicha: () => this.setState({ ficha: null }),
+      fichaName: fp ? fp.name : '', fichaCode: fp ? fp.code : '', fichaLoc: fp ? fp.loc : '',
+      fichaSt: fp ? (fp.st === 'visitado' ? 'Visitado' : fp.st === 'sin_pedido' ? 'Sin pedido' : 'Pendiente') : '',
+      fichaMonto: fp ? this.fmt(fp.monto) : '', fichaKg: fp ? this.kg(fp.kg) : '', fichaArts: fp ? fp.arts : '',
+      reproVacio: s.reproVacio, reproData: !s.reproVacio,
+      playing: s.playing, paused: !s.playing, togglePlay: () => this.setPlay(!s.playing),
+      scrub: s.scrub, onScrub: e => { clearInterval(this._play); this.setState({ scrub: +e.target.value, playing: false }); },
+      scrubX, scrubY, scrubTime: String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0'), speeds,
+      exportPng: () => this.showToast('Informe PNG generado · LA UNIÓN'),
+      cliSearch: s.cliSearch, onCliSearch: e => this.setState({ cliSearch: e.target.value }), cliCards,
+      zonaNombre: s.zonaNombre, onZonaNombre: e => this.setState({ zonaNombre: e.target.value }),
+      zonaColores, zonasList: this.zonasBase, asignCli,
+      crearBg: s.zonaNombre.trim() ? 'var(--primary)' : 'var(--surface2)', crearFg: s.zonaNombre.trim() ? 'var(--on-primary)' : 'var(--faint)',
+      crearZona: () => { if (!s.zonaNombre.trim()) return; this.showToast('Zona "' + s.zonaNombre.trim() + '" creada'); this.setState({ zonaNombre: '' }); },
+      heatCells, mesPct, semPct,
+      mesColor: mesPct >= 90 ? 'var(--danger)' : mesPct >= 75 ? 'var(--warning)' : 'var(--primary)',
+      semColor: semPct >= 90 ? 'var(--danger)' : semPct >= 75 ? 'var(--warning)' : 'var(--primary)',
+      semAlerta: semPct >= 80,
+      usrFilters, usrCards,
+      kpis, rutas, ordFilters, ordCards, faltRows,
+      toast: s.toast
+    };
+  }
+}
+</script>
+</body>
+</html>

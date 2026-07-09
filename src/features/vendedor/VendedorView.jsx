@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import { Home, Pin, Box, User, Search, Check, Route } from '../../components/icons'
 import LeafletMap from '../../components/LeafletMap'
+import { glassSurface } from '../../lib/glass'
 import { useTheme } from '../../context/ThemeContext'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
@@ -99,7 +100,7 @@ export default function VendedorView() {
   const navItem = (t) => (tab === t ? 'var(--primary)' : 'var(--faint)')
 
   return (
-    <div className="lu-mob" style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:12px;box-sizing:border-box')}>
+    <div className="lu-mob" style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box')}>
 
       {/* ===== INICIO ===== */}
       {tab === 'inicio' && (
@@ -447,8 +448,8 @@ export default function VendedorView() {
 
       {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={livePos} />}
 
-      {/* ===== BOTTOM NAV ===== */}
-      <div style={sx('flex:none;position:absolute;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding:6px 8px 14px;z-index:10')}>
+      {/* ===== BOTTOM NAV (glass + safe-area) ===== */}
+      <div style={{ ...sx('flex:none;position:absolute;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:10'), ...glassSurface(theme === 'dark'), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
         {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box], ['perfil', 'Perfil', User]].map(([t, label, Icon]) => (
           <div key={t} onClick={() => setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
             <Icon />
