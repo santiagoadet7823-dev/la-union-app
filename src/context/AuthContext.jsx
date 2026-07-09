@@ -12,6 +12,10 @@ import { supabase, hasSupabase } from '../services/supabase'
  */
 const AuthContext = createContext(null)
 
+// Client ID *Web* del proveedor Google de Supabase (público). Se pasa a
+// GoogleAuth.initialize para que el idToken nativo tenga ese `aud` y Supabase lo valide.
+const GOOGLE_WEB_CLIENT_ID = '253436593980-9em17irlog4t2n78c0g85tuksmbo8nqo.apps.googleusercontent.com'
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [perfil, setPerfil] = useState(null)
@@ -96,6 +100,14 @@ export function AuthProvider({ children }) {
     // sesión de Supabase con signInWithIdToken.
     if (Capacitor.isNativePlatform()) {
       try {
+        // El plugin NO auto-inicializa el cliente en Android (load() vacío): hay que
+        // llamar initialize() antes de signIn(), o signIn() crashea (cliente null).
+        setAuthStatus('0/3 · Inicializando Google…')
+        await GoogleAuth.initialize({
+          clientId: GOOGLE_WEB_CLIENT_ID,
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: false,
+        })
         setAuthStatus('1/3 · Abriendo Google…')
         const res = await GoogleAuth.signIn()
         const idToken = res?.authentication?.idToken || res?.idToken || null

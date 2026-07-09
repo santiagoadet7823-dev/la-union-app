@@ -12,8 +12,11 @@ const config: CapacitorConfig = {
     // Se toma de la variable de entorno GOOGLE_WEB_CLIENT_ID al hacer `cap sync`.
     GoogleAuth: {
       scopes: ['profile', 'email'],
-      // Client ID *Web* del proveedor Google de Supabase (público). El idToken que
-      // devuelve el login nativo tiene este `aud`, y Supabase lo valida.
+      // Client ID *Web* del proveedor Google de Supabase (público). El plugin en
+      // Android lee la clave `clientId` (usa requestIdToken con ese id) → el idToken
+      // resultante tiene ese `aud` y Supabase lo valida. `serverClientId` se deja por
+      // compatibilidad iOS/offline.
+      clientId: '253436593980-9em17irlog4t2n78c0g85tuksmbo8nqo.apps.googleusercontent.com',
       serverClientId: '253436593980-9em17irlog4t2n78c0g85tuksmbo8nqo.apps.googleusercontent.com',
       forceCodeForRefreshToken: false,
     },
