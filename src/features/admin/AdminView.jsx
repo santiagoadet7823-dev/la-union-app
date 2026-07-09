@@ -117,6 +117,23 @@ export default function AdminView() {
     })
   }, [])
 
+  // Al abrir el panel, sembrar el mapa con la ÚLTIMA posición conocida de cada
+  // móvil (últimos 15 min), así aparecen de inmediato sin esperar un fix nuevo.
+  useEffect(() => {
+    const desde = new Date(Date.now() - 15 * 60000).toISOString()
+    supabase.from('posiciones').select('id_usuario, rol, lat, lng, ts').gte('ts', desde).order('ts', { ascending: false })
+      .then(({ data }) => {
+        const seen = {}
+        const seed = {}
+        ;(data || []).forEach((p) => {
+          if (!p.id_usuario || seen[p.id_usuario]) return
+          seen[p.id_usuario] = true
+          seed[p.id_usuario] = { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() }
+        })
+        setMovers((m) => ({ ...seed, ...m })) // no pisar los que ya llegaron en vivo
+      })
+  }, [idEmpresa])
+
   // Telemetría en vivo (Supabase Realtime): posición de los móviles en tiempo real.
   useEffect(() => {
     const offPos = suscribirPosiciones((p) => {

@@ -102,7 +102,7 @@ export default function VendedorView() {
   const navItem = (t) => (tab === t ? 'var(--primary)' : 'var(--faint)')
 
   return (
-    <div className="lu-mob" style={{ ...sx('min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100dvh' : '100%' }}>
+    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600 }}>
 
       {/* ===== INICIO ===== */}
       {tab === 'inicio' && (
