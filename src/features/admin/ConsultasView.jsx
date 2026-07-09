@@ -43,8 +43,8 @@ export default function ConsultasView() {
   const [semana, setSemana] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  const teal = theme === 'dark' ? '45,212,206' : '10,186,181'
-  const bgNivel = (n) => (n === 0 ? 'var(--surface2)' : `rgba(${teal},${[0, 0.3, 0.52, 0.76, 1][n]})`)
+  // Escala de intensidad del heatmap (tokens del diseñador, adaptan light/dark).
+  const bgNivel = (n) => `var(--hm${Math.max(0, Math.min(4, n))})`
 
   const cargar = useCallback(async () => {
     if (!idEmpresa) return

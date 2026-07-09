@@ -48,6 +48,11 @@ html[data-theme='light'] {
   --scrim: rgba(11, 43, 42, 0.35);
   --console-bg: #0b2b2a;
   --console-fg: #a7e8e3;
+  --hm0: #eaf4f3;
+  --hm1: #b6e7e3;
+  --hm2: #7fd9d3;
+  --hm3: #38c6bf;
+  --hm4: #0abab5;
   color-scheme: light;
 }
 
@@ -85,6 +90,11 @@ html[data-theme='dark'] {
   --scrim: rgba(0, 0, 0, 0.55);
   --console-bg: #081414;
   --console-fg: #5fd9d3;
+  --hm0: #12302e;
+  --hm1: #134e4a;
+  --hm2: #0e7c77;
+  --hm3: #1ba89f;
+  --hm4: #2dd4ce;
   color-scheme: dark;
 }
 

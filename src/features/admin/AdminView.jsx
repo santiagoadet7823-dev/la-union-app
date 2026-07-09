@@ -485,6 +485,35 @@ export default function AdminView() {
               <div style={sx('padding:40px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando cartera…</div>
             ) : cartera.length === 0 ? (
               <EmptyState titulo="Todavía no cargaste clientes" texto="Agregá tu primer comercio con “Nuevo cliente”. También los pueden cargar los vendedores y repartidores desde su celular." />
+            ) : isMobile ? (
+              /* Mobile: tarjetas apiladas (diseño AdminMobile), sin scroll horizontal. */
+              <div style={sx('display:flex;flex-direction:column;gap:8px')}>
+                {carteraSorted.map((c) => {
+                  const z = zonas.find((x) => x.id === c.idZona)
+                  return (
+                    <div key={c.id} onClick={() => setSelCli(c.id)} style={{ ...sx('background:var(--surface2);border-radius:14px;padding:13px;cursor:pointer'), border: `1px solid ${c.id === selCli ? 'var(--primary)' : 'var(--line)'}` }}>
+                      <div style={sx('display:flex;justify-content:space-between;align-items:flex-start;gap:8px')}>
+                        <div style={sx('min-width:0')}>
+                          <div style={sx('font-size:14px;font-weight:600')}>{c.name}</div>
+                          <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>{c.codigo || '—'} · {c.loc || '—'}</div>
+                        </div>
+                        <span onClick={(e) => e.stopPropagation()} style={sx('flex:none')}>
+                          {c.activo ? (
+                            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), background: 'var(--success-tint)', color: 'var(--success)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: 'var(--success)' }} />Confirmado</span>
+                          ) : (
+                            <button onClick={async () => { const { ok, error } = await updateCliente(c.id, { activo: true }); showToast(ok ? `${c.name} confirmado` : 'Error: ' + (error?.message || '')) }} style={sx('display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--warning);border-radius:99px;background:var(--warning-tint);color:var(--warning);font-size:10.5px;font-weight:700;cursor:pointer')}>Confirmar</button>
+                          )}
+                        </span>
+                      </div>
+                      <div style={sx('display:flex;gap:16px;margin-top:10px;font-size:11px')}>
+                        <div><span style={miniLbl}>Días</span><span style={sx('font-family:var(--font-mono);font-weight:600')}>{c.dias || '—'}</span></div>
+                        <div><span style={miniLbl}>Frecuencia</span><span style={sx('font-weight:600')}>{c.frecuencia || '—'}</span></div>
+                        <div><span style={miniLbl}>Zona</span><span style={{ ...sx('font-weight:600'), color: z?.color || 'var(--muted)' }}>{z?.nombre || '—'}</span></div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
               <>
                 <div style={{ ...cliGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
@@ -704,6 +733,7 @@ export default function AdminView() {
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
+const miniLbl = { ...sx('color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.05em;display:block') }
 const fieldLabel = { ...sx('font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px') }
 const rutasGrid = { display: 'grid', gridTemplateColumns: '110px 1.4fr 1fr 90px 110px 120px 110px', gap: 10 }
 const auditGrid = { display: 'grid', gridTemplateColumns: '1fr 44px 84px', gap: 8 }
