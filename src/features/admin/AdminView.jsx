@@ -252,9 +252,10 @@ export default function AdminView() {
 
   return (
     <div style={sx('flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg-app)')}>
-      {/* Barra secundaria de pestañas del Admin */}
-      <div style={sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);padding:0 20px;display:flex;align-items:center;gap:14px;height:48px;position:sticky;top:52px;z-index:30')}>
-        <div className="lu-tabs" style={sx('display:flex;gap:2px;flex:1;overflow-x:auto')}>
+      {/* Barra secundaria de pestañas del Admin. En mobile las pestañas se acomodan
+          en filas (sin scroll horizontal) y se oculta el reloj. */}
+      <div style={{ ...sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;position:sticky;top:52px;z-index:30'), padding: isMobile ? '8px 12px' : '0 20px', gap: isMobile ? 8 : 14, height: isMobile ? 'auto' : 48 }}>
+        <div className={isMobile ? undefined : 'lu-tabs'} style={{ ...sx('display:flex;gap:6px;flex:1'), flexWrap: isMobile ? 'wrap' : 'nowrap', overflowX: isMobile ? 'visible' : 'auto' }}>
           {tabs.map(([k, label]) => {
             const active = tab === k
             return (
@@ -262,12 +263,14 @@ export default function AdminView() {
             )
           })}
         </div>
-        <div style={sx('flex:none;display:flex;align-items:center;gap:10px')}>
-          <div style={sx('display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted)')}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>Hoy
+        {!isMobile && (
+          <div style={sx('flex:none;display:flex;align-items:center;gap:10px')}>
+            <div style={sx('display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted)')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>Hoy
+            </div>
+            <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);display:flex;align-items:center;gap:5px')}><span style={sx('width:6px;height:6px;border-radius:99px;background:var(--success);animation:lu-blink 2s infinite')} />act. 12:04:32</div>
           </div>
-          <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);display:flex;align-items:center;gap:5px')}><span style={sx('width:6px;height:6px;border-radius:99px;background:var(--success);animation:lu-blink 2s infinite')} />act. 12:04:32</div>
-        </div>
+        )}
       </div>
 
       {gpsOffArr.length > 0 && (

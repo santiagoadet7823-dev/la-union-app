@@ -140,7 +140,16 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
-  const signOut = () => supabase.auth.signOut()
+  const signOut = async () => {
+    // En nativo, cerrar también la sesión de Google borra la cuenta cacheada, así
+    // el próximo ingreso vuelve a mostrar el selector para elegir otra cuenta.
+    if (Capacitor.isNativePlatform()) {
+      try { await GoogleAuth.signOut() } catch (_) {}
+    }
+    setAuthStatus(null)
+    setAuthError(null)
+    await supabase.auth.signOut()
+  }
 
   const value = {
     session,
