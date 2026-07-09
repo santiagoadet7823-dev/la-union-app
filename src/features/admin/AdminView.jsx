@@ -259,7 +259,7 @@ export default function AdminView() {
           {tabs.map(([k, label]) => {
             const active = tab === k
             return (
-              <button key={k} onClick={() => setTab(k)} style={{ ...sx('flex:none;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font-body)'), color: active ? 'var(--deep)' : 'var(--muted)', background: active ? 'var(--primary-tint)' : 'transparent', border: `1px solid ${active ? 'var(--primary)' : 'transparent'}` }}>{label}</button>
+              <button key={k} onClick={() => setTab(k)} style={{ ...sx('flex:none;border-radius:10px;font-weight:600;cursor:pointer;font-family:var(--font-body)'), padding: isMobile ? '7px 13px' : '9px 16px', fontSize: isMobile ? 12.5 : 14, color: active ? 'var(--deep)' : 'var(--muted)', background: active ? 'var(--primary-tint)' : 'transparent', border: `1px solid ${active ? 'var(--primary)' : 'transparent'}` }}>{label}</button>
             )
           })}
         </div>

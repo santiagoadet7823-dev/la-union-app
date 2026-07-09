@@ -6,6 +6,12 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   // App primaria: híbrida (Android/iOS). El mismo bundle web corre como PWA.
   plugins: {
+    // Actualización OTA del contenido web (sin reinstalar el APK). autoUpdate:false
+    // → la controlamos a mano: chequeamos app_config (Supabase) y aplicamos el
+    // bundle nuevo desde UpdatePrompt. Ver src/services/ota.js.
+    CapacitorUpdater: {
+      autoUpdate: false,
+    },
     // Login NATIVO de Google (selector de cuentas del sistema, sin navegador ni
     // deep link). El idToken resultante se canjea con supabase.auth.signInWithIdToken.
     // serverClientId = Client ID *Web* del proveedor Google de Supabase (público).

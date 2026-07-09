@@ -16,6 +16,7 @@
   "dependencies": {
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.6",
+    "@capgo/capacitor-updater": "^6.50.1",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@supabase/supabase-js": "^2.110.0",
     "leaflet": "^1.9.4",

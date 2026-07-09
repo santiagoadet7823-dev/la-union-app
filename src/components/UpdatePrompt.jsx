@@ -1,64 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
 import { registerSW } from 'virtual:pwa-register'
-import { Browser } from '@capacitor/browser'
 import { sx } from '../lib/sx'
 import { isNative } from '../services/platform'
-import { supabase, hasSupabase } from '../services/supabase'
-import { APP_VERSION } from '../version'
+import { otaReady, otaCheck, otaApply } from '../services/ota'
 
 /**
  * Aviso de "actualización disponible":
- *  - Web/PWA: detecta un service worker nuevo (registerSW) y ofrece recargar a la
- *    versión nueva con un toque.
- *  - Nativo/APK: compara APP_VERSION contra `app_config.latest_version` (Supabase).
- *    Si hay una versión más nueva, avisa; si hay `apk_url`, la abre para descargar
- *    (el APK no se auto-actualiza, pero la opción ya queda integrada).
+ *  - Web/PWA: detecta un service worker nuevo y recarga a la versión nueva.
+ *  - Nativo/APK: OTA con capgo — descarga el bundle nuevo (app_config) y lo aplica
+ *    sin reinstalar. Los cambios nativos igual requieren APK nuevo.
  */
 export default function UpdatePrompt() {
   const [show, setShow] = useState(false)
-  const [apkUrl, setApkUrl] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
   const nativo = isNative()
-  const updateRef = useRef(null)
+  const updateRef = useRef(null) // web: updateSW
+  const otaRef = useRef(null)    // nativo: {version, url}
 
-  // Web/PWA: nuevo SW disponible.
+  // Web/PWA: nuevo service worker disponible.
   useEffect(() => {
     if (nativo) return
-    updateRef.current = registerSW({
-      onNeedRefresh() { setShow(true) },
-    })
+    updateRef.current = registerSW({ onNeedRefresh() { setShow(true) } })
   }, [nativo])
 
-  // Nativo/APK: comparar versión contra la config remota.
+  // Nativo: marcar el bundle actual como bueno y chequear si hay uno más nuevo.
   useEffect(() => {
-    if (!nativo || !hasSupabase) return
+    if (!nativo) return
     let cancel = false
-    supabase.from('app_config').select('latest_version, apk_url').maybeSingle()
-      .then(({ data }) => {
-        if (cancel || !data?.latest_version) return
-        if (data.latest_version !== APP_VERSION) {
-          setApkUrl(data.apk_url || null)
-          setShow(true)
-        }
-      })
+    otaReady()
+    otaCheck().then((u) => { if (!cancel && u) { otaRef.current = u; setShow(true) } })
     return () => { cancel = true }
   }, [nativo])
 
   if (!show) return null
 
-  const puedeAplicar = !nativo || !!apkUrl
-  const texto = nativo
-    ? (apkUrl ? 'Hay una nueva versión de la app disponible.' : 'Hay una nueva versión. Pedí el APK actualizado al administrador.')
-    : 'Hay una nueva versión de la app.'
-  const cta = nativo ? (apkUrl ? 'Descargar' : 'Entendido') : 'Actualizar'
-
   const onCta = async () => {
     if (nativo) {
-      if (apkUrl) { try { await Browser.open({ url: apkUrl }) } catch (_) {} }
-      setShow(false)
+      setBusy(true); setErr(null)
+      try {
+        await otaApply(otaRef.current) // si sale bien, la app se recarga sola
+      } catch (e) {
+        setErr('No se pudo actualizar: ' + (e?.message || 'sin conexión'))
+        setBusy(false)
+      }
       return
     }
     const updateSW = updateRef.current
-    if (updateSW) updateSW(true) // recarga con el SW nuevo aplicado
+    if (updateSW) updateSW(true)
     else window.location.reload()
   }
 
@@ -70,14 +59,13 @@ export default function UpdatePrompt() {
         </span>
         <div style={sx('flex:1;min-width:0')}>
           <div style={sx('font-size:13px;font-weight:600')}>Actualización disponible</div>
-          <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.4')}>{texto}</div>
+          <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.4')}>
+            {err || (busy ? 'Descargando la actualización…' : (nativo ? 'La app se actualiza sola, sin reinstalar.' : 'Hay una nueva versión de la app.'))}
+          </div>
         </div>
-        {!puedeAplicar && (
-          <button onClick={() => setShow(false)} style={sx('flex:none;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer')}>{cta}</button>
-        )}
-        {puedeAplicar && (
-          <button onClick={onCta} style={sx('flex:none;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:12.5px;font-weight:600;padding:8px 14px;cursor:pointer')}>{cta}</button>
-        )}
+        <button onClick={onCta} disabled={busy} style={{ ...sx('flex:none;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:12.5px;font-weight:600;padding:8px 14px;cursor:pointer'), opacity: busy ? 0.6 : 1 }}>
+          {busy ? '…' : 'Actualizar'}
+        </button>
       </div>
     </div>
   )
