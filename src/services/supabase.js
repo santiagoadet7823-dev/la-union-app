@@ -22,6 +22,13 @@ if (!hasSupabase) {
 //    manejo del deep link (en web sigue ON para el retorno por URL normal).
 const isNative = Capacitor.isNativePlatform()
 
+// El candado por defecto de supabase-js usa `navigator.locks`, que en el WebView de
+// Android (sobre todo tras estar en segundo plano / ahorro de energía) puede COLGARSE
+// y dejar `getSession()` sin resolver → app trabada en "Cargando…". En el APK hay un
+// solo WebView (sin multi-pestaña), así que un lock que simplemente ejecuta la función
+// es seguro y elimina el cuelgue.
+const noHangLock = async (_name, _acquireTimeout, fn) => fn()
+
 export const supabase = hasSupabase
   ? createClient(url, anonKey, {
       auth: {
@@ -29,6 +36,7 @@ export const supabase = hasSupabase
         autoRefreshToken: true,
         flowType: 'pkce',
         detectSessionInUrl: !isNative,
+        lock: noHangLock,
       },
     })
   : null

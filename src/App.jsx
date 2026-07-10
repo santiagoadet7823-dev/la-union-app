@@ -60,6 +60,25 @@ function Cargando() {
 }
 
 /**
+ * Hay sesión pero el perfil todavía no cargó (o falló por red lenta/cortada). Loader
+ * acotado con reintento — nunca queda trabado como el "Cargando…" genérico.
+ */
+function CargandoPerfil({ error, onRetry }) {
+  return (
+    <div style={sx('min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg-app);color:var(--text);text-align:center;padding:24px')}>
+      <div style={sx('font-family:var(--font-mono);font-size:13px;color:var(--muted)')}>
+        {error ? 'No pudimos cargar tu perfil (revisá tu conexión).' : 'Cargando tu perfil…'}
+      </div>
+      {error && (
+        <button onClick={onRetry} style={sx('min-height:46px;padding:0 22px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer')}>
+          Reintentar
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
  * App ya autenticada. Mantiene el estado del switch del encargado (Mi jornada /
  * Panel), persistido en localStorage. Para el resto de roles el switch no aplica.
  */
@@ -84,9 +103,11 @@ function AuthedApp() {
 }
 
 function Gate() {
-  const { loading, session, aprobado } = useAuth()
+  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil } = useAuth()
   if (loading) return <Cargando />
   if (!session) return <LoginView />
+  // Sesión OK pero el perfil aún no cargó (o falló): loader acotado, no "Cargando…" infinito.
+  if (!perfil && (perfilLoading || perfilError)) return <CargandoPerfil error={perfilError} onRetry={refetchPerfil} />
   if (!aprobado) return <PendienteView />
 
   return (

@@ -20,33 +20,52 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [perfil, setPerfil] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [perfilLoading, setPerfilLoading] = useState(false)
+  const [perfilError, setPerfilError] = useState(false)
   const [authError, setAuthError] = useState(null) // error del login nativo
   const [authStatus, setAuthStatus] = useState(null) // diagnóstico en pantalla del login nativo
 
+  // Carga el perfil con timeout + reintentos, sin colgar la app: si la red está
+  // lenta/cortada (ahorro de energía), no deja "Cargando…" para siempre.
   const cargarPerfil = useCallback(async (userId) => {
-    if (!userId) { setPerfil(null); return }
-    const { data } = await supabase.from('perfiles').select('*').eq('id', userId).maybeSingle()
-    setPerfil(data || null)
+    if (!userId) { setPerfil(null); setPerfilError(false); setPerfilLoading(false); return }
+    setPerfilLoading(true); setPerfilError(false)
+    for (let i = 0; i < 3; i++) {
+      try {
+        const { data } = await Promise.race([
+          supabase.from('perfiles').select('*').eq('id', userId).maybeSingle(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+        ])
+        setPerfil(data || null); setPerfilError(false); setPerfilLoading(false)
+        return
+      } catch (_) {
+        if (i < 2) await new Promise((r) => setTimeout(r, 1500 * (i + 1)))
+      }
+    }
+    setPerfilError(true); setPerfilLoading(false) // no se pudo tras reintentos → el Gate ofrece "Reintentar"
   }, [])
 
   useEffect(() => {
     if (!hasSupabase) { setLoading(false); return }
     let active = true
+    // Red de seguridad: nunca quedarse trabado en "Cargando…".
+    const safety = setTimeout(() => { if (active) setLoading(false) }, 6000)
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (!active) return
       setSession(data.session)
-      await cargarPerfil(data.session?.user?.id)
-      setLoading(false)
-    })
+      setLoading(false) // NO esperamos el perfil (la sesión sale de localStorage, es rápida)
+      clearTimeout(safety)
+      cargarPerfil(data.session?.user?.id) // en background
+    }).catch(() => { if (active) setLoading(false) })
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
-      await cargarPerfil(s?.user?.id)
       setLoading(false)
+      cargarPerfil(s?.user?.id)
     })
 
-    return () => { active = false; sub.subscription.unsubscribe() }
+    return () => { active = false; clearTimeout(safety); sub.subscription.unsubscribe() }
   }, [cargarPerfil])
 
   // Captura el retorno del login de Google cuando la app corre en nativo (deep link
@@ -165,6 +184,8 @@ export function AuthProvider({ children }) {
     activo: !!perfil?.activo,
     aprobado: !!perfil?.activo && !!perfil?.rol,
     loading,
+    perfilLoading,
+    perfilError,
     hasSupabase,
     authError,
     authStatus,
