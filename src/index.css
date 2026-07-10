@@ -138,6 +138,10 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.2; }
 }
+@keyframes lu-spin {
+  to { transform: rotate(360deg); }
+}
+.lu-spin { animation: lu-spin 0.9s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

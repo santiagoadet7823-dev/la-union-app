@@ -6,35 +6,39 @@ import { Pin } from './icons'
 
 const STALE_MS = 120000 // sin fix nuevo por 2 min => se considera GPS desactivado
                         // (el latido de useLivePosition refresca cada 40s aunque esté quieto)
+const GRACE_MS = 15000  // al abrir: buscar el primer fix SIN mostrar el cartel rojo todavía
 
 /**
- * Puerta de GPS obligatorio para las vistas móviles. Si el GPS no está activo
- * (permiso denegado, apagado, o sin señal reciente), bloquea toda la pantalla y
- * emite una alerta al Admin indicando qué usuario/rol desactivó su GPS.
+ * Puerta de GPS obligatorio para las vistas móviles. Al abrir, PRIMERO busca la
+ * ubicación en silencio (loader neutro); solo si detecta que el GPS está apagado
+ * (permiso denegado, o sin señal tras el período de gracia) muestra el cartel y
+ * avisa al Admin. Así no aparece el cartel rojo cada vez que se abre la app.
  */
 export default function GpsGate({ children }) {
   const { pos, error, request, id, nombre, rol, idEmpresa } = useGps()
   const [now, setNow] = useState(Date.now())
+  const [mountedAt] = useState(() => Date.now())
 
   // Tick para re-evaluar la frescura del fix aunque no lleguen posiciones nuevas.
   useEffect(() => {
-    const iv = setInterval(() => setNow(Date.now()), 5000)
+    const iv = setInterval(() => setNow(Date.now()), 3000)
     return () => clearInterval(iv)
   }, [])
 
   const activo = !!pos && !error && now - pos.ts < STALE_MS
+  // Período inicial: todavía buscando el primer fix y sin error → NO alarmar aún.
+  const buscando = !activo && !error && now - mountedAt < GRACE_MS
 
-  // Auto-recupero: si el fix quedó viejo (p. ej. estuvo quieto o hubo un bache de
-  // señal), reintentamos pedir la ubicación solos cada 10s, así el cartel no queda
-  // pegado aunque el GPS esté prendido.
+  // Auto-recupero: reintenta pedir la ubicación solo (mientras busca o si el fix
+  // quedó viejo). NO reintenta si hay error de permiso, para no re-preguntar.
   useEffect(() => {
-    if (activo) return
+    if (activo || error) return
     request().catch(() => {})
-    const iv = setInterval(() => request().catch(() => {}), 10000)
+    const iv = setInterval(() => request().catch(() => {}), 8000)
     return () => clearInterval(iv)
-  }, [activo, request])
+  }, [activo, error, request])
 
-  // Alerta al Admin en las transiciones.
+  // Alerta al Admin solo en transiciones reales (no durante la búsqueda inicial).
   const prev = useRef(activo)
   useEffect(() => {
     if (prev.current && !activo) publicarAlerta({ id, nombre, rol, idEmpresa, tipo: 'gps-off', ts: Date.now() })
@@ -43,6 +47,17 @@ export default function GpsGate({ children }) {
   }, [activo, id, nombre, rol, idEmpresa])
 
   if (activo) return children
+
+  // Mientras busca el primer fix (sin error) → loader neutro, sin cartel rojo.
+  if (buscando) {
+    return (
+      <div style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:28px 22px;background:var(--bg-app);color:var(--text)')}>
+        <div style={sx('width:34px;height:34px;border-radius:99px;border:3px solid var(--line2);border-top-color:var(--primary)')} className="lu-spin" />
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>Buscando señal GPS…</div>
+        <div style={sx('font-size:12.5px;color:var(--muted);max-width:280px;line-height:1.5')}>Un momento, estamos ubicándote.</div>
+      </div>
+    )
+  }
 
   return (
     <div style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:28px 22px;background:var(--bg-app);color:var(--text)')}>
