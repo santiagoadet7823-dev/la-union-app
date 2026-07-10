@@ -29,3 +29,6 @@ trabajo diseñador ui ux/
 
 # Artefacto de release OTA
 bundle.zip
+
+# Ícono fuente (se generan los mipmaps)
+icon-fuente*.png
