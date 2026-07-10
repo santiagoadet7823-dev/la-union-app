@@ -14,6 +14,7 @@ import UsuariosView from './UsuariosView'
 import EmpresasView from './EmpresasView'
 import ZonasView from './ZonasView'
 import ConsultasView from './ConsultasView'
+import RecorridosView from './RecorridosView'
 import ReplayJornada from './components/ReplayJornada'
 import NuevoCliente from '../catalog/NuevoCliente'
 import NuevoProducto from '../catalog/NuevoProducto'
@@ -80,7 +81,7 @@ export default function AdminView() {
 
   const tabs = useMemo(() => {
     const base = [
-      ['mapa', 'Mapa operativo'], ['reproduccion', 'Reproducción'],
+      ['mapa', 'Mapa operativo'], ['recorridos', 'Recorridos'], ['reproduccion', 'Reproducción'],
       ['clientes', 'Clientes'], ['zonas', 'Zonas'], ['catalogo', 'Catálogo'], ['dash', 'Dashboard'],
       ['ordenes', 'Órdenes'], ['faltante', 'Faltante'], ['consultas', 'Consultas'],
     ]
@@ -734,6 +735,9 @@ export default function AdminView() {
 
       {/* ========== CONSULTAS (heatmap de uso) ========== */}
       {tab === 'consultas' && <ConsultasView />}
+
+      {/* ========== RECORRIDOS (mapa estático, todos por color) ========== */}
+      {tab === 'recorridos' && <RecorridosView onToast={showToast} />}
 
       {/* ========== REPRODUCCIÓN DE JORNADA ========== */}
       {tab === 'reproduccion' && <ReplayJornada onToast={showToast} />}

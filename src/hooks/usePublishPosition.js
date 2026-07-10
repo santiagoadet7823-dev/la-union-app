@@ -17,7 +17,7 @@ import { distanciaMetros } from '../services/geolocation/geofence'
  *
  * @param {{enabled:boolean, id:string, rol:'vendedor'|'repartidor', idEmpresa:string}} opts
  */
-const MIN_MOVE_M = 12       // metros de desplazamiento mínimos para registrar un punto
+const MIN_MOVE_M = 8        // metros de desplazamiento mínimos para registrar un punto (recorrido más suave)
 const KEEPALIVE_MS = 90000  // reenvío de cortesía aunque no se mueva (marcador "vivo")
 const ACCURACY_MAX_M = 50   // fixes menos precisos que esto se descartan (causa #1 de "saltos")
 const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un salto imposible → glitch

@@ -63,7 +63,7 @@ async function watchNative(onUpdate, onError) {
       backgroundTitle: 'Tracking activo',
       requestPermissions: true,
       stale: false,
-      distanceFilter: 12, // metros → coincide con el "por movimiento" del panel
+      distanceFilter: 8, // metros → emite un punto cada ~8 m de desplazamiento (recorrido más suave)
     },
     (location, error) => {
       if (error) return onError(error)

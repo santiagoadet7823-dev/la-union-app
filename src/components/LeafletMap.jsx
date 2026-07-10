@@ -64,6 +64,7 @@ export default function LeafletMap({
   movers = [],
   trail = null,
   trailColor = '#2DD4CE',
+  trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
   liveColor = null,
   onMarkerClick,
   onMapClick,
@@ -103,7 +104,7 @@ export default function LeafletMap({
   }, [theme])
 
   // Redibujar overlays.
-  const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail })
+  const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail, trails })
   useEffect(() => {
     const map = mapRef.current
     const layer = layerRef.current
@@ -151,6 +152,16 @@ export default function LeafletMap({
       const pts = trail.map((p) => [p.lat, p.lng])
       L.polyline(pts, { color: trailColor, weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(layer)
       pts.forEach((ll) => extend(ll))
+    }
+
+    // Varios recorridos a la vez (vista estática del encargado), color por persona.
+    if (trails && trails.length) {
+      trails.forEach((t) => {
+        if (!t.points || t.points.length < 2) return
+        const pts = t.points.map((p) => [p.lat, p.lng])
+        L.polyline(pts, { color: t.color || trailColor, weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(layer)
+        pts.forEach((ll) => extend(ll))
+      })
     }
 
     // Ruteo por calles (OSRM). optimize=true → orden óptimo (TSP). Si falla la red,
