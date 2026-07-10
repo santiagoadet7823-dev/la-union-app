@@ -61,6 +61,7 @@ export default function LeafletMap({
   circle = null,
   height = 460,
   followLive = false,
+  fit = true, // si es false, no reencuadra (preserva el zoom/pan del usuario)
   movers = [],
   trail = null,
   trailColor = '#2DD4CE',
@@ -185,7 +186,7 @@ export default function LeafletMap({
     if (followLive && live) {
       // Modo seguimiento: la cámara sigue al vendedor en vivo (Admin observando el teléfono).
       map.setView([live.lat, live.lng], Math.max(map.getZoom() || zoom, 16))
-    } else if (bounds && bounds.isValid()) {
+    } else if (fit && bounds && bounds.isValid()) {
       const single = !circle && markers.length + (depot ? 1 : 0) <= 1
       if (single) map.setView(bounds.getCenter(), zoom)
       else map.fitBounds(bounds, { padding: [40, 40] })
