@@ -269,17 +269,23 @@ export default function AdminView() {
 
   return (
     <div style={sx('flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg-app)')}>
-      {/* Barra secundaria de pestañas del Admin. En mobile las pestañas se acomodan
-          en filas (sin scroll horizontal) y se oculta el reloj. */}
+      {/* Barra secundaria de pestañas del Admin. En mobile es un desplegable
+          compacto (una fila); en escritorio, pestañas en línea. */}
       <div style={{ ...sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;position:sticky;top:52px;z-index:30'), padding: isMobile ? '8px 12px' : '0 20px', gap: isMobile ? 8 : 14, height: isMobile ? 'auto' : 48 }}>
-        <div className={isMobile ? undefined : 'lu-tabs'} style={{ ...sx('display:flex;gap:6px;flex:1'), flexWrap: isMobile ? 'wrap' : 'nowrap', overflowX: isMobile ? 'visible' : 'auto' }}>
-          {tabs.map(([k, label]) => {
-            const active = tab === k
-            return (
-              <button key={k} onClick={() => setTab(k)} style={{ ...sx('flex:none;border-radius:10px;font-weight:600;cursor:pointer;font-family:var(--font-body)'), padding: isMobile ? '7px 13px' : '9px 16px', fontSize: isMobile ? 12.5 : 14, color: active ? 'var(--deep)' : 'var(--muted)', background: active ? 'var(--primary-tint)' : 'transparent', border: `1px solid ${active ? 'var(--primary)' : 'transparent'}` }}>{label}</button>
-            )
-          })}
-        </div>
+        {isMobile ? (
+          <select value={tab} onChange={(e) => setTab(e.target.value)} style={{ ...sx('flex:1;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-weight:600;font-family:var(--font-body);font-size:14px;padding:10px 12px;cursor:pointer;-webkit-appearance:none;appearance:none') }}>
+            {tabs.map(([k, label]) => <option key={k} value={k} style={{ color: 'var(--text)', background: 'var(--surface)' }}>{label}</option>)}
+          </select>
+        ) : (
+          <div className="lu-tabs" style={{ ...sx('display:flex;gap:6px;flex:1'), overflowX: 'auto' }}>
+            {tabs.map(([k, label]) => {
+              const active = tab === k
+              return (
+                <button key={k} onClick={() => setTab(k)} style={{ ...sx('flex:none;border-radius:10px;font-weight:600;cursor:pointer;font-family:var(--font-body)'), padding: '9px 16px', fontSize: 14, color: active ? 'var(--deep)' : 'var(--muted)', background: active ? 'var(--primary-tint)' : 'transparent', border: `1px solid ${active ? 'var(--primary)' : 'transparent'}` }}>{label}</button>
+              )
+            })}
+          </div>
+        )}
         {!isMobile && (
           <div style={sx('flex:none;display:flex;align-items:center;gap:10px')}>
             <div style={sx('display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted)')}>

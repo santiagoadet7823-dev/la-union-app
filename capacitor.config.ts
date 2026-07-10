@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.launion.app',
-  appName: 'LA UNIÓN',
+  appName: 'DisT-At',
   webDir: 'dist',
   // App primaria: híbrida (Android/iOS). El mismo bundle web corre como PWA.
   plugins: {

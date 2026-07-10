@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { supabase } from '../../services/supabase'
+import { invalidarTrackCache } from '../../services/tracking'
 
 /**
  * Gestión de empresas (solo superadmin). Alta de distribuidoras (tenants) y
@@ -11,12 +12,33 @@ import { supabase } from '../../services/supabase'
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const grid = { display: 'grid', gridTemplateColumns: '1.6fr 140px 160px 140px', gap: 10, alignItems: 'center' }
+const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;font-family:var(--font-mono);outline:none') }
 
 export default function EmpresasView({ onToast }) {
   const [empresas, setEmpresas] = useState([])
   const [loading, setLoading] = useState(true)
   const [nueva, setNueva] = useState('')
   const [creando, setCreando] = useState(false)
+  // Ventana horaria de rastreo (global).
+  const [track, setTrack] = useState({ enabled: true, start: '07:30', end: '22:00' })
+  const [savingTrack, setSavingTrack] = useState(false)
+
+  useEffect(() => {
+    supabase.from('app_config').select('track_enabled, track_start, track_end').maybeSingle()
+      .then(({ data }) => {
+        if (data) setTrack({ enabled: data.track_enabled ?? true, start: data.track_start || '07:30', end: data.track_end || '22:00' })
+      })
+  }, [])
+
+  async function guardarTrack() {
+    setSavingTrack(true)
+    const { error } = await supabase.from('app_config')
+      .update({ track_enabled: track.enabled, track_start: track.start, track_end: track.end, updated_at: new Date().toISOString() })
+      .eq('id', true)
+    setSavingTrack(false)
+    invalidarTrackCache()
+    onToast?.(error ? 'Error: ' + error.message : 'Horario de rastreo guardado')
+  }
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -55,6 +77,29 @@ export default function EmpresasView({ onToast }) {
 
   return (
     <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto')}>
+      {/* Horario de rastreo (global, superadmin) */}
+      <div style={panel}>
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Horario de rastreo GPS</div>
+        <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Fuera de esta franja los móviles no envían ubicación (ahorra backend si alguien deja la app abierta). Es global para toda la operación.</div>
+        <div style={sx('display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end')}>
+          <label style={sx('display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>
+            <input type="checkbox" checked={track.enabled} onChange={(e) => setTrack((t) => ({ ...t, enabled: e.target.checked }))} style={{ width: 18, height: 18, accentColor: '#0ABAB5' }} />
+            Rastreo activo
+          </label>
+          <div>
+            <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Desde</div>
+            <input type="time" value={track.start} onChange={(e) => setTrack((t) => ({ ...t, start: e.target.value }))} disabled={!track.enabled} style={inpTime} />
+          </div>
+          <div>
+            <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Hasta</div>
+            <input type="time" value={track.end} onChange={(e) => setTrack((t) => ({ ...t, end: e.target.value }))} disabled={!track.enabled} style={inpTime} />
+          </div>
+          <button disabled={savingTrack} onClick={guardarTrack} style={sx('padding:10px 18px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
+            {savingTrack ? 'Guardando…' : 'Guardar horario'}
+          </button>
+        </div>
+      </div>
+
       <div style={{ ...panel, minWidth: 720 }}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Empresas (distribuidoras)</div>
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Cada empresa es un espacio aislado. Desactivar una empresa deja sin acceso a todos sus usuarios.</div>

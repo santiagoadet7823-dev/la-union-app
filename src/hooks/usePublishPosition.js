@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLivePosition } from './useLivePosition'
 import { enqueuePosicion, flushPosiciones } from '../services/sync/queue'
+import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { distanciaMetros } from '../services/geolocation/geofence'
 
 /**
@@ -24,9 +25,24 @@ const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un s
 export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
   const { pos, error, request } = useLivePosition(enabled)
   const lastRef = useRef(null) // { lat, lng, ts, sentAt }
+  const cfgRef = useRef(null)  // ventana horaria de rastreo
+
+  // Carga (y refresca) la ventana horaria de rastreo controlada por el superadmin.
+  useEffect(() => {
+    if (!enabled) return
+    let alive = true
+    const load = () => getTrackConfig().then((c) => { if (alive) cfgRef.current = c }).catch(() => {})
+    load()
+    const iv = setInterval(load, 4 * 60000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [enabled])
 
   useEffect(() => {
     if (!pos || !id || !idEmpresa) return
+
+    // 0) Fuera del horario de rastreo → no publicar (ahorra backend si alguien deja
+    //    la app abierta). El GPS local sigue para la app; solo no se sube.
+    if (cfgRef.current && !dentroDeHorario(cfgRef.current)) return
 
     // 1) Precisión: los fixes imprecisos (interiores, mala señal) se ignoran. Es la
     //    causa principal de que el rastro "salte" lejos de la calle real.

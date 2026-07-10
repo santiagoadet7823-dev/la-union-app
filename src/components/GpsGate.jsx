@@ -24,6 +24,16 @@ export default function GpsGate({ children }) {
 
   const activo = !!pos && !error && now - pos.ts < STALE_MS
 
+  // Auto-recupero: si el fix quedó viejo (p. ej. estuvo quieto o hubo un bache de
+  // señal), reintentamos pedir la ubicación solos cada 10s, así el cartel no queda
+  // pegado aunque el GPS esté prendido.
+  useEffect(() => {
+    if (activo) return
+    request().catch(() => {})
+    const iv = setInterval(() => request().catch(() => {}), 10000)
+    return () => clearInterval(iv)
+  }, [activo, request])
+
   // Alerta al Admin en las transiciones.
   const prev = useRef(activo)
   useEffect(() => {
