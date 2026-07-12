@@ -4,9 +4,7 @@ import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
-import { persistence } from '../services/persistence'
-
-const perfilCacheKey = (userId) => `lu-perfil-cache-${userId}`
+import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil } from '../services/data/perfiles'
 
 /**
  * Sesión + perfil del usuario (multi-tenant). El perfil trae {rol, id_empresa, activo}.
@@ -38,26 +36,20 @@ export function AuthProvider({ children }) {
   // sin señal (ver AuthContext/App.jsx: Gate bloquea todo mientras !perfil).
   const cargarPerfil = useCallback(async (userId) => {
     if (!userId) { setPerfil(null); setPerfilError(false); setPerfilLoading(false); return }
-    const cached = await persistence.get(perfilCacheKey(userId))
+    const cached = await leerCachePerfil(userId)
     if (cached) { setPerfil(cached); setPerfilError(false) }
     setPerfilLoading(true)
     if (!cached) setPerfilError(false)
-    for (let i = 0; i < 3; i++) {
-      try {
-        const { data } = await Promise.race([
-          supabase.from('perfiles').select('*').eq('id', userId).maybeSingle(),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
-        ])
-        if (data) { setPerfil(data); persistence.set(perfilCacheKey(userId), data) }
-        else if (!cached) setPerfil(null)
-        setPerfilError(false); setPerfilLoading(false)
-        return
-      } catch (_) {
-        if (i < 2) await new Promise((r) => setTimeout(r, 1500 * (i + 1)))
-      }
+    try {
+      const { data } = await fetchPerfil(userId)
+      if (data) { setPerfil(data); escribirCachePerfil(userId, data) }
+      else if (!cached) setPerfil(null)
+      setPerfilError(false)
+    } catch (_) {
+      if (!cached) setPerfilError(true) // sin caché y sin red → el Gate ofrece "Reintentar"
+    } finally {
+      setPerfilLoading(false)
     }
-    setPerfilLoading(false)
-    if (!cached) setPerfilError(true) // sin caché y sin red → el Gate ofrece "Reintentar"
   }, [])
 
   useEffect(() => {
@@ -187,7 +179,7 @@ export function AuthProvider({ children }) {
     }
     // Borra el perfil cacheado de este usuario para que no quede filtrado a otra
     // cuenta que inicie sesión después en el mismo dispositivo.
-    if (session?.user?.id) persistence.remove(perfilCacheKey(session.user.id))
+    borrarCachePerfil(session?.user?.id)
     setAuthStatus(null)
     setAuthError(null)
     await supabase.auth.signOut()

@@ -7,6 +7,7 @@ import { DeviceProvider } from './context/DeviceContext'
 import AppShell from './components/AppShell'
 import PhoneFrame from './components/PhoneFrame'
 import GpsGate from './components/GpsGate'
+import ErrorBoundary from './components/ErrorBoundary'
 import UpdatePrompt from './components/UpdatePrompt'
 import DeviceBanner from './components/DeviceBanner'
 import LoginView from './features/auth/LoginView'
@@ -135,13 +136,15 @@ function AuthedApp() {
   const supMovil = decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor, adminVista })
   if (supMovil) {
     return (
-      <Suspense fallback={<Cargando />}>
-        <SupervisionMovil
-          role={rol}
-          onIrAJornada={esEncargado ? () => cambiarVista('jornada') : null}
-          onIrAPanel={esGestor ? () => cambiarAdminVista('panel') : null}
-        />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<Cargando />}>
+          <SupervisionMovil
+            role={rol}
+            onIrAJornada={esEncargado ? () => cambiarVista('jornada') : null}
+            onIrAPanel={esGestor ? () => cambiarAdminVista('panel') : null}
+          />
+        </Suspense>
+      </ErrorBoundary>
     )
   }
 
@@ -151,9 +154,11 @@ function AuthedApp() {
       onCambiarVista={cambiarVista}
       onMonitoreo={nativo && esGestor ? () => cambiarAdminVista('supervision') : null}
     >
-      <Suspense fallback={<Cargando />}>
-        <RoleRouter vista={vista} />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<Cargando />}>
+          <RoleRouter vista={vista} />
+        </Suspense>
+      </ErrorBoundary>
     </AppShell>
   )
 }
@@ -182,7 +187,9 @@ export default function App() {
     <ThemeProvider>
       <DeviceProvider>
         <AuthProvider>
-          <Gate />
+          <ErrorBoundary>
+            <Gate />
+          </ErrorBoundary>
           <UpdatePrompt />
           <DeviceBanner />
         </AuthProvider>

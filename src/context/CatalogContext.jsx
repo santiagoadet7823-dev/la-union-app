@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { supabase } from '../services/supabase'
 import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
 import { uid } from '../lib/uid'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
+import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo } from '../services/data/catalogo'
 
 /**
  * Catálogo real desde Supabase (clientes + productos), aislado por empresa vía
@@ -55,19 +55,39 @@ export function CatalogProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Aplica un snapshot CRUDO de DB al estado de vista.
+  const aplicar = useCallback((raw) => {
+    setProductos((raw?.productos || []).map(mapProducto))
+    setClientes((raw?.clientes || []).map(mapCliente))
+    setZonas(raw?.zonas || [])
+  }, [])
+
   const recargar = useCallback(async () => {
     setLoading(true)
-    const [{ data: prod, error: e1 }, { data: cli, error: e2 }, { data: zon }] = await Promise.all([
-      supabase.from('productos').select('*').order('descripcion'),
-      supabase.from('clientes').select('*').order('nombre_comercio'),
-      supabase.from('zonas').select('*').order('nombre'),
-    ])
-    if (e1 || e2) setError(e1 || e2)
-    setProductos((prod || []).map(mapProducto))
-    setClientes((cli || []).map(mapCliente))
-    setZonas(zon || [])
+    const { productos: prod, clientes: cli, zonas: zon, error: err } = await fetchCatalogo()
+    // Offline / falla sin datos: NO pisar con vacío — se conserva lo hidratado de
+    // caché (mejor mostrar los últimos datos conocidos que una lista vacía).
+    if (err && prod.length === 0 && cli.length === 0 && zon.length === 0) {
+      setError(err)
+      setLoading(false)
+      return
+    }
+    setError(err || null)
+    const raw = { productos: prod, clientes: cli, zonas: zon }
+    aplicar(raw)
+    escribirCacheCatalogo(idEmpresa, raw)
     setLoading(false)
-  }, [])
+  }, [idEmpresa, aplicar])
+
+  // Offline-first: hidratar de inmediato desde la caché (si existe) para que la app
+  // muestre datos al toque aunque no haya red, y luego revalidar contra Supabase.
+  useEffect(() => {
+    let alive = true
+    leerCacheCatalogo(idEmpresa).then((cached) => {
+      if (alive && cached) { aplicar(cached); setLoading(false) }
+    })
+    return () => { alive = false }
+  }, [idEmpresa, aplicar])
 
   useEffect(() => { recargar() }, [recargar])
   // Arranca el auto-flush de la cola de escrituras (altas/ediciones offline).

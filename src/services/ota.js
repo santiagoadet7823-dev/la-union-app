@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { CapacitorUpdater } from '@capgo/capacitor-updater'
-import { supabase, hasSupabase } from './supabase'
+import { getAppConfig } from './data/appConfig'
 
 /**
  * Actualización OTA del contenido web (sin reinstalar el APK), con capgo.
@@ -20,9 +20,9 @@ export async function otaReady() {
 
 // ¿Hay un bundle más nuevo que el aplicado? Devuelve {version, url} o null.
 export async function otaCheck() {
-  if (!Capacitor.isNativePlatform() || !hasSupabase) return null
+  if (!Capacitor.isNativePlatform()) return null
   try {
-    const { data } = await supabase.from('app_config').select('bundle_version, bundle_url').maybeSingle()
+    const data = await getAppConfig()
     if (!data?.bundle_version || !data?.bundle_url) return null
     let currentVersion = 'builtin'
     try { currentVersion = (await CapacitorUpdater.current())?.bundle?.version || 'builtin' } catch (_) {}
