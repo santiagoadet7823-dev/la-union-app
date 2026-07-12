@@ -24,6 +24,17 @@ export async function watchPosition(onUpdate, onError = () => {}) {
 }
 
 /**
+ * Abre la pantalla de ajustes de permisos de la app (para que el usuario elija
+ * "Permitir siempre" la ubicación — Android 11+ no deja pedirlo por diálogo).
+ * En web es un no-op. Devuelve true si intentó abrir los ajustes.
+ */
+export async function abrirAjustesUbicacion() {
+  if (!isNative()) return false
+  try { await BackgroundGeolocation.openSettings(); return true }
+  catch (_) { return false }
+}
+
+/**
  * Pide la ubicación UNA vez. Debe llamarse desde un gesto del usuario (tap) para
  * que iOS/Android muestren el prompt de permiso. Una vez concedido, el watch
  * empieza a entregar posiciones sin volver a preguntar.

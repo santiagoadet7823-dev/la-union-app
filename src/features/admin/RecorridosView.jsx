@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { supabase } from '../../services/supabase'
 import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useAuth } from '../../context/AuthContext'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { colorPorId } from '../../lib/colors'
+import { fetchSnapRecorridos } from '../../services/recorridos'
+import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
+import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import LeafletMap from '../../components/LeafletMap'
 
 /**
@@ -17,79 +19,49 @@ import LeafletMap from '../../components/LeafletMap'
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const selectStyle = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body);cursor:pointer') }
-const REFRESH_MS = 30000
+const REFRESH_MS = 60000
 const hoyStr = () => new Date().toISOString().slice(0, 10)
 
 export default function RecorridosView() {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
   const { idEmpresa } = useAuth()
-  const [users, setUsers] = useState([])
   const [fecha, setFecha] = useState(hoyStr)
-  const [byUser, setByUser] = useState({}) // { id_usuario: { points:[{lat,lng}] } }
-  const [loading, setLoading] = useState(false)
+  const [snapped, setSnapped] = useState({}) // { id_usuario: [{lat,lng}] } pegado a calles
   const [fitDone, setFitDone] = useState(false)
-  const [updatedAt, setUpdatedAt] = useState(null)
   const [, forceTick] = useState(0)
-  const lastTsRef = useRef(null)
+  const snapCallRef = useRef(0)
 
-  const esHoy = fecha === hoyStr()
+  const users = usePerfilesEquipo()
+  const { byUser, updatedAt, loading, esHoy, reload } = useRecorridosDelDia(fecha, idEmpresa)
 
-  // Nombres/roles (para la lista lateral).
-  useEffect(() => {
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'repartidor', 'encargado']).eq('activo', true)
-      .then(({ data }) => setUsers(data || []))
-  }, [])
   const meta = useMemo(() => { const m = {}; users.forEach((u) => { m[u.id] = u }); return m }, [users])
 
-  // Carga: completa (reemplaza) o incremental (solo puntos nuevos desde lastTs).
-  const load = useCallback(async (incremental) => {
-    if (!idEmpresa) return
-    const desde = new Date(fecha + 'T00:00:00').toISOString()
-    const hasta = new Date(fecha + 'T23:59:59').toISOString()
-    if (!incremental) setLoading(true)
-    let q = supabase.from('posiciones').select('id_usuario, lat, lng, ts')
-      .eq('id_empresa', idEmpresa).lte('ts', hasta).order('ts', { ascending: true })
-    q = incremental && lastTsRef.current ? q.gt('ts', lastTsRef.current) : q.gte('ts', desde)
-    const { data } = await q
-    if (!incremental) setLoading(false)
-    if (!data) return
-    if (data.length) {
-      setByUser((prev) => {
-        const next = incremental ? { ...prev } : {}
-        data.forEach((p) => {
-          if (!p.id_usuario) return
-          if (!next[p.id_usuario]) next[p.id_usuario] = { points: [] }
-          next[p.id_usuario] = { points: [...next[p.id_usuario].points, { lat: p.lat, lng: p.lng }] }
-        })
-        return next
-      })
-      lastTsRef.current = data[data.length - 1].ts
-    } else if (!incremental) {
-      setByUser({})
-    }
-    setUpdatedAt(Date.now())
-  }, [idEmpresa, fecha])
-
-  // Carga inicial y al cambiar de fecha.
-  useEffect(() => {
-    lastTsRef.current = null
-    setFitDone(false)
-    load(false)
-  }, [load])
-
   // Encuadrar solo la primera vez que llegan datos (después se preserva el zoom).
+  useEffect(() => { setFitDone(false) }, [fecha])
   useEffect(() => { if (!fitDone && Object.keys(byUser).length) setFitDone(true) }, [byUser, fitDone])
-
-  // Auto-refresh incremental cada 30 s (solo si la fecha es HOY; el pasado no cambia).
-  useEffect(() => {
-    if (!esHoy) return
-    const iv = setInterval(() => load(true), REFRESH_MS)
-    return () => clearInterval(iv)
-  }, [esHoy, load])
 
   // Tick para el "hace Xs".
   useEffect(() => { const t = setInterval(() => forceTick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
+
+  // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
+  // Guarda de staleness: se invoca desde un efecto Y desde el polling (no solo como
+  // cuerpo de un efecto), así que un `cancel` de closure no alcanza — se usa un
+  // contador de llamada y solo se aplica la respuesta si sigue siendo la última.
+  const cargarSnap = useCallback(async () => {
+    if (!idEmpresa) return
+    const myCall = ++snapCallRef.current
+    const desde = new Date(fecha + 'T00:00:00').toISOString()
+    const hasta = new Date(fecha + 'T23:59:59').toISOString()
+    const s = await fetchSnapRecorridos({ fecha, desde, hasta })
+    if (myCall === snapCallRef.current) setSnapped(s)
+  }, [idEmpresa, fecha])
+  useEffect(() => { setSnapped({}); cargarSnap() }, [cargarSnap])
+  useEffect(() => {
+    if (!esHoy) return
+    const iv = setInterval(cargarSnap, REFRESH_MS)
+    return () => clearInterval(iv)
+  }, [esHoy, cargarSnap])
 
   const trails = useMemo(() => Object.entries(byUser)
     .filter(([, v]) => v.points.length >= 2)
@@ -98,7 +70,13 @@ export default function RecorridosView() {
       for (let i = 1; i < v.points.length; i++) m += distanciaMetros(v.points[i - 1], v.points[i])
       return { id, points: v.points, color: colorPorId(id), nombre: meta[id]?.nombre || 'Móvil', rol: meta[id]?.rol || '', km: m / 1000 }
     }), [byUser, meta])
-  const leafletTrails = useMemo(() => trails.map((t) => ({ points: t.points, color: t.color })), [trails])
+  // Para dibujar: geometría pegada a calles (uno o varios segmentos por persona) si
+  // está; si no, el rastro crudo. Los km se calculan sobre el crudo (más fiel).
+  const leafletTrails = useMemo(() => trails.flatMap((t) => {
+    const segs = snapped[t.id]
+    if (segs && segs.length) return segs.map((s) => ({ points: s, color: t.color }))
+    return [{ points: t.points, color: t.color }]
+  }), [trails, snapped])
   const hace = updatedAt ? Math.max(0, Math.round((Date.now() - updatedAt) / 1000)) : null
 
   return (
@@ -109,7 +87,7 @@ export default function RecorridosView() {
             <div style={label10}>Fecha</div>
             <input type="date" value={fecha} max={hoyStr()} onChange={(e) => setFecha(e.target.value)} style={selectStyle} />
           </div>
-          <button onClick={() => load(false)} disabled={loading} style={sx('padding:9px 16px;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--deep);font-size:13px;font-weight:600;cursor:pointer')}>
+          <button onClick={reload} disabled={loading} style={sx('padding:9px 16px;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--deep);font-size:13px;font-weight:600;cursor:pointer')}>
             {loading ? 'Cargando…' : '↻ Recargar'}
           </button>
           <div style={sx('flex:1')} />

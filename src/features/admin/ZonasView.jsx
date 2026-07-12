@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { supabase } from '../../services/supabase'
 import { useCatalog } from '../../context/CatalogContext'
 import { useDevice } from '../../context/DeviceContext'
+import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 
 /**
  * Zonas: crear/renombrar zonas (con color) y asignar a cada cliente su ZONA y su
@@ -22,13 +22,8 @@ export default function ZonasView({ onToast }) {
   const [nombre, setNombre] = useState('')
   const [color, setColor] = useState(COLORES[0])
   const [saving, setSaving] = useState(false)
-  const [vendedores, setVendedores] = useState([])
-
   // Vendedores/encargados de la empresa (posibles dueños de cliente). RLS limita al tenant.
-  useEffect(() => {
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'repartidor', 'encargado']).eq('activo', true)
-      .then(({ data }) => setVendedores(data || []))
-  }, [])
+  const vendedores = usePerfilesEquipo()
 
   const zonaColor = useMemo(() => {
     const m = {}

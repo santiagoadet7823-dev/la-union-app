@@ -46,6 +46,11 @@ html[data-theme='light'] {
   --map-block: #dcebe8;
   --map-road: #ffffff;
   --scrim: rgba(11, 43, 42, 0.35);
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-brd: rgba(11, 43, 42, 0.06);
+  --glass-strong: rgba(255, 255, 255, 0.86);
+  --sheet-bg: rgba(247, 252, 251, 0.8);
+  --sk: rgba(11, 43, 42, 0.07);
   --console-bg: #0b2b2a;
   --console-fg: #a7e8e3;
   --hm0: #eaf4f3;
@@ -88,6 +93,11 @@ html[data-theme='dark'] {
   --map-block: #0e1d1c;
   --map-road: #1a3230;
   --scrim: rgba(0, 0, 0, 0.55);
+  --glass-bg: rgba(13, 31, 30, 0.62);
+  --glass-brd: rgba(255, 255, 255, 0.14);
+  --glass-strong: rgba(9, 22, 21, 0.82);
+  --sheet-bg: rgba(11, 26, 25, 0.78);
+  --sk: rgba(255, 255, 255, 0.07);
   --console-bg: #081414;
   --console-fg: #5fd9d3;
   --hm0: #12302e;
@@ -142,6 +152,21 @@ body {
   to { transform: rotate(360deg); }
 }
 .lu-spin { animation: lu-spin 0.9s linear infinite; }
+@keyframes lu-rise {
+  from { transform: translateY(18px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes lu-sheen {
+  0% { background-position: -160px 0; }
+  100% { background-position: 220px 0; }
+}
+
+/* Basemap claro = OpenStreetMap (el más definido). Lo desaturamos hacia GRIS tipo Google
+   clásico y le damos un toque de contraste, sin perder la nitidez de calles/cuadras. Solo
+   en tema claro (el oscuro usa CARTO y ya se ve bien). */
+html[data-theme='light'] .leaflet-tile-container {
+  filter: saturate(70%) contrast(108%) brightness(99%);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

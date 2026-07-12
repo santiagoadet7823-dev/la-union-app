@@ -5,6 +5,7 @@ import { Sun, Moon } from './icons'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
+  propietario: { label: 'Propietario', color: 'var(--info)' },
   admin: { label: 'Administrador', color: 'var(--primary)' },
   encargado: { label: 'Encargado', color: 'var(--primary)' },
   vendedor: { label: 'Vendedor', color: 'var(--success)' },
@@ -19,8 +20,9 @@ const ROLE_META = {
  * props:
  *  - encargadoVista  'jornada' | 'panel' | null   (null = no es encargado, sin switch)
  *  - onCambiarVista  (v) => void
+ *  - onMonitoreo     () => void | null   (admin/superadmin en .apk: volver a la supervisión)
  */
-export default function AppShell({ children, encargadoVista = null, onCambiarVista }) {
+export default function AppShell({ children, encargadoVista = null, onCambiarVista, onMonitoreo = null }) {
   const { perfil, user, rol, signOut } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const { isMobile, setMode } = useDevice()
@@ -88,6 +90,14 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
             {isMobile ? meta.label.slice(0, 3) : meta.label}
           </span>
         </div>
+
+        {/* Volver a la supervisión (admin/superadmin en .apk) */}
+        {onMonitoreo && (
+          <button onClick={onMonitoreo} title="Volver al monitoreo en vivo" style={isMobile ? iconBtn : textBtn}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg>
+            {!isMobile && 'Monitoreo'}
+          </button>
+        )}
 
         {/* Selector de dispositivo */}
         <button

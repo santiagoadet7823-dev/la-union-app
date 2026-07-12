@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { sx } from '../lib/sx'
 import { useGps } from '../context/GpsContext'
 import { publicarAlerta } from '../services/sync/realtime'
+import PermisoSiemprePrompt from '../features/movil/PermisoSiemprePrompt'
 import { Pin } from './icons'
 
 const STALE_MS = 120000 // sin fix nuevo por 2 min => se considera GPS desactivado
@@ -15,7 +16,7 @@ const GRACE_MS = 15000  // al abrir: buscar el primer fix SIN mostrar el cartel 
  * avisa al Admin. Así no aparece el cartel rojo cada vez que se abre la app.
  */
 export default function GpsGate({ children }) {
-  const { pos, error, request, id, nombre, rol, idEmpresa } = useGps()
+  const { pos, error, request, id, nombre, rol, idEmpresa, enHorario } = useGps()
   const [now, setNow] = useState(Date.now())
   const [mountedAt] = useState(() => Date.now())
 
@@ -30,23 +31,31 @@ export default function GpsGate({ children }) {
   const buscando = !activo && !error && now - mountedAt < GRACE_MS
 
   // Auto-recupero: reintenta pedir la ubicación solo (mientras busca o si el fix
-  // quedó viejo). NO reintenta si hay error de permiso, para no re-preguntar.
+  // quedó viejo). NO reintenta si hay error de permiso, ni fuera de horario (el
+  // sensor está apagado a propósito), para no re-preguntar ni gastar batería.
   useEffect(() => {
-    if (activo || error) return
+    if (activo || error || !enHorario) return
     request().catch(() => {})
     const iv = setInterval(() => request().catch(() => {}), 8000)
     return () => clearInterval(iv)
-  }, [activo, error, request])
+  }, [activo, error, enHorario, request])
 
-  // Alerta al Admin solo en transiciones reales (no durante la búsqueda inicial).
+  // Alerta al Admin solo en transiciones reales (no durante la búsqueda inicial ni
+  // por el apagado esperado fuera de horario).
   const prev = useRef(activo)
   useEffect(() => {
+    if (!enHorario) { prev.current = activo; return }
     if (prev.current && !activo) publicarAlerta({ id, nombre, rol, idEmpresa, tipo: 'gps-off', ts: Date.now() })
     if (!prev.current && activo) publicarAlerta({ id, nombre, rol, idEmpresa, tipo: 'gps-on', ts: Date.now() })
     prev.current = activo
-  }, [activo, id, nombre, rol, idEmpresa])
+  }, [activo, enHorario, id, nombre, rol, idEmpresa])
 
-  if (activo) return children
+  // GPS OK → mostramos la app y, encima, el aviso de "Permitir siempre" (una vez, solo nativo).
+  if (activo) return <>{children}<PermisoSiemprePrompt /></>
+
+  // Fuera del horario de rastreo configurado: el GPS está apagado A PROPÓSITO
+  // (ahorro de batería). No es una falla — no hay que bloquear la app.
+  if (!enHorario) return <>{children}</>
 
   // Mientras busca el primer fix (sin error) → loader neutro, sin cartel rojo.
   if (buscando) {

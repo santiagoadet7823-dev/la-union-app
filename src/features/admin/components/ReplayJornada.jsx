@@ -5,10 +5,11 @@ import { useTheme } from '../../../context/ThemeContext'
 import { useDevice } from '../../../context/DeviceContext'
 import { useAuth } from '../../../context/AuthContext'
 import { historialPosiciones } from '../../../services/sync/realtime'
-import { matchTrail } from '../../../services/routing'
+import { fetchSnapRecorridos } from '../../../services/recorridos'
 import { exportarRutaPng } from '../../../services/report/rutaPng'
 import { distanciaMetros } from '../../../services/geolocation/geofence'
 import { colorPorId } from '../../../lib/colors'
+import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
 import LeafletMap from '../../../components/LeafletMap'
 
 /**
@@ -29,7 +30,7 @@ export default function ReplayJornada({ onToast }) {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
   const { idEmpresa, user } = useAuth()
-  const [users, setUsers] = useState([])
+  const users = usePerfilesEquipo()
   const [userId, setUserId] = useState('')
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [pts, setPts] = useState([])
@@ -37,19 +38,17 @@ export default function ReplayJornada({ onToast }) {
   const [idx, setIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [vel, setVel] = useState(2)
-  const [snapOn, setSnapOn] = useState(true)   // pegar el rastro a las calles (map matching)
-  const [snapped, setSnapped] = useState(null) // rastro corregido [{lat,lng}]
+  const [snapOn, setSnapOn] = useState(true)   // pegar el rastro a las calles (OSRM /route)
+  const [snapped, setSnapped] = useState(null) // segmentos pegados a calles: [{lat,lng}[]]
   const timerRef = useRef(null)
+  const ptsFechaRef = useRef(null) // fecha/usuario para los que `pts` realmente se cargó
+  const ptsUserRef = useRef(null)
 
-  // Usuarios móviles de la empresa (RLS ya limita al tenant).
+  // Preselecciona el primer usuario móvil de la empresa apenas carga la lista.
   useEffect(() => {
-    supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'repartidor', 'encargado']).eq('activo', true)
-      .then(({ data }) => {
-        setUsers(data || [])
-        if (data && data.length && !userId) setUserId(data[0].id)
-      })
+    if (users.length && !userId) setUserId(users[0].id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [users])
 
   const cargar = useCallback(async () => {
     if (!userId) { onToast?.('Elegí un usuario'); return }
@@ -71,6 +70,8 @@ export default function ReplayJornada({ onToast }) {
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
     const data = await historialPosiciones(userId, desde, hasta)
     setPts(data)
+    ptsFechaRef.current = fecha
+    ptsUserRef.current = userId
     setLoading(false)
     // Registrar la consulta (cuenta para el heatmap y el cupo).
     supabase.from('consultas_rutas').insert({ id_empresa: idEmpresa, id_usuario: user?.id, id_vendedor: userId })
@@ -90,16 +91,23 @@ export default function ReplayJornada({ onToast }) {
     return () => clearInterval(timerRef.current)
   }, [playing, vel, pts.length])
 
-  // Snap-to-road del rastro completo (una vez por carga / toggle). No bloquea la
-  // reproducción: si falla o está apagado, se usa el rastro crudo.
+  // Snap-to-road del rastro (Edge Function con OSRM /route + cache). Devuelve segmentos
+  // por usuario; tomamos los del usuario elegido. No bloquea la reproducción: si falla o
+  // está apagado, se usa el rastro crudo.
   useEffect(() => {
     let cancel = false
-    if (!snapOn || pts.length < 2) { setSnapped(null); return }
-    matchTrail(pts)
-      .then((r) => { if (!cancel) setSnapped(r.coords.length ? r.coords.map(([lat, lng]) => ({ lat, lng })) : null) })
+    if (!snapOn || pts.length < 2 || !userId) { setSnapped(null); return }
+    // `pts` puede seguir siendo de un día/usuario anterior si `fecha`/`userId`
+    // cambiaron sin volver a tocar "Cargar recorrido": no pegar a calles el día
+    // nuevo sobre el rastro crudo viejo (mapa/stats mezclados de dos jornadas).
+    if (fecha !== ptsFechaRef.current || userId !== ptsUserRef.current) { setSnapped(null); return }
+    const desde = new Date(fecha + 'T00:00:00').toISOString()
+    const hasta = new Date(fecha + 'T23:59:59').toISOString()
+    fetchSnapRecorridos({ fecha, desde, hasta })
+      .then((map) => { if (!cancel) { const segs = map[userId]; setSnapped(segs && segs.length ? segs : null) } })
       .catch(() => { if (!cancel) setSnapped(null) })
     return () => { cancel = true }
-  }, [pts, snapOn])
+  }, [pts, snapOn, userId, fecha])
 
   const stats = useMemo(() => {
     if (pts.length < 2) return { km: 0, desde: null, hasta: null }
@@ -119,8 +127,8 @@ export default function ReplayJornada({ onToast }) {
     try {
       const u = users.find((x) => x.id === userId)
       const nombre = u?.nombre || 'Vendedor'
-      // Preferimos el rastro pegado a calles; si no está, el crudo.
-      const coords = snapped && snapped.length >= 2 ? snapped : pts.map((p) => ({ lat: p.lat, lng: p.lng }))
+      // Preferimos el rastro pegado a calles (aplanando los segmentos); si no, el crudo.
+      const coords = snapped && snapped.length ? snapped.flat() : pts.map((p) => ({ lat: p.lat, lng: p.lng }))
       await exportarRutaPng({
         coords,
         titulo: nombre,
@@ -177,7 +185,8 @@ export default function ReplayJornada({ onToast }) {
         <LeafletMap
           theme={theme}
           height={isMobile ? '54vh' : '68vh'}
-          trail={snapOn && snapped ? snapped : (parcial.length >= 2 ? parcial : null)}
+          trails={snapOn && snapped ? snapped.map((s) => ({ points: s, color: colorUser })) : null}
+          trail={(!snapOn || !snapped) && parcial.length >= 2 ? parcial : null}
           trailColor={colorUser}
           live={actual ? { lat: actual.lat, lng: actual.lng } : null}
           liveColor={colorUser}

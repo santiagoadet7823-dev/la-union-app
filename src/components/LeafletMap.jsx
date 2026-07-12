@@ -14,15 +14,22 @@ import { CENTRO_DEFECTO } from '../services/maps'
  *        circle{lat,lng,radiusM,color}, height, onMarkerClick(index)
  */
 
-// CARTO Voyager: basemap con nombres de calles, POIs y color (mucho más fiel a
-// Google Maps que los estilos minimalistas *_all). Para dark usamos la variante
-// "voyager" igual con etiquetas (más legible que dark_nolabels). crossOrigin
-// habilita exportar el mapa a PNG (informe de recorridos) sin "tainted canvas".
+// Basemaps por tema. crossOrigin habilita exportar el mapa a PNG (informe de
+// recorridos) sin "tainted canvas" — ambos proveedores mandan CORS.
+//  - Claro: OpenStreetMap estándar → el más DEFINIDO y menos pálido (medido: contraste
+//    27 vs 10 de Positron). Con el filtro CSS se desatura hacia gris tipo Google clásico.
+//    OJO: OSM usa subdominios 'abc', llega a z19 y NO tiene retina {r}.
+//  - Oscuro: CARTO Voyager oscuro (se mantiene, se ve bien de noche/en el vehículo).
 const TILES = {
   dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
 }
-const TILE_OPTS = { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' }
+// Opciones por tema (OSM y CARTO difieren en subdominios/zoom/retina). Objeto simple,
+// sin funciones, para no arriesgar un ReferenceError como el de la 1.4.2.
+const TILE_OPTS = {
+  dark: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
+  light: { subdomains: 'abc', maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' },
+}
 
 function pinIcon(color, label, labelColor, selected) {
   const size = selected ? 26 : 22
@@ -86,7 +93,7 @@ export default function LeafletMap({
     if (!divRef.current || mapRef.current) return
     const map = L.map(divRef.current, { center: [center.lat, center.lng], zoom, zoomControl: true })
     mapRef.current = map
-    tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS).addTo(map)
+    tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     setTimeout(() => map.invalidateSize(), 60)
@@ -101,7 +108,7 @@ export default function LeafletMap({
   useEffect(() => {
     if (!mapRef.current) return
     if (tileRef.current) tileRef.current.remove()
-    tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS).addTo(mapRef.current)
+    tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(mapRef.current)
   }, [theme])
 
   // Redibujar overlays.

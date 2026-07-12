@@ -16,6 +16,7 @@ import ZonasView from './ZonasView'
 import ConsultasView from './ConsultasView'
 import RecorridosView from './RecorridosView'
 import ReplayJornada from './components/ReplayJornada'
+import EstadoEquipo from '../supervision/components/EstadoEquipo'
 import NuevoCliente from '../catalog/NuevoCliente'
 import NuevoProducto from '../catalog/NuevoProducto'
 
@@ -375,6 +376,7 @@ export default function AdminView() {
           </div>
 
           <div style={sx('display:flex;flex-direction:column;gap:12px')}>
+            <EstadoEquipo />
             <div style={panel}>
               <div style={label10}>Ficha del cliente</div>
               {sel ? (

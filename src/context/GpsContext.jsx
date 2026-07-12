@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import { useAuth } from './AuthContext'
 import { usePublishPosition } from '../hooks/usePublishPosition'
+import { useEstadoDispositivo } from '../hooks/useEstadoDispositivo'
 
 /**
  * GPS compartido para las vistas móviles. Corre un único watch para el usuario
@@ -21,6 +22,9 @@ export function GpsProvider({ children }) {
 
   // GPS obligatorio: siempre habilitado para roles móviles (sin toggle para apagarlo).
   const gps = usePublishPosition({ enabled: esMovil, id, rol, idEmpresa })
+
+  // Latido de salud del dispositivo (para el informe "por qué no llega la señal").
+  useEstadoDispositivo({ enabled: esMovil, id, idEmpresa, rol, pos: gps.pos, error: gps.error })
 
   return (
     <GpsContext.Provider value={{ ...gps, id, nombre, rol, idEmpresa, esMovil }}>

@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLivePosition } from './useLivePosition'
 import { enqueuePosicion, flushPosiciones } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { distanciaMetros } from '../services/geolocation/geofence'
+import { MIN_MOVE_M, KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../services/gpsConfig'
 
 /**
  * GPS en vivo + publicación en tiempo real. Lo usan Vendedor y Repartidor: cada
@@ -17,31 +18,56 @@ import { distanciaMetros } from '../services/geolocation/geofence'
  *
  * @param {{enabled:boolean, id:string, rol:'vendedor'|'repartidor', idEmpresa:string}} opts
  */
-const MIN_MOVE_M = 8        // metros de desplazamiento mínimos para registrar un punto (recorrido más suave)
-const KEEPALIVE_MS = 90000  // reenvío de cortesía aunque no se mueva (marcador "vivo")
-const ACCURACY_MAX_M = 50   // fixes menos precisos que esto se descartan (causa #1 de "saltos")
-const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un salto imposible → glitch
+
+// Calcula cuántos ms faltan hasta el próximo límite (inicio o fin) de la ventana
+// horaria, para recalcular `enHorario` justo en el borde y no hasta 4 min tarde.
+// Tope de 4 min: igual se recalibra con el refresco periódico de la config.
+function msHastaProximoLimite(cfg) {
+  if (!cfg || cfg.enabled === false) return null
+  const now = new Date()
+  const cur = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+  const toSec = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return h * 3600 + m * 60 }
+  const start = toSec(cfg.start || '00:00')
+  const end = toSec(cfg.end || '23:59')
+  const candidatos = [start, end].map((s) => (s > cur ? s - cur : s - cur + 86400)).filter((d) => d > 0)
+  if (!candidatos.length) return null
+  return Math.min(Math.min(...candidatos) * 1000, 4 * 60000)
+}
 
 export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
-  const { pos, error, request } = useLivePosition(enabled)
+  const [enHorario, setEnHorario] = useState(true) // optimista: no bloquear el 1er watch mientras carga la config
+  const { pos, error, request } = useLivePosition(enabled && enHorario)
   const lastRef = useRef(null) // { lat, lng, ts, sentAt }
   const cfgRef = useRef(null)  // ventana horaria de rastreo
 
   // Carga (y refresca) la ventana horaria de rastreo controlada por el superadmin.
+  // Además de guardarla, apaga/prende el sensor GPS en sí (no solo la subida) según
+  // la ventana, y se recalibra justo en el borde (no solo cada 4 min).
   useEffect(() => {
     if (!enabled) return
     let alive = true
-    const load = () => getTrackConfig().then((c) => { if (alive) cfgRef.current = c }).catch(() => {})
+    let boundaryTimer = null
+
+    const aplicar = (cfg) => {
+      cfgRef.current = cfg
+      setEnHorario(dentroDeHorario(cfg))
+      clearTimeout(boundaryTimer)
+      const ms = msHastaProximoLimite(cfg)
+      if (ms != null) boundaryTimer = setTimeout(() => { if (alive) aplicar(cfgRef.current) }, ms)
+    }
+
+    const load = () => getTrackConfig().then((c) => { if (alive) aplicar(c) }).catch(() => {})
     load()
     const iv = setInterval(load, 4 * 60000)
-    return () => { alive = false; clearInterval(iv) }
+    return () => { alive = false; clearInterval(iv); clearTimeout(boundaryTimer) }
   }, [enabled])
 
   useEffect(() => {
     if (!pos || !id || !idEmpresa) return
 
     // 0) Fuera del horario de rastreo → no publicar (ahorra backend si alguien deja
-    //    la app abierta). El GPS local sigue para la app; solo no se sube.
+    //    la app abierta). Defensa adicional: el watch ya se detiene arriba, esto
+    //    cubre el instante justo del borde mientras el watch termina de pararse.
     if (cfgRef.current && !dentroDeHorario(cfgRef.current)) return
 
     // 1) Precisión: los fixes imprecisos (interiores, mala señal) se ignoran. Es la
@@ -82,5 +108,5 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     return () => { window.removeEventListener('online', onOnline); clearInterval(iv) }
   }, [enabled])
 
-  return { pos, error, request }
+  return { pos, error, request, enHorario }
 }

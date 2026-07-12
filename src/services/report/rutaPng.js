@@ -1,6 +1,6 @@
 /**
  * Genera un PNG del recorrido de un vendedor (informe diario / reuniones). Compone
- * en un <canvas>: basemap de calles (tiles CARTO Voyager, con crossOrigin para no
+ * en un <canvas>: basemap de calles (tiles OpenStreetMap, con crossOrigin para no
  * "ensuciar" el canvas), la polilínea del recorrido (idealmente ya pegada a calles),
  * marcadores de inicio/fin y un encabezado corporativo con los datos de la jornada.
  *
@@ -86,7 +86,7 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
     for (let ty = y0; ty <= y1; ty++) {
       if (ty < 0 || ty >= n) continue
       const wx = ((tx % n) + n) % n
-      const url = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${z}/${wx}/${ty}.png`
+      const url = `https://a.tile.openstreetmap.org/${z}/${wx}/${ty}.png`
       const dx = tx * TILE - originX
       const dy = ty * TILE - originY + HEADER
       jobs.push(loadImg(url).then((img) => ctx.drawImage(img, dx, dy)).catch(() => {}))

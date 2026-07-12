@@ -4,6 +4,9 @@ import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
+import { persistence } from '../services/persistence'
+
+const perfilCacheKey = (userId) => `lu-perfil-cache-${userId}`
 
 /**
  * Sesión + perfil del usuario (multi-tenant). El perfil trae {rol, id_empresa, activo}.
@@ -27,22 +30,34 @@ export function AuthProvider({ children }) {
 
   // Carga el perfil con timeout + reintentos, sin colgar la app: si la red está
   // lenta/cortada (ahorro de energía), no deja "Cargando…" para siempre.
+  //
+  // Offline-first: el perfil se cachea localmente. Si hay caché para este usuario,
+  // se usa DE INMEDIATO (el Gate deja pasar y el GPS arranca ya) mientras se
+  // revalida en segundo plano. Si la red falla y hay caché, NO se marca error —
+  // seguir con el perfil viejo es mejor que trabar la app sin GPS al reabrirla
+  // sin señal (ver AuthContext/App.jsx: Gate bloquea todo mientras !perfil).
   const cargarPerfil = useCallback(async (userId) => {
     if (!userId) { setPerfil(null); setPerfilError(false); setPerfilLoading(false); return }
-    setPerfilLoading(true); setPerfilError(false)
+    const cached = await persistence.get(perfilCacheKey(userId))
+    if (cached) { setPerfil(cached); setPerfilError(false) }
+    setPerfilLoading(true)
+    if (!cached) setPerfilError(false)
     for (let i = 0; i < 3; i++) {
       try {
         const { data } = await Promise.race([
           supabase.from('perfiles').select('*').eq('id', userId).maybeSingle(),
           new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
         ])
-        setPerfil(data || null); setPerfilError(false); setPerfilLoading(false)
+        if (data) { setPerfil(data); persistence.set(perfilCacheKey(userId), data) }
+        else if (!cached) setPerfil(null)
+        setPerfilError(false); setPerfilLoading(false)
         return
       } catch (_) {
         if (i < 2) await new Promise((r) => setTimeout(r, 1500 * (i + 1)))
       }
     }
-    setPerfilError(true); setPerfilLoading(false) // no se pudo tras reintentos → el Gate ofrece "Reintentar"
+    setPerfilLoading(false)
+    if (!cached) setPerfilError(true) // sin caché y sin red → el Gate ofrece "Reintentar"
   }, [])
 
   useEffect(() => {
@@ -170,6 +185,9 @@ export function AuthProvider({ children }) {
         await GoogleAuth.signOut()
       } catch (_) {}
     }
+    // Borra el perfil cacheado de este usuario para que no quede filtrado a otra
+    // cuenta que inicie sesión después en el mismo dispositivo.
+    if (session?.user?.id) persistence.remove(perfilCacheKey(session.user.id))
     setAuthStatus(null)
     setAuthError(null)
     await supabase.auth.signOut()
