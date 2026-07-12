@@ -75,8 +75,14 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
     enviar() // al arrancar
     const iv = setInterval(enviar, LATIDO_MS)
     const onVis = () => enviar()
+    const onOnline = () => enviar() // reintentar el latido al recuperar la red
     document.addEventListener('visibilitychange', onVis)
-    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+    window.addEventListener('online', onOnline)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('online', onOnline)
+    }
   }, [enabled, id, idEmpresa, rol, enviar])
 
   // Cuando cambia el estado GPS (aparece/desaparece el fix o hay error), latir enseguida.

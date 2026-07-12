@@ -16,13 +16,3 @@ export function inferCategoria(descripcion = '') {
   const match = REGLAS.find((r) => r.patron.test(descripcion))
   return match ? match.categoria : 'Otros'
 }
-
-export const ORDEN_CATEGORIAS = [
-  'Bebidas',
-  'Almacén',
-  'Lácteos',
-  'Galletitas y snacks',
-  'Limpieza',
-  'Higiene personal',
-  'Otros',
-]

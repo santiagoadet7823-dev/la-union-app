@@ -5,11 +5,11 @@ import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
 import LeafletMap from '../../components/LeafletMap'
-import { supabase } from '../../services/supabase'
 import { colorPorId } from '../../lib/colors'
-import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../../services/sync/realtime'
-import { DEPOSITO, CLIENTES_GEO, statusColor, ROUTE_COLOR } from '../../data/demoGeo'
+import { suscribirAlertas } from '../../services/sync/realtime'
+import { DEPOSITO, ROUTE_COLOR } from '../../data/demoGeo'
 import { useCatalog } from '../../context/CatalogContext'
+import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import UsuariosView from './UsuariosView'
 import EmpresasView from './EmpresasView'
 import ZonasView from './ZonasView'
@@ -76,7 +76,9 @@ export default function AdminView() {
   const { isMobile } = useDevice()
   const { clientes: cartera, productos, zonas, loading: catLoading, updateCliente } = useCatalog()
   const [tab, setTab] = useState('mapa')
-  const [nombres, setNombres] = useState({}) // { [id_usuario]: nombre }
+  // Equipo en vivo (nombres/movers/gpsOff/mqtt): antes reimplementado inline acá;
+  // ahora reusa el hook compartido (mismo que PropietarioView/SupervisionMovil).
+  const { nombres, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
 
@@ -101,63 +103,25 @@ export default function AdminView() {
   const [diasSel, setDiasSel] = useState({ LU: true, JU: true })
   const [freqSel, setFreqSel] = useState('Semanal')
   const [faltVacio, setFaltVacio] = useState(true)
-  const [movers, setMovers] = useState({}) // { [id]: {id, nombre, rol, lat, lng, ts} }
-  const [gpsOff, setGpsOff] = useState({}) // { [id]: {nombre, rol, ts} } usuarios con GPS apagado
-  const [mqttOn, setMqttOn] = useState(false)
   const [toast, setToast] = useState(null)
   const [events, setEvents] = useState([]) // consola: solo eventos reales (GPS on/off)
   const toastRef = useRef(null)
 
   useEffect(() => () => clearTimeout(toastRef.current), [])
 
-  // Nombres de los usuarios de la empresa (para etiquetar los móviles en el mapa).
+  // Los datos en vivo (nombres/movers/gpsOff/mqtt) vienen del hook useEquipoEnVivo.
+  // Acá solo queda la consola de eventos + el toast, que son propios del panel:
+  // se suscribe a las alertas GPS on/off para registrar el log y avisar.
   useEffect(() => {
-    supabase.from('perfiles').select('id, nombre').then(({ data }) => {
-      const m = {}
-      ;(data || []).forEach((u) => { m[u.id] = u.nombre })
-      setNombres(m)
-    })
-  }, [])
-
-  // Al abrir el panel, sembrar el mapa con la ÚLTIMA posición conocida de cada
-  // móvil (últimos 15 min), así aparecen de inmediato sin esperar un fix nuevo.
-  useEffect(() => {
-    const desde = new Date(Date.now() - 15 * 60000).toISOString()
-    supabase.from('posiciones').select('id_usuario, rol, lat, lng, ts').gte('ts', desde).order('ts', { ascending: false })
-      .then(({ data }) => {
-        const seen = {}
-        const seed = {}
-        ;(data || []).forEach((p) => {
-          if (!p.id_usuario || seen[p.id_usuario]) return
-          seen[p.id_usuario] = true
-          seed[p.id_usuario] = { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() }
-        })
-        setMovers((m) => ({ ...seed, ...m })) // no pisar los que ya llegaron en vivo
-      })
-  }, [idEmpresa])
-
-  // Telemetría en vivo (Supabase Realtime): posición de los móviles en tiempo real.
-  useEffect(() => {
-    const offPos = suscribirPosiciones((p) => {
-      if (!p || !p.id_usuario) return
-      setMovers((m) => ({ ...m, [p.id_usuario]: { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() } }))
-    })
-    const offConn = estadoConexion(setMqttOn)
     const offAlert = suscribirAlertas((a) => {
       if (!a || !a.id) return
       const off = a.tipo === 'gps-off'
-      setGpsOff((g) => {
-        const n = { ...g }
-        if (off) n[a.id] = { nombre: a.nombre, rol: a.rol, ts: a.ts }
-        else delete n[a.id]
-        return n
-      })
       const d = new Date()
       const ts = [d.getHours(), d.getMinutes(), d.getSeconds()].map((x) => String(x).padStart(2, '0')).join(':')
       setEvents((prev) => [{ ts, tag: '[ALERTA]', msg: `${a.nombre || a.id} (${a.rol}) ${off ? 'DESACTIVÓ su GPS' : 'reactivó su GPS'}` }, ...prev].slice(0, 12))
       showToast(`${a.nombre || a.id} (${a.rol}) ${off ? '⚠ desactivó su GPS' : 'reactivó su GPS'}`)
     }, idEmpresa)
-    return () => { offPos(); offConn(); offAlert() }
+    return () => { offAlert() }
   }, [idEmpresa])
 
   // Sincroniza los controles de la ficha (geofence/días/frecuencia) con el cliente elegido.

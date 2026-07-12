@@ -10,21 +10,13 @@ import { supabase, hasSupabase } from '../supabase'
  * El aislamiento por empresa lo garantiza RLS (el Admin solo ve su tenant).
  *
  * Las alertas (GPS on/off) son efímeras → canal broadcast por empresa.
- * La misma API (publicarPosicion / suscribirPosiciones / publicarAlerta /
- * suscribirAlertas / estadoConexion) que exponía services/telemetry, para no
- * tocar las vistas más de lo necesario.
+ * La publicación/persistencia de posiciones va por la cola offline
+ * (services/sync/queue.js); acá quedan la suscripción en vivo, el historial y las
+ * alertas (suscribirPosiciones / historialPosiciones / publicarAlerta /
+ * suscribirAlertas / estadoConexion).
  */
 
-// ---------- Posiciones: vivo + persistencia ----------
-
-/** Publica/persiste una posición. payload: {id, rol, lat, lng, accuracy?, idEmpresa} */
-export async function publicarPosicion({ id, rol, lat, lng, accuracy, idEmpresa }) {
-  if (!hasSupabase || !id || !idEmpresa) return
-  const row = { id_usuario: id, rol, lat, lng, id_empresa: idEmpresa }
-  if (typeof accuracy === 'number') row.accuracy = accuracy
-  const { error } = await supabase.from('posiciones').insert(row)
-  if (error) console.warn('[realtime] publicarPosicion:', error.message)
-}
+// ---------- Posiciones: vivo + historial ----------
 
 /**
  * Se suscribe a las posiciones entrantes (para el Admin). RLS filtra por empresa.

@@ -79,9 +79,3 @@ export const Route = ({ size = 16 }) => (
   </svg>
 )
 
-export const Warehouse = ({ size = 14 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
-    <path d="M3 21V9l9-6 9 6v12" />
-    <path d="M9 21v-8h6v8" />
-  </svg>
-)

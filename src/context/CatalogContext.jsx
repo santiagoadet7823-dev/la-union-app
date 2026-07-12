@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { supabase } from '../services/supabase'
 import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
+import { uid } from '../lib/uid'
+import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
 
 /**
  * Catálogo real desde Supabase (clientes + productos), aislado por empresa vía
@@ -68,14 +70,18 @@ export function CatalogProvider({ children }) {
   }, [])
 
   useEffect(() => { recargar() }, [recargar])
+  // Arranca el auto-flush de la cola de escrituras (altas/ediciones offline).
+  useEffect(() => { startWriteQueue() }, [])
 
   /**
-   * Alta de cliente. Los que carga un vendedor/repartidor quedan SIN confirmar
-   * (activo=false) hasta que el admin los confirme; los que carga el admin/encargado
-   * quedan confirmados (activo=true). Devuelve {ok, error}.
+   * Alta de cliente. Offline-first: genera el id (uuid) del lado del cliente,
+   * actualiza el estado local YA (optimista) y encola la escritura; si no hay red,
+   * NO se pierde — se sincroniza al reconectar. Los que carga un vendedor/repartidor
+   * quedan sin confirmar (activo=false) hasta que el admin los confirme.
    */
   const addCliente = useCallback(async (c) => {
     const row = {
+      id: uid(),
       id_empresa: idEmpresa,
       codigo: c.codigo || null,
       nombre_comercio: c.nombre_comercio,
@@ -86,21 +92,20 @@ export function CatalogProvider({ children }) {
       frecuencia: c.frecuencia || null,
       geofence_radio: c.geofence_radio || 75,
       horario: c.horario || null,
-      // El alta desde un preventista (vendedor/repartidor/encargado) queda a su
-      // nombre (dueño) para que solo él lo vea, y pendiente de confirmación del admin.
       id_vendedor: esMovil ? (user?.id || null) : (c.id_vendedor || null),
       id_zona: c.id_zona || null,
       activo: !esMovil,
     }
-    const { data, error } = await supabase.from('clientes').insert(row).select().single()
-    if (error) return { ok: false, error }
-    setClientes((prev) => [...prev, mapCliente(data)].sort((a, b) => a.name.localeCompare(b.name)))
-    return { ok: true, cliente: mapCliente(data), requiereConfirmacion: esMovil }
+    setClientes((prev) => [...prev, mapCliente(row)].sort((a, b) => a.name.localeCompare(b.name)))
+    await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: row })
+    flushMutaciones()
+    return { ok: true, cliente: mapCliente(row), requiereConfirmacion: esMovil }
   }, [idEmpresa, esMovil, user])
 
-  /** Alta de producto (admin/encargado). Devuelve {ok, error}. */
+  /** Alta de producto (admin/encargado), offline-first. */
   const addProducto = useCallback(async (p) => {
     const row = {
+      id: uid(),
       id_empresa: idEmpresa,
       codigo: p.codigo || null,
       descripcion: p.descripcion,
@@ -108,34 +113,41 @@ export function CatalogProvider({ children }) {
       peso_kg: p.peso_kg || 0,
       categoria: p.categoria || inferCategoria(p.descripcion || ''),
     }
-    const { data, error } = await supabase.from('productos').insert(row).select().single()
-    if (error) return { ok: false, error }
-    setProductos((prev) => [...prev, mapProducto(data)].sort((a, b) => a.name.localeCompare(b.name)))
-    return { ok: true, producto: mapProducto(data) }
+    setProductos((prev) => [...prev, mapProducto(row)].sort((a, b) => a.name.localeCompare(b.name)))
+    await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'insert', payload: row })
+    flushMutaciones()
+    return { ok: true, producto: mapProducto(row) }
   }, [idEmpresa])
 
-  /** Edición parcial de cliente (ficha admin). patch en columnas de DB. */
+  /** Edición parcial de cliente (ficha admin). patch en columnas de DB. Offline-first. */
   const updateCliente = useCallback(async (id, patch) => {
-    const { data, error } = await supabase.from('clientes').update(patch).eq('id', id).select().single()
-    if (error) return { ok: false, error }
-    setClientes((prev) => prev.map((c) => (c.id === id ? mapCliente(data) : c)).sort((a, b) => a.name.localeCompare(b.name)))
+    // Merge optimista: mapea las columnas DB del patch a la forma de vista.
+    const vista = {}
+    if ('id_zona' in patch) vista.idZona = patch.id_zona || null
+    if ('id_vendedor' in patch) vista.idVendedor = patch.id_vendedor || null
+    if ('activo' in patch) vista.activo = patch.activo
+    if ('nombre_comercio' in patch) vista.name = patch.nombre_comercio
+    if ('localidad' in patch) vista.loc = patch.localidad || ''
+    setClientes((prev) => prev.map((c) => (c.id === id ? { ...c, ...vista } : c)).sort((a, b) => a.name.localeCompare(b.name)))
+    await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'update', id, payload: patch })
+    flushMutaciones()
     return { ok: true }
   }, [])
 
-  /** Alta de zona (admin/encargado). Devuelve {ok, error}. */
+  /** Alta de zona (admin/encargado), offline-first. */
   const addZona = useCallback(async (z) => {
-    const row = { id_empresa: idEmpresa, nombre: z.nombre, color: z.color || null }
-    const { data, error } = await supabase.from('zonas').insert(row).select().single()
-    if (error) return { ok: false, error }
-    setZonas((prev) => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)))
-    return { ok: true, zona: data }
+    const row = { id: uid(), id_empresa: idEmpresa, nombre: z.nombre, color: z.color || null }
+    setZonas((prev) => [...prev, row].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'insert', payload: row })
+    flushMutaciones()
+    return { ok: true, zona: row }
   }, [idEmpresa])
 
-  /** Edición de zona (nombre/color). */
+  /** Edición de zona (nombre/color), offline-first. */
   const updateZona = useCallback(async (id, patch) => {
-    const { data, error } = await supabase.from('zonas').update(patch).eq('id', id).select().single()
-    if (error) return { ok: false, error }
-    setZonas((prev) => prev.map((z) => (z.id === id ? data : z)).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    setZonas((prev) => prev.map((z) => (z.id === id ? { ...z, ...patch } : z)).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'update', id, payload: patch })
+    flushMutaciones()
     return { ok: true }
   }, [])
 

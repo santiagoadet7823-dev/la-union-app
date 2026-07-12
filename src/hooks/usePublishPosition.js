@@ -4,6 +4,7 @@ import { enqueuePosicion, flushPosiciones } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { distanciaMetros } from '../services/geolocation/geofence'
 import { MIN_MOVE_M, KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../services/gpsConfig'
+import { uid as nuevoUid } from '../lib/uid'
 
 /**
  * GPS en vivo + publicación en tiempo real. Lo usan Vendedor y Repartidor: cada
@@ -91,7 +92,10 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     lastRef.current = { lat: pos.lat, lng: pos.lng, ts: pos.ts, sentAt: Date.now() }
     // Guardar SIEMPRE en la cola local (no se pierde aunque no haya red) y luego
     // intentar subir. Cada punto conserva su hora real (pos.ts).
-    const row = { id_usuario: id, rol, lat: pos.lat, lng: pos.lng, id_empresa: idEmpresa, ts: new Date(pos.ts || Date.now()).toISOString() }
+    // client_uid: id único por fix para deduplicar en el server. Si un batch se
+    // commitea pero se pierde la respuesta y se reintenta, el upsert lo ignora en
+    // vez de duplicar la fila.
+    const row = { id_usuario: id, rol, lat: pos.lat, lng: pos.lng, id_empresa: idEmpresa, ts: new Date(pos.ts || Date.now()).toISOString(), client_uid: nuevoUid() }
     if (typeof pos.accuracy === 'number') row.accuracy = pos.accuracy
     enqueuePosicion(row)
     flushPosiciones()

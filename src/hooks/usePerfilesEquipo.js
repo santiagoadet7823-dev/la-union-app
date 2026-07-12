@@ -21,8 +21,6 @@ function fetchPerfilesEquipo(force) {
   return cache
 }
 
-export function invalidarPerfilesEquipo() { cache = null }
-
 export default function usePerfilesEquipo() {
   const [users, setUsers] = useState([])
   useEffect(() => {

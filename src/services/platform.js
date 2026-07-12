@@ -6,8 +6,3 @@ export function isNative() {
   const cap = typeof window !== 'undefined' && window.Capacitor
   return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform())
 }
-
-export function platformName() {
-  const cap = typeof window !== 'undefined' && window.Capacitor
-  return cap && typeof cap.getPlatform === 'function' ? cap.getPlatform() : 'web'
-}
