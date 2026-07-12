@@ -1,4 +1,4 @@
-# Brief de diseño — LA UNIÓN (mobile / app nativa)
+# Brief de diseño — DisT-At (mobile / app nativa)
 
 > Para el diseñador. Objetivo: rehacer/pulir las **visuales mobile** de la app (APK Android nativa + PWA) manteniendo el sistema visual ya definido. Hoy la vista de escritorio está diseñada; la **mobile del panel** es un colapso hecho por código (funcional, no diseñado a medida) y las pantallas del vendedor necesitan una pasada fina para pantalla real (sin el marco de teléfono simulado).
 

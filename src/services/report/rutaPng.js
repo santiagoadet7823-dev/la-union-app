@@ -144,7 +144,7 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
   ctx.textAlign = 'right'
   ctx.fillStyle = '#2DD4CE'
   ctx.font = 'bold 18px sans-serif'
-  ctx.fillText('LA UNIÓN', W - 28, 42)
+  ctx.fillText('DisT-At', W - 28, 42)
   ctx.fillStyle = '#9fb6b4'
   ctx.font = '11px sans-serif'
   ctx.fillText('Informe de recorrido', W - 28, 62)

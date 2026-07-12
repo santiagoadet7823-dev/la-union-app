@@ -1,6 +1,7 @@
 import { sx } from '../../lib/sx'
 import { useAuth } from '../../context/AuthContext'
 import { APP_VERSION } from '../../version'
+import Logo from '../../components/Logo'
 
 function GoogleIcon() {
   return (
@@ -19,8 +20,8 @@ export default function LoginView() {
   return (
     <div style={sx('min-height:100vh;display:grid;place-items:center;background:var(--bg-app);color:var(--text);padding:24px')}>
       <div style={sx('width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lg);padding:28px 24px;text-align:center')}>
-        <div style={sx('width:52px;height:52px;margin:0 auto 14px;border-radius:14px;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:24px')}>U</div>
-        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:.03em')}>Distribuidora LA UNIÓN</div>
+        <Logo size={52} radius={14} style={{ margin: '0 auto 14px' }} />
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:.03em')}>DisT-At</div>
         <div style={sx('font-size:12.5px;color:var(--muted);margin:6px 0 22px')}>Ingresá con tu cuenta de Google para continuar.</div>
 
         <button

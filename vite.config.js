@@ -22,9 +22,9 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'oauth.html'],
       manifest: {
-        name: 'Distribuidora LA UNIÓN',
-        short_name: 'LA UNIÓN',
-        description: 'Plataforma logística: Vendedor, Repartidor y Administrador.',
+        name: 'DisT-At',
+        short_name: 'DisT-At',
+        description: 'DisT-At — plataforma logística: Vendedor, Repartidor y Administrador.',
         theme_color: '#0C0C0C',
         background_color: '#0C0C0C',
         display: 'standalone',

@@ -70,7 +70,7 @@ function watchWeb(onUpdate, onError) {
 async function watchNative(onUpdate, onError) {
   const id = await BackgroundGeolocation.addWatcher(
     {
-      backgroundMessage: 'LA UNIÓN registra tu ruta',
+      backgroundMessage: 'DisT-At registra tu ruta',
       backgroundTitle: 'Tracking activo',
       requestPermissions: true,
       stale: false,

@@ -24,7 +24,7 @@ export default function PendienteView() {
           {sinRol && !inactivo
             ? 'Tu cuenta fue creada pero todavía no tiene un rol asignado.'
             : 'Tu cuenta todavía no está habilitada.'}
-          {' '}Un administrador de LA UNIÓN te asignará tu rol para que puedas ingresar.
+          {' '}Un administrador de DisT-At te asignará tu rol para que puedas ingresar.
         </div>
         <div style={sx('margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);font-family:var(--font-mono);font-size:12px;color:var(--muted)')}>
           {user?.email}

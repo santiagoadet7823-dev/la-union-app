@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { ROUTE_COLOR, CENTRO } from '../../data/demoGeo'
 import NuevoCliente from '../catalog/NuevoCliente'
+import Logo from '../../components/Logo'
 
 const MOTIVOS = ['Stock suficiente', 'Precio / condición', 'Comercio cerrado', 'Otro']
 const now = () => {
@@ -109,8 +110,8 @@ export default function VendedorView() {
         <div style={sx('flex:1;overflow-y:auto;padding:14px 14px 92px')}>
           <div style={sx('display:flex;align-items:center;justify-content:space-between;margin:2px 2px 14px')}>
             <div style={sx('display:flex;align-items:center;gap:8px')}>
-              <div style={logo}>U</div>
-              <div style={sx("font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em")}>LA UNIÓN</div>
+              <Logo size={26} radius={8} />
+              <div style={sx("font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em")}>DisT-At</div>
             </div>
             <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{hoy()}</div>
           </div>
@@ -370,7 +371,7 @@ export default function VendedorView() {
             <div style={sx('width:44px;height:44px;border-radius:14px;background:var(--tlight);color:var(--deep);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:16px')}>{nombre.slice(0, 2).toUpperCase()}</div>
             <div>
               <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>{nombre}</div>
-              <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono)')}>Vendedor · LA UNIÓN</div>
+              <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono)')}>Vendedor · DisT-At</div>
             </div>
           </div>
           <div style={card}>
@@ -466,7 +467,6 @@ export default function VendedorView() {
   )
 }
 
-const logo = { width: 26, height: 26, borderRadius: 8, background: 'var(--primary)', color: 'var(--on-primary)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }
 const card = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px;margin-bottom:16px') }
 
 function Stat({ label, value, color }) {

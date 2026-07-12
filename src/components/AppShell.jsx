@@ -2,6 +2,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useDevice } from '../context/DeviceContext'
 import { Sun, Moon } from './icons'
+import Logo from './Logo'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -39,11 +40,11 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 'none' }}>
-          <div style={logoBox}>U</div>
+          <Logo size={26} radius={8} />
           {!isMobile && (
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, letterSpacing: '.04em', lineHeight: 1.1 }}>
-                LA UNIÓN
+                DisT-At
               </div>
               <div style={{ fontSize: 9, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>Distribuidora · Anta</div>
             </div>
@@ -126,11 +127,6 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
     </div>
   )
-}
-
-const logoBox = {
-  width: 26, height: 26, borderRadius: 8, background: 'var(--primary)', color: 'var(--on-primary)',
-  display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13,
 }
 
 const textBtn = {

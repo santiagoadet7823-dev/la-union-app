@@ -1,4 +1,4 @@
-# Actualización automática (OTA) — LA UNIÓN
+# Actualización automática (OTA) — DisT-At
 
 La app se actualiza **sola, sin reinstalar el APK**, para casi todos los cambios
 (pantallas, features, arreglos, textos). Solo cuando agregamos algo **nativo nuevo**

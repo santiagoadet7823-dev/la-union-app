@@ -1,9 +1,9 @@
 {
-  "name": "la-union-app",
+  "name": "distat-app",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Distribuidora LA UNIÓN — plataforma logística (Vendedor · Admin · Repartidor). PWA híbrida con Capacitor.",
+  "description": "DisT-At — plataforma logística (Vendedor · Admin · Repartidor). PWA híbrida con Capacitor.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt, horaActual } from '../../lib/format'
 import { Truck, Check, Pin } from '../../components/icons'
+import Logo from '../../components/Logo'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -98,8 +99,8 @@ export default function RepartidorView() {
       <div style={sx('flex:none;padding:16px 16px 12px;background:var(--surface);border-bottom:1px solid var(--line)')}>
         <div style={sx('display:flex;align-items:center;justify-content:space-between')}>
           <div style={sx('display:flex;align-items:center;gap:8px')}>
-            <div style={logo}>U</div>
-            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em')}>LA UNIÓN</div>
+            <Logo size={26} radius={8} />
+            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em')}>DisT-At</div>
           </div>
           <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {hoy()}</div>
         </div>
@@ -301,7 +302,6 @@ export default function RepartidorView() {
   )
 }
 
-const logo = { width: 26, height: 26, borderRadius: 8, background: 'var(--primary)', color: 'var(--on-primary)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }
 const stepBtn = { ...sx('width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:19px;user-select:none;background:transparent') }
 
 function Mini({ label, value, color }) {

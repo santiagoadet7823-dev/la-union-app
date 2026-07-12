@@ -1,4 +1,4 @@
-# Distribuidora LA UNIÓN — App unificada (PWA + Capacitor)
+# DisT-At — App unificada (PWA + Capacitor)
 
 Plataforma logística con tres roles en un solo código: **Vendedor** (móvil) →
 **Administrador** (escritorio) → **Repartidor** (móvil). React + Vite + Tailwind v4,

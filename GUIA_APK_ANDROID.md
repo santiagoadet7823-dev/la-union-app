@@ -1,8 +1,8 @@
-# 📱 Guía súper detallada — Generar el APK de LA UNIÓN (Android)
+# 📱 Guía súper detallada — Generar el APK de DisT-At (Android)
 
 Esta guía te lleva **de cero a un APK instalable** que podés enviarles a los empleados por WhatsApp/Drive. Está pensada para hacerse **una sola vez** la configuración, y después cada actualización son 3 comandos.
 
-> App base: **LA UNIÓN** · `appId: com.launion.app` · Capacitor 6 (ya configurado en el proyecto).
+> App base: **DisT-At** · `appId: com.launion.app` (interno, no se cambia) · Capacitor 6 (ya configurado en el proyecto).
 
 ---
 
@@ -100,7 +100,7 @@ Dentro de `<manifest ...>` y **antes** de `<application>`, pegá estos permisos:
 <uses-permission android:name="android.permission.WAKE_LOCK" />
 ```
 
-> El plugin `@capacitor-community/background-geolocation` corre un **servicio en primer plano** con una notificación permanente ("LA UNIÓN registra tu ruta"). Por eso van `FOREGROUND_SERVICE_LOCATION` y `POST_NOTIFICATIONS`.
+> El plugin `@capacitor-community/background-geolocation` corre un **servicio en primer plano** con una notificación permanente ("DisT-At registra tu ruta"). Por eso van `FOREGROUND_SERVICE_LOCATION` y `POST_NOTIFICATIONS`.
 
 ---
 
@@ -178,7 +178,7 @@ const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
 async function watchNative(onUpdate, onError) {
   const id = await BackgroundGeolocation.addWatcher(
     {
-      backgroundMessage: 'LA UNIÓN registra tu ruta',
+      backgroundMessage: 'DisT-At registra tu ruta',
       backgroundTitle: 'Tracking activo',
       requestPermissions: true,
       stale: false,
@@ -200,7 +200,7 @@ Después de cualquier cambio de código: `CAP_BUILD=1 npm run build && npx cap s
 ---
 
 ## 7) Ícono y nombre de la app
-- Nombre: ya es **LA UNIÓN** (definido en `capacitor.config.ts`).
+- Nombre: ya es **DisT-At** (definido en `capacitor.config.ts`).
 - Ícono: en Android Studio → click derecho en `app` → *New → Image Asset* → elegí el logo → *Next → Finish*. Genera todos los tamaños.
 
 ---
@@ -286,7 +286,7 @@ android/app/build/outputs/apk/release/app-release.apk
 
 1. Pasá el `app-release.apk` al teléfono (WhatsApp, Drive, cable USB).
 2. En el celular: al abrirlo, Android pide permitir **"instalar apps de orígenes desconocidos"** → aceptá para esa app.
-3. Abrí LA UNIÓN → *Continuar con Google* → cuando el admin te asigne el rol, entrás.
+3. Abrí DisT-At → *Continuar con Google* → cuando el admin te asigne el rol, entrás.
 4. La primera vez la app pide permiso de **ubicación**: elegí **"Permitir siempre"** para que funcione en segundo plano.
 
 ---
