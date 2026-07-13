@@ -22,6 +22,12 @@ export function useJornada() {
   const [motivo, setMotivo] = useState(null)
   const [visitState, setVisitState] = useState({}) // { [idCliente]: {status, hora, monto, motivo} }
   const [toast, setToast] = useState(null)
+  // Estado de UI que en el monolito vivía en el componente padre (siempre montado),
+  // así que persistía al cambiar de pestaña. Vive acá para conservar ese comportamiento
+  // (las pestañas se montan/desmontan por render condicional).
+  const [search, setSearch] = useState('')       // buscador de productos (VisitaCatalogo)
+  const [routeCalc, setRouteCalc] = useState(false) // ruta calculada (RutaTab)
+  const [rutaInfo, setRutaInfo] = useState(null)  // métricas de la ruta (RutaTab)
   const timerRef = useRef(null)
   const toastRef = useRef(null)
 
@@ -82,6 +88,7 @@ export function useJornada() {
   return {
     tab, setTab,
     visit, seconds, cart, sheet, setSheet, motivo, setMotivo,
+    search, setSearch, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,
     catLoading, PRODUCTS,
     clients, nextId, done, conPedido, montoHoy, visitC,
     cartCount, cartKg, cartTotal, timer,

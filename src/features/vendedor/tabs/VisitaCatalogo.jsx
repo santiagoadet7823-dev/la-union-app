@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Search } from '../../../components/icons'
@@ -9,8 +8,8 @@ import { card } from '../ui'
  * y grilla de productos por categoría, y la barra de carrito para confirmar el pedido.
  */
 export default function VisitaCatalogo({ j }) {
-  const [search, setSearch] = useState('')
-  const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal } = j
+  // search vive en useJornada para persistir el filtro al cambiar de pestaña.
+  const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch } = j
 
   const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]
   const q = search.trim().toLowerCase()

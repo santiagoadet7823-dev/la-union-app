@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { Route } from '../../../components/icons'
 import LeafletMap from '../../../components/LeafletMap'
@@ -11,9 +10,8 @@ import { ROUTE_COLOR, CENTRO } from '../../../data/demoGeo'
 export default function RutaTab({ j }) {
   const { theme } = useTheme()
   const { pos: livePos, error: gpsError } = useGps()
-  const { clients, nextId, pend, pendingCoords } = j
-  const [routeCalc, setRouteCalc] = useState(false)
-  const [rutaInfo, setRutaInfo] = useState(null)
+  // routeCalc/rutaInfo viven en useJornada para persistir al cambiar de pestaña.
+  const { clients, nextId, pend, pendingCoords, routeCalc, setRouteCalc, rutaInfo, setRutaInfo } = j
 
   return (
     <div style={sx('flex:1;overflow-y:auto;padding:14px 14px 92px')}>

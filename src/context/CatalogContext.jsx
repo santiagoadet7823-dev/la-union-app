@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
 import { uid } from '../lib/uid'
@@ -55,6 +55,10 @@ export function CatalogProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Marca si ya se aplicó un snapshot de RED, para que la hidratación de caché (que
+  // resuelve async, más lenta en el APK por el init de SQLite) no pise datos frescos.
+  const netAppliedRef = useRef(false)
+
   // Aplica un snapshot CRUDO de DB al estado de vista.
   const aplicar = useCallback((raw) => {
     setProductos((raw?.productos || []).map(mapProducto))
@@ -74,17 +78,23 @@ export function CatalogProvider({ children }) {
     }
     setError(err || null)
     const raw = { productos: prod, clientes: cli, zonas: zon }
+    netAppliedRef.current = true
     aplicar(raw)
-    escribirCacheCatalogo(idEmpresa, raw)
+    // Solo persistir un snapshot COMPLETO (sin error). Un fallo PARCIAL (una tabla
+    // vacía por error de red/RLS mientras otra sí trajo datos) no debe pisar la caché
+    // buena de la tabla que falló.
+    if (!err) escribirCacheCatalogo(idEmpresa, raw)
     setLoading(false)
   }, [idEmpresa, aplicar])
 
   // Offline-first: hidratar de inmediato desde la caché (si existe) para que la app
-  // muestre datos al toque aunque no haya red, y luego revalidar contra Supabase.
+  // muestre datos al toque aunque no haya red, y luego revalidar contra Supabase. Si
+  // la red ya aplicó un snapshot, la caché NO lo pisa (evita el race hidratación/red).
   useEffect(() => {
     let alive = true
+    netAppliedRef.current = false // nueva empresa / mount: permitir hidratar de caché
     leerCacheCatalogo(idEmpresa).then((cached) => {
-      if (alive && cached) { aplicar(cached); setLoading(false) }
+      if (alive && cached && !netAppliedRef.current) { aplicar(cached); setLoading(false) }
     })
     return () => { alive = false }
   }, [idEmpresa, aplicar])
