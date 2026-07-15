@@ -22,6 +22,9 @@ export default function EmpresasView({ onToast }) {
   // Ventana horaria de rastreo (global).
   const [track, setTrack] = useState({ enabled: true, start: '07:30', end: '22:00' })
   const [savingTrack, setSavingTrack] = useState(false)
+  // Edición manual de la coordenada base (depósito) por empresa: id -> { lat, lng } como strings.
+  const [baseEdit, setBaseEdit] = useState({})
+  const [savingBase, setSavingBase] = useState(null) // id de la empresa que se está guardando
 
   useEffect(() => {
     supabase.from('app_config').select('track_enabled, track_start, track_end').maybeSingle()
@@ -44,13 +47,17 @@ export default function EmpresasView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('empresas')
-      .select('id, nombre, activo, created_at')
+      .select('id, nombre, activo, created_at, base_lat, base_lng')
       .order('created_at', { ascending: true })
     // conteo de usuarios por empresa
     const { data: perf } = await supabase.from('perfiles').select('id_empresa')
     const conteo = {}
     ;(perf || []).forEach((p) => { if (p.id_empresa) conteo[p.id_empresa] = (conteo[p.id_empresa] || 0) + 1 })
     setEmpresas((data || []).map((e) => ({ ...e, usuarios: conteo[e.id] || 0 })))
+    // Inicializa los inputs de base con los valores guardados (o vacío si son null).
+    const be = {}
+    ;(data || []).forEach((e) => { be[e.id] = { lat: e.base_lat == null ? '' : String(e.base_lat), lng: e.base_lng == null ? '' : String(e.base_lng) } })
+    setBaseEdit(be)
     setLoading(false)
   }, [])
 
@@ -72,6 +79,29 @@ export default function EmpresasView({ onToast }) {
     const { error } = await supabase.from('empresas').update({ activo: !e.activo }).eq('id', e.id)
     if (error) { onToast?.('Error: ' + error.message); return }
     onToast?.(`${e.nombre} ${!e.activo ? 'activada' : 'desactivada'}`)
+    cargar()
+  }
+
+  // Guarda la coordenada base (depósito) de una empresa. Vacío = null (usa el default del mapa).
+  async function guardarBase(e) {
+    const edit = baseEdit[e.id] || { lat: '', lng: '' }
+    const latRaw = (edit.lat || '').trim()
+    const lngRaw = (edit.lng || '').trim()
+    // Ambos vacíos → limpia la base (null). Si uno está cargado, el otro también debe estarlo.
+    if ((latRaw === '') !== (lngRaw === '')) { onToast?.('Cargá lat y lng juntos, o dejá ambos vacíos'); return }
+    let base_lat = null
+    let base_lng = null
+    if (latRaw !== '') {
+      base_lat = Number(latRaw)
+      base_lng = Number(lngRaw)
+      if (Number.isNaN(base_lat) || base_lat < -90 || base_lat > 90) { onToast?.('Lat inválida (debe estar entre -90 y 90)'); return }
+      if (Number.isNaN(base_lng) || base_lng < -180 || base_lng > 180) { onToast?.('Lng inválida (debe estar entre -180 y 180)'); return }
+    }
+    setSavingBase(e.id)
+    const { error } = await supabase.from('empresas').update({ base_lat, base_lng }).eq('id', e.id)
+    setSavingBase(null)
+    if (error) { onToast?.('Error: ' + error.message); return }
+    onToast?.(base_lat == null ? `Base de ${e.nombre} limpiada` : `Base de ${e.nombre} guardada`)
     cargar()
   }
 
@@ -120,20 +150,42 @@ export default function EmpresasView({ onToast }) {
               <span>Empresa</span><span style={sx('text-align:right')}>Usuarios</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
             </div>
             {empresas.map((e) => (
-              <div key={e.id} style={{ ...grid, ...sx('padding:11px 10px;border-bottom:1px solid var(--line);font-size:13px') }}>
-                <span style={sx('font-weight:600')}>{e.nombre}</span>
-                <span style={sx('text-align:right;font-family:var(--font-mono);color:var(--muted)')}>{e.usuarios}</span>
-                <span>
-                  <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: e.activo ? 'var(--success)' : 'var(--danger)', background: e.activo ? 'var(--success-tint)' : 'var(--danger-tint)' }}>
-                    <span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: e.activo ? 'var(--success)' : 'var(--danger)' }} />
-                    {e.activo ? 'Activa' : 'Inactiva'}
+              <div key={e.id} style={sx('border-bottom:1px solid var(--line)')}>
+                <div style={{ ...grid, ...sx('padding:11px 10px;font-size:13px') }}>
+                  <span style={sx('font-weight:600')}>{e.nombre}</span>
+                  <span style={sx('text-align:right;font-family:var(--font-mono);color:var(--muted)')}>{e.usuarios}</span>
+                  <span>
+                    <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: e.activo ? 'var(--success)' : 'var(--danger)', background: e.activo ? 'var(--success-tint)' : 'var(--danger-tint)' }}>
+                      <span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: e.activo ? 'var(--success)' : 'var(--danger)' }} />
+                      {e.activo ? 'Activa' : 'Inactiva'}
+                    </span>
                   </span>
-                </span>
-                <span style={sx('text-align:right')}>
-                  <button onClick={() => toggle(e)} style={{ ...sx('padding:7px 13px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer'), border: `1px solid ${e.activo ? 'var(--danger)' : 'var(--success)'}`, background: 'transparent', color: e.activo ? 'var(--danger)' : 'var(--success)' }}>
-                    {e.activo ? 'Desactivar' : 'Activar'}
+                  <span style={sx('text-align:right')}>
+                    <button onClick={() => toggle(e)} style={{ ...sx('padding:7px 13px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer'), border: `1px solid ${e.activo ? 'var(--danger)' : 'var(--success)'}`, background: 'transparent', color: e.activo ? 'var(--danger)' : 'var(--success)' }}>
+                      {e.activo ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </span>
+                </div>
+                {/* Editor de coordenada base (depósito): fila aparte a ancho completo, fuera del grid. */}
+                <div style={sx('display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:2px 10px 12px')}>
+                  <div>
+                    <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Lat base</div>
+                    <input type="number" step="any" value={(baseEdit[e.id]?.lat) ?? ''} placeholder="-24.7231"
+                      onChange={(ev) => setBaseEdit((b) => ({ ...b, [e.id]: { ...(b[e.id] || { lat: '', lng: '' }), lat: ev.target.value } }))}
+                      style={{ ...inpTime, width: 130 }} />
+                  </div>
+                  <div>
+                    <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Lng base</div>
+                    <input type="number" step="any" value={(baseEdit[e.id]?.lng) ?? ''} placeholder="-64.1943"
+                      onChange={(ev) => setBaseEdit((b) => ({ ...b, [e.id]: { ...(b[e.id] || { lat: '', lng: '' }), lng: ev.target.value } }))}
+                      style={{ ...inpTime, width: 130 }} />
+                  </div>
+                  <button disabled={savingBase === e.id} onClick={() => guardarBase(e)}
+                    style={{ ...sx('padding:9px 14px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer'), border: '1px solid var(--line2)', background: 'transparent', color: 'var(--text)' }}>
+                    {savingBase === e.id ? 'Guardando…' : 'Guardar base'}
                   </button>
-                </span>
+                  <span style={sx('font-size:11px;color:var(--muted);flex:1;min-width:180px')}>Coordenada base del depósito (dónde abre el mapa)</span>
+                </div>
               </div>
             ))}
           </>

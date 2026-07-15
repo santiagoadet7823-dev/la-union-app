@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { watchPosition, pedirUbicacionUnaVez } from '../services/geolocation'
+import { procesarFix } from '../services/geolocation/tracker'
 
 /**
  * GPS en vivo real. Cuando `enabled` es true, suscribe al watch de posición del
@@ -25,7 +26,9 @@ export function useLivePosition(enabled) {
     let active = true
     setError(null)
     watchPosition(
-      (p) => { if (active) setPos(p) },
+      // procesarFix persiste SIEMPRE (corre dentro del callback nativo, sobrevive al
+      // congelamiento del WebView); setPos es solo para el marcador en vivo (React).
+      (p) => { procesarFix(p); if (active) setPos(p) },
       (e) => { if (active) setError(e) }
     ).then((stop) => {
       stopRef.current = stop
@@ -41,10 +44,16 @@ export function useLivePosition(enabled) {
   // movimiento no haya emitido. Sirve para (a) rellenar el recorrido cuando el
   // movimiento es lento y (b) que el fix no quede "viejo" (el GpsGate no da falso
   // "GPS apagado"). Combina con el "por distancia" del watch → recorrido más suave.
+  //
+  // Solo en FOREGROUND: usa navigator.geolocation (inútil en 2º plano) y el
+  // setInterval se estrangula con la pantalla bloqueada. En background la captura la
+  // sostiene el watch nativo de background-geolocation. Pasa por procesarFix para que
+  // el keepalive del marcador (estando quieto) también se persista.
   useEffect(() => {
     if (!enabled) return
     const iv = setInterval(() => {
-      pedirUbicacionUnaVez().then((p) => setPos(p)).catch(() => {})
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      pedirUbicacionUnaVez().then((p) => { procesarFix(p); setPos(p) }).catch(() => {})
     }, 15000)
     return () => clearInterval(iv)
   }, [enabled])

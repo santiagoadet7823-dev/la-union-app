@@ -28,6 +28,7 @@ export default function RecorridosView() {
   const { idEmpresa } = useAuth()
   const [fecha, setFecha] = useState(hoyStr)
   const [snapped, setSnapped] = useState({}) // { id_usuario: [{lat,lng}] } pegado a calles
+  const [snapOn, setSnapOn] = useState(false) // default OFF = rastro crudo (GPS real); ON = pegar a calles
   const [fitDone, setFitDone] = useState(false)
   const [, forceTick] = useState(0)
   const snapCallRef = useRef(0)
@@ -73,10 +74,10 @@ export default function RecorridosView() {
   // Para dibujar: geometría pegada a calles (uno o varios segmentos por persona) si
   // está; si no, el rastro crudo. Los km se calculan sobre el crudo (más fiel).
   const leafletTrails = useMemo(() => trails.flatMap((t) => {
-    const segs = snapped[t.id]
+    const segs = snapOn ? snapped[t.id] : null
     if (segs && segs.length) return segs.map((s) => ({ points: s, color: t.color }))
     return [{ points: t.points, color: t.color }]
-  }), [trails, snapped])
+  }), [trails, snapped, snapOn])
   const hace = updatedAt ? Math.max(0, Math.round((Date.now() - updatedAt) / 1000)) : null
 
   return (
@@ -89,6 +90,14 @@ export default function RecorridosView() {
           </div>
           <button onClick={reload} disabled={loading} style={sx('padding:9px 16px;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--deep);font-size:13px;font-weight:600;cursor:pointer')}>
             {loading ? 'Cargando…' : '↻ Recargar'}
+          </button>
+          <button
+            onClick={() => setSnapOn((v) => !v)}
+            title="Por defecto se muestra el rastro real (GPS). Activá para pegarlo a las calles."
+            style={snapOn
+              ? sx('padding:9px 16px;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:13px;font-weight:600;cursor:pointer')
+              : sx('padding:9px 16px;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--deep);font-size:13px;font-weight:600;cursor:pointer')}>
+            {snapOn ? '✓ Pegar a calles' : 'Pegar a calles'}
           </button>
           <div style={sx('flex:1')} />
           <div style={sx('display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted)')}>

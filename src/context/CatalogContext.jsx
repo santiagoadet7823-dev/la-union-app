@@ -158,20 +158,96 @@ export function CatalogProvider({ children }) {
     if ('activo' in patch) vista.activo = patch.activo
     if ('nombre_comercio' in patch) vista.name = patch.nombre_comercio
     if ('localidad' in patch) vista.loc = patch.localidad || ''
+    // Edición a profundidad (ficha admin): reflejar también estos campos en la vista al toque.
+    if ('codigo' in patch) vista.codigo = patch.codigo || null
+    if ('horario' in patch) vista.horario = patch.horario || ''
+    if ('dias_visita' in patch) vista.dias = patch.dias_visita || ''
+    if ('frecuencia' in patch) vista.frecuencia = patch.frecuencia || ''
+    if ('geofence_radio' in patch) vista.geofence = patch.geofence_radio || 75
+    // Ubicar un cliente importado sin coordenadas: reflejar lat/lng en la vista al toque.
+    if ('lat' in patch) vista.lat = patch.lat ?? null
+    if ('lng' in patch) vista.lng = patch.lng ?? null
     setClientes((prev) => prev.map((c) => (c.id === id ? { ...c, ...vista } : c)).sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'update', id, payload: patch })
     flushMutaciones()
     return { ok: true }
   }, [])
 
-  /** Alta de zona (admin/encargado), offline-first. */
+  /**
+   * Baja de cliente (solo gestión: admin/encargado/superadmin — la RLS `clientes_del` lo
+   * exige). Offline-first: saca la fila del estado local YA y encola el DELETE; si no hay
+   * red, se sincroniza al reconectar. Reintentar es idempotente (borrar lo ya borrado no falla).
+   */
+  const deleteCliente = useCallback(async (id) => {
+    setClientes((prev) => prev.filter((c) => c.id !== id))
+    await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'delete', id })
+    flushMutaciones()
+    return { ok: true }
+  }, [])
+
+  /** Alta de zona (admin/encargado), offline-first. La zona lleva número (código) y vendedor dueño. */
   const addZona = useCallback(async (z) => {
-    const row = { id: uid(), id_empresa: idEmpresa, nombre: z.nombre, color: z.color || null }
+    const row = {
+      id: uid(), id_empresa: idEmpresa, nombre: z.nombre, color: z.color || null,
+      numero: z.numero ?? null, id_vendedor: z.id_vendedor || null,
+    }
     setZonas((prev) => [...prev, row].sort((a, b) => a.nombre.localeCompare(b.nombre)))
     await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'insert', payload: row })
     flushMutaciones()
     return { ok: true, zona: row }
   }, [idEmpresa])
+
+  /**
+   * Importación masiva de clientes (planilla). Acción de admin: NO aplica el override
+   * `esMovil` de addCliente (que forzaría id_vendedor=user y activo=false). Cada fila ya
+   * viene resuelta con id_zona + id_vendedor (heredado de la zona). Dedup por `codigo`
+   * (columna UNIQUE): las filas cuyo código ya exista en la cartera se SALTAN, no se
+   * insertan (evita el fallo de constraint). Offline-first: encola todo y flushea al final.
+   *
+   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, id_zona?, id_vendedor?}>} rows
+   * @returns {{insertados:number, saltados:number, avisos:string[]}}
+   */
+  const importClientes = useCallback(async (rows) => {
+    const existentes = new Set(
+      clientes.map((c) => (c.codigo || '').trim().toLowerCase()).filter(Boolean)
+    )
+    const vistosEnLote = new Set()
+    const avisos = []
+    const nuevos = []
+    for (const r of rows || []) {
+      const cod = (r.codigo || '').trim()
+      const codKey = cod.toLowerCase()
+      if (codKey && (existentes.has(codKey) || vistosEnLote.has(codKey))) {
+        avisos.push(`Código duplicado, se saltó: ${cod}`)
+        continue
+      }
+      if (codKey) vistosEnLote.add(codKey)
+      nuevos.push({
+        id: uid(),
+        id_empresa: idEmpresa,
+        codigo: cod || null,
+        nombre_comercio: r.nombre_comercio,
+        lat: null,
+        lng: null,
+        localidad: r.localidad || null,
+        dias_visita: r.dias_visita || null,
+        frecuencia: r.frecuencia || null,
+        geofence_radio: 75,
+        horario: r.horario || null,
+        id_vendedor: r.id_vendedor || null,
+        id_zona: r.id_zona || null,
+        activo: true, // importación de admin → confirmados
+      })
+    }
+    if (nuevos.length) {
+      setClientes((prev) => [...prev, ...nuevos.map(mapCliente)].sort((a, b) => a.name.localeCompare(b.name)))
+      for (const row of nuevos) {
+        await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: row })
+      }
+      flushMutaciones()
+    }
+    return { insertados: nuevos.length, saltados: (rows?.length || 0) - nuevos.length, avisos }
+  }, [idEmpresa, clientes])
 
   /** Edición de zona (nombre/color), offline-first. */
   const updateZona = useCallback(async (id, patch) => {
@@ -182,7 +258,7 @@ export function CatalogProvider({ children }) {
   }, [])
 
   return (
-    <CatalogContext.Provider value={{ productos, clientes, zonas, loading, error, recargar, addCliente, addProducto, updateCliente, addZona, updateZona }}>
+    <CatalogContext.Provider value={{ productos, clientes, zonas, loading, error, recargar, addCliente, addProducto, updateCliente, deleteCliente, importClientes, addZona, updateZona }}>
       {children}
     </CatalogContext.Provider>
   )

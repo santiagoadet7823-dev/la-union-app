@@ -7,6 +7,8 @@
  * No depende de Leaflet: proyecta las coordenadas con matemática de slippy-map, así
  * el informe sale prolijo y con tamaño fijo sin capturar el DOM.
  */
+import { descargarArchivo } from '../download'
+
 const TILE = 256
 const lon2x = (lon, z) => ((lon + 180) / 360) * Math.pow(2, z)
 const lat2y = (lat, z) => {
@@ -149,16 +151,12 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
   ctx.font = '11px sans-serif'
   ctx.fillText('Informe de recorrido', W - 28, 62)
 
-  // --- Descarga ---
-  await new Promise((res, rej) => {
-    canvas.toBlob((blob) => {
-      if (!blob) { rej(new Error('No se pudo generar la imagen')); return }
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = filename
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000)
-      res()
+  // --- Descarga (web: anchor; APK: filesystem + compartir, vía helper) ---
+  const blob = await new Promise((res, rej) => {
+    canvas.toBlob((b) => {
+      if (!b) { rej(new Error('No se pudo generar la imagen')); return }
+      res(b)
     }, 'image/png')
   })
+  await descargarArchivo({ filename, blob, mime: 'image/png' })
 }

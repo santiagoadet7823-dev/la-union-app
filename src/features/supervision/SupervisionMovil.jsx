@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { colorPorId } from '../../lib/colors'
@@ -6,8 +6,25 @@ import { distanciaMetros } from '../../services/geolocation/geofence'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
+import useEmpresaBase from '../../hooks/useEmpresaBase'
 import LeafletMap from '../../components/LeafletMap'
+import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
+import GestionHost from './components/GestionHost'
+import { App as CapApp } from '@capacitor/app'
+import { APP_VERSION } from '../../version'
+
+// Vistas de gestión migradas al botón "Menú" (antes vivían en el Panel de gestión / AdminView,
+// la vista de escritorio tipo PWA). Se cargan bajo demanda para no engordar el chunk del mapa.
+const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
+const ZonasView = lazy(() => import('../admin/ZonasView'))
+const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
+const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
+const ConsultasView = lazy(() => import('../admin/ConsultasView'))
+const UsuariosView = lazy(() => import('../admin/UsuariosView'))
+const EmpresasView = lazy(() => import('../admin/EmpresasView'))
+const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
+const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 
 /**
  * Pantalla de SUPERVISIÓN MÓVIL (full-screen, nativa / APK). Implementa el diseño
@@ -24,7 +41,10 @@ import EstadoEquipo from './components/EstadoEquipo'
  * props:
  *   - role         'encargado' | 'propietario' | 'admin' | 'superadmin'
  *   - onIrAJornada () => void | null   (solo encargado: volver a "Mi jornada")
- *   - onIrAPanel   () => void | null   (admin/superadmin: ir al panel de gestión completo)
+ *
+ * Las funciones de gestión (Clientes, Zonas, Catálogo, Faltante, Consultas, Usuarios,
+ * Empresas) se abren NATIVAS desde el botón "Menú" (GestionHost). Ya no se navega al
+ * AdminView de escritorio (PWA) desde la APK.
  */
 const REFRESH_MS = 60000
 const hoyStr = () => new Date().toISOString().slice(0, 10)
@@ -39,10 +59,25 @@ const KPIS_PROX = [
   { label: 'Recaudado en la semana' },
 ]
 
-export default function SupervisionMovil({ role = 'encargado', onIrAJornada = null, onIrAPanel = null }) {
+// Acciones de gestión que abren en pantalla nativa (GestionHost) desde el botón "Menú".
+// Reemplazan al viejo "Panel de gestión" (AdminView / PWA). Gate por rol: Usuarios solo
+// admin/superadmin; Empresas solo superadmin; el resto para todo gestor (incl. encargado).
+const GESTION_ITEMS = [
+  { key: 'clientes', label: 'Clientes', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'consultas', label: 'Consultas', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
+  { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
+]
+const GESTION_TITLES = Object.fromEntries(GESTION_ITEMS.map((i) => [i.key, i.label]))
+
+export default function SupervisionMovil({ role = 'encargado', onIrAJornada = null }) {
   const { theme, isDark, toggleTheme } = useTheme()
   const { perfil, user, idEmpresa, signOut } = useAuth()
   const { nombres, movers, gpsOff, mqttOn } = useEquipoEnVivo()
+  const base = useEmpresaBase(idEmpresa) // dónde abre el mapa (depósito de la empresa)
   const isProp = role === 'propietario'
 
   const [section, setSection] = useState('mapa') // 'mapa' | 'dash'
@@ -53,20 +88,30 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [snapped, setSnapped] = useState({})     // { id: [{lat,lng}] } pegado a calles
+  const [snapOn, setSnapOn] = useState(false)    // false = rastro crudo fiel (default); true = pegado a calles
   const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)  // encuadrar el mapa solo la 1ª vez
+  const [fecha, setFecha] = useState(hoyStr)      // día visualizado en el mapa (default hoy)
+  const [gestion, setGestion] = useState(null)   // vista de gestión abierta (Clientes, Zonas, …) o null
+  const [apkVer, setApkVer] = useState(null)     // versión nativa del APK (para distinguir el fix nativo del OTA)
+  const [modalCliente, setModalCliente] = useState(false)
+  const [modalProducto, setModalProducto] = useState(false)
   const toastRef = useRef(null)
 
-  // ---- Recorridos del día (trazos por persona), con auto-refresh incremental. ----
-  const { byUser, reload: recargarPosiciones } = useRecorridosDelDia(hoyStr(), idEmpresa, true)
+  // Ítems del menú de gestión visibles para el rol actual.
+  const gestionItems = useMemo(() => GESTION_ITEMS.filter((it) => it.roles.includes(role)), [role])
+
+  const esHoy = fecha === hoyStr()
+
+  // ---- Recorridos del día elegido (trazos por persona). Auto-refresh incremental solo si es hoy. ----
+  const { byUser, reload: recargarPosiciones } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {
     if (!idEmpresa) return
-    const fecha = hoyStr()
     const s = await fetchSnapRecorridos({ fecha, desde: new Date(fecha + 'T00:00:00').toISOString(), hasta: new Date(fecha + 'T23:59:59').toISOString() })
     setSnapped(s)
-  }, [idEmpresa])
+  }, [idEmpresa, fecha])
 
   useEffect(() => { cargarSnap() }, [cargarSnap])
   useEffect(() => { const iv = setInterval(cargarSnap, REFRESH_MS); return () => clearInterval(iv) }, [cargarSnap])
@@ -78,6 +123,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // "hace Xs" en vivo.
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
   useEffect(() => () => clearTimeout(toastRef.current), [])
+  // Versión nativa del APK (App.getInfo). En web/PWA falla → queda null (solo se muestra la web).
+  useEffect(() => { CapApp.getInfo().then((i) => setApkVer(i?.version || null)).catch(() => {}) }, [])
 
   function showToast(m) {
     clearTimeout(toastRef.current)
@@ -102,15 +149,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       return { id, points: v.points, color: colorPorId(id), km: km / 1000 }
     }), [byUser, filter])
 
-  // Móviles en vivo → pines clickeables (marcadores del mapa).
-  const mapMarkers = moversFil.map((m) => ({
+  // Móviles en vivo → pines clickeables (marcadores del mapa). Solo tienen sentido HOY
+  // (son la posición "ahora"); en un día pasado se muestran únicamente los recorridos.
+  const mapMarkers = esHoy ? moversFil.map((m) => ({
     lat: m.lat, lng: m.lng, label: initials(nombres[m.id] || m.rol),
     color: colorPorId(m.id), labelColor: '#fff', title: nombres[m.id] || m.rol,
     selected: m.id === pinId,
-  }))
-  // Pegado a calles (uno o varios segmentos por persona) si está; si no, rastro crudo.
+  })) : []
+  // Por defecto (snapOn=false) se dibuja el rastro CRUDO fiel (los puntos GPS reales). Con el
+  // toggle activo se usa la geometría pegada a calles (OSRM), con fallback al crudo si no está.
   const leafletTrails = trails.flatMap((t) => {
-    const segs = snapped[t.id]
+    const segs = snapOn ? snapped[t.id] : null
     if (segs && segs.length) return segs.map((s) => ({ points: s, color: t.color }))
     return [{ points: t.points, color: t.color }]
   })
@@ -134,22 +183,24 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           isolation:isolate crea un stacking context propio → confina los z-index internos
           de Leaflet (panes/controles 200–1000) DEBAJO del chrome (header/chips/nav), si no
           el mapa tapa los menús. */}
-      <div style={{ position: 'absolute', inset: 0, isolation: 'isolate' }}>
+      <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 56px)', bottom: 'calc(env(safe-area-inset-bottom) + 56px)', left: 0, right: 0, isolation: 'isolate' }}>
         <LeafletMap
           theme={theme}
           height="100%"
+          center={base}
           trails={leafletTrails.length ? leafletTrails : null}
           markers={mapMarkers}
           fit={!fitDone}
+          edgePadding={{ top: 16, right: 16, bottom: 96, left: 16 }}
           onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); setPlusOpen(false); setAcctOpen(false) } }}
         />
 
         {/* estado vacío del overlay */}
-        {!moversArr.length && !trails.length && (
-          <div style={{ position: 'absolute', left: '50%', top: '42%', transform: 'translate(-50%,-50%)', width: 240, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
+        {!mapMarkers.length && !trails.length && (
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 240, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8 }}><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></svg>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14 }}>Sin personal en la calle</div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>Cuando vendedores o repartidores inicien jornada, aparecerán acá en vivo.</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14 }}>{esHoy ? 'Sin personal en la calle' : 'Sin recorridos ese día'}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{esHoy ? 'Cuando vendedores o repartidores inicien jornada, aparecerán acá en vivo.' : 'No hay recorridos registrados para la fecha elegida. Probá con otro día o volvé a “Hoy”.'}</div>
           </div>
         )}
       </div>
@@ -157,7 +208,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* ===== HEADER GLASS ===== */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 12, background: 'var(--glass-bg)', ...glass, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 11px' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 11, background: 'var(--primary)', color: 'var(--on-primary)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>U</div>
+          <Logo size={34} radius={11} />
           <div style={{ textAlign: 'center', lineHeight: 1.15 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15 }}>{title}</div>
             <div style={{ fontSize: 9.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 1 }}>
@@ -181,6 +232,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{roleLabel} · {user?.email || ''}</div>
+                <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>App v{APP_VERSION}{apkVer ? ` · APK ${apkVer}` : ''}</div>
               </div>
             </div>
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
@@ -189,13 +241,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
                 <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
                   <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg></div>
                   <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
-                  <Chevron />
-                </div>
-              )}
-              {onIrAPanel && (
-                <div onClick={() => { setAcctOpen(false); onIrAPanel() }} style={acctItem}>
-                  <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></svg></div>
-                  <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Panel de gestión</span>
                   <Chevron />
                 </div>
               )}
@@ -241,6 +286,18 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           <Chip on={filter === 'v'} dim={filter && filter !== 'v'} color="var(--info)" dotRadius={99} count={vendCount} label="Vend." onClick={() => { setFilter((f) => f === 'v' ? null : 'v'); setPinId(null) }} />
           <Chip on={filter === 'r'} dim={filter && filter !== 'r'} color="var(--warning)" dotRadius={4} count={repCount} label="Rep." onClick={() => { setFilter((f) => f === 'r' ? null : 'r'); setPinId(null) }} />
         </div>
+        {/* Selector de fecha: en un día pasado se ven los recorridos históricos (sin móviles en vivo). */}
+        <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6, height: 44, padding: '0 11px', borderRadius: 99, cursor: 'pointer', background: esHoy ? 'var(--glass-bg)' : 'var(--primary)', ...glass, border: `0.5px solid ${esHoy ? 'var(--glass-brd)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : '#fff', boxShadow: 'var(--shadow-lg)' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></svg>
+          <input type="date" value={fecha} max={hoyStr()} onChange={(e) => { setFecha(e.target.value || hoyStr()); setFitDone(false); setPinId(null) }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
+          {!esHoy && <span onClick={() => { setFecha(hoyStr()); setFitDone(false); setPinId(null) }} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap' }}>Hoy</span>}
+        </div>
+        {trails.length > 0 && (
+          <div onClick={() => setSnapOn((v) => !v)} title="Por defecto se muestra el rastro real (GPS). Activá para pegar el trazo a las calles." style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6, height: 44, padding: '0 13px', borderRadius: 99, cursor: 'pointer', background: snapOn ? 'var(--primary)' : 'var(--glass-bg)', ...glass, border: `0.5px solid ${snapOn ? 'transparent' : 'var(--glass-brd)'}`, color: snapOn ? '#fff' : 'var(--muted)', boxShadow: 'var(--shadow-lg)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h6M9 6a3 3 0 1 0-6 0c0 2 3 5 3 5M9 6c0 2-3 5-3 5m9-5a3 3 0 1 1 6 0c0 2-3 5-3 5m-3-5c0 2 3 5 3 5M6 18h12" /></svg>
+            <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Calles</span>
+          </div>
+        )}
         <div onClick={doSync} style={{ flex: 'none', width: 44, height: 44, borderRadius: 99, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--glass-bg)', ...glass, border: '0.5px solid var(--glass-brd)', color: syncing ? 'var(--primary)' : 'var(--muted)', boxShadow: 'var(--shadow-lg)' }}>
           <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg></div>
         </div>
@@ -284,21 +341,15 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {plusOpen && !isProp && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 24 }}>
           <div onClick={() => setPlusOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', right: 12, bottom: 'calc(84px + env(safe-area-inset-bottom))', width: 236, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7, animation: 'lu-rise .22s ease' }}>
-            <div style={{ padding: '8px 10px 6px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>Acciones</div>
-            {[
-              ['Cargar pedido de venta', 'var(--primary-tint)', 'var(--deep)'],
-              ['Asignar ruta', 'var(--info-tint)', 'var(--info)'],
-              ['Registrar usuario', 'var(--success-tint)', 'var(--success)'],
-            ].map(([label, tint, color]) => (
-              <div key={label} onClick={() => { setPlusOpen(false); showToast(`${label} · próximamente`) }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 10px', borderRadius: 12, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box' }}>
-                <div style={{ width: 34, height: 34, flex: 'none', borderRadius: 10, background: tint, color, display: 'grid', placeItems: 'center' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg></div>
-                <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
+          <div style={{ position: 'absolute', right: 12, bottom: 'calc(84px + env(safe-area-inset-bottom))', width: 236, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7, animation: 'lu-rise .22s ease' }}>
+            <div style={{ padding: '8px 10px 6px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>Gestión</div>
+            {gestionItems.map((it) => (
+              <div key={it.key} onClick={() => { setPlusOpen(false); setGestion(it.key) }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 10px', borderRadius: 12, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box' }}>
+                <div style={{ width: 34, height: 34, flex: 'none', borderRadius: 10, background: 'var(--surface2)', color: 'var(--deep)', display: 'grid', placeItems: 'center' }}><GestIcon k={it.key} /></div>
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>{it.label}</span>
+                <Chevron />
               </div>
             ))}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 11px', marginTop: 2, borderTop: '0.5px solid var(--glass-brd)', fontSize: 10.5, color: 'var(--faint)', lineHeight: 1.35 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>Se conectan cuando avancen los módulos.
-            </div>
           </div>
         </div>
       )}
@@ -364,9 +415,32 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         </div>
       )}
 
+      {/* ===== GESTIÓN (pantalla nativa, abierta desde el botón "Menú") ===== */}
+      {gestion && (
+        <GestionHost title={GESTION_TITLES[gestion]} onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}>
+          <Suspense fallback={<GestionCargando />}>
+            {gestion === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
+            {gestion === 'zonas' && <ZonasView onToast={showToast} />}
+            {gestion === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} />}
+            {gestion === 'faltante' && <FaltanteTab />}
+            {gestion === 'consultas' && <ConsultasView />}
+            {gestion === 'usuarios' && <UsuariosView onToast={showToast} />}
+            {gestion === 'empresas' && <EmpresasView onToast={showToast} />}
+          </Suspense>
+        </GestionHost>
+      )}
+
+      {/* Modales de alta (se abren desde Clientes / Catálogo). z-index:80 → por encima del host. */}
+      {(modalCliente || modalProducto) && (
+        <Suspense fallback={null}>
+          {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
+          {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
+        </Suspense>
+      )}
+
       {/* ===== TOAST ===== */}
       {toast && (
-        <div style={{ position: 'absolute', top: 'calc(70px + env(safe-area-inset-top))', left: 16, right: 16, zIndex: 40, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 13, boxShadow: 'var(--shadow-lg)', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9, animation: 'lu-rise .2s ease' }}>
+        <div style={{ position: 'absolute', top: 'calc(70px + env(safe-area-inset-top))', left: 16, right: 16, zIndex: 90, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 13, boxShadow: 'var(--shadow-lg)', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9, animation: 'lu-rise .2s ease' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
@@ -382,6 +456,25 @@ const sheetLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '.06em', text
 
 function Chevron() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+}
+
+// Íconos de las acciones de gestión del menú "+".
+function GestIcon({ k }) {
+  const inner = {
+    clientes: <><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></>,
+    zonas: <><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
+    catalogo: <path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />,
+    faltante: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
+    consultas: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
+    usuarios: <><circle cx="9" cy="8" r="3" /><path d="M2.5 21c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><path d="M17 7.7a3 3 0 0 1 0 5.6" /></>,
+    empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
+  }[k]
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{inner}</svg>
+}
+
+// Fallback mientras carga (lazy) la vista de gestión dentro del GestionHost.
+function GestionCargando() {
+  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Cargando…</div>
 }
 
 function themeBtn(active) {

@@ -23,6 +23,9 @@ const RepartidorView = lazy(() => import('./features/repartidor/RepartidorView')
 const AdminView = lazy(() => import('./features/admin/AdminView'))
 const PropietarioView = lazy(() => import('./features/propietario/PropietarioView'))
 const SupervisionMovil = lazy(() => import('./features/supervision/SupervisionMovil'))
+// Shell de escritorio (PWA/.exe) para los roles de supervisión: sidebar izq + topbar +
+// mapa + métricas. Reemplaza al AppShell+AdminView/PropietarioView SOLO en web.
+const SupervisionDesktop = lazy(() => import('./features/supervision/SupervisionDesktop'))
 
 // La supervisión móvil (mapa full-screen) es el diseño nuevo SOLO para la APK nativa.
 // En web/PWA se mantiene el panel actual hasta el rediseño de escritorio (.exe).
@@ -97,11 +100,15 @@ function CargandoPerfil({ error, onRetry }) {
  * AppShell con tabs. Único lugar que sabe esta regla — así no queda un booleano ad
  * hoc que hay que reinventar/recordar cada vez que se agregue un rol o vista.
  */
-function decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor, adminVista }) {
-  if (!nativo) return false
+function decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor }) {
+  // El PROPIETARIO usa SIEMPRE la vista móvil de solo-lectura, tanto en la APK como en la
+  // PWA: el dueño abre el sistema desde su celular (la PWA de escritorio es solo para PC/gestores).
   if (rol === 'propietario') return true
+  if (!nativo) return false
   if (esEncargado && vista === 'panel') return true
-  if (esGestor && adminVista === 'supervision') return true
+  // Admin/superadmin en la APK: SIEMPRE supervisión móvil. La gestión se abre nativa desde
+  // el botón "Menú"; ya no existe el panel de escritorio (AdminView/PWA) en el .apk.
+  if (esGestor) return true
   return false
 }
 
@@ -120,20 +127,12 @@ function AuthedApp() {
     try { localStorage.setItem('lu-encargado-vista', v) } catch (_) {}
     setVista(v)
   }
-  // Admin/superadmin en móvil alternan entre la supervisión y su panel de gestión.
-  const [adminVista, setAdminVista] = useState(() => {
-    try { return localStorage.getItem('lu-admin-movil') || 'supervision' } catch (_) { return 'supervision' }
-  })
-  const cambiarAdminVista = (v) => {
-    try { localStorage.setItem('lu-admin-movil', v) } catch (_) {}
-    setAdminVista(v)
-  }
 
   // Supervisión móvil (full-screen, sin el marco del AppShell). Solo en la APK nativa
-  // (o ?mobile=1 en web): dueño siempre; encargado en "Panel"; admin/superadmin en
-  // modo "supervision" (con acceso al panel de gestión completo).
+  // (o ?mobile=1 en web): dueño siempre; encargado en "Panel"; admin/superadmin siempre
+  // (la gestión se abre nativa desde el botón "Menú", sin el AdminView de escritorio).
   const nativo = usarSupervisionMovil()
-  const supMovil = decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor, adminVista })
+  const supMovil = decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor })
   if (supMovil) {
     return (
       <ErrorBoundary>
@@ -141,7 +140,26 @@ function AuthedApp() {
           <SupervisionMovil
             role={rol}
             onIrAJornada={esEncargado ? () => cambiarVista('jornada') : null}
-            onIrAPanel={esGestor ? () => cambiarAdminVista('panel') : null}
+          />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
+
+  // En WEB/PWA (no nativo) los roles de GESTIÓN usan el nuevo shell de ESCRITORIO
+  // (sidebar izq + topbar + mapa + métricas) en vez del AppShell+AdminView: la PWA de
+  // escritorio es solo para PC. Gestor (admin/superadmin) siempre; encargado solo en "Panel"
+  // (en "Mi jornada" sigue con el PhoneFrame del vendedor). El PROPIETARIO NO entra acá: ya
+  // salió arriba por supMovil (vista móvil de solo-lectura, celular). La APK también.
+  const usaDesktop = !nativo && (esGestor || (esEncargado && vista === 'panel'))
+  if (usaDesktop) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<Cargando />}>
+          <SupervisionDesktop
+            role={rol}
+            vista={esEncargado ? vista : null}
+            onIrAJornada={esEncargado ? () => cambiarVista('jornada') : null}
           />
         </Suspense>
       </ErrorBoundary>
@@ -152,7 +170,6 @@ function AuthedApp() {
     <AppShell
       encargadoVista={esEncargado ? vista : null}
       onCambiarVista={cambiarVista}
-      onMonitoreo={nativo && esGestor ? () => cambiarAdminVista('supervision') : null}
     >
       <ErrorBoundary>
         <Suspense fallback={<Cargando />}>

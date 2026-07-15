@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from 'react'
 import { supabase, hasSupabase } from '../services/supabase'
 import { APP_VERSION } from '../version'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
+import { pendingCount } from '../services/sync/queue'
+import { getHeartbeat } from '../services/geolocation/tracker'
 
 /**
  * Latido de "salud" del dispositivo móvil. Cada tanto (y en transiciones) sube una
@@ -28,17 +30,23 @@ function computeGpsOk(pos, error) {
 export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }) {
   const gpsDesdeRef = useRef({ ok: null, since: Date.now() })
   const bgRef = useRef({ dia: null, ok: false }) // ¿latió en 2º plano hoy?
+  const hbRef = useRef(null) // heartbeat del tracker (captura real, incl. background)
 
   // Última salud calculada (para poder subirla desde el intervalo y los listeners).
   const snapRef = useRef(() => ({}))
   snapRef.current = () => {
-    const gpsOk = computeGpsOk(pos, error)
+    // El heartbeat del tracker prueba captura reciente aunque el `pos` de React esté
+    // viejo por congelamiento del WebView con la pantalla bloqueada.
+    const hb = hbRef.current
+    const hbFresco = !!hb && Date.now() - (hb.ultimaCapturaTs || 0) < STALE_MS
+    const gpsOk = computeGpsOk(pos, error) || hbFresco
     // Transición de estado GPS → registrar "desde cuándo".
     if (gpsDesdeRef.current.ok !== gpsOk) gpsDesdeRef.current = { ok: gpsOk, since: Date.now() }
     const hoy = new Date().toISOString().slice(0, 10)
     if (bgRef.current.dia !== hoy) bgRef.current = { dia: hoy, ok: false }
     const visible = typeof document !== 'undefined' && document.visibilityState === 'visible'
     if (!visible && gpsOk) bgRef.current.ok = true // recibió fix estando en 2º plano → permiso "siempre"
+    if (hbFresco && hb.ultimaBg) bgRef.current.ok = true // capturó en background (callback nativo)
     return {
       gps_ok: gpsOk,
       gps_desde: new Date(gpsDesdeRef.current.since).toISOString(),
@@ -59,11 +67,16 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
     enviandoRef.current = true
     do {
       pendingRef.current = false
+      // Captura real (incl. background). Solo se honra si es del usuario actual
+      // (clave device-global → evitar heredar el heartbeat de otra sesión).
+      const hb = await getHeartbeat().catch(() => null)
+      hbRef.current = hb && hb.id === id ? hb : null
       const s = snapRef.current()
+      const cola = await pendingCount().catch(() => null) // diagnóstico: puntos en cola sin subir
       try {
         await supabase.from('estado_dispositivo').upsert({
           id_usuario: id, id_empresa: idEmpresa, rol, app_version: APP_VERSION,
-          ts: new Date().toISOString(), updated_at: new Date().toISOString(), ...s,
+          ts: new Date().toISOString(), updated_at: new Date().toISOString(), cola_pendiente: cola, ...s,
         }, { onConflict: 'id_usuario' })
       } catch (_) { /* sin red → se pierde el latido, es esperable */ }
     } while (pendingRef.current)

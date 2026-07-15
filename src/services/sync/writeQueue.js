@@ -8,9 +8,10 @@ import { persistence } from '../persistence'
  * la conexión. Usa el puerto `persistence` (async), así en la APK puede pasar a
  * SQLite sin tocar este archivo.
  *
- * Cada mutación: { op_uid, table, op:'insert'|'update', payload, id? }.
+ * Cada mutación: { op_uid, table, op:'insert'|'update'|'delete', payload, id? }.
  * - insert: upsert(onConflict:'id', ignoreDuplicates) → reintentar no duplica.
  * - update: update(payload).eq('id', id).
+ * - delete: delete().eq('id', id) → reintentar es idempotente (borrar lo ya borrado no falla).
  * El id de las filas nuevas lo genera el cliente (uuid), así la fila optimista y la
  * de la base comparten el mismo id.
  */
@@ -48,6 +49,8 @@ export async function flushMutaciones() {
         ({ error } = await supabase.from(m.table).upsert(m.payload, { onConflict: 'id', ignoreDuplicates: true }))
       } else if (m.op === 'update') {
         ({ error } = await supabase.from(m.table).update(m.payload).eq('id', m.id))
+      } else if (m.op === 'delete') {
+        ({ error } = await supabase.from(m.table).delete().eq('id', m.id))
       } // op desconocida → se descarta (error queda null y se saca de la cola)
       if (error) break
       const q2 = await read()

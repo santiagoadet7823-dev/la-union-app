@@ -63,7 +63,10 @@ let flushing = false
  */
 export async function flushPosiciones() {
   if (!hasSupabase || flushing) return
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+  // NOTA: NO cortar por `navigator.onLine === false`. En algunos WebView de la APK ese flag
+  // queda mal (reporta offline estando conectado) y bloqueaba TODAS las subidas de posiciones
+  // (mientras estado_dispositivo, que no lo usa, seguía subiendo). Si no hay red, el upsert
+  // falla y se reintenta igual — el guard sobra y era una fuente de "no envía nada".
   flushing = true
   try {
     // eslint-disable-next-line no-constant-condition

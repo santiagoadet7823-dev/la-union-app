@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLivePosition } from './useLivePosition'
-import { enqueuePosicion, flushPosiciones } from '../services/sync/queue'
+import { flushPosiciones } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
-import { distanciaMetros } from '../services/geolocation/geofence'
-import { MIN_MOVE_M, KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../services/gpsConfig'
-import { uid as nuevoUid } from '../lib/uid'
+import { setIdentidad, setConfig, reset as resetTracker } from '../services/geolocation/tracker'
 
 /**
  * GPS en vivo + publicación en tiempo real. Lo usan Vendedor y Repartidor: cada
@@ -38,8 +36,16 @@ function msHastaProximoLimite(cfg) {
 export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
   const [enHorario, setEnHorario] = useState(true) // optimista: no bloquear el 1er watch mientras carga la config
   const { pos, error, request } = useLivePosition(enabled && enHorario)
-  const lastRef = useRef(null) // { lat, lng, ts, sentAt }
-  const cfgRef = useRef(null)  // ventana horaria de rastreo
+  const cfgRef = useRef(null)  // ventana horaria de rastreo (para enHorario)
+
+  // Identidad del tracker: sin esto, procesarFix (en el callback nativo) no encola.
+  // reset() al deshabilitar/desmontar limpia `last` para no arrastrar posición entre
+  // sesiones o roles.
+  useEffect(() => {
+    if (!enabled || !id || !idEmpresa) { resetTracker(); return }
+    setIdentidad({ id, rol, idEmpresa })
+    return () => resetTracker()
+  }, [enabled, id, rol, idEmpresa])
 
   // Carga (y refresca) la ventana horaria de rastreo controlada por el superadmin.
   // Además de guardarla, apaga/prende el sensor GPS en sí (no solo la subida) según
@@ -51,6 +57,7 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
 
     const aplicar = (cfg) => {
       cfgRef.current = cfg
+      setConfig(cfg) // el tracker lee la ventana horaria SÍNCRONO en procesarFix
       setEnHorario(dentroDeHorario(cfg))
       clearTimeout(boundaryTimer)
       const ms = msHastaProximoLimite(cfg)
@@ -63,43 +70,11 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     return () => { alive = false; clearInterval(iv); clearTimeout(boundaryTimer) }
   }, [enabled])
 
-  useEffect(() => {
-    if (!pos || !id || !idEmpresa) return
-
-    // 0) Fuera del horario de rastreo → no publicar (ahorra backend si alguien deja
-    //    la app abierta). Defensa adicional: el watch ya se detiene arriba, esto
-    //    cubre el instante justo del borde mientras el watch termina de pararse.
-    if (cfgRef.current && !dentroDeHorario(cfgRef.current)) return
-
-    // 1) Precisión: los fixes imprecisos (interiores, mala señal) se ignoran. Es la
-    //    causa principal de que el rastro "salte" lejos de la calle real.
-    if (typeof pos.accuracy === 'number' && pos.accuracy > ACCURACY_MAX_M) return
-
-    const prev = lastRef.current
-
-    // 2) Salto imposible: si respecto al último punto bueno la velocidad implícita
-    //    supera un máximo razonable, es un glitch de GPS → se descarta.
-    if (prev) {
-      const dt = Math.max(1, (pos.ts - prev.ts) / 1000)
-      const dist = distanciaMetros(prev, pos)
-      if (dist > MIN_MOVE_M && dist / dt > MAX_SPEED_MPS) return
-    }
-
-    const movio = !prev || distanciaMetros(prev, pos) >= MIN_MOVE_M
-    const keepAlive = prev && Date.now() - prev.sentAt >= KEEPALIVE_MS
-    if (!movio && !keepAlive) return
-
-    lastRef.current = { lat: pos.lat, lng: pos.lng, ts: pos.ts, sentAt: Date.now() }
-    // Guardar SIEMPRE en la cola local (no se pierde aunque no haya red) y luego
-    // intentar subir. Cada punto conserva su hora real (pos.ts).
-    // client_uid: id único por fix para deduplicar en el server. Si un batch se
-    // commitea pero se pierde la respuesta y se reintenta, el upsert lo ignora en
-    // vez de duplicar la fila.
-    const row = { id_usuario: id, rol, lat: pos.lat, lng: pos.lng, id_empresa: idEmpresa, ts: new Date(pos.ts || Date.now()).toISOString(), client_uid: nuevoUid() }
-    if (typeof pos.accuracy === 'number') row.accuracy = pos.accuracy
-    enqueuePosicion(row)
-    flushPosiciones()
-  }, [pos, id, rol, idEmpresa])
+  // El filtrado + encolado + subida de cada fix vive ahora en services/geolocation/
+  // tracker.js (procesarFix), invocado SÍNCRONO desde el callback nativo del watch en
+  // useLivePosition. Así la persistencia no depende del ciclo de render de React y
+  // sigue guardando puntos con la pantalla bloqueada (el WebView congelado no dispara
+  // effects). Este hook solo cablea identidad/config al tracker y reintenta el flush.
 
   // Reintentar la subida al recuperar conexión y cada tanto (por si el flush por
   // movimiento no alcanzó a vaciar la cola).

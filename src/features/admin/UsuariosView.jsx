@@ -15,7 +15,56 @@ const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
-const grid = { display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 150px 150px 120px 120px', gap: 10, alignItems: 'center' }
+const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.5fr 130px 90px 140px 110px 120px', gap: 10, alignItems: 'center' }
+
+const rolPill = (r) => {
+  const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
+  return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}</span>
+}
+
+/**
+ * Fila de usuario. DEFINIDA A NIVEL DE MÓDULO (no dentro de UsuariosView): la vista se
+ * monta como overlay dentro de SupervisionMovil, que re-renderiza cada 1s (labels "hace
+ * Xs"). Si Fila se definiera en el cuerpo del componente, sería un tipo nuevo por render
+ * y React remontaría cada fila cada segundo (cerrando los <select> y perdiendo el foco).
+ * Con tipo estable, el re-render del padre ya no desmonta las filas.
+ */
+function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user }) {
+  return (
+    <div style={{ ...grid, ...sx('padding:10px;border-bottom:1px solid var(--line);font-size:12.5px') }}>
+      <span style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
+        {u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}
+      </span>
+      <span style={sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{u.email}</span>
+      <span>
+        <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle}>
+          <option value="">Sin rol…</option>
+          {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </span>
+      <span>
+        <input type="number" min="0" placeholder="—" value={ed.numero ?? (u.numero ?? '')} onChange={(e) => setEdit(u.id, { numero: e.target.value })} style={selectStyle} title="Código de vendedor (ej. 1 = Zona 1)" />
+      </span>
+      <span>
+        {esSuper ? (
+          <select value={ed.id_empresa || u.id_empresa || idEmpresa || ''} onChange={(e) => setEdit(u.id, { id_empresa: e.target.value })} style={selectStyle}>
+            <option value="">Empresa…</option>
+            {empresas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+          </select>
+        ) : (
+          <span style={sx('font-size:11.5px;color:var(--muted)')}>{empresaNombre[u.id_empresa] || (u.id_empresa ? '—' : 'Sin empresa')}</span>
+        )}
+      </span>
+      <span>{u.activo && u.rol ? rolPill(u.rol) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span>}</span>
+      <span style={sx('display:flex;gap:6px;justify-content:flex-end')}>
+        <button disabled={savingId === u.id} onClick={() => guardar(u)} style={btnPrimary}>{esPendiente ? 'Aprobar' : 'Guardar'}</button>
+        {u.activo && u.id !== user?.id && (
+          <button disabled={savingId === u.id} onClick={() => cambiarEstado(u, false)} style={btnGhost} title="Desactivar acceso">✕</button>
+        )}
+      </span>
+    </div>
+  )
+}
 
 export default function UsuariosView({ onToast }) {
   const { rol, idEmpresa, user } = useAuth()
@@ -32,7 +81,7 @@ export default function UsuariosView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, rol, activo, id_empresa')
+      .select('id, nombre, email, rol, activo, id_empresa, numero')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     setUsuarios(data || [])
@@ -59,10 +108,11 @@ export default function UsuariosView({ onToast }) {
     const nuevaEmpresa = esSuper ? (ed.id_empresa || u.id_empresa || idEmpresa) : (u.id_empresa || idEmpresa)
     if (!nuevoRol) { onToast?.('Elegí un rol antes de aprobar'); return }
     if (!nuevaEmpresa) { onToast?.('Falta asignar la empresa'); return }
+    const nuevoNumero = ed.numero != null && ed.numero !== '' ? Number(ed.numero) : (u.numero ?? null)
     setSavingId(u.id)
     const { error } = await supabase
       .from('perfiles')
-      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa })
+      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero })
       .eq('id', u.id)
     setSavingId(null)
     if (error) { onToast?.('Error: ' + error.message); return }
@@ -82,49 +132,12 @@ export default function UsuariosView({ onToast }) {
   const pendientes = usuarios.filter((u) => !u.activo || !u.rol)
   const activos = usuarios.filter((u) => u.activo && u.rol)
 
-  const rolPill = (r) => {
-    const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
-    return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}</span>
-  }
-
-  const Fila = ({ u, esPendiente }) => {
-    const ed = edits[u.id] || {}
-    return (
-      <div style={{ ...grid, ...sx('padding:10px;border-bottom:1px solid var(--line);font-size:12.5px') }}>
-        <span style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
-          {u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}
-        </span>
-        <span style={sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{u.email}</span>
-        <span>
-          <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle}>
-            <option value="">Sin rol…</option>
-            {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </span>
-        <span>
-          {esSuper ? (
-            <select value={ed.id_empresa || u.id_empresa || idEmpresa || ''} onChange={(e) => setEdit(u.id, { id_empresa: e.target.value })} style={selectStyle}>
-              <option value="">Empresa…</option>
-              {empresas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-            </select>
-          ) : (
-            <span style={sx('font-size:11.5px;color:var(--muted)')}>{empresaNombre[u.id_empresa] || (u.id_empresa ? '—' : 'Sin empresa')}</span>
-          )}
-        </span>
-        <span>{u.activo && u.rol ? rolPill(u.rol) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span>}</span>
-        <span style={sx('display:flex;gap:6px;justify-content:flex-end')}>
-          <button disabled={savingId === u.id} onClick={() => guardar(u)} style={btnPrimary}>{esPendiente ? 'Aprobar' : 'Guardar'}</button>
-          {u.activo && u.id !== user?.id && (
-            <button disabled={savingId === u.id} onClick={() => cambiarEstado(u, false)} style={btnGhost} title="Desactivar acceso">✕</button>
-          )}
-        </span>
-      </div>
-    )
-  }
+  // Props comunes para cada Fila (componente de módulo → tipo estable, no remonta por el tick de 1s del padre).
+  const filaProps = { setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user }
 
   return (
     <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto')}>
-      <div style={{ ...panel, minWidth: 900 }}>
+      <div style={{ ...panel, minWidth: 1000 }}>
         <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:12px')}>
           <div>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Usuarios y accesos</div>
@@ -138,19 +151,19 @@ export default function UsuariosView({ onToast }) {
         ) : (
           <>
             <div style={{ ...grid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Nombre</span><span>Email</span><span>Rol</span><span>Empresa</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
+              <span>Nombre</span><span>Email</span><span>Rol</span><span>Código</span><span>Empresa</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
             </div>
 
             {pendientes.length > 0 && (
               <>
                 <div style={sx('padding:10px 10px 4px;font-size:11px;font-weight:600;color:var(--warning)')}>Pendientes de aprobación ({pendientes.length})</div>
-                {pendientes.map((u) => <Fila key={u.id} u={u} esPendiente />)}
+                {pendientes.map((u) => <Fila key={u.id} u={u} esPendiente ed={edits[u.id] || {}} {...filaProps} />)}
               </>
             )}
 
             <div style={sx('padding:10px 10px 4px;font-size:11px;font-weight:600;color:var(--muted)')}>Habilitados ({activos.length})</div>
             {activos.length === 0 && <div style={sx('padding:14px 10px;color:var(--faint);font-size:12px')}>Todavía no hay usuarios habilitados.</div>}
-            {activos.map((u) => <Fila key={u.id} u={u} />)}
+            {activos.map((u) => <Fila key={u.id} u={u} ed={edits[u.id] || {}} {...filaProps} />)}
           </>
         )}
       </div>

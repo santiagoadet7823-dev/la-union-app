@@ -69,6 +69,10 @@ export default function LeafletMap({
   height = 460,
   followLive = false,
   fit = true, // si es false, no reencuadra (preserva el zoom/pan del usuario)
+  // Padding del encuadre (fitBounds/setView). Permite reservar el espacio que tapan
+  // el header y la bottom-nav cuando el mapa va a pantalla completa. Default 40 en las
+  // cuatro (simétrico) para NO alterar el comportamiento previo de MapaOperativo.
+  edgePadding = { top: 40, right: 40, bottom: 40, left: 40 },
   movers = [],
   trail = null,
   trailColor = '#2DD4CE',
@@ -110,6 +114,19 @@ export default function LeafletMap({
     if (tileRef.current) tileRef.current.remove()
     tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(mapRef.current)
   }, [theme])
+
+  // Recentrar en la base declarada (center) mientras no haya overlays que encuadrar.
+  // El mapa se inicializa una sola vez, pero center (la base de la empresa) llega async;
+  // sin esto se queda en el centro inicial y nunca "abre en la base". Cuando llegan
+  // markers/movers/trails/etc. el fitBounds toma el control, y con fit=false nada mueve
+  // la cámara. Depende solo de lat/lng/fit/hasOverlays → no salta en refrescos periódicos.
+  const hasOverlays = !!(markers.length || (trails && trails.length) || movers.length || depot || circle || (route && route.length) || (trail && trail.length))
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !center || !fit || hasOverlays) return
+    map.setView([center.lat, center.lng], map.getZoom() || zoom, { animate: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center && center.lat, center && center.lng, fit, hasOverlays])
 
   // Redibujar overlays.
   const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail, trails })
@@ -194,9 +211,22 @@ export default function LeafletMap({
       // Modo seguimiento: la cámara sigue al vendedor en vivo (Admin observando el teléfono).
       map.setView([live.lat, live.lng], Math.max(map.getZoom() || zoom, 16))
     } else if (fit && bounds && bounds.isValid()) {
-      const single = !circle && markers.length + (depot ? 1 : 0) <= 1
-      if (single) map.setView(bounds.getCenter(), zoom)
-      else map.fitBounds(bounds, { padding: [40, 40] })
+      // "Un solo punto" = todos los puntos extendidos coinciden (NE == SW). Se decide por
+      // la extensión REAL del bounds, no por el conteo de markers: en la Supervisión Móvil
+      // el contenido son recorridos (trails) y móviles en vivo, así que contar solo markers
+      // mandaba un trazo entero a setView(zoom fijo) y lo recortaba. Con 2+ coords distintas
+      // → fitBounds. No cambia MapaOperativo (depot + cartera + ruta → siempre multi).
+      const single = !circle && bounds.getNorthEast().equals(bounds.getSouthWest())
+      if (single) {
+        map.setView(bounds.getCenter(), zoom)
+        // Un solo punto: setView lo centra en el viewport, pero header/nav lo taparían.
+        // Desplazamos el centro para compensar el chrome asimétrico (más abajo → el punto
+        // sube; más a la derecha → el punto va a la izquierda) y así queda visible.
+        map.panBy([(edgePadding.right - edgePadding.left) / 2, (edgePadding.bottom - edgePadding.top) / 2], { animate: false })
+      } else {
+        // Padding asimétrico: reserva arriba/abajo/izq/der según el chrome que flota encima.
+        map.fitBounds(bounds, { paddingTopLeft: [edgePadding.left, edgePadding.top], paddingBottomRight: [edgePadding.right, edgePadding.bottom] })
+      }
     }
 
     return () => { cancelled = true }

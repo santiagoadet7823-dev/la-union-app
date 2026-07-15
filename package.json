@@ -16,13 +16,16 @@
   "dependencies": {
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.6",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/share": "^6.0.4",
     "@capgo/capacitor-updater": "^6.50.1",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@supabase/supabase-js": "^2.110.0",
     "leaflet": "^1.9.4",
     "papaparse": "^5.5.4",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@capacitor-community/background-geolocation": "^1.2.0",

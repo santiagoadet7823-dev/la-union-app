@@ -4,6 +4,9 @@ const config: CapacitorConfig = {
   appId: 'com.launion.app',
   appName: 'DisT-At',
   webDir: 'dist',
+  // NOTA: NO usar android.useLegacyBridge — rompe la publicación de posiciones en esta app
+  // (el bridge legacy corta el pipeline de cola/SQLite; ver plan del 2026-07-13). El fix del
+  // GPS en segundo plano/bloqueo se encara por otra vía.
   // App primaria: híbrida (Android/iOS). El mismo bundle web corre como PWA.
   plugins: {
     // Actualización OTA del contenido web (sin reinstalar el APK). autoUpdate:false

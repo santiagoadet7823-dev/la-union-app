@@ -74,11 +74,17 @@ async function watchNative(onUpdate, onError) {
       backgroundTitle: 'Tracking activo',
       requestPermissions: true,
       stale: false,
-      distanceFilter: 8, // metros → emite un punto cada ~8 m de desplazamiento (recorrido más suave)
+      distanceFilter: 5, // metros → emite un punto cada ~5 m (captura más fina, sobre todo en 2º plano)
     },
     (location, error) => {
       if (error) return onError(error)
-      onUpdate({ lat: location.latitude, lng: location.longitude, ts: Date.now(), accuracy: location.accuracy })
+      // IMPORTANTE: usar location.time (hora REAL del fix), NO Date.now(). Cuando el
+      // WebView se congela en un bloqueo largo (Doze), el plugin bufferea los fixes
+      // nativamente y los entrega TODOS juntos al desbloquear. Con Date.now() todos
+      // quedaban sellados con la hora de entrega → el recorrido se comprimía en un
+      // instante y el filtro de "salto imposible" (dt≈0) descartaba puntos. Con
+      // location.time cada punto conserva su hora real aunque llegue tarde.
+      onUpdate({ lat: location.latitude, lng: location.longitude, ts: location.time || Date.now(), accuracy: location.accuracy })
     }
   )
   return () => BackgroundGeolocation.removeWatcher({ id })
