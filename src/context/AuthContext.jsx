@@ -4,7 +4,7 @@ import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
-import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil } from '../services/data/perfiles'
+import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil, actualizarMiPerfil as actualizarMiPerfilSvc } from '../services/data/perfiles'
 
 /**
  * Sesión + perfil del usuario (multi-tenant). El perfil trae {rol, id_empresa, activo}.
@@ -166,6 +166,18 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
+  // Auto-edición del propio perfil (nombre + teléfono) vía RPC. En éxito, mergea
+  // el resultado en el estado y refresca la caché (offline-first, igual que el resto).
+  const actualizarMiPerfil = async ({ nombre, telefono }) => {
+    const { data, error } = await actualizarMiPerfilSvc({ nombre, telefono })
+    if (error) return { error }
+    if (data) {
+      setPerfil((prev) => ({ ...(prev || {}), ...data }))
+      escribirCachePerfil(session?.user?.id, { ...(perfil || {}), ...data })
+    }
+    return { data, error: null }
+  }
+
   const signOut = async () => {
     // En nativo, cerrar también la sesión de Google borra la cuenta cacheada (así
     // el próximo ingreso deja elegir otra cuenta). OJO: el plugin no inicializa el
@@ -201,6 +213,7 @@ export function AuthProvider({ children }) {
     authStatus,
     signInWithGoogle,
     signOut,
+    actualizarMiPerfil,
     refetchPerfil: () => cargarPerfil(session?.user?.id),
   }
 

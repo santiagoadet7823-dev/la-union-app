@@ -45,6 +45,7 @@ const UsuariosView = lazy(() => import('../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../admin/EmpresasView'))
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
+const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
 
 const REFRESH_MS = 60000
 const hoyStr = () => new Date().toISOString().slice(0, 10)
@@ -94,6 +95,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [fecha, setFecha] = useState(hoyStr)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
+  const [modalPerfil, setModalPerfil] = useState(false)
   const toastRef = useRef(null)
 
   // Ítems de gestión visibles para el rol (vacío para propietario → sin sección).
@@ -180,14 +182,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       {/* ===== SIDEBAR IZQUIERDA ===== */}
       {/* En escritorio: columna fija en el flujo. En mobile: drawer flotante sobre scrim. */}
       {isMobile && drawerOpen && (
-        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'var(--scrim)' }} />
+        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1260, background: 'var(--scrim)' }} />
       )}
       <aside
         style={{
           flex: 'none', width: SIDEBAR_W, background: 'var(--surface)', borderRight: '1px solid var(--line)',
           display: 'flex', flexDirection: 'column',
           ...(isMobile
-            ? { position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 61, transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }
+            ? { position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 1261, transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }
             : { position: 'sticky', top: 0, height: '100vh' }),
         }}
       >
@@ -236,7 +238,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
 
         {/* ===== TOPBAR ===== */}
-        <header style={{ flex: 'none', minHeight: 58, display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 40 }}>
+        {/* zIndex 1200: por encima de las capas internas de Leaflet (~1000), para que el
+            menú de cuenta se despliegue SOBRE el mapa y sea clickeable. El drawer móvil
+            usa 1260/1261 para seguir tapando el header cuando está abierto. */}
+        <header style={{ flex: 'none', minHeight: 58, display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 1200 }}>
           {/* Hamburguesa (solo mobile) */}
           {isMobile && (
             <button onClick={() => setDrawerOpen(true)} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 38, height: 38, border: '1px solid var(--line)', borderRadius: 10, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
@@ -282,7 +287,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         <Chevron />
                       </div>
                     )}
-                    <div onClick={() => { setAcctOpen(false); showToast('Perfil de la cuenta · próximamente') }} style={acctItem}>
+                    <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
                       <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg></div>
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
                       <Chevron />
@@ -387,11 +392,12 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         </main>
       </div>
 
-      {/* Modales de alta (se abren desde Clientes / Catálogo). */}
-      {(modalCliente || modalProducto) && (
+      {/* Modales de alta (se abren desde Clientes / Catálogo) + edición de perfil. */}
+      {(modalCliente || modalProducto || modalPerfil) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
           {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
+          {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
         </Suspense>
       )}
 

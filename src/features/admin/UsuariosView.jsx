@@ -15,7 +15,7 @@ const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
-const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.5fr 130px 90px 140px 110px 120px', gap: 10, alignItems: 'center' }
+const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 130px 120px 80px 140px 100px 110px', gap: 10, alignItems: 'center' }
 
 const rolPill = (r) => {
   const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
@@ -36,6 +36,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, r
         {u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}
       </span>
       <span style={sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{u.email}</span>
+      <span style={sx('color:var(--muted);font-family:var(--font-mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')} title={u.telefono || ''}>{u.telefono || '—'}</span>
       <span>
         <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle}>
           <option value="">Sin rol…</option>
@@ -81,7 +82,7 @@ export default function UsuariosView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, rol, activo, id_empresa, numero')
+      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     setUsuarios(data || [])
@@ -137,7 +138,7 @@ export default function UsuariosView({ onToast }) {
 
   return (
     <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto')}>
-      <div style={{ ...panel, minWidth: 1000 }}>
+      <div style={{ ...panel, minWidth: 1120 }}>
         <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:12px')}>
           <div>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Usuarios y accesos</div>
@@ -151,7 +152,7 @@ export default function UsuariosView({ onToast }) {
         ) : (
           <>
             <div style={{ ...grid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Nombre</span><span>Email</span><span>Rol</span><span>Código</span><span>Empresa</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
+              <span>Nombre</span><span>Email</span><span>Teléfono</span><span>Rol</span><span>Código</span><span>Empresa</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
             </div>
 
             {pendientes.length > 0 && (

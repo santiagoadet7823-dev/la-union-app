@@ -25,6 +25,7 @@ const UsuariosView = lazy(() => import('../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../admin/EmpresasView'))
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
+const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
 
 /**
  * Pantalla de SUPERVISIÓN MÓVIL (full-screen, nativa / APK). Implementa el diseño
@@ -96,6 +97,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [apkVer, setApkVer] = useState(null)     // versión nativa del APK (para distinguir el fix nativo del OTA)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
+  const [modalPerfil, setModalPerfil] = useState(false)
   const toastRef = useRef(null)
 
   // Ítems del menú de gestión visibles para el rol actual.
@@ -244,7 +246,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
                   <Chevron />
                 </div>
               )}
-              <div onClick={() => { setAcctOpen(false); showToast('Perfil de la cuenta · próximamente') }} style={acctItem}>
+              <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
                 <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg></div>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
                 <Chevron />
@@ -431,10 +433,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       )}
 
       {/* Modales de alta (se abren desde Clientes / Catálogo). z-index:80 → por encima del host. */}
-      {(modalCliente || modalProducto) && (
+      {(modalCliente || modalProducto || modalPerfil) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
           {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
+          {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
         </Suspense>
       )}
 

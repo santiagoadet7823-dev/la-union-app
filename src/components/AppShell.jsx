@@ -1,8 +1,11 @@
+import { lazy, Suspense, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useDevice } from '../context/DeviceContext'
 import { Sun, Moon } from './icons'
 import Logo from './Logo'
+
+const MiPerfilModal = lazy(() => import('../features/perfil/MiPerfilModal'))
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -29,6 +32,15 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   const { isMobile, setMode } = useDevice()
   const meta = ROLE_META[rol] || { label: rol || '—', color: 'var(--muted)' }
   const nombre = perfil?.nombre || user?.email || 'Usuario'
+
+  const [modalPerfil, setModalPerfil] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastRef = useRef(null)
+  const showToast = (m) => {
+    clearTimeout(toastRef.current)
+    setToast(m)
+    toastRef.current = setTimeout(() => setToast(null), 2800)
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
@@ -100,6 +112,12 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
           </button>
         )}
 
+        {/* Mi perfil (editar nombre + teléfono) */}
+        <button onClick={() => setModalPerfil(true)} title="Mi perfil" style={isMobile ? iconBtn : textBtn}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg>
+          {!isMobile && 'Perfil'}
+        </button>
+
         {/* Selector de dispositivo */}
         <button
           onClick={() => setMode(isMobile ? 'desktop' : 'mobile')}
@@ -125,6 +143,19 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       </header>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
+
+      {modalPerfil && (
+        <Suspense fallback={null}>
+          <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />
+        </Suspense>
+      )}
+
+      {toast && (
+        <div style={{ position: 'fixed', top: 66, right: 18, zIndex: 2100, background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
+        </div>
+      )}
     </div>
   )
 }

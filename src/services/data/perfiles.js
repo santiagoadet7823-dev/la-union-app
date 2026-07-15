@@ -42,3 +42,19 @@ export async function fetchPerfil(userId, { intentos = 3, timeoutMs = 8000 } = {
   }
   throw lastErr || new Error('perfil no disponible')
 }
+
+/**
+ * Auto-edición del propio perfil (nombre + teléfono). Llama a la RPC
+ * `actualizar_mi_perfil` (SECURITY DEFINER) que actualiza SOLO la fila de
+ * auth.uid() y devuelve el perfil actualizado. Así un usuario común puede
+ * editar su nombre/teléfono sin ampliar la RLS de UPDATE (reservada a
+ * admin/superadmin) ni poder tocar rol/empresa ni filas ajenas.
+ * Devuelve { data, error }.
+ */
+export async function actualizarMiPerfil({ nombre, telefono }) {
+  const { data, error } = await supabase.rpc('actualizar_mi_perfil', {
+    p_nombre: nombre ?? '',
+    p_telefono: telefono ?? '',
+  })
+  return { data, error }
+}
