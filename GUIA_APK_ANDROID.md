@@ -182,11 +182,13 @@ async function watchNative(onUpdate, onError) {
       backgroundTitle: 'Tracking activo',
       requestPermissions: true,
       stale: false,
-      distanceFilter: 12, // metros → coincide con el "por movimiento" del panel
+      distanceFilter: 5, // metros → coincide con el "por movimiento" del panel
     },
     (location, error) => {
       if (error) return onError(error)
-      onUpdate({ lat: location.latitude, lng: location.longitude, ts: Date.now() })
+      // ts = hora REAL del fix (location.time), no Date.now(): así el timestamp sobrevive
+      // al buffering de Doze, que puede entregar posiciones en lote con retraso.
+      onUpdate({ lat: location.latitude, lng: location.longitude, ts: location.time })
     }
   )
   return () => BackgroundGeolocation.removeWatcher({ id })

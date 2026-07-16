@@ -11,7 +11,8 @@ import { CENTRO_DEFECTO } from '../services/maps'
  *
  * props: theme, center, zoom, markers[{lat,lng,label,color,labelColor,title,selected}],
  *        depot{lat,lng,title}, live{lat,lng}, route[{lat,lng}], routeColor,
- *        circle{lat,lng,radiusM,color}, height, onMarkerClick(index)
+ *        circle{lat,lng,radiusM,color}, dwells[{lat,lng,label,color}], height,
+ *        onMarkerClick(index)
  */
 
 // Basemaps por tema. crossOrigin habilita exportar el mapa a PNG (informe de
@@ -42,6 +43,24 @@ function pinIcon(color, label, labelColor, selected) {
   })
 }
 
+/**
+ * Cartel de PARADA ("permaneció 5 min acá"): píldora con texto libre. Es una VARIANTE de
+ * pinIcon, no un reemplazo: pinIcon es un círculo fijo de 22/26px con font-size 10 donde
+ * un "5 min" no entra, y además lo usa SupervisionDesktop tal cual está.
+ *
+ * Se dibuja con iconSize [0,0] + hijo centrado por transform: la píldora mide lo que mida
+ * el texto (no hay que adivinar el ancho) y queda centrada sobre la coordenada.
+ */
+function dwellIcon(label, color) {
+  const c = color || '#2DD4CE'
+  return L.divIcon({
+    className: 'lu-dwell',
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;background:${c};color:#fff;border:1.5px solid rgba(255,255,255,.9);border-radius:99px;padding:2px 7px;box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;line-height:1.35">${label || ''}</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  })
+}
+
 function depotIcon(theme) {
   const bg = theme === 'dark' ? '#ECF5F4' : '#0B2B2A'
   const fg = theme === 'dark' ? '#0B2B2A' : '#ECF5F4'
@@ -66,6 +85,9 @@ export default function LeafletMap({
   roundtrip = true,
   onRouteInfo,
   circle = null,
+  // Carteles de permanencia ("5 min"): [{lat,lng,label,color}]. Opcional; con [] o undefined
+  // el mapa se comporta exactamente igual que antes (SupervisionDesktop no la pasa).
+  dwells = [],
   height = 460,
   followLive = false,
   fit = true, // si es false, no reencuadra (preserva el zoom/pan del usuario)
@@ -129,7 +151,7 @@ export default function LeafletMap({
   }, [center && center.lat, center && center.lng, fit, hasOverlays])
 
   // Redibujar overlays.
-  const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail, trails })
+  const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail, trails, dwells })
   useEffect(() => {
     const map = mapRef.current
     const layer = layerRef.current
@@ -188,6 +210,22 @@ export default function LeafletMap({
         pts.forEach((ll) => extend(ll))
       })
     }
+
+    // Carteles de permanencia ("permaneció 5 min acá"), sobre el trazo.
+    //  - pane 'overlayPane' (z 400) → SIEMPRE por debajo de los pines de los móviles en vivo,
+    //    que son markers y viven en 'markerPane' (z 600). Con zIndexOffset no alcanza: el
+    //    z de un marker depende de su latitud y un cartel al norte treparía por encima.
+    //  - interactive:false → no roban el click al pin que tengan debajo.
+    //  - NO entran al fitBounds (a diferencia de `circle`): un cartel lejano descuadraría
+    //    el encuadre del recorrido.
+    ;(dwells || []).forEach((d) => {
+      L.marker([d.lat, d.lng], {
+        icon: dwellIcon(d.label, d.color),
+        pane: 'overlayPane',
+        interactive: false,
+        keyboard: false,
+      }).addTo(layer)
+    })
 
     // Ruteo por calles (OSRM). optimize=true → orden óptimo (TSP). Si falla la red,
     // cae a línea punteada directa para no dejar el mapa sin recorrido.

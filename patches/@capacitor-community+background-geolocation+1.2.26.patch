@@ -1,0 +1,131 @@
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+index a92fcf9..9e92d69 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+@@ -156,10 +156,17 @@ public class BackgroundGeolocation extends Plugin {
+ 
+             backgroundNotification = builder.build();
+         }
++        // PATCH (DisT-At, 16/07/2026): se exponen interval/maxWaitTime/priority, que antes
++        // estaban hardcodeados en el servicio. Los defaults reproducen el comportamiento
++        // original (1000/1000/PRIORITY_HIGH_ACCURACY=100), así que no pasar las opciones deja
++        // el plugin idéntico a upstream.
+         service.addWatcher(
+                 call.getCallbackId(),
+                 backgroundNotification,
+-                call.getFloat("distanceFilter", 0f)
++                call.getFloat("distanceFilter", 0f),
++                call.getInt("interval", 1000),
++                call.getInt("maxWaitTime", 1000),
++                call.getInt("priority", 100)
+         );
+     }
+ 
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
+index fafbb86..1c9585a 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
+@@ -75,27 +75,41 @@ public class BackgroundGeolocationService extends Service {
+         void addWatcher(
+                 final String id,
+                 Notification backgroundNotification,
+-                float distanceFilter
++                float distanceFilter,
++                int interval,
++                int maxWaitTime,
++                int priority
+         ) {
+             FusedLocationProviderClient client = LocationServices.getFusedLocationProviderClient(
+                     BackgroundGeolocationService.this
+             );
++            // PATCH (DisT-At, 16/07/2026): interval/maxWaitTime/priority eran constantes
++            // hardcodeadas (1000/1000/PRIORITY_HIGH_ACCURACY). Con el GPS pedido a 1 Hz en
++            // máxima precisión durante toda la jornada (~14 h) el chip no baja nunca, y desde
++            // JS no había ninguna perilla: `distanceFilter` solo filtra la ENTREGA
++            // (setSmallestDisplacement), no la ADQUISICIÓN. Ahora los tres llegan por opción.
+             LocationRequest locationRequest = new LocationRequest();
+-            locationRequest.setMaxWaitTime(1000);
+-            locationRequest.setInterval(1000);
+-            locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
++            locationRequest.setMaxWaitTime(maxWaitTime);
++            locationRequest.setInterval(interval);
++            locationRequest.setPriority(priority);
+             locationRequest.setSmallestDisplacement(distanceFilter);
+ 
+             LocationCallback callback = new LocationCallback(){
+                 @Override
+                 public void onLocationResult(LocationResult locationResult) {
+-                    Location location = locationResult.getLastLocation();
+-                    Intent intent = new Intent(ACTION_BROADCAST);
+-                    intent.putExtra("location", location);
+-                    intent.putExtra("id", id);
+-                    LocalBroadcastManager.getInstance(
+-                            getApplicationContext()
+-                    ).sendBroadcast(intent);
++                    // PATCH (DisT-At, 16/07/2026): antes era getLastLocation(), que devuelve
++                    // SOLO la última ubicación del lote y descarta las intermedias. Con
++                    // maxWaitTime > interval el SO agrupa entregas, así que eso perdía puntos
++                    // del recorrido en silencio. Iteramos todo el lote: cada fix conserva su
++                    // `time` real, que es lo que el tracker usa para sellar el timestamp.
++                    for (Location location : locationResult.getLocations()) {
++                        Intent intent = new Intent(ACTION_BROADCAST);
++                        intent.putExtra("location", location);
++                        intent.putExtra("id", id);
++                        LocalBroadcastManager.getInstance(
++                                getApplicationContext()
++                        ).sendBroadcast(intent);
++                    }
+                 }
+                 @Override
+                 public void onLocationAvailability(LocationAvailability availability) {
+diff --git a/node_modules/@capacitor-community/background-geolocation/definitions.d.ts b/node_modules/@capacitor-community/background-geolocation/definitions.d.ts
+index 5ae4202..14f299f 100644
+--- a/node_modules/@capacitor-community/background-geolocation/definitions.d.ts
++++ b/node_modules/@capacitor-community/background-geolocation/definitions.d.ts
+@@ -34,9 +34,46 @@ export interface WatcherOptions {
+     /**
+      * The distance in meters that the device must move before a new location update is triggered.
+      * This is used to filter out small movements and reduce the number of updates.
++     *
++     * NOTE (patch DisT-At): on Android this maps to `setSmallestDisplacement`, which filters
++     * DELIVERY, not ACQUISITION. Raising it does NOT reduce GPS chip usage — use `interval`
++     * and `priority` for that.
+      * @default 0
+      */
+     distanceFilter?: number;
++    /**
++     * ANDROID ONLY — patch DisT-At (16/07/2026). Upstream hardcodes this to 1000.
++     * Desired interval in ms between location updates (`LocationRequest.setInterval`).
++     * This is the main battery lever: at 1000 the GPS chip is effectively always on.
++     * @default 1000
++     */
++    interval?: number;
++    /**
++     * ANDROID ONLY — patch DisT-At (16/07/2026). Upstream hardcodes this to 1000.
++     * Max time in ms the OS may batch updates before delivering them
++     * (`LocationRequest.setMaxWaitTime`). Higher values let the radio sleep between
++     * batches, at the cost of delivery latency.
++     *
++     * Safe to raise only because the patch also fixes `onLocationResult` to iterate
++     * `getLocations()` instead of `getLastLocation()` — upstream drops every intermediate
++     * fix in a batch.
++     * @default 1000
++     */
++    maxWaitTime?: number;
++    /**
++     * ANDROID ONLY — patch DisT-At (16/07/2026). Upstream hardcodes PRIORITY_HIGH_ACCURACY.
++     * `LocationRequest` priority constant:
++     *   100 = PRIORITY_HIGH_ACCURACY (GPS, ~5-10 m)
++     *   102 = PRIORITY_BALANCED_POWER_ACCURACY (WiFi/cell, ~30-100 m)
++     *   104 = PRIORITY_LOW_POWER (~10 km)
++     *   105 = PRIORITY_NO_POWER (passive)
++     *
++     * WARNING: 102 degrades accuracy to ~30-100 m. The app discards fixes with
++     * accuracy > ACCURACY_MAX_M (30 m by default), so switching to 102 WITHOUT raising that
++     * threshold will silently empty the trails.
++     * @default 100
++     */
++    priority?: number;
+ }
+ 
+ /**

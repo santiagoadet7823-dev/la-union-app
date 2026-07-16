@@ -17,7 +17,6 @@ import MapaOperativo from './tabs/MapaOperativo'
 import ClientesTab from './tabs/ClientesTab'
 import CatalogoTab from './tabs/CatalogoTab'
 import FaltanteTab from './tabs/FaltanteTab'
-import RuteoTab from './tabs/RuteoTab'
 
 /**
  * Panel del Admin: shell con la barra de pestañas, el banner de GPS apagado, el toast
@@ -114,7 +113,6 @@ export default function AdminView() {
       {tab === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => abrirNuevoCliente(null)} />}
       {tab === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} />}
       {tab === 'faltante' && <FaltanteTab />}
-      {tab === 'ruteo' && <RuteoTab onToast={showToast} />}
 
       {tab === 'dash' && (
         <div style={sx('flex:1;padding:20px;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box')}>

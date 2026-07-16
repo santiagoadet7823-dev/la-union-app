@@ -36,7 +36,10 @@ export async function enqueueMutacion(mut) {
 /** Sube las mutaciones pendientes en orden (FIFO). Corta al primer fallo/sin red. */
 export async function flushMutaciones() {
   if (!hasSupabase || flushing) return
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+  // NOTA: NO cortar por `navigator.onLine === false`. En algunos WebView de la APK ese flag
+  // queda mal (reporta offline estando conectado) y bloqueaba TODAS las mutaciones (altas/
+  // ediciones de catálogo) estando la red OK. Si no hay red, el request falla y se reintenta
+  // igual — el guard sobra y era una fuente de "no sincroniza nada". Igual criterio que queue.js.
   flushing = true
   try {
     // eslint-disable-next-line no-constant-condition

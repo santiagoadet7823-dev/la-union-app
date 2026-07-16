@@ -19,17 +19,42 @@ import { MIN_MOVE_M, KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../gpsC
 import { uid as nuevoUid } from '../../lib/uid'
 
 const HB_KEY = 'lu-bg-heartbeat'
-const HB_THROTTLE_MS = 20000 // no saturar SQLite con distanceFilter:5
+const HB_THROTTLE_MS = 20000 // no saturar SQLite con distanceFilter:10
+const FLUSH_THROTTLE_MS = 15000 // ver nota de batching en procesarFix
 
 // Estado a nivel de módulo (fuera de React) → sobrevive al congelamiento del WebView.
 let identidad = null       // { id, rol, idEmpresa }
 let cfg = null             // ventana horaria (getTrackConfig)
 let last = null            // { lat, lng, ts, sentAt } — reemplaza el lastRef de React
 let hbUltimoGuardado = 0   // throttle de escritura del heartbeat
+let ultimoFlush = 0        // throttle de subida (el encolado NO se throttlea nunca)
+let nivelBateria = null    // % de batería cacheado (0-100) — se lee SÍNCRONO en procesarFix
+let bateriaIniciada = false
+
+/**
+ * Suscribe el % de batería a una variable de módulo. La API es async (Promise +
+ * evento), pero procesarFix NO puede esperarla: corre síncrono dentro del callback
+ * nativo para sobrevivir al congelamiento del WebView en Doze (ver cabecera). Por eso
+ * el valor se cachea acá y allá solo se LEE. Si la API no existe o falla, queda null
+ * (la columna `posiciones.bateria` es nullable) y no se rompe nada.
+ */
+function iniciarBateria() {
+  if (bateriaIniciada) return
+  bateriaIniciada = true
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.getBattery !== 'function') return
+    navigator.getBattery().then((b) => {
+      const leer = () => { nivelBateria = Math.round(b.level * 100) }
+      leer()
+      b.addEventListener('levelchange', leer)
+    }).catch(() => {})
+  } catch (_) { /* sin API de batería → nivelBateria queda null */ }
+}
 
 /** La identidad del usuario a rastrear. Sin id/idEmpresa, procesarFix no hace nada. */
 export function setIdentidad(next) {
   identidad = next && next.id && next.idEmpresa ? next : null
+  iniciarBateria() // idempotente (flag de módulo): no se suscribe dos veces
 }
 
 /** Ventana horaria de rastreo cacheada (la empuja usePublishPosition al cargarla). */
@@ -118,12 +143,26 @@ export function procesarFix(fix) {
   const row = {
     id_usuario: id, rol, lat: fix.lat, lng: fix.lng, id_empresa: idEmpresa,
     ts: new Date(fix.ts || Date.now()).toISOString(), client_uid: nuevoUid(),
+    bateria: nivelBateria, // lectura SÍNCRONA de la cache (null si no hay dato)
   }
   if (typeof fix.accuracy === 'number') row.accuracy = fix.accuracy
 
-  // Guardar SIEMPRE en la cola local (mutex en queue.js) y luego intentar subir.
+  // Guardar SIEMPRE en la cola local (mutex en queue.js). Esto NO se throttlea: un
+  // punto encolado nunca se pierde, solo se difiere su subida.
   enqueuePosicion(row)
-  flushPosiciones()
+
+  // El flush SÍ se throttlea a 15 s. Antes se llamaba en cada fix aceptado → una
+  // request HTTP (y su handshake TLS) por punto: medido en producción, la mediana
+  // entre fixes es de 2,8 s (75,7% en ráfaga) ≈ una conexión cada 3 s mientras el
+  // vendedor se mueve, y el BATCH=200 de queue.js nunca se ejercía porque la cola
+  // jamás acumulaba. Con el throttle los puntos se agrupan y suben de a lotes.
+  // Respaldo: el setInterval(flushPosiciones, 30000) de usePublishPosition drena lo
+  // que quede (y el flush al recuperar red / al volver a foreground).
+  const ahora = Date.now()
+  if (ahora - ultimoFlush >= FLUSH_THROTTLE_MS) {
+    ultimoFlush = ahora
+    flushPosiciones()
+  }
 
   registrarHeartbeat(!visibleAhora())
 }

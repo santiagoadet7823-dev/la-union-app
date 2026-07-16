@@ -9,8 +9,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   // GitHub Pages sirve el proyecto bajo /<nombre-repo>/ → base '/la-union-app/'.
   // Para el APK (Capacitor) los assets se sirven desde la raíz del WebView, así
-  // que hay que compilar con base relativa './'. Se activa con CAP_BUILD=1
-  // (usar el script `npm run build:app`). Ver GUIA_APK_ANDROID.md.
+  // que hay que compilar con base relativa './'. Se activa exportando CAP_BUILD=1
+  // (ej. `CAP_BUILD=1 npm run build`). Ver GUIA_APK_ANDROID.md.
   base: process.env.CAP_BUILD ? './' : '/la-union-app/',
   // mqtt.js (telemetría en vivo) espera `global` en el navegador.
   define: { global: 'globalThis' },

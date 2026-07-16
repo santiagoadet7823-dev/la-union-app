@@ -11,9 +11,12 @@
     "lint": "eslint . || true",
     "cap:sync": "cap sync",
     "cap:android": "cap sync android && cap open android",
-    "cap:ios": "cap sync ios && cap open ios"
+    "cap:ios": "cap sync ios && cap open ios",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.0",
+    "@capacitor-community/sqlite": "^6.0.2",
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.6",
     "@capacitor/filesystem": "^6.0.4",
@@ -28,14 +31,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@capacitor-community/background-geolocation": "^1.2.0",
-    "@capacitor-community/sqlite": "^6.0.2",
     "@capacitor/android": "^6.2.0",
     "@capacitor/cli": "^6.2.0",
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
     "@tailwindcss/vite": "^4.1.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "patch-package": "^8.0.1",
     "tailwindcss": "^4.1.0",
     "typescript": "^6.0.3",
     "vite": "^7.0.0",

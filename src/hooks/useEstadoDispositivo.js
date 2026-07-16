@@ -17,7 +17,15 @@ import { getHeartbeat } from '../services/geolocation/tracker'
  * @param {{enabled:boolean, id:string, idEmpresa:string, rol:string, pos:any, error:any}} opts
  */
 const STALE_MS = 120000   // sin fix nuevo por 2 min → GPS "no OK"
-const LATIDO_MS = 120000  // sube estado cada 2 min
+const LATIDO_MS = 120000  // se evalúa el estado cada 2 min (solo sube si cambió)
+const FORZAR_MS = 600000  // ...pero al menos cada 10 min sí o sí (ver abajo)
+
+// Campos de ESTADO que deciden si vale la pena subir el latido. `ts`/`updated_at`
+// quedan afuera a propósito: cambian siempre y anularían la comparación.
+const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'cola_pendiente']
+function mismoEstado(a, b) {
+  return !!a && !!b && CAMPOS.every((k) => a[k] === b[k])
+}
 
 // gps_ok debe reflejar si ALGO se está publicando realmente, no solo si hay un fix
 // fresco: usePublishPosition descarta los fixes con accuracy > ACCURACY_MAX_M antes
@@ -61,6 +69,8 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
   // independientes contra la misma fila.
   const enviandoRef = useRef(false)
   const pendingRef = useRef(false)
+  const ultimoPayloadRef = useRef(null) // último estado efectivamente subido
+  const ultimoEnvioRef = useRef(0)
   const enviar = useCallback(async () => {
     if (!enabled || !hasSupabase || !id || !idEmpresa) return
     if (enviandoRef.current) { pendingRef.current = true; return }
@@ -73,11 +83,22 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       hbRef.current = hb && hb.id === id ? hb : null
       const s = snapRef.current()
       const cola = await pendingCount().catch(() => null) // diagnóstico: puntos en cola sin subir
+      // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
+      // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
+      // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
+      // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
+      const estado = { app_version: APP_VERSION, cola_pendiente: cola, ...s }
+      const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
+      if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
         await supabase.from('estado_dispositivo').upsert({
-          id_usuario: id, id_empresa: idEmpresa, rol, app_version: APP_VERSION,
-          ts: new Date().toISOString(), updated_at: new Date().toISOString(), cola_pendiente: cola, ...s,
+          id_usuario: id, id_empresa: idEmpresa, rol,
+          ts: new Date().toISOString(), updated_at: new Date().toISOString(), ...estado,
         }, { onConflict: 'id_usuario' })
+        // Solo se marca como enviado si el upsert no tiró: si falló (sin red), el
+        // próximo latido tiene que reintentar en vez de creer que ya está arriba.
+        ultimoPayloadRef.current = estado
+        ultimoEnvioRef.current = Date.now()
       } catch (_) { /* sin red → se pierde el latido, es esperable */ }
     } while (pendingRef.current)
     enviandoRef.current = false

@@ -40,10 +40,17 @@ export function useLivePosition(enabled) {
     }
   }, [enabled, nonce])
 
-  // Latido (modo "por tiempo"): cada 15 s pedimos la posición aunque el watch por
+  // Latido (modo "por tiempo"): cada 60 s refrescamos la posición aunque el watch por
   // movimiento no haya emitido. Sirve para (a) rellenar el recorrido cuando el
   // movimiento es lento y (b) que el fix no quede "viejo" (el GpsGate no da falso
   // "GPS apagado"). Combina con el "por distancia" del watch → recorrido más suave.
+  //
+  // 60 s < KEEPALIVE_MS (90 s) → el marcador "vivo" nunca se cae. Antes era cada 15 s
+  // CON maximumAge:0, que prohíbe la caché y fuerza una adquisición GPS nueva encima
+  // del watch nativo que ya corre a 1 Hz: 240 adquisiciones extra de alta precisión
+  // por hora. Con maximumAge:30000 el SO devuelve el fix reciente que el watch YA
+  // adquirió, sin volver a encender el GPS. El botón "Activar GPS" (request) sigue
+  // con maximumAge:0 porque ahí sí queremos un fix nuevo.
   //
   // Solo en FOREGROUND: usa navigator.geolocation (inútil en 2º plano) y el
   // setInterval se estrangula con la pantalla bloqueada. En background la captura la
@@ -53,8 +60,8 @@ export function useLivePosition(enabled) {
     if (!enabled) return
     const iv = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-      pedirUbicacionUnaVez().then((p) => { procesarFix(p); setPos(p) }).catch(() => {})
-    }, 15000)
+      pedirUbicacionUnaVez({ maximumAge: 30000 }).then((p) => { procesarFix(p); setPos(p) }).catch(() => {})
+    }, 60000)
     return () => clearInterval(iv)
   }, [enabled])
 

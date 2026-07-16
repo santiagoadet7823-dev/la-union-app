@@ -5,10 +5,22 @@ dist-ssr
 .DS_Store
 
 # Capacitor native builds
-/android
+# Ignore SELECTIVO: el código nativo escrito a mano (BatteryOptimizationPlugin.java,
+# MainActivity.java, AndroidManifest.xml, build.gradle) NO lo regenera `cap add android`,
+# así que debe quedar versionado. Solo ignoramos artefactos de build, config local y el
+# keystore (el repo es público → las llaves de firma nunca se versionan).
+/android/build
+/android/.gradle
+/android/app/build
+/android/app/release
+/android/local.properties
+/android/keystore.properties
+/android/app/*.keystore
+/android/.idea
+/android/*.iml
+/android/app/*.iml
+/android/capacitor-cordova-android-plugins
 /ios
-!/android/.gitkeep
-!/ios/.gitkeep
 
 # Editor
 .vscode/*
@@ -32,3 +44,6 @@ bundle.zip
 
 # Ícono fuente (se generan los mipmaps)
 icon-fuente*.png
+
+# Salida del parser graphify (artefacto regenerable de la auditoría)
+graphify-out/

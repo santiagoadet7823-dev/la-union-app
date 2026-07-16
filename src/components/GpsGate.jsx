@@ -6,7 +6,7 @@ import PermisoSiemprePrompt from '../features/movil/PermisoSiemprePrompt'
 import { Pin } from './icons'
 
 const STALE_MS = 120000 // sin fix nuevo por 2 min => se considera GPS desactivado
-                        // (el latido de useLivePosition refresca cada 40s aunque esté quieto)
+                        // (el latido de useLivePosition refresca cada 60s aunque esté quieto)
 const GRACE_MS = 15000  // al abrir: buscar el primer fix SIN mostrar el cartel rojo todavía
 
 /**
@@ -21,9 +21,27 @@ export default function GpsGate({ children }) {
   const [mountedAt] = useState(() => Date.now())
 
   // Tick para re-evaluar la frescura del fix aunque no lleguen posiciones nuevas.
+  // Solo con la app visible: en 2º plano nadie mira el cartel y el tick costaba 1200
+  // re-renders/hora al pedo. Al volver a foreground se re-arma y se refresca `now` en
+  // el acto, así la frescura se recalcula sin esperar al primer tick.
   useEffect(() => {
-    const iv = setInterval(() => setNow(Date.now()), 3000)
-    return () => clearInterval(iv)
+    let iv = null
+    const armar = () => {
+      const visible = typeof document === 'undefined' || document.visibilityState === 'visible'
+      if (visible && !iv) {
+        setNow(Date.now())
+        iv = setInterval(() => setNow(Date.now()), 3000)
+      } else if (!visible && iv) {
+        clearInterval(iv)
+        iv = null
+      }
+    }
+    armar()
+    document.addEventListener('visibilitychange', armar)
+    return () => {
+      document.removeEventListener('visibilitychange', armar)
+      if (iv) clearInterval(iv)
+    }
   }, [])
 
   const activo = !!pos && !error && now - pos.ts < STALE_MS
@@ -33,10 +51,22 @@ export default function GpsGate({ children }) {
   // Auto-recupero: reintenta pedir la ubicación solo (mientras busca o si el fix
   // quedó viejo). NO reintenta si hay error de permiso, ni fuera de horario (el
   // sensor está apagado a propósito), para no re-preguntar ni gastar batería.
+  //
+  // Guard de "request en vuelo": el reintento es cada 8 s pero el timeout de
+  // getCurrentPosition es de 20 s, así que sin señal se apilaban 2-3 pedidos de alta
+  // precisión concurrentes. Ahora no se dispara otro hasta que el anterior resuelva.
+  const enVueloRef = useRef(false)
   useEffect(() => {
     if (activo || error || !enHorario) return
-    request().catch(() => {})
-    const iv = setInterval(() => request().catch(() => {}), 8000)
+    const pedir = () => {
+      if (enVueloRef.current) return
+      enVueloRef.current = true
+      request()
+        .catch(() => {})
+        .finally(() => { enVueloRef.current = false })
+    }
+    pedir()
+    const iv = setInterval(pedir, 8000)
     return () => clearInterval(iv)
   }, [activo, error, enHorario, request])
 

@@ -1,7 +1,6 @@
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { CatalogProvider } from './context/CatalogContext'
-import { VentasProvider } from './context/VentasContext'
 import { GpsProvider } from './context/GpsContext'
 import { DeviceProvider } from './context/DeviceContext'
 import AppShell from './components/AppShell'
@@ -190,11 +189,9 @@ function Gate() {
 
   return (
     <CatalogProvider>
-      <VentasProvider>
-        <GpsProvider>
-          <AuthedApp />
-        </GpsProvider>
-      </VentasProvider>
+      <GpsProvider>
+        <AuthedApp />
+      </GpsProvider>
     </CatalogProvider>
   )
 }

@@ -18,7 +18,7 @@ const hoyStr = () => new Date().toISOString().slice(0, 10)
  *   resolver el rol por su cuenta (p.ej. con usePerfilesEquipo).
  */
 export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
-  const [byUser, setByUser] = useState({}) // { id_usuario: { rol?, points:[{lat,lng}] } }
+  const [byUser, setByUser] = useState({}) // { id_usuario: { rol?, points:[{lat,lng,ts,bateria}] } }
   const [updatedAt, setUpdatedAt] = useState(null)
   const [loading, setLoading] = useState(false)
   const lastTsRef = useRef(null)
@@ -26,7 +26,7 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
 
   const load = useCallback(async (incremental) => {
     if (!idEmpresa) return
-    const cols = conRol ? 'id_usuario, rol, lat, lng, ts' : 'id_usuario, lat, lng, ts'
+    const cols = conRol ? 'id_usuario, rol, lat, lng, ts, bateria' : 'id_usuario, lat, lng, ts, bateria'
     const desde = new Date(fecha + 'T00:00:00').toISOString()
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
     if (!incremental) setLoading(true)
@@ -43,7 +43,10 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
           if (!p.id_usuario) return
           const rolVal = conRol ? p.rol : next[p.id_usuario]?.rol
           const prevPoints = next[p.id_usuario]?.points || []
-          next[p.id_usuario] = { rol: rolVal, points: [...prevPoints, { lat: p.lat, lng: p.lng }] }
+          // `ts` va en el punto: lo necesita detectarParadas (dwell.js). `bateria` es
+          // smallint nullable (0-100) y la muestra la vista.
+          const punto = { lat: p.lat, lng: p.lng, ts: p.ts, bateria: p.bateria }
+          next[p.id_usuario] = { rol: rolVal, points: [...prevPoints, punto] }
         })
         return next
       })

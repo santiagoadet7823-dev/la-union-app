@@ -1,3 +1,4 @@
+-- ⚠ VER db/00_LEER_PRIMERO.md ANTES DE APLICAR — puede reabrir agujeros de seguridad en una base con datos.
 -- ============================================================
 -- LA UNIÓN — Migración a SaaS multi-tenant + roles ampliados
 -- (empresas, id_empresa, RLS por tenant, roles, purga de prueba)
