@@ -139,6 +139,14 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   useEffect(() => {
     let vigente = true
     lastTsRef.current = null
+    // Limpiar SINCRÓNICAMENTE al cambiar de fecha/empresa/forma. Si no, durante los ~800 ms que
+    // tarda la lectura de caché, `byUser` sigue teniendo los datos del día ANTERIOR, y las vistas
+    // (que reencuadran "la primera vez que hay datos") marcan el encuadre como hecho con esos
+    // datos viejos → cuando llega el día nuevo, se dibuja pero la cámara nunca se mueve hacia él y
+    // el recorrido queda fuera de pantalla ("mapa vacío" aunque los puntos cargaron). Vaciar acá
+    // cierra esa ventana: la vista ve vacío hasta que llega el día correcto y ahí sí reencuadra.
+    // No afecta el auto-refresh (ese llama a load() directo, no re-dispara este efecto).
+    setByUser({})
     ;(async () => {
       // La caché NUNCA puede ser una barrera para la carga: es un adelanto, nada más.
       // En el APK `persistence` es SQLite con timeout de 5 s, y la cola de GPS lo escribe
