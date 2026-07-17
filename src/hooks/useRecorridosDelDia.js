@@ -79,7 +79,10 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     }
     if (!incremental) setLoading(false)
     if (err) {
-      console.error('[recorridos] la consulta falló:', err.message, err)
+      // Diagnóstico completo: fecha/rango/empresa + el error. Antes de esto un fallo dejaba el
+      // mapa vacío SIN pista de por qué (¿fecha corrida? ¿empresa nula? ¿RLS/token/red?). El
+      // `error` además ahora se PROPAGA a la vista (banner "Reintentar"), no solo a consola.
+      console.error('[recorridos] la consulta falló', { fecha, desde, hasta, idEmpresa, incremental, msg: err.message }, err)
       setError(err)
       return
     }
@@ -92,6 +95,10 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     if (!incremental) {
       if (total != null && data.length !== total) {
         console.error(`[recorridos] ${fecha}: INCOMPLETO — el servidor tiene ${total} puntos y solo se juntaron ${data.length}`)
+      } else if (!data.length) {
+        // Carga completa que vuelve VACÍA: casi siempre es fecha corrida (reloj/zona del device)
+        // o empresa nula, no una jornada realmente sin puntos. Se deja el rango a la vista.
+        console.warn('[recorridos] carga completa VACÍA', { fecha, desde, hasta, idEmpresa })
       } else {
         console.info(`[recorridos] ${fecha}: ${data.length} puntos${total != null ? ' (completo)' : ''}`)
       }

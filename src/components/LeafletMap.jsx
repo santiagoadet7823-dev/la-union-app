@@ -17,21 +17,19 @@ import { CENTRO_DEFECTO } from '../services/maps'
 
 // Basemaps por tema. crossOrigin habilita exportar el mapa a PNG (informe de
 // recorridos) sin "tainted canvas" — ambos proveedores mandan CORS.
-//  - Claro: OpenStreetMap estándar → el más DEFINIDO y menos pálido (medido: contraste
-//    27 vs 10 de Positron). Con el filtro CSS se desatura hacia gris tipo Google clásico.
-//    OJO: OSM usa subdominios 'abc', llega a z19 y NO tiene retina {r}.
-//  - Oscuro: CARTO Voyager oscuro (se mantiene, se ve bien de noche/en el vehículo).
-// Los dos temas usan CARTO. Antes el claro era OpenStreetMap crudo: dos basemaps que no se
-// parecen en nada (colores, tipografía, densidad de etiquetas), así que la misma jornada se
-// veía distinta en la PWA y en el .apk según el tema de cada uno, y parecía un bug. Positron
-// es el par claro de Voyager: mismo cartógrafo, misma familia visual, y encima deja resaltar
-// los trazos de colores porque el fondo es tenue.
+//  - Claro: CARTO Positron (`light_all`). Fondo tenue tipo Google clásico (se afina con el
+//    filtro CSS de index.css) y deja resaltar los trazos de colores.
+//  - Oscuro: CARTO Voyager oscuro (se ve bien de noche / en el vehículo).
+// Ambos temas usan CARTO (mismo cartógrafo, misma familia visual, mismos subdominios 'abcd' y
+// retina {r}), así que la MISMA jornada se ve igual en la PWA y en el .apk con el mismo tema.
+// Esta es la estética canónica: si el APK se ve distinto, es que corre un bundle viejo (OTA sin
+// aplicar), no una diferencia de código — ver la memoria dos-canales-de-despliegue.
 const TILES = {
   dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
   light: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png',
 }
 // Opciones por tema. Objeto simple, sin funciones, para no arriesgar un ReferenceError como
-// el de la 1.4.2. Ahora ambos son CARTO → mismos subdominios (abcd), mismo zoom y retina.
+// el de la 1.4.2. Ambos son CARTO → mismos subdominios (abcd), mismo zoom y retina.
 const TILE_OPTS = {
   dark: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
   light: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
@@ -109,6 +107,11 @@ export default function LeafletMap({
   // cuatro (simétrico) para NO alterar el comportamiento previo de MapaOperativo.
   edgePadding = { top: 40, right: 40, bottom: 40, left: 40 },
   movers = [],
+  // Clientes geolocalizados de la cartera: [{lat,lng,nombre}]. Capa de CONTEXTO opcional (se
+  // prende/apaga con un toggle en Supervisión). NO entran al fitBounds (el encuadre lo mandan
+  // los recorridos/móviles, no los 2.000 comercios) y viven en su propio layerGroup con efecto
+  // propio, para no re-dibujarlos en cada tick de "hace Xs".
+  clients = [],
   trail = null,
   trailColor = '#2DD4CE',
   trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
@@ -122,6 +125,7 @@ export default function LeafletMap({
   const mapRef = useRef(null)
   const tileRef = useRef(null)
   const layerRef = useRef(null)
+  const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
   clickRef.current = onMarkerClick
   const mapClickRef = useRef(onMapClick)
@@ -143,6 +147,9 @@ export default function LeafletMap({
     map.getPane('luDwells').style.zIndex = 450
     map.getPane('luDwells').style.pointerEvents = 'none'
     tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(map)
+    // Capa de clientes DEBAJO de la de overlays (se agrega primero) → los recorridos y pines en
+    // vivo quedan por encima de los puntitos de comercios.
+    clientsLayerRef.current = L.layerGroup().addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     setTimeout(() => map.invalidateSize(), 60)
@@ -295,6 +302,25 @@ export default function LeafletMap({
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, theme])
+
+  // Capa de clientes (contexto). Efecto SEPARADO del redibujo de overlays: `clients` llega
+  // memoizado desde la vista, así que su referencia es estable entre ticks y este efecto no se
+  // dispara cada segundo aunque haya 2.000 puntos. Puntito chico y neutro, distinto de los
+  // móviles en vivo (círculos grandes de color). No modifica el encuadre.
+  useEffect(() => {
+    const map = mapRef.current
+    const layer = clientsLayerRef.current
+    if (!map || !layer) return
+    layer.clearLayers()
+    const fill = theme === 'dark' ? '#94A3B8' : '#475569'
+    const stroke = theme === 'dark' ? '#0B2B2A' : '#ffffff'
+    ;(clients || []).forEach((cl) => {
+      if (cl.lat == null || cl.lng == null) return
+      const m = L.circleMarker([cl.lat, cl.lng], { radius: 4, color: stroke, weight: 1, fillColor: fill, fillOpacity: 0.95 })
+      if (cl.nombre) m.bindTooltip(cl.nombre, { direction: 'top', offset: [0, -4] })
+      m.addTo(layer)
+    })
+  }, [clients, theme])
 
   return <div ref={divRef} style={{ width: '100%', height, borderRadius: 16, overflow: 'hidden', background: 'var(--map-bg)' }} />
 }

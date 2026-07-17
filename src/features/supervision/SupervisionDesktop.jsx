@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useR
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
+import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
@@ -85,6 +86,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [view, setView] = useState('mapa') // 'mapa' | 'dash' | <clave de gestión>
   const [filter, setFilter] = useState(null) // null | 'v' | 'r'
   const [dwellOn, setDwellOn] = useState(true) // carteles de permanencia sobre el mapa (default: encendidos)
+  const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [pinId, setPinId] = useState(null)
   const [acctOpen, setAcctOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false) // sidebar como drawer en mobile
@@ -106,7 +108,15 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (misma lógica que la vista móvil). ----
-  const { byUser, reload: recargarPosiciones } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+  const { byUser, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+
+  // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada para que su
+  // referencia sea estable entre ticks y LeafletMap no la re-dibuje cada segundo.
+  const { clientes: cartera } = useCatalog()
+  const clientMarkers = useMemo(
+    () => (cartera || []).filter((c) => c.lat != null && c.lng != null).map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name || c.nombre_comercio })),
+    [cartera]
+  )
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {
@@ -376,11 +386,26 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Paradas</span>
                       </div>
                     )}
+                    {/* Toggle "Clientes" (capa de comercios geolocalizados) */}
+                    <div onClick={() => setShowClientes((v) => !v)} title="Muestra los clientes geolocalizados de la cartera como puntos en el mapa." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: showClientes ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${showClientes ? 'transparent' : 'var(--line)'}`, color: showClientes ? '#fff' : 'var(--muted)' }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>Clientes{showClientes && clientMarkers.length ? ` · ${clientMarkers.length}` : ''}</span>
+                    </div>
                     {/* Sync */}
                     <div onClick={doSync} title="Actualizar ubicaciones" style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
                       <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg></div>
                     </div>
                   </div>
+
+                  {/* Aviso si la carga de ubicaciones falló: antes un error dejaba el mapa vacío y
+                      MUDO (no se distinguía de "no hay datos"). Ahora se ve y se puede reintentar. */}
+                  {recorridosError && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 14px 12px', background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, fontWeight: 600 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+                      <span style={{ flex: 1 }}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {recorridosError.message || 'Error de red o sesión.'}</span>
+                      <button onClick={doSync} style={{ flex: 'none', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
+                    </div>
+                  )}
 
                   {/* Mapa grande */}
                   <div style={{ padding: 0 }}>
@@ -391,6 +416,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       trails={leafletTrails.length ? leafletTrails : null}
                       dwells={dwells}
                       markers={mapMarkers}
+                      clients={showClientes ? clientMarkers : []}
                       fit={!fitDone}
                       edgePadding={{ top: 28, right: 28, bottom: 28, left: 28 }}
                       onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}

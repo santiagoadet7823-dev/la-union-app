@@ -161,9 +161,10 @@ body {
   100% { background-position: 220px 0; }
 }
 
-/* Basemap claro = OpenStreetMap (el más definido). Lo desaturamos hacia GRIS tipo Google
-   clásico y le damos un toque de contraste, sin perder la nitidez de calles/cuadras. Solo
-   en tema claro (el oscuro usa CARTO y ya se ve bien). */
+/* Basemap claro = CARTO Positron (light_all). Lo desaturamos un toque hacia GRIS tipo Google
+   clásico y le sumamos algo de contraste, sin perder la nitidez de calles/cuadras. Solo en
+   tema claro (el oscuro usa CARTO Voyager y ya se ve bien). Esta es la estética CANÓNICA:
+   debe verse igual en la PWA y en el APK con el mismo tema. */
 html[data-theme='light'] .leaflet-tile-container {
   filter: saturate(70%) contrast(108%) brightness(99%);
 }

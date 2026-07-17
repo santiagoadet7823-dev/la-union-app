@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
+import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
@@ -101,6 +102,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [snapped, setSnapped] = useState({})     // { id: [{lat,lng}] } pegado a calles
   const [snapOn, setSnapOn] = useState(false)    // false = rastro crudo fiel (default); true = pegado a calles
   const [dwellOn, setDwellOn] = useState(true)   // carteles de permanencia sobre el mapa (default: encendidos)
+  const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)  // encuadrar el mapa solo la 1ª vez
   const [fecha, setFecha] = useState(hoyStr)      // día visualizado en el mapa (default hoy)
@@ -121,7 +123,15 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (trazos por persona). Auto-refresh incremental solo si es hoy. ----
-  const { byUser, reload: recargarPosiciones } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+  const { byUser, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+
+  // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada: referencia estable
+  // entre ticks para que LeafletMap no la redibuje cada segundo.
+  const { clientes: cartera } = useCatalog()
+  const clientMarkers = useMemo(
+    () => (cartera || []).filter((c) => c.lat != null && c.lng != null).map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name || c.nombre_comercio })),
+    [cartera]
+  )
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {
@@ -258,14 +268,23 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           center={base}
           trails={leafletTrails.length ? leafletTrails : null}
           markers={mapMarkers}
+          clients={showClientes ? clientMarkers : []}
           dwells={dwells}
           fit={!fitDone}
           edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 24, left: 16 }}
           onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); setPlusOpen(false); setAcctOpen(false) } }}
         />
 
-        {/* estado vacío del overlay */}
-        {!mapMarkers.length && !trails.length && (
+        {/* estado vacío / de ERROR del overlay. Antes un fallo de carga se veía IGUAL que "no hay
+            datos" (mapa vacío mudo): ahora se distingue y se puede reintentar. */}
+        {recorridosError ? (
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 250, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--danger)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8 }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, color: 'var(--danger)' }}>No se pudieron cargar las ubicaciones</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{recorridosError.message || 'Error de red o de sesión.'}</div>
+            <button onClick={() => recargarPosiciones()} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 10, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
+          </div>
+        ) : !mapMarkers.length && !trails.length && (
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 240, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8 }}><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></svg>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14 }}>{esHoy ? 'Sin personal en la calle' : 'Sin recorridos ese día'}</div>
@@ -406,6 +425,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 1.9" /></svg>
           </RailBtn>
         )}
+
+        {/* Clientes geolocalizados (capa de contexto). Independiente de los recorridos. */}
+        <RailBtn on={showClientes} color="var(--primary)" badge={showClientes && clientMarkers.length ? clientMarkers.length : undefined} onClick={() => setShowClientes((v) => !v)} title={showClientes ? 'Ocultar clientes' : 'Mostrar clientes geolocalizados'}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+        </RailBtn>
 
         {/* Sincronizar ubicaciones */}
         <RailBtn on={syncing} color="var(--primary)" onClick={doSync} title="Actualizar ubicaciones">

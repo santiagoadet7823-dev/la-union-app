@@ -34,7 +34,7 @@ export default function RecorridosView() {
   const snapCallRef = useRef(0)
 
   const users = usePerfilesEquipo()
-  const { byUser, updatedAt, loading, esHoy, reload } = useRecorridosDelDia(fecha, idEmpresa)
+  const { byUser, updatedAt, loading, esHoy, reload, error } = useRecorridosDelDia(fecha, idEmpresa)
 
   const meta = useMemo(() => { const m = {}; users.forEach((u) => { m[u.id] = u }); return m }, [users])
 
@@ -106,6 +106,13 @@ export default function RecorridosView() {
           </div>
         </div>
 
+        {error && (
+          <div style={sx('display:flex;align-items:center;gap:10px;background:var(--danger-tint);border:1px solid var(--danger);color:var(--danger);border-radius:12px;padding:10px 14px;font-size:12.5px;font-weight:600')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+            <span style={sx('flex:1')}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {error.message || 'Error de red o sesión.'}</span>
+            <button onClick={reload} style={sx('flex:none;padding:6px 12px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:12px;font-weight:700;cursor:pointer')}>Reintentar</button>
+          </div>
+        )}
         <LeafletMap theme={theme} height={isMobile ? '58vh' : '72vh'} trails={leafletTrails.length ? leafletTrails : null} fit={!fitDone} />
       </div>
 

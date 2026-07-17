@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { useTheme } from '../../../context/ThemeContext'
 import { useDevice } from '../../../context/DeviceContext'
@@ -25,6 +25,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   const puedeEditar = rol === 'admin' || rol === 'encargado' || rol === 'superadmin'
 
   const [selCli, setSelCli] = useState(null)
+  const fichaRef = useRef(null) // para traer la ficha a la vista en mobile al elegir un cliente
   const [geoRadio, setGeoRadio] = useState(75)
   const [diasSel, setDiasSel] = useState({ LU: true, JU: true })
   const [freqSel, setFreqSel] = useState('Semanal')
@@ -58,6 +59,15 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
     ;(c.dias || '').split('·').map((s) => s.trim()).filter(Boolean).forEach((d) => { ds[d] = true })
     setDiasSel(ds)
   }, [selCli, cartera])
+
+  // En mobile (APK incluido) la ficha se renderiza DEBAJO de la lista: al tocar un cliente hay
+  // que traerla a la vista, si no "no aparece" (quedaba fuera de pantalla, debajo de miles de
+  // filas). En desktop es columna sticky y no hace falta.
+  useEffect(() => {
+    if (isMobile && selCli && fichaRef.current) {
+      fichaRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [selCli, isMobile])
 
   const fc = cartera.find((c) => c.id === selCli) || null
   const diasAll = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
@@ -157,12 +167,15 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         )}
       </div>
 
-      <div style={panel}>
+      <div ref={fichaRef} style={isMobile ? panel : { ...panel, position: 'sticky', top: 12, alignSelf: 'start', maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}>
         {fc ? (
           <>
             <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px')}>
               <div style={label10}>Ficha de cliente · Editar</div>
-              <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--deep);font-weight:600')}>{fc.codigo || '—'}</div>
+              <div style={sx('display:flex;align-items:center;gap:10px')}>
+                <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--deep);font-weight:600')}>{fc.codigo || '—'}</div>
+                {isMobile && <button onClick={() => setSelCli(null)} title="Cerrar ficha" style={sx('width:28px;height:28px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1')}>✕</button>}
+              </div>
             </div>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>{fc.name}</div>
             <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono);margin:3px 0 14px')}>{fc.lat != null ? `${fc.lat.toFixed(5)}, ${fc.lng.toFixed(5)}` : 'Sin ubicación'}</div>
@@ -204,7 +217,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
             {fc.lat != null ? (
               <div style={sx('margin-bottom:8px')}>
                 <ErrorBoundary compact message="No se pudo cargar el mini-mapa.">
-                  <LeafletMap theme={theme} height={190} zoom={16}
+                  <LeafletMap theme={theme} height={260} zoom={16}
                     center={{ lat: fc.lat, lng: fc.lng }}
                     markers={[{ lat: fc.lat, lng: fc.lng, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5', title: fc.name }]}
                     circle={{ lat: fc.lat, lng: fc.lng, radiusM: geoRadio, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5' }}
@@ -216,7 +229,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
               <div style={sx('margin-bottom:12px')}>
                 <div style={sx('font-size:11.5px;color:var(--warning);font-weight:600;margin-bottom:6px')}>Tocá el mapa para fijar la ubicación del cliente.</div>
                 <ErrorBoundary compact message="No se pudo cargar el mini-mapa.">
-                  <LeafletMap theme={theme} height={210} zoom={15}
+                  <LeafletMap theme={theme} height={280} zoom={15}
                     center={puntoNuevo || base}
                     markers={puntoNuevo ? [{ lat: puntoNuevo.lat, lng: puntoNuevo.lng, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5', title: fc.name }] : []}
                     onMapClick={(p) => setPuntoNuevo({ lat: p.lat, lng: p.lng })}
