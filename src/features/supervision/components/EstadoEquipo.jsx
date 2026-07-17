@@ -37,6 +37,10 @@ export default function EstadoEquipo({ compact = false }) {
   const filas = users.map((u) => {
     const e = estados[u.id]
     const now = Date.now()
+    // `bg_ok` se pone en true SOLO cuando el móvil recibió un fix estando en 2º plano (confirma
+    // permiso "Siempre" + que el SO no lo mata). Si nunca lo confirmó, no graba con la app cerrada
+    // → el recorrido "en el bolsillo" se pierde. Es la causa nº1 de "hice el recorrido y no aparece".
+    const bgConfirmado = !!(e && e.bg_ok)
     let estado = 'sin-actividad', motivo = 'Sin actividad hoy', color = 'var(--faint)'
     if (e && e.ts) {
       const tsMs = new Date(e.ts).getTime()
@@ -44,15 +48,25 @@ export default function EstadoEquipo({ compact = false }) {
       if (!esHoy) { estado = 'sin-actividad'; motivo = 'Sin actividad hoy'; color = 'var(--faint)' }
       else if (now - tsMs > RECIENTE_MS) {
         estado = 'sin-senal'
-        motivo = `Sin señal desde ${hhmm(tsMs)}` + (e.bg_ok ? '' : ' · puede ser permiso "solo mientras uso"')
+        // Distinguir la causa: sin permiso "Siempre" (no captura en 2º plano) vs. permiso OK pero
+        // el SO lo suspendió (optimización de batería) vs. datos/app cerrada.
+        motivo = `Sin señal desde ${hhmm(tsMs)}` + (bgConfirmado
+          ? ' · posible optimización de batería (excluí la app) o datos/app cerrada'
+          : ' · permiso "solo mientras uso" → ponelo en "Siempre"')
         color = 'var(--danger)'
       } else if (!e.gps_ok) {
         estado = 'gps-off'
         motivo = `GPS apagado${e.gps_desde ? ` desde ${hhmm(new Date(e.gps_desde).getTime())}` : ''}`
         color = 'var(--warning)'
+      } else if (!bgConfirmado) {
+        // Reporta OK AHORA (con la app en pantalla) pero nunca capturó en 2º plano: si guarda el
+        // celular, el recorrido no se graba. Aviso ámbar aunque "esté bien" en este momento.
+        estado = 'bg-sin-confirmar'
+        motivo = 'En pantalla OK, pero aún NO grabó en 2º plano → revisá permiso "Siempre" y batería'
+        color = 'var(--warning)'
       } else {
         estado = 'ok'
-        motivo = `OK · hace ${Math.max(0, Math.round((now - tsMs) / 1000))}s`
+        motivo = `OK · 2º plano confirmado · hace ${Math.max(0, Math.round((now - tsMs) / 1000))}s`
         color = 'var(--success)'
       }
     }
@@ -81,7 +95,9 @@ export default function EstadoEquipo({ compact = false }) {
       ))}
       {!compact && (
         <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--faint)', lineHeight: 1.4 }}>
-          El motivo se detecta desde el propio celular. "Sin señal" puede ser datos apagados, app cerrada o teléfono apagado.
+          El motivo se detecta desde el propio celular. Para que grabe el recorrido con el celu guardado, el
+          móvil necesita el permiso de ubicación en <b>"Siempre"</b> y la app <b>sin optimización de batería</b>.
+          "Aún no grabó en 2º plano" = todavía no capturó con la app cerrada; si persiste, revisá esos dos.
         </div>
       )}
     </div>
