@@ -92,6 +92,28 @@ export async function flushPosiciones() {
   }
 }
 
+let posStarted = false
+/**
+ * Arranca el auto-flush GLOBAL de la cola de posiciones (una sola vez), independiente de que el
+ * rastreo esté activo. Antes el único flush vivía en `usePublishPosition`, gateado por `enabled`
+ * y por que el componente estuviera montado (app en primer plano): si el vendedor reconectaba con
+ * la jornada terminada / fuera de horario, o con la app en background, los puntos capturados
+ * offline quedaban encolados para SIEMPRE sin subir. Con esto, la cola drena SIEMPRE que la app
+ * esté viva y con red — mismo patrón que `startWriteQueue`.
+ *
+ * `visibilitychange` es el disparador clave del caso "salí sin internet y al volver abrí la app":
+ * en background el WebView se congela (timers y `online` no corren), así que al volver a primer
+ * plano se dispara el flush ya mismo, sin esperar el próximo fix GPS ni los 30 s.
+ */
+export function startPosQueue() {
+  if (posStarted || typeof window === 'undefined') return
+  posStarted = true
+  flushPosiciones()
+  window.addEventListener('online', () => flushPosiciones())
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushPosiciones() })
+  setInterval(() => flushPosiciones(), 30000)
+}
+
 /** Cantidad de puntos pendientes de subir (para mostrar estado). */
 export async function pendingCount() {
   return (await read()).length

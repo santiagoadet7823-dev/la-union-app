@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
 import { uid } from '../lib/uid'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
+import { startPosQueue } from '../services/sync/queue'
 import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo } from '../services/data/catalogo'
 
 /**
@@ -100,8 +101,10 @@ export function CatalogProvider({ children }) {
   }, [idEmpresa, aplicar])
 
   useEffect(() => { recargar() }, [recargar])
-  // Arranca el auto-flush de la cola de escrituras (altas/ediciones offline).
-  useEffect(() => { startWriteQueue() }, [])
+  // Arranca el auto-flush GLOBAL de ambas colas offline (escrituras de catálogo + posiciones GPS),
+  // independiente del rastreo. Así el recorrido capturado sin internet sube al reconectar/volver a
+  // primer plano aunque la jornada ya haya terminado.
+  useEffect(() => { startWriteQueue(); startPosQueue() }, [])
 
   /**
    * Alta de cliente. Offline-first: genera el id (uuid) del lado del cliente,
