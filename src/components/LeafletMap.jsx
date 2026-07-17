@@ -21,15 +21,20 @@ import { CENTRO_DEFECTO } from '../services/maps'
 //    27 vs 10 de Positron). Con el filtro CSS se desatura hacia gris tipo Google clásico.
 //    OJO: OSM usa subdominios 'abc', llega a z19 y NO tiene retina {r}.
 //  - Oscuro: CARTO Voyager oscuro (se mantiene, se ve bien de noche/en el vehículo).
+// Los dos temas usan CARTO. Antes el claro era OpenStreetMap crudo: dos basemaps que no se
+// parecen en nada (colores, tipografía, densidad de etiquetas), así que la misma jornada se
+// veía distinta en la PWA y en el .apk según el tema de cada uno, y parecía un bug. Positron
+// es el par claro de Voyager: mismo cartógrafo, misma familia visual, y encima deja resaltar
+// los trazos de colores porque el fondo es tenue.
 const TILES = {
   dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png',
 }
-// Opciones por tema (OSM y CARTO difieren en subdominios/zoom/retina). Objeto simple,
-// sin funciones, para no arriesgar un ReferenceError como el de la 1.4.2.
+// Opciones por tema. Objeto simple, sin funciones, para no arriesgar un ReferenceError como
+// el de la 1.4.2. Ahora ambos son CARTO → mismos subdominios (abcd), mismo zoom y retina.
 const TILE_OPTS = {
   dark: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
-  light: { subdomains: 'abc', maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' },
+  light: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
 }
 
 function pinIcon(color, label, labelColor, selected) {

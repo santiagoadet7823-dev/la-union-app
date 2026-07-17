@@ -40,15 +40,43 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     const desde = new Date(fecha + 'T00:00:00').toISOString()
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
     if (!incremental) setLoading(true)
-    let q = supabase.from('posiciones').select(cols)
-      .eq('id_empresa', idEmpresa).lte('ts', hasta).order('ts', { ascending: true })
-    q = incremental && lastTsRef.current ? q.gt('ts', lastTsRef.current) : q.gte('ts', desde)
-    // El error se MIRA. Antes esto era `const { data } = await q` y descartaba `error`:
-    // cualquier falla (timeout, RLS, red, límite de filas) dejaba `data` en null, el hook
-    // hacía `return` y el mapa quedaba vacío SIN UN SOLO MENSAJE. Un día entero de
-    // recorridos "desaparecido" y ni la consola ni la pantalla decían nada. Los fallos
-    // tienen que ser ruidosos.
-    const { data, error: err } = await q
+
+    // Se PAGINA hasta agotar. PostgREST corta la respuesta en `max-rows` (1000) y devuelve
+    // 200 igual, sin ninguna señal de que faltan filas: una jornada de 2.982 puntos llegaba
+    // recortada a un tercio y se dibujaba como si fuera el recorrido completo. El síntoma que
+    // lo destapó: había que tocar "refrescar" 3 veces para ver el día entero — 2.982/1.000 ≈ 3,
+    // porque el refresco incremental (`gt(último ts)`) iba trayendo los mil siguientes.
+    //
+    // El desempate por `id` no es decorativo: sin un orden TOTAL, dos filas con el mismo `ts`
+    // pueden repartirse entre dos páginas y perderse o duplicarse.
+    // Se avanza por la cantidad REALMENTE recibida y se corta con una página vacía, en vez de
+    // cortar con "vinieron menos de PAGE". Ese atajo daría por terminada la carga si el
+    // `max-rows` del servidor fuese menor que PAGE: la primera página vendría corta y
+    // perderíamos el resto en silencio — el mismo bug que estamos arreglando. Así funciona sea
+    // cual sea el límite, a costa de una request final que vuelve vacía.
+    const PAGE = 1000
+    const MAX_VUELTAS = 50 // ~50k puntos: techo de seguridad, nunca un bucle infinito
+    const filas = []
+    let err = null
+    let offset = 0
+    let total = null // cuántas filas dice el servidor que hay (solo se pide en la 1ª vuelta)
+    for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+      let q = supabase.from('posiciones')
+        .select(cols, vuelta === 0 ? { count: 'exact' } : undefined)
+        .eq('id_empresa', idEmpresa).lte('ts', hasta)
+        .order('ts', { ascending: true }).order('id', { ascending: true })
+        .range(offset, offset + PAGE - 1)
+      q = incremental && lastTsRef.current ? q.gt('ts', lastTsRef.current) : q.gte('ts', desde)
+      // El error se MIRA. Antes esto era `const { data } = await q` y descartaba `error`:
+      // cualquier falla (timeout, RLS, red) dejaba `data` en null, el hook hacía `return` y el
+      // mapa quedaba vacío SIN UN SOLO MENSAJE. Los fallos tienen que ser ruidosos.
+      const { data: pagina, error: e, count } = await q
+      if (e) { err = e; break }
+      if (vuelta === 0 && typeof count === 'number') total = count
+      if (!pagina || !pagina.length) break
+      filas.push(...pagina)
+      offset += pagina.length
+    }
     if (!incremental) setLoading(false)
     if (err) {
       console.error('[recorridos] la consulta falló:', err.message, err)
@@ -56,11 +84,18 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
       return
     }
     setError(null)
-    if (!data) return
-    // Cuántas filas llegaron DE VERDAD. PostgREST puede recortar la respuesta por
-    // `max-rows` y devolver 200 igual: sin esto, una carga a medias es indistinguible de
-    // una completa.
-    if (!incremental) console.info(`[recorridos] ${fecha}: ${data.length} puntos`)
+    const data = filas
+    // Autocontrol: el servidor dice cuántas filas hay (`count: 'exact'`) y comparamos contra
+    // lo que realmente juntamos. Si no coinciden, el recorrido que se está por dibujar está
+    // incompleto — y un recorrido incompleto se ve igual de convincente que uno entero. Este
+    // chequeo es la única defensa contra que vuelva a pasar en silencio.
+    if (!incremental) {
+      if (total != null && data.length !== total) {
+        console.error(`[recorridos] ${fecha}: INCOMPLETO — el servidor tiene ${total} puntos y solo se juntaron ${data.length}`)
+      } else {
+        console.info(`[recorridos] ${fecha}: ${data.length} puntos${total != null ? ' (completo)' : ''}`)
+      }
+    }
     if (data.length) {
       setByUser((prev) => {
         const next = incremental ? { ...prev } : {}
