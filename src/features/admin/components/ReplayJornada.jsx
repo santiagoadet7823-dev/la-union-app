@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../../lib/sx'
+import { hoyStr } from '../../../lib/format'
 import { supabase } from '../../../services/supabase'
 import { useTheme } from '../../../context/ThemeContext'
 import { useDevice } from '../../../context/DeviceContext'
@@ -32,7 +33,7 @@ export default function ReplayJornada({ onToast }) {
   const { idEmpresa, user } = useAuth()
   const users = usePerfilesEquipo()
   const [userId, setUserId] = useState('')
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
+  const [fecha, setFecha] = useState(hoyStr)
   const [pts, setPts] = useState([])
   const [loading, setLoading] = useState(false)
   const [idx, setIdx] = useState(0)

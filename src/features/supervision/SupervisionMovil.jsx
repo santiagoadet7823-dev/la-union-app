@@ -1,10 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { colorPorId } from '../../lib/colors'
+import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
-import { detectarParadas } from '../../services/geolocation/dwell'
-import { fmtDuracion } from '../../lib/format'
+import { calcularDwells } from './dwells'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
@@ -50,7 +50,6 @@ const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
  * AdminView de escritorio (PWA) desde la APK.
  */
 const REFRESH_MS = 60000
-const hoyStr = () => new Date().toISOString().slice(0, 10)
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
 // Métricas del chrome flotante. Antes vivían como literales sueltos (56/64/70/72/84/86/142)
@@ -167,17 +166,21 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       return { id, points: v.points, color: colorPorId(id), km: km / 1000 }
     }), [byUser, filter])
 
-  // Paradas → carteles sobre el mapa. Se calculan sobre el rastro CRUDO (byUser) a propósito:
-  // el snapped (geometría OSRM pegada a calles) ya descartó los tramos quietos, así que ahí
-  // una parada no existe. Umbrales: los de dwell.js (3 min / 40 m, calibrados contra la Edge
-  // Function). Mismo filtro por chip y mismo color por persona que los trazos.
-  const dwells = useMemo(() => {
-    if (!dwellOn) return []
-    return Object.entries(byUser)
-      .filter(([, v]) => pasaFiltro(v.rol))
-      .flatMap(([id, v]) => detectarParadas(v.points || [])
-        .map((p) => ({ lat: p.lat, lng: p.lng, label: fmtDuracion(p.duracionMs), color: colorPorId(id) })))
-  }, [byUser, filter, dwellOn])
+  // Paradas → carteles sobre el mapa. La lógica vive en ./dwells (compartida con Desktop,
+  // que antes no los tenía porque estaban cableados solo acá). Mismo filtro por chip y mismo
+  // color por persona que los trazos.
+  //
+  // `useDeferredValue`: detectar paradas sobre una jornada real (2.982 puntos) cuesta ~410 ms
+  // en una PC → 1,5-2 s en un teléfono, y corría en el mismo render que el trazo: el mapa
+  // entero se congelaba esperando los carteles. Diferido, React pinta el recorrido primero y
+  // recalcula los carteles en un render de baja prioridad. Los carteles aparecen un instante
+  // después en vez de retrasar TODO. No se puede decimar los puntos como atajo: el detector
+  // necesita la densidad para medir cuánto duró cada parada.
+  const byUserDiferido = useDeferredValue(byUser)
+  const dwells = useMemo(
+    () => (dwellOn ? calcularDwells(byUserDiferido, pasaFiltro) : []),
+    [byUserDiferido, filter, dwellOn]
+  )
 
   // Móviles en vivo → pines clickeables (marcadores del mapa). Solo tienen sentido HOY
   // (son la posición "ahora"); en un día pasado se muestran únicamente los recorridos.

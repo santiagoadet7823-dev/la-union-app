@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { watchPosition, pedirUbicacionUnaVez } from '../services/geolocation'
 import { procesarFix } from '../services/geolocation/tracker'
+import { iniciarMaquina } from '../services/geolocation/estados'
 
 /**
  * GPS en vivo real. Cuando `enabled` es true, suscribe al watch de posición del
@@ -24,6 +25,7 @@ export function useLivePosition(enabled) {
       return
     }
     let active = true
+    let pararMaquina = null
     setError(null)
     watchPosition(
       // procesarFix persiste SIEMPRE (corre dentro del callback nativo, sobrevive al
@@ -34,8 +36,22 @@ export function useLivePosition(enabled) {
       stopRef.current = stop
       if (!active) stop()
     })
+
+    // Ajusta el intervalo del GPS según el vendedor esté quieto o andando (ver estados.js).
+    // Es ADITIVO: sin Activity Recognition (web, APK viejo, permiso denegado) iniciarMaquina
+    // devuelve un no-op y el watch se comporta exactamente igual que antes.
+    // getWatcherId se lee en el momento de cada cambio, no acá: el watch arranca async y
+    // el id recién existe cuando resuelve la promesa de arriba.
+    iniciarMaquina({ getWatcherId: () => (stopRef.current ? stopRef.current.watcherId : null) })
+      .then((parar) => {
+        pararMaquina = parar
+        if (!active) parar() // el effect ya se limpió mientras esto resolvía
+      })
+      .catch(() => {}) // nunca debe tumbar el watch
+
     return () => {
       active = false
+      if (pararMaquina) { pararMaquina(); pararMaquina = null }
       if (stopRef.current) { stopRef.current(); stopRef.current = null }
     }
   }, [enabled, nonce])

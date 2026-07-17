@@ -11,7 +11,7 @@ import { CENTRO_DEFECTO } from '../services/maps'
  *
  * props: theme, center, zoom, markers[{lat,lng,label,color,labelColor,title,selected}],
  *        depot{lat,lng,title}, live{lat,lng}, route[{lat,lng}], routeColor,
- *        circle{lat,lng,radiusM,color}, dwells[{lat,lng,label,color}], height,
+ *        circle{lat,lng,radiusM,color}, dwells[{lat,lng,label,sub,color}], height,
  *        onMarkerClick(index)
  */
 
@@ -51,11 +51,19 @@ function pinIcon(color, label, labelColor, selected) {
  * Se dibuja con iconSize [0,0] + hijo centrado por transform: la píldora mide lo que mida
  * el texto (no hay que adivinar el ancho) y queda centrada sobre la coordenada.
  */
-function dwellIcon(label, color) {
+function dwellIcon(label, sub, color) {
   const c = color || '#2DD4CE'
+  // `sub` (el horario) va en un segundo renglón, más chico y translúcido. En una sola línea
+  // la píldora se iba a ~180 px: como el ancho lo fija el texto (nowrap + iconSize [0,0]),
+  // apilar es lo que la mantiene angosta. El radio baja de 99 a 9 cuando hay dos líneas —
+  // una píldora de dos renglones con borde 99 parece un huevo.
+  const dosLineas = !!sub
+  const linea2 = dosLineas
+    ? `<div style="font-size:8.5px;font-weight:500;opacity:.82;letter-spacing:.02em">${sub}</div>`
+    : ''
   return L.divIcon({
     className: 'lu-dwell',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;background:${c};color:#fff;border:1.5px solid rgba(255,255,255,.9);border-radius:99px;padding:2px 7px;box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;line-height:1.35">${label || ''}</div>`,
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;text-align:center;background:${c};color:#fff;border:1.5px solid rgba(255,255,255,.9);border-radius:${dosLineas ? 9 : 99}px;padding:${dosLineas ? '3px 7px' : '2px 7px'};box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;line-height:1.35">${label || ''}${linea2}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
@@ -119,6 +127,16 @@ export default function LeafletMap({
     if (!divRef.current || mapRef.current) return
     const map = L.map(divRef.current, { center: [center.lat, center.lng], zoom, zoomControl: true })
     mapRef.current = map
+    // Pane propio para los carteles de permanencia, con z-index EXPLÍCITO entre el de los
+    // trazos (overlayPane, 400) y el de los pines en vivo (markerPane, 600).
+    //
+    // Antes los carteles iban en 'overlayPane' junto con las polilíneas: dentro de un mismo
+    // pane conviven el <svg> de los trazos y los <div> de los marcadores, y quién tapa a
+    // quién depende de internals de Leaflet — el trazo terminaba encima y el cartel no se
+    // leía. Un pane propio hace el apilado determinista en vez de accidental.
+    map.createPane('luDwells')
+    map.getPane('luDwells').style.zIndex = 450
+    map.getPane('luDwells').style.pointerEvents = 'none'
     tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
@@ -212,16 +230,18 @@ export default function LeafletMap({
     }
 
     // Carteles de permanencia ("permaneció 5 min acá"), sobre el trazo.
-    //  - pane 'overlayPane' (z 400) → SIEMPRE por debajo de los pines de los móviles en vivo,
-    //    que son markers y viven en 'markerPane' (z 600). Con zIndexOffset no alcanza: el
-    //    z de un marker depende de su latitud y un cartel al norte treparía por encima.
+    //  - pane 'luDwells' (z 450, creado al montar) → ENCIMA del trazo (overlayPane, 400) y
+    //    debajo de los pines en vivo (markerPane, 600). Estuvieron en 'overlayPane', el mismo
+    //    pane que las polilíneas, y el trazo los tapaba: el cartel no se podía leer. Con
+    //    zIndexOffset tampoco alcanza — el z de un marker depende de su latitud, así que un
+    //    cartel al norte treparía por encima de los pines.
     //  - interactive:false → no roban el click al pin que tengan debajo.
     //  - NO entran al fitBounds (a diferencia de `circle`): un cartel lejano descuadraría
     //    el encuadre del recorrido.
     ;(dwells || []).forEach((d) => {
       L.marker([d.lat, d.lng], {
-        icon: dwellIcon(d.label, d.color),
-        pane: 'overlayPane',
+        icon: dwellIcon(d.label, d.sub, d.color),
+        pane: 'luDwells',
         interactive: false,
         keyboard: false,
       }).addTo(layer)

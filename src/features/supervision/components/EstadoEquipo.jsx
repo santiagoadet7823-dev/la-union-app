@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../../services/supabase'
 import { colorPorId } from '../../../lib/colors'
+import { hoyStr } from '../../../lib/format'
 import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
 
 /**
@@ -32,14 +33,14 @@ export default function EstadoEquipo({ compact = false }) {
   useEffect(() => { const iv = setInterval(cargarEstados, 45000); return () => clearInterval(iv) }, [cargarEstados])
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyStr()
   const filas = users.map((u) => {
     const e = estados[u.id]
     const now = Date.now()
     let estado = 'sin-actividad', motivo = 'Sin actividad hoy', color = 'var(--faint)'
     if (e && e.ts) {
       const tsMs = new Date(e.ts).getTime()
-      const esHoy = new Date(e.ts).toISOString().slice(0, 10) === hoy
+      const esHoy = hoyStr(new Date(e.ts)) === hoy
       if (!esHoy) { estado = 'sin-actividad'; motivo = 'Sin actividad hoy'; color = 'var(--faint)' }
       else if (now - tsMs > RECIENTE_MS) {
         estado = 'sin-senal'

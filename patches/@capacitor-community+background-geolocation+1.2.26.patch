@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..9e92d69 100644
+index a92fcf9..a6f5394 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 @@ -156,10 +156,17 @@ public class BackgroundGeolocation extends Plugin {
@@ -21,8 +21,42 @@ index a92fcf9..9e92d69 100644
          );
      }
  
+@@ -181,6 +188,33 @@ public class BackgroundGeolocation extends Plugin {
+         }
+     }
+ 
++    // PATCH (DisT-At, 16/07/2026): cambia las opciones de un watcher vivo sin soltar el
++    // foreground service. El camino alternativo (removeWatcher + addWatcher) deja un hueco
++    // sin foreground en un servicio bound-only, y re-levantarlo desde background en SDK 34
++    // puede fallar en silencio. Ver el comentario de LocalBinder.updateWatcher.
++    // Los defaults son los mismos que addWatcher, así que omitir una opción la deja en el
++    // valor equivalente al de upstream (no en el valor que el watcher tenía antes).
++    @PluginMethod()
++    public void updateWatcher(PluginCall call) {
++        if (service == null) {
++            call.reject("Service not running.");
++            return;
++        }
++        String callbackId = call.getString("id");
++        if (callbackId == null) {
++            call.reject("Missing id.");
++            return;
++        }
++        service.updateWatcher(
++                callbackId,
++                call.getFloat("distanceFilter", 0f),
++                call.getInt("interval", 1000),
++                call.getInt("maxWaitTime", 1000),
++                call.getInt("priority", 100)
++        );
++        call.resolve();
++    }
++
+     @PluginMethod()
+     public void removeWatcher(PluginCall call) {
+         String callbackId = call.getString("id");
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..1c9585a 100644
+index fafbb86..8d67a83 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 @@ -75,27 +75,41 @@ public class BackgroundGeolocationService extends Service {
@@ -78,8 +112,61 @@ index fafbb86..1c9585a 100644
                  }
                  @Override
                  public void onLocationAvailability(LocationAvailability availability) {
+@@ -155,6 +169,52 @@ public class BackgroundGeolocationService extends Service {
+             }
+         }
+ 
++        // PATCH (DisT-At, 16/07/2026): reconfigura un watcher YA existente sin tocar el estado
++        // foreground. Antes, el único camino para cambiar las opciones (ej. bajar la prioridad
++        // del GPS) era removeWatcher + addWatcher, que es break-before-make: removeWatcher
++        // llama a stopForeground(true) cuando cae el último watcher, dejando un instante sin
++        // foreground service. El servicio es bound-only (nunca se hace startService), así que
++        // el estado foreground es lo ÚNICO que sostiene el proceso: en ese hueco Android puede
++        // matarlo. Peor todavía con targetSdk 34, donde re-levantar el FGS desde background
++        // puede tirar ForegroundServiceStartNotAllowedException — que el catch de addWatcher
++        // se traga y solo loguea, dejando el servicio vivo pero sin foreground y sin fixes, en
++        // silencio. Acá hacemos make-before-break sobre el LocationRequest solamente: mismo
++        // patrón que onPermissionsGranted(), que también hace remove+request sin tocar el
++        // foreground.
++        void updateWatcher(
++                String id,
++                float distanceFilter,
++                int interval,
++                int maxWaitTime,
++                int priority
++        ) {
++            for (Watcher watcher : watchers) {
++                if (watcher.id.equals(id)) {
++                    LocationRequest locationRequest = new LocationRequest();
++                    locationRequest.setMaxWaitTime(maxWaitTime);
++                    locationRequest.setInterval(interval);
++                    locationRequest.setPriority(priority);
++                    locationRequest.setSmallestDisplacement(distanceFilter);
++
++                    // Se REUSA el locationCallback existente a propósito: si creáramos uno
++                    // nuevo perderíamos la referencia con la que removeWatcher lo da de baja
++                    // después (y el callback viejo seguiría registrado). El watcher se queda
++                    // en `watchers` y su backgroundNotification intacta → el foreground service
++                    // nunca se entera de este cambio.
++                    watcher.client.removeLocationUpdates(watcher.locationCallback);
++                    watcher.locationRequest = locationRequest;
++                    try {
++                        watcher.client.requestLocationUpdates(
++                                watcher.locationRequest,
++                                watcher.locationCallback,
++                                null
++                        );
++                    } catch (SecurityException ignore) {}
++                    return;
++                }
++            }
++        }
++
+         void onPermissionsGranted() {
+             // If permissions were granted while the app was in the background, for example in
+             // the Settings app, the watchers need restarting.
 diff --git a/node_modules/@capacitor-community/background-geolocation/definitions.d.ts b/node_modules/@capacitor-community/background-geolocation/definitions.d.ts
-index 5ae4202..14f299f 100644
+index 5ae4202..a54c42d 100644
 --- a/node_modules/@capacitor-community/background-geolocation/definitions.d.ts
 +++ b/node_modules/@capacitor-community/background-geolocation/definitions.d.ts
 @@ -34,9 +34,46 @@ export interface WatcherOptions {
@@ -129,3 +216,36 @@ index 5ae4202..14f299f 100644
  }
  
  /**
+@@ -102,6 +139,32 @@ export interface BackgroundGeolocationPlugin {
+             error?: CallbackError
+         ) => void
+     ): Promise<string>;
++    /**
++     * ANDROID ONLY — patch DisT-At (16/07/2026). Not in upstream.
++     *
++     * Changes the options of a watcher that is already running, WITHOUT releasing the
++     * foreground service.
++     *
++     * This exists because the only alternative — `removeWatcher` followed by `addWatcher` —
++     * is break-before-make: `removeWatcher` calls `stopForeground` once the last watcher is
++     * gone, and the service is bound-only, so its foreground state is the only thing keeping
++     * the process alive. In that gap Android may kill it, and on targetSdk 34 restarting the
++     * foreground service from the background can throw `ForegroundServiceStartNotAllowedException`,
++     * which the plugin swallows — leaving the service running with no foreground and no fixes,
++     * silently. `updateWatcher` only swaps the `LocationRequest`, never touching the
++     * notification or the foreground state.
++     *
++     * Unspecified options fall back to the same defaults as `addWatcher`, NOT to the values the
++     * watcher currently has — always pass the full set of options.
++     *
++     * No-op on iOS and on the web. Resolves even if no watcher matches `id`.
++     *
++     * @param options the watcher id plus the options to apply
++     * @returns a promise that resolves once the new options are applied
++     */
++    updateWatcher(options: {
++        id: string
++    } & WatcherOptions): Promise<void>;
+     /**
+      * Removes a watcher by its unique identifier.
+      * @param options the options for removing the watcher

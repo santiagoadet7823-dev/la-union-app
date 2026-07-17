@@ -1,9 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
 import { colorPorId } from '../../lib/colors'
+import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
+import { calcularDwells } from './dwells'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
@@ -48,7 +50,6 @@ const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
 
 const REFRESH_MS = 60000
-const hoyStr = () => new Date().toISOString().slice(0, 10)
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
 const KPIS_PROX = [
@@ -83,6 +84,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   const [view, setView] = useState('mapa') // 'mapa' | 'dash' | <clave de gestión>
   const [filter, setFilter] = useState(null) // null | 'v' | 'r'
+  const [dwellOn, setDwellOn] = useState(true) // carteles de permanencia sobre el mapa (default: encendidos)
   const [pinId, setPinId] = useState(null)
   const [acctOpen, setAcctOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false) // sidebar como drawer en mobile
@@ -146,6 +148,16 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
       return { id, points: v.points, color: colorPorId(id), km: km / 1000 }
     }), [byUser, filter])
+
+  // Paradas → carteles sobre el mapa. Misma lógica exacta que Movil (./dwells): hasta 1.5.7
+  // los carteles existían solo en la vista móvil, así que en la PWA de escritorio no aparecían.
+  // `useDeferredValue`: ver la nota en SupervisionMovil — el detector cuesta ~410 ms sobre una
+  // jornada real y bloqueaba el pintado del trazo. Diferido, el mapa aparece primero.
+  const byUserDiferido = useDeferredValue(byUser)
+  const dwells = useMemo(
+    () => (dwellOn ? calcularDwells(byUserDiferido, pasaFiltro) : []),
+    [byUserDiferido, filter, dwellOn]
+  )
 
   // Móviles en vivo → pines clickeables. Solo tienen sentido HOY (posición "ahora").
   const mapMarkers = esHoy ? moversFil.map((m) => ({
@@ -357,6 +369,13 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Calles</span>
                       </div>
                     )}
+                    {/* Toggle "Paradas" (carteles de permanencia) */}
+                    {trails.length > 0 && (
+                      <div onClick={() => setDwellOn((v) => !v)} title="Muestra un cartel donde la persona estuvo detenida más de 3 minutos, con el tiempo y la batería del equipo." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: dwellOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${dwellOn ? 'transparent' : 'var(--line)'}`, color: dwellOn ? '#fff' : 'var(--muted)' }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>Paradas</span>
+                      </div>
+                    )}
                     {/* Sync */}
                     <div onClick={doSync} title="Actualizar ubicaciones" style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
                       <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg></div>
@@ -370,6 +389,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       height={isMobile ? 380 : 'clamp(420px, 58vh, 680px)'}
                       center={base}
                       trails={leafletTrails.length ? leafletTrails : null}
+                      dwells={dwells}
                       markers={mapMarkers}
                       fit={!fitDone}
                       edgePadding={{ top: 28, right: 28, bottom: 28, left: 28 }}

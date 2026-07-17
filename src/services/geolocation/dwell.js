@@ -53,10 +53,11 @@ const esParada = (win, radioM) => {
 /**
  * Detecta las paradas de una traza GPS con una ventana deslizante.
  *
- * @param {Array<{lat:number,lng:number,ts:number|string}>} points ordenados por ts ASC
+ * @param {Array<{lat:number,lng:number,ts:number|string,bateria?:number|null}>} points ordenados por ts ASC
  * @param {{minMs?:number, radioM?:number}} [opts]
- * @returns {Array<{lat:number,lng:number,desde:number,hasta:number,duracionMs:number,puntos:number}>}
- *   lat/lng = centro (mediana) de la parada; desde/hasta = ms epoch; puntos = fixes que la componen.
+ * @returns {Array<{lat:number,lng:number,desde:number,hasta:number,duracionMs:number,puntos:number,bateria:number|null}>}
+ *   lat/lng = centro (mediana) de la parada; desde/hasta = ms epoch; puntos = fixes que la
+ *   componen; bateria = último % con dato de la parada (null si ningún fix lo trae).
  */
 export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_RADIO_M } = {}) {
   if (!Array.isArray(points) || points.length === 0) return []
@@ -69,7 +70,10 @@ export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_R
     const lng = Number(p.lng)
     const ts = tsMs(p.ts)
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(ts)) continue
-    pts.push({ lat, lng, ts })
+    // `bateria` viaja como pasajero: no participa de ningún cálculo (ni del centro ni de
+    // la mediana), solo se arrastra para poder mostrarla en el cartel. Es nullable — las
+    // posiciones anteriores a 1.5.6 no la tienen.
+    pts.push({ lat, lng, ts, bateria: p.bateria })
   }
   if (pts.length === 0) return []
 
@@ -105,7 +109,13 @@ export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_R
     const hasta = quietos[quietos.length - 1].ts
     if (hasta - desde >= minMs) {
       const c = centroDe(quietos)
-      paradas.push({ lat: c.lat, lng: c.lng, desde, hasta, duracionMs: hasta - desde, puntos: quietos.length })
+      // Batería: el ÚLTIMO valor con dato de la parada (el nivel al irse del lugar, que es
+      // lo informativo). Puede quedar null: los fixes previos a 1.5.6 no la traen.
+      let bateria = null
+      for (let i = quietos.length - 1; i >= 0; i--) {
+        if (quietos[i].bateria != null) { bateria = quietos[i].bateria; break }
+      }
+      paradas.push({ lat: c.lat, lng: c.lng, desde, hasta, duracionMs: hasta - desde, puntos: quietos.length, bateria })
     }
     return win.slice(fin)
   }

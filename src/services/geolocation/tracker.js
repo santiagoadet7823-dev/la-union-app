@@ -17,6 +17,7 @@ import { dentroDeHorario } from '../tracking'
 import { distanciaMetros } from './geofence'
 import { MIN_MOVE_M, KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../gpsConfig'
 import { uid as nuevoUid } from '../../lib/uid'
+import { hoyStr } from '../../lib/format'
 
 const HB_KEY = 'lu-bg-heartbeat'
 const HB_THROTTLE_MS = 20000 // no saturar SQLite con distanceFilter:10
@@ -86,7 +87,7 @@ function registrarHeartbeat(bg) {
   hbUltimoGuardado = now
   const uid = identidad ? identidad.id : null
   persistence.get(HB_KEY, null).then((prev) => {
-    const hoy = new Date().toISOString().slice(0, 10)
+    const hoy = hoyStr()
     // Reinicia el acumulado si cambió el día O el usuario (evita heredar el heartbeat
     // de otra sesión en un dispositivo compartido → falso bg_ok del usuario nuevo).
     const base = prev && prev.dia === hoy && prev.id === uid ? prev : { dia: hoy, capturasBg: 0 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
+import { hoyStr } from '../../lib/format'
 import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useAuth } from '../../context/AuthContext'
@@ -20,7 +21,6 @@ const panel = { ...sx('background:var(--surface);border:1px solid var(--line);bo
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const selectStyle = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body);cursor:pointer') }
 const REFRESH_MS = 60000
-const hoyStr = () => new Date().toISOString().slice(0, 10)
 
 export default function RecorridosView() {
   const { theme } = useTheme()

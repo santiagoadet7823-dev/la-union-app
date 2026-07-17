@@ -13,8 +13,8 @@ android {
         applicationId "com.launion.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.5.6"
+        versionCode 8
+        versionName "1.5.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -68,6 +68,13 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Activity Recognition (MovimientoPlugin). El artefacto YA venía en el APK, arrastrado
+    // por el plugin de background-geolocation, pero ahí está declarado como `implementation`:
+    // Gradle no propaga eso al classpath de COMPILACIÓN de quien lo consume, así que sin
+    // esta línea el módulo :app no compila (cannot find symbol: ActivityRecognition).
+    // No agrega peso: es la misma versión que ya resolvía, ahora fijada por nosotros desde
+    // variables.gradle en vez de por un default adentro de node_modules.
+    implementation "com.google.android.gms:play-services-location:$playServicesLocationVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

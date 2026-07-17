@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { supabase, hasSupabase } from '../services/supabase'
 import { APP_VERSION } from '../version'
+import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
 import { pendingCount } from '../services/sync/queue'
 import { getHeartbeat } from '../services/geolocation/tracker'
@@ -50,7 +51,7 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
     const gpsOk = computeGpsOk(pos, error) || hbFresco
     // Transición de estado GPS → registrar "desde cuándo".
     if (gpsDesdeRef.current.ok !== gpsOk) gpsDesdeRef.current = { ok: gpsOk, since: Date.now() }
-    const hoy = new Date().toISOString().slice(0, 10)
+    const hoy = hoyStr()
     if (bgRef.current.dia !== hoy) bgRef.current = { dia: hoy, ok: false }
     const visible = typeof document !== 'undefined' && document.visibilityState === 'visible'
     if (!visible && gpsOk) bgRef.current.ok = true // recibió fix estando en 2º plano → permiso "siempre"

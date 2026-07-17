@@ -12,6 +12,15 @@
 <!-- Permite pedir la exención de optimización de batería (Doze): en muchos OEMs el
      foreground service se mata igual al bloquear salvo que la app quede "sin restricciones". -->
 <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+<!-- Activity Recognition: saber si el vendedor está quieto / caminando / en vehículo sale
+     ~gratis (lo resuelve el coprocesador de movimiento) y permite no tener el GPS a 1 Hz
+     máxima precisión toda la jornada. Permiso de RUNTIME desde API 29. -->
+<uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+<!-- Rama legacy para API 23-28, donde el permiso todavía lo definía Play Services y no
+     el sistema. Se auto-concede en la instalación; queda capada en 28 para que en 29+
+     mande la de arriba. -->
+<uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION"
+    android:maxSdkVersion="28" />
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -42,6 +51,15 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Receptor de las transiciones de Activity Recognition. Declarado en el manifest
+             (y no dinámico) para que las transiciones lleguen con la app en background e
+             incluso con el proceso muerto: el PendingIntent es un broadcast explícito, así
+             que puede arrancar el proceso en frío. exported="false" porque el intent lo
+             dispara nuestra propia app. Ver MovimientoReceiver.java. -->
+        <receiver
+            android:name=".MovimientoReceiver"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

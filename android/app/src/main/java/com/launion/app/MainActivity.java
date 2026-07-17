@@ -10,6 +10,10 @@ public class MainActivity extends BridgeActivity {
         // Plugin local: la exención de batería (Doze) que mantiene vivo el GPS con la
         // pantalla bloqueada. Debe registrarse antes de super.onCreate().
         registerPlugin(BatteryOptimizationPlugin.class);
+        // Plugin local: Activity Recognition, para saber si el vendedor se mueve y no
+        // tener que dejar el GPS a máxima precisión toda la jornada. Mismo requisito:
+        // antes de super.onCreate().
+        registerPlugin(MovimientoPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

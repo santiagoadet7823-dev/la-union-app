@@ -13,4 +13,9 @@ ext {
     androidxJunitVersion = '1.1.5'
     androidxEspressoCoreVersion = '3.5.1'
     cordovaAndroidVersion = '10.1.1'
+    // Activity Recognition (MovimientoPlugin) sale de play-services-location. Hoy la
+    // versión la fijaba un default DENTRO de node_modules; fijarla acá la vuelve nuestra
+    // (rootProject.ext gana sobre ese default) en vez de depender de lo que arrastre un
+    // plugin de terceros.
+    playServicesLocationVersion = '21.0.1'
 }
