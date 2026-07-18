@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
+import { isNative } from '../services/platform'
 import Logo from './Logo'
 import MiCuenta from '../features/perfil/MiCuenta'
 
@@ -119,7 +120,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
         <div style={{ position: 'fixed', inset: 0, zIndex: 2000 }}>
           <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))' }}>
-            <MiCuenta onToast={showToast} showDeviceToggle />
+            <MiCuenta onToast={showToast} showDeviceToggle={!isNative()} />
           </div>
         </div>
       )}
