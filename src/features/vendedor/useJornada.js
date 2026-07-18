@@ -64,7 +64,7 @@ export function useJornada() {
   }
 
   // --- clientes (cartera real) + estado de visita del día ---
-  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, ...(visitState[c.id] || { status: 'pendiente' }) }))
+  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, ...(visitState[c.id] || { status: 'pendiente' }) }))
   const nextId = (clients.find((c) => c.status === 'pendiente') || {}).id
   const done = clients.filter((c) => c.status !== 'pendiente').length
   const conPedido = clients.filter((c) => c.status === 'visitado')

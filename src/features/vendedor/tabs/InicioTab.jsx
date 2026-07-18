@@ -9,9 +9,9 @@ import { card, Stat } from '../ui'
 const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
 
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
-export default function InicioTab({ j, onNuevoCliente }) {
+export default function InicioTab({ j, onNuevoCliente, onEditarCliente }) {
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
-  const { perfil } = useAuth()
+  const { perfil, user } = useAuth()
   const nombre = perfil?.nombre || 'Vendedor'
   const { clients, done, conPedido, montoHoy, meta, efect, nextId, startVisit, catLoading } = j
 
@@ -112,13 +112,20 @@ export default function InicioTab({ j, onNuevoCliente }) {
                 <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
                 <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
               </div>
-              {c.status === 'pendiente' ? (
-                <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 16px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
-              ) : (
-                <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
-                  <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
-                </div>
-              )}
+              <div style={sx('flex:none;display:flex;align-items:center;gap:6px')}>
+                {c.idVendedor === user?.id && (
+                  <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                  </button>
+                )}
+                {c.status === 'pendiente' ? (
+                  <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 16px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
+                ) : (
+                  <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
+                    <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
+                  </div>
+                )}
+              </div>
             </div>
           )
         })

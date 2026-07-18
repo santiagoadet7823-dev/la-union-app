@@ -6,6 +6,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useGps } from '../../context/GpsContext'
 import NuevoCliente from '../catalog/NuevoCliente'
+import EditarClienteVendedor from '../catalog/EditarClienteVendedor'
 import { useJornada } from './useJornada'
 import InicioTab from './tabs/InicioTab'
 import VisitaCatalogo from './tabs/VisitaCatalogo'
@@ -22,13 +23,14 @@ export default function VendedorView() {
   const { pos: livePos } = useGps()
   const j = useJornada()
   const [modalCliente, setModalCliente] = useState(false)
+  const [editCliId, setEditCliId] = useState(null)
 
   const navItem = (t) => (j.tab === t ? 'var(--primary)' : 'var(--faint)')
 
   return (
     <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600 }}>
 
-      {j.tab === 'inicio' && <InicioTab j={j} onNuevoCliente={() => setModalCliente(true)} />}
+      {j.tab === 'inicio' && <InicioTab j={j} onNuevoCliente={() => setModalCliente(true)} onEditarCliente={setEditCliId} />}
       {j.tab === 'catalogo' && <VisitaCatalogo j={j} />}
       {j.tab === 'ruta' && <RutaTab j={j} />}
 
@@ -42,6 +44,7 @@ export default function VendedorView() {
       )}
 
       {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={j.showToast} center={livePos} />}
+      {editCliId && <EditarClienteVendedor clienteId={editCliId} onClose={() => setEditCliId(null)} onToast={j.showToast} />}
 
       {/* ===== BOTTOM NAV (glass + safe-area). En mobile va FIXED al fondo real de
               la pantalla; en escritorio, absolute dentro del marco de teléfono. ===== */}
