@@ -5,7 +5,6 @@ import { Truck, Check, Pin } from '../../components/icons'
 import Logo from '../../components/Logo'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
-import MiCuenta from '../perfil/MiCuenta'
 
 const MOTIVO_CHIPS = ['Sin stock', 'Rechazado', 'Otro']
 const ORDER = { pendiente: 0, en_camino: 1, entregado: 2 }
@@ -20,7 +19,6 @@ export default function RepartidorView() {
   const [motivos, setMotivos] = useState({})
   const [hasInk, setHasInk] = useState(false)
   const [toast, setToast] = useState(null)
-  const [acctOpen, setAcctOpen] = useState(false)
 
   // El repartidor emite su ubicación en vivo (GPS del contexto) para que el Admin lo siga.
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
@@ -104,10 +102,7 @@ export default function RepartidorView() {
             <Logo size={26} radius={8} />
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em')}>DisT-At</div>
           </div>
-          <div style={sx('display:flex;align-items:center;gap:10px')}>
-            <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {hoy()}</div>
-            <div onClick={() => setAcctOpen(true)} title="Mi cuenta" style={sx('width:34px;height:34px;flex:none;border-radius:99px;background:var(--tlight);color:var(--deep);border:1.5px solid var(--line2);display:grid;place-items:center;cursor:pointer;font-family:var(--font-display);font-weight:700;font-size:12.5px')}>{nombre.slice(0, 2).toUpperCase()}</div>
-          </div>
+          <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {hoy()}</div>
         </div>
         <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-top:12px')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:18px')}>Hoja de entregas</div>
@@ -293,16 +288,6 @@ export default function RepartidorView() {
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Panel de cuenta (unificado con vendedor/admin): editar perfil, tema, cerrar sesión. */}
-      {acctOpen && (
-        <div style={sx('position:absolute;inset:0;z-index:40')}>
-          <div onClick={() => setAcctOpen(false)} style={sx('position:absolute;inset:0;background:var(--scrim)')} />
-          <div style={sx('position:absolute;top:64px;left:16px;right:16px')}>
-            <MiCuenta onToast={showToast} />
           </div>
         </div>
       )}

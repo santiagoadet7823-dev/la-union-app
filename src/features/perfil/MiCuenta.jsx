@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
+import { useDevice } from '../../context/DeviceContext'
 import { APP_VERSION } from '../../version'
 import MiPerfilModal from './MiPerfilModal'
 
@@ -20,9 +21,10 @@ const ROLE_LABEL = { propietario: 'Propietario', encargado: 'Encargado', admin: 
 const item = { ...sx('display:flex;align-items:center;gap:12px;padding:13px 4px;cursor:pointer;min-height:44px;box-sizing:border-box') }
 const iconBox = { ...sx('width:32px;height:32px;flex:none;border-radius:10px;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;color:var(--deep)') }
 
-export default function MiCuenta({ onToast }) {
+export default function MiCuenta({ onToast, showDeviceToggle = false }) {
   const { perfil, user, rol, signOut } = useAuth()
   const { isDark, toggleTheme } = useTheme()
+  const { isMobile, setMode } = useDevice()
   const [perfilOpen, setPerfilOpen] = useState(false)
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
@@ -54,6 +56,19 @@ export default function MiCuenta({ onToast }) {
           <div onClick={() => { if (isDark) toggleTheme() }} style={themeBtn(!isDark)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>Claro</div>
         </div>
       </div>
+
+      {showDeviceToggle && (
+        <>
+          <div style={sx('height:0.5px;background:var(--line)')} />
+          <div style={sx('padding:12px 4px')}>
+            <div style={sx('font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:9px')}>Vista</div>
+            <div style={sx('display:flex;gap:6px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:4px')}>
+              <div onClick={() => setMode('mobile')} style={themeBtn(isMobile)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5" /><path d="M11 18h2" /></svg>Celular</div>
+              <div onClick={() => setMode('desktop')} style={themeBtn(!isMobile)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>PC</div>
+            </div>
+          </div>
+        </>
+      )}
 
       <div style={sx('height:0.5px;background:var(--line)')} />
 

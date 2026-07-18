@@ -5,9 +5,7 @@ import { glassSurface } from '../../lib/glass'
 import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useGps } from '../../context/GpsContext'
-import { useAuth } from '../../context/AuthContext'
 import NuevoCliente from '../catalog/NuevoCliente'
-import MiCuenta from '../perfil/MiCuenta'
 import { useJornada } from './useJornada'
 import InicioTab from './tabs/InicioTab'
 import VisitaCatalogo from './tabs/VisitaCatalogo'
@@ -23,11 +21,8 @@ export default function VendedorView() {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
   const { pos: livePos } = useGps()
-  const { perfil } = useAuth()
   const j = useJornada()
   const [modalCliente, setModalCliente] = useState(false)
-  const [acctOpen, setAcctOpen] = useState(false)
-  const nombre = perfil?.nombre || 'Vendedor'
 
   const navItem = (t) => (j.tab === t ? 'var(--primary)' : 'var(--faint)')
 
@@ -40,19 +35,6 @@ export default function VendedorView() {
       {j.tab === 'perfil' && <PerfilTab j={j} />}
 
       {j.sheet && <SinPedidoSheet j={j} />}
-
-      {/* Botón de cuenta (perfil) arriba a la derecha — sobre cualquier pestaña, unificado con
-          admin/repartidor. Abre "Mi cuenta" (editar perfil, tema, cerrar sesión). */}
-      <div onClick={() => setAcctOpen(true)} title="Mi cuenta" style={{ position: 'absolute', top: 'calc(14px + env(safe-area-inset-top))', right: 14, zIndex: 35, width: 38, height: 38, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: '1.5px solid var(--line2)', display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, boxShadow: 'var(--shadow)' }}>{nombre.slice(0, 2).toUpperCase()}</div>
-
-      {acctOpen && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 60 }}>
-          <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', top: 'calc(58px + env(safe-area-inset-top))', right: 12, width: 'min(320px, calc(100% - 24px))' }}>
-            <MiCuenta onToast={j.showToast} />
-          </div>
-        </div>
-      )}
 
       {j.toast && (
         <div style={sx('position:absolute;top:14px;left:14px;right:14px;z-index:30;background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 14px;display:flex;align-items:center;gap:9px')}>

@@ -1,11 +1,8 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useTheme } from '../context/ThemeContext'
 import { useDevice } from '../context/DeviceContext'
-import { Sun, Moon } from './icons'
 import Logo from './Logo'
-
-const MiPerfilModal = lazy(() => import('../features/perfil/MiPerfilModal'))
+import MiCuenta from '../features/perfil/MiCuenta'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -27,13 +24,12 @@ const ROLE_META = {
  *  - onMonitoreo     () => void | null   (admin/superadmin en .apk: volver a la supervisión)
  */
 export default function AppShell({ children, encargadoVista = null, onCambiarVista, onMonitoreo = null }) {
-  const { perfil, user, rol, signOut } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
-  const { isMobile, setMode } = useDevice()
+  const { perfil, user, rol } = useAuth()
+  const { isMobile } = useDevice()
   const meta = ROLE_META[rol] || { label: rol || '—', color: 'var(--muted)' }
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
-  const [modalPerfil, setModalPerfil] = useState(false)
+  const [acctOpen, setAcctOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const toastRef = useRef(null)
   const showToast = (m) => {
@@ -112,42 +108,20 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
           </button>
         )}
 
-        {/* Mi perfil (editar nombre + teléfono) */}
-        <button onClick={() => setModalPerfil(true)} title="Mi perfil" style={isMobile ? iconBtn : textBtn}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg>
-          {!isMobile && 'Perfil'}
-        </button>
-
-        {/* Selector de dispositivo */}
-        <button
-          onClick={() => setMode(isMobile ? 'desktop' : 'mobile')}
-          title={isMobile ? 'Cambiar a vista PC' : 'Cambiar a vista Celular'}
-          style={iconBtn}
-        >
-          {isMobile ? (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5" /><path d="M11 18h2" /></svg>
-          )}
-        </button>
-
-        <button onClick={toggleTheme} title="Cambiar tema Light/Dark" style={isMobile ? iconBtn : textBtn}>
-          {isDark ? <Sun /> : <Moon />}
-          {!isMobile && (isDark ? 'Dark' : 'Light')}
-        </button>
-
-        <button onClick={() => signOut()} title="Cerrar sesión" style={isMobile ? iconBtn : textBtn}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></svg>
-          {!isMobile && 'Salir'}
-        </button>
+        {/* Cuenta: UN solo botón (avatar) que abre el menú tipo admin — perfil, tema, vista y
+            cerrar sesión adentro. Reemplaza los botones sueltos que había acá. */}
+        <div onClick={() => setAcctOpen(true)} title="Mi cuenta" style={{ flex: 'none', width: 36, height: 36, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{nombre.slice(0, 2).toUpperCase()}</div>
       </header>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
 
-      {modalPerfil && (
-        <Suspense fallback={null}>
-          <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />
-        </Suspense>
+      {acctOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000 }}>
+          <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
+          <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))' }}>
+            <MiCuenta onToast={showToast} showDeviceToggle />
+          </div>
+        </div>
       )}
 
       {toast && (
