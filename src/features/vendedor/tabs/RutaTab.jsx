@@ -21,12 +21,15 @@ export default function RutaTab({ j }) {
 
   return (
     <div style={sx('position:relative;flex:1;min-height:0;overflow:hidden')}>
-      {/* Mapa a pantalla completa (llena la pestaña, por debajo del chip y la hoja). */}
-      <div style={sx('position:absolute;inset:0')}>
+      {/* Mapa a pantalla completa (llena la pestaña, por debajo del chip y la hoja).
+          isolation:isolate crea un stacking context propio → confina los z-index internos de
+          Leaflet (panes 200–1000) DENTRO del mapa, si no tapan la bottom-nav y la hoja de controles. */}
+      <div style={{ ...sx('position:absolute;inset:0'), isolation: 'isolate' }}>
         <ErrorBoundary compact message="No se pudo cargar el mapa (revisá tu conexión).">
           <LeafletMap
             theme={theme}
             height="100%"
+            basemapPosition="topleft"
             center={livePos || CENTRO}
             markers={clients
               .filter((c) => c.lat != null)

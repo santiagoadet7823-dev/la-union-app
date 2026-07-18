@@ -26,8 +26,8 @@ function crearTileLayer(id) {
 
 // Control custom para elegir el basemap. Vive dentro del mapa → aparece en todas las vistas.
 // Botón "capas" que despliega la lista; al elegir, setBasemap() persiste y avisa a los demás mapas.
-function crearControlBasemap(getId) {
-  const ctrl = L.control({ position: 'topright' })
+function crearControlBasemap(getId, position) {
+  const ctrl = L.control({ position: position || 'topright' })
   ctrl.onAdd = () => {
     const wrap = L.DomUtil.create('div', 'leaflet-bar lu-basemap-ctrl')
     wrap.style.cssText = 'background:var(--surface,#fff);border-radius:8px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.3)'
@@ -157,6 +157,7 @@ export default function LeafletMap({
   onMarkerClick,
   onMapClick,
   basemapControl = true, // muestra el selector de capas (se puede apagar en algún mapa puntual)
+  basemapPosition = 'topright', // esquina del selector de capas (para no chocar con otros controles)
 }) {
   const routeInfoRef = useRef(onRouteInfo)
   routeInfoRef.current = onRouteInfo
@@ -189,7 +190,7 @@ export default function LeafletMap({
     tileRef.current = crearTileLayer(basemapRef.current).addTo(map)
     // Selector de capas (arriba a la derecha, no choca con el zoom que va arriba a la izquierda).
     // Solo si hay 2+ capas usables (en producción sin key Stadia queda solo OSM → sin selector).
-    if (basemapControl && usableBasemaps().length >= 2) crearControlBasemap(() => basemapRef.current).addTo(map)
+    if (basemapControl && usableBasemaps().length >= 2) crearControlBasemap(() => basemapRef.current, basemapPosition).addTo(map)
     // Capa de clientes DEBAJO de la de overlays (se agrega primero) → los recorridos y pines en
     // vivo quedan por encima de los puntitos de comercios.
     clientsLayerRef.current = L.layerGroup().addTo(map)
