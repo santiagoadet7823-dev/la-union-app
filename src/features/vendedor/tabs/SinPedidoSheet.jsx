@@ -8,9 +8,9 @@ export default function SinPedidoSheet({ j }) {
   const cerrar = () => { setSheet(false); setMotivo(null) }
 
   return (
-    <div style={sx('position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end')}>
+    <div style={sx('position:absolute;inset:0;z-index:50;display:flex;flex-direction:column;justify-content:flex-end')}>
       <div onClick={cerrar} style={sx('position:absolute;inset:0;background:var(--scrim)')} />
-      <div style={sx('position:relative;background:var(--surface);border:1px solid var(--line2);border-bottom:none;border-radius:20px 20px 0 0;padding:10px 16px 24px')}>
+      <div style={sx('position:relative;background:var(--surface);border:1px solid var(--line2);border-bottom:none;border-radius:20px 20px 0 0;padding:10px 16px calc(24px + env(safe-area-inset-bottom))')}>
         <div style={sx('width:36px;height:4px;border-radius:99px;background:var(--line2);margin:2px auto 14px')} />
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px;margin-bottom:2px')}>Visita sin pedido</div>
         <div style={sx('font-size:12px;color:var(--muted);margin-bottom:14px')}>Indicá el motivo para cerrar la visita en <b>{visitC?.name}</b>.</div>

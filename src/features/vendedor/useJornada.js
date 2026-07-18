@@ -52,7 +52,7 @@ export function useJornada() {
   }
   function cancelVisit() {
     clearInterval(timerRef.current)
-    setVisit(null); setSeconds(0); setCart({}); setTab('inicio')
+    setVisit(null); setSeconds(0); setCart({}); setSheet(false); setMotivo(null); setTab('inicio')
   }
   function addCart(id, d) {
     setCart((c) => {
