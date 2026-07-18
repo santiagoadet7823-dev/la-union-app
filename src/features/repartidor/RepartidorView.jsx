@@ -197,8 +197,8 @@ export default function RepartidorView() {
       {/* MODAL */}
       {md && (
         <div style={sx('position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end')}>
-          <div style={sx('position:absolute;inset:0;background:var(--scrim)')} />
-          <div style={sx('position:relative;background:var(--surface);border:1px solid var(--line2);border-bottom:none;border-radius:20px 20px 0 0;max-height:88%;display:flex;flex-direction:column')}>
+          <div className="lu-modal-scrim" style={sx('position:absolute;inset:0;background:var(--scrim)')} />
+          <div className="lu-sheet-up" style={sx('position:relative;background:var(--surface);border:1px solid var(--line2);border-bottom:none;border-radius:20px 20px 0 0;max-height:88%;display:flex;flex-direction:column')}>
             <div style={sx('flex:none;padding:10px 16px 12px;border-bottom:1px solid var(--line)')}>
               <div style={sx('width:36px;height:4px;border-radius:99px;background:var(--line2);margin:2px auto 12px')} />
               <div style={sx('display:flex;justify-content:space-between;align-items:center')}>

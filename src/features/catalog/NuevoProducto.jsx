@@ -34,9 +34,9 @@ export default function NuevoProducto({ onClose, onToast }) {
   }
 
   return (
-    <div style={sx('position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--scrim)')}>
+    <div className="lu-modal-scrim" style={sx('position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--scrim)')}>
       <div onClick={onClose} style={sx('position:absolute;inset:0')} />
-      <div style={sx('position:relative;width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--shadow-lg);padding:18px')}>
+      <div className="lu-modal-card" style={sx('position:relative;width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--shadow-lg);padding:18px')}>
         <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Nuevo producto</div>
           <button onClick={onClose} style={sx('width:30px;height:30px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;font-size:16px')}>✕</button>

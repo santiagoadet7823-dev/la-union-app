@@ -29,7 +29,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
   return (
-    <div style={sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:6px 14px')}>
+    <div className="lu-modal-card" style={sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:6px 14px')}>
       <div style={sx('display:flex;align-items:center;gap:12px;padding:13px 4px 11px')}>
         <div style={sx('width:44px;height:44px;flex:none;border-radius:14px;background:var(--tlight);color:var(--deep);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:16px')}>{nombre.slice(0, 2).toUpperCase()}</div>
         <div style={sx('flex:1;min-width:0')}>
@@ -41,7 +41,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
 
       <div style={sx('height:0.5px;background:var(--line)')} />
 
-      <div onClick={() => setPerfilOpen(true)} style={item}>
+      <div onClick={() => setPerfilOpen(true)} className="lu-press" style={item}>
         <div style={iconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg></div>
         <span style={sx('flex:1;font-size:13.5px;font-weight:500')}>Mi perfil</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
@@ -72,7 +72,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
 
       <div style={sx('height:0.5px;background:var(--line)')} />
 
-      <div onClick={() => signOut()} style={{ ...item, color: 'var(--danger)' }}>
+      <div onClick={() => signOut()} className="lu-press" style={{ ...item, color: 'var(--danger)' }}>
         <div style={{ ...iconBox, color: 'var(--danger)', borderColor: 'var(--danger)', background: 'var(--danger-tint)' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></svg></div>
         <span style={sx('flex:1;font-size:13.5px;font-weight:600')}>Cerrar sesión</span>
       </div>
