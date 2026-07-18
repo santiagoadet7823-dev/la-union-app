@@ -161,6 +161,22 @@ body {
   100% { background-position: 220px 0; }
 }
 
+/* Modales/carteles centrados — entrada pulida (estándares de animación de Emil Kowalski):
+   ease-out fuerte, <300ms, sin scale(0) (arranca en 0.96), solo transform+opacity, origen al
+   centro (los modales aparecen centrados en el viewport). */
+@keyframes lu-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lu-modal-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+.lu-modal-scrim { animation: lu-scrim-in 200ms cubic-bezier(0.23, 1, 0.32, 1); }
+.lu-modal-card { animation: lu-modal-in 260ms cubic-bezier(0.23, 1, 0.32, 1); transform-origin: center; will-change: transform, opacity; }
+/* Feedback de presión sutil (0.97) para elementos tocables. */
+.lu-press { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+.lu-press:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .lu-modal-card { animation: lu-scrim-in 160ms ease; } /* solo opacidad, sin movimiento */
+  .lu-press { transition: none; }
+  .lu-press:active { transform: none; }
+}
+
 /* El basemap ahora lo elige el usuario (services/maps/basemap.js): OSM / Stadia oscuro / satélite.
    Ya NO se aplica ningún filtro CSS a los tiles (el desaturado viejo estaba afinado para CARTO
    Positron y lavaba OSM/satélite). Cada capa se muestra tal cual la manda el proveedor. */
