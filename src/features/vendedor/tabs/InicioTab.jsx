@@ -13,7 +13,7 @@ export default function InicioTab({ j, onNuevoCliente }) {
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
   const { perfil } = useAuth()
   const nombre = perfil?.nombre || 'Vendedor'
-  const { clients, done, conPedido, montoHoy, nextId, startVisit, catLoading } = j
+  const { clients, done, conPedido, montoHoy, meta, efect, nextId, startVisit, catLoading } = j
 
   return (
     <div style={sx('flex:1;overflow-y:auto;padding:14px 14px 92px')}>
@@ -60,6 +60,21 @@ export default function InicioTab({ j, onNuevoCliente }) {
             <div style={{ ...sx('height:100%;border-radius:99px;background:var(--primary);transition:width .4s'), width: `${Math.round((done / clients.length) * 100)}%` }} />
           </div>
         )}
+
+        {/* Meta diaria + efectividad (venían del dashboard de la vieja pestaña Perfil). */}
+        <div style={sx('display:grid;grid-template-columns:1.5fr 1fr;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)')}>
+          <div>
+            <div style={sx('display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--muted);margin-bottom:6px')}><span>Meta diaria</span><span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600')}>{meta}%</span></div>
+            <div style={sx('height:6px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
+              <div style={{ ...sx('height:100%;border-radius:99px;background:var(--primary);transition:width .4s'), width: `${Math.min(100, meta)}%` }} />
+            </div>
+            <div style={sx('font-size:9.5px;color:var(--faint);font-family:var(--font-mono);margin-top:4px')}>de $ 900.000</div>
+          </div>
+          <div>
+            <div style={sx('font-size:11px;color:var(--muted);margin-bottom:4px')}>Efectividad</div>
+            <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--success)')}>{efect}%</div>
+          </div>
+        </div>
       </div>
 
       <div style={sx('display:flex;justify-content:space-between;align-items:center;margin:0 2px 10px')}>
