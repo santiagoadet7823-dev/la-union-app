@@ -161,13 +161,9 @@ body {
   100% { background-position: 220px 0; }
 }
 
-/* Basemap claro = CARTO Positron (light_all). Lo desaturamos un toque hacia GRIS tipo Google
-   clásico y le sumamos algo de contraste, sin perder la nitidez de calles/cuadras. Solo en
-   tema claro (el oscuro usa CARTO Voyager y ya se ve bien). Esta es la estética CANÓNICA:
-   debe verse igual en la PWA y en el APK con el mismo tema. */
-html[data-theme='light'] .leaflet-tile-container {
-  filter: saturate(70%) contrast(108%) brightness(99%);
-}
+/* El basemap ahora lo elige el usuario (services/maps/basemap.js): OSM / Stadia oscuro / satélite.
+   Ya NO se aplica ningún filtro CSS a los tiles (el desaturado viejo estaba afinado para CARTO
+   Positron y lavaba OSM/satélite). Cada capa se muestra tal cual la manda el proveedor. */
 
 @media (prefers-reduced-motion: reduce) {
   *,

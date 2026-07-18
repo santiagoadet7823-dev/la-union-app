@@ -3,6 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { obtenerRutaMulti, obtenerRutaOptimaTSP } from '../services/routing'
 import { CENTRO_DEFECTO } from '../services/maps'
+import { usableBasemaps, getBasemap, setBasemap, basemapById, onBasemapChange } from '../services/maps/basemap'
 
 /**
  * Mapa real con Leaflet + tiles CARTO (OSM) y ruteo por calles vía OSRM.
@@ -15,24 +16,61 @@ import { CENTRO_DEFECTO } from '../services/maps'
  *        onMarkerClick(index)
  */
 
-// Basemaps por tema. crossOrigin habilita exportar el mapa a PNG (informe de
-// recorridos) sin "tainted canvas" — ambos proveedores mandan CORS.
-//  - Claro: CARTO Positron (`light_all`). Fondo tenue tipo Google clásico (se afina con el
-//    filtro CSS de index.css) y deja resaltar los trazos de colores.
-//  - Oscuro: CARTO Voyager oscuro (se ve bien de noche / en el vehículo).
-// Ambos temas usan CARTO (mismo cartógrafo, misma familia visual, mismos subdominios 'abcd' y
-// retina {r}), así que la MISMA jornada se ve igual en la PWA y en el .apk con el mismo tema.
-// Esta es la estética canónica: si el APK se ve distinto, es que corre un bundle viejo (OTA sin
-// aplicar), no una diferencia de código — ver la memoria dos-canales-de-despliegue.
-const TILES = {
-  dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png',
+// El basemap ya NO depende del tema: lo elige el usuario y es global (services/maps/basemap.js).
+// Acá solo se crea la capa Leaflet a partir del id elegido. Los pines/trazos SÍ siguen usando
+// `theme` para su color.
+function crearTileLayer(id) {
+  const b = basemapById(id)
+  return L.tileLayer(b.url, b.opts)
 }
-// Opciones por tema. Objeto simple, sin funciones, para no arriesgar un ReferenceError como
-// el de la 1.4.2. Ambos son CARTO → mismos subdominios (abcd), mismo zoom y retina.
-const TILE_OPTS = {
-  dark: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
-  light: { subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap &copy; CARTO' },
+
+// Control custom para elegir el basemap. Vive dentro del mapa → aparece en todas las vistas.
+// Botón "capas" que despliega la lista; al elegir, setBasemap() persiste y avisa a los demás mapas.
+function crearControlBasemap(getId) {
+  const ctrl = L.control({ position: 'topright' })
+  ctrl.onAdd = () => {
+    const wrap = L.DomUtil.create('div', 'leaflet-bar lu-basemap-ctrl')
+    wrap.style.cssText = 'background:var(--surface,#fff);border-radius:8px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.3)'
+    const btn = L.DomUtil.create('a', '', wrap)
+    btn.href = '#'; btn.title = 'Cambiar mapa'
+    btn.style.cssText = 'display:grid;place-items:center;width:34px;height:34px;color:var(--text,#222)'
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>'
+    const menu = L.DomUtil.create('div', '', wrap)
+    menu.style.cssText = 'display:none;border-top:1px solid var(--line,#e5e5e5)'
+    const opciones = usableBasemaps()
+    opciones.forEach((b) => {
+      const item = L.DomUtil.create('a', '', menu)
+      item.href = '#'; item.textContent = b.label
+      item.dataset.id = b.id
+      item.style.cssText = 'display:block;padding:7px 12px;font:600 12px/1 var(--font-body,sans-serif);color:var(--text,#222);white-space:nowrap;text-decoration:none;border:none;width:auto;height:auto'
+      L.DomEvent.on(item, 'click', (e) => {
+        L.DomEvent.stop(e)
+        setBasemap(b.id)
+        menu.style.display = 'none'
+        pintarActivo()
+      })
+    })
+    const pintarActivo = () => {
+      const cur = getId()
+      menu.querySelectorAll('a').forEach((a) => {
+        const on = a.dataset.id === cur
+        a.style.background = on ? 'var(--primary-tint,#e6f7f6)' : 'transparent'
+        a.style.color = on ? 'var(--deep,#0ABAB5)' : 'var(--text,#222)'
+      })
+    }
+    L.DomEvent.on(btn, 'click', (e) => {
+      L.DomEvent.stop(e)
+      const abierto = menu.style.display === 'block'
+      menu.style.display = abierto ? 'none' : 'block'
+      if (!abierto) pintarActivo()
+    })
+    // No dejar que los clicks/scroll del control muevan el mapa.
+    L.DomEvent.disableClickPropagation(wrap)
+    L.DomEvent.disableScrollPropagation(wrap)
+    pintarActivo()
+    return wrap
+  }
+  return ctrl
 }
 
 function pinIcon(color, label, labelColor, selected) {
@@ -118,12 +156,14 @@ export default function LeafletMap({
   liveColor = null,
   onMarkerClick,
   onMapClick,
+  basemapControl = true, // muestra el selector de capas (se puede apagar en algún mapa puntual)
 }) {
   const routeInfoRef = useRef(onRouteInfo)
   routeInfoRef.current = onRouteInfo
   const divRef = useRef(null)
   const mapRef = useRef(null)
   const tileRef = useRef(null)
+  const basemapRef = useRef(getBasemap()) // id del basemap activo (para el control y el redibujo)
   const layerRef = useRef(null)
   const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
@@ -146,7 +186,10 @@ export default function LeafletMap({
     map.createPane('luDwells')
     map.getPane('luDwells').style.zIndex = 450
     map.getPane('luDwells').style.pointerEvents = 'none'
-    tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(map)
+    tileRef.current = crearTileLayer(basemapRef.current).addTo(map)
+    // Selector de capas (arriba a la derecha, no choca con el zoom que va arriba a la izquierda).
+    // Solo si hay 2+ capas usables (en producción sin key Stadia queda solo OSM → sin selector).
+    if (basemapControl && usableBasemaps().length >= 2) crearControlBasemap(() => basemapRef.current).addTo(map)
     // Capa de clientes DEBAJO de la de overlays (se agrega primero) → los recorridos y pines en
     // vivo quedan por encima de los puntitos de comercios.
     clientsLayerRef.current = L.layerGroup().addTo(map)
@@ -160,12 +203,17 @@ export default function LeafletMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Cambio de tema → cambia el estilo de tiles.
+  // Cambio de basemap (elegido por el usuario en CUALQUIER mapa/vista): se recrea la capa de
+  // tiles en este mapa también. El id es global (localStorage) y llega por CustomEvent.
   useEffect(() => {
-    if (!mapRef.current) return
-    if (tileRef.current) tileRef.current.remove()
-    tileRef.current = L.tileLayer(TILES[theme] || TILES.dark, TILE_OPTS[theme] || TILE_OPTS.dark).addTo(mapRef.current)
-  }, [theme])
+    return onBasemapChange((id) => {
+      basemapRef.current = id
+      const map = mapRef.current
+      if (!map) return
+      if (tileRef.current) tileRef.current.remove()
+      tileRef.current = crearTileLayer(id).addTo(map)
+    })
+  }, [])
 
   // Recentrar en la base declarada (center) mientras no haya overlays que encuadrar.
   // El mapa se inicializa una sola vez, pero center (la base de la empresa) llega async;
