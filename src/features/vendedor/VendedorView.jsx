@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
-import { Home, Pin, Box, User, Check } from '../../components/icons'
+import { Home, Pin, Box, Check } from '../../components/icons'
 import { glassSurface } from '../../lib/glass'
 import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
@@ -10,7 +10,6 @@ import { useJornada } from './useJornada'
 import InicioTab from './tabs/InicioTab'
 import VisitaCatalogo from './tabs/VisitaCatalogo'
 import RutaTab from './tabs/RutaTab'
-import PerfilTab from './tabs/PerfilTab'
 import SinPedidoSheet from './tabs/SinPedidoSheet'
 
 /**
@@ -32,7 +31,6 @@ export default function VendedorView() {
       {j.tab === 'inicio' && <InicioTab j={j} onNuevoCliente={() => setModalCliente(true)} />}
       {j.tab === 'catalogo' && <VisitaCatalogo j={j} />}
       {j.tab === 'ruta' && <RutaTab j={j} />}
-      {j.tab === 'perfil' && <PerfilTab j={j} />}
 
       {j.sheet && <SinPedidoSheet j={j} />}
 
@@ -47,8 +45,8 @@ export default function VendedorView() {
 
       {/* ===== BOTTOM NAV (glass + safe-area). En mobile va FIXED al fondo real de
               la pantalla; en escritorio, absolute dentro del marco de teléfono. ===== */}
-      <div style={{ ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:40'), position: isMobile ? 'fixed' : 'absolute', ...glassSurface(theme === 'dark'), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
-        {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box], ['perfil', 'Perfil', User]].map(([t, label, Icon]) => (
+      <div style={{ ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr);z-index:40'), position: isMobile ? 'fixed' : 'absolute', ...glassSurface(theme === 'dark'), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
+        {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box]].map(([t, label, Icon]) => (
           <div key={t} onClick={() => j.setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
             <Icon />
             <span style={sx('font-size:10px;font-weight:600')}>{label}</span>
