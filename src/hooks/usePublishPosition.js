@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLivePosition } from './useLivePosition'
-import { flushPosiciones } from '../services/sync/queue'
+import { flushPosiciones, setUsuarioCola } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { setIdentidad, setConfig, reset as resetTracker } from '../services/geolocation/tracker'
 
@@ -41,10 +41,18 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
   // Identidad del tracker: sin esto, procesarFix (en el callback nativo) no encola.
   // reset() al deshabilitar/desmontar limpia `last` para no arrastrar posición entre
   // sesiones o roles.
+  //
+  // setUsuarioCola: la cola de posiciones es del DISPOSITIVO, no del usuario. Avisarle
+  // quién está logueado ahora es lo que le permite descartar los puntos de una cuenta
+  // anterior, que RLS rechaza para siempre y taponaban la cola entera (ver queue.js).
+  // Se setea acá y no en AuthContext a propósito: solo los roles que se trackean tienen
+  // por qué purgar la cola. Un admin que abre sesión en el teléfono de un vendedor no
+  // debe borrarle los puntos que todavía podrían subir cuando el vendedor vuelva.
   useEffect(() => {
-    if (!enabled || !id || !idEmpresa) { resetTracker(); return }
+    if (!enabled || !id || !idEmpresa) { resetTracker(); setUsuarioCola(null); return }
     setIdentidad({ id, rol, idEmpresa })
-    return () => resetTracker()
+    setUsuarioCola(id)
+    return () => { resetTracker(); setUsuarioCola(null) }
   }, [enabled, id, rol, idEmpresa])
 
   // Carga (y refresca) la ventana horaria de rastreo controlada por el superadmin.

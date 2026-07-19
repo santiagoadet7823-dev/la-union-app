@@ -111,6 +111,20 @@ export default function EmpresasView({ onToast }) {
       <div style={panel}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Horario de rastreo GPS</div>
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Fuera de esta franja los móviles no envían ubicación (ahorra backend si alguien deja la app abierta). Es global para toda la operación.</div>
+        {/* Aclaración pedida el 18/07/2026: se creyó que un recorrido de un sábado a la
+            tarde no se había registrado "porque los fines de semana no rastrea". No hay
+            ninguna regla de días: la franja aplica los 7. El recorrido se había perdido
+            por otra causa (cola de posiciones taponada, ver queue.js). */}
+        <div style={sx('font-size:12px;color:var(--muted);margin:-10px 0 14px;display:flex;gap:6px;align-items:flex-start')}>
+          <span aria-hidden="true">📅</span>
+          <span>
+            <strong>Aplica los 7 días de la semana</strong>, sábados y domingos incluidos. No hay
+            distinción por día ni por feriado: lo único que decide es la hora.
+            {track.enabled
+              ? <> Hoy se registra de <strong>{track.start}</strong> a <strong>{track.end}</strong>.</>
+              : <> Ahora mismo el rastreo está <strong>apagado</strong>: no se registra en ningún horario.</>}
+          </span>
+        </div>
         <div style={sx('display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end')}>
           <label style={sx('display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>
             <input type="checkbox" checked={track.enabled} onChange={(e) => setTrack((t) => ({ ...t, enabled: e.target.checked }))} style={{ width: 18, height: 18, accentColor: '#0ABAB5' }} />
