@@ -109,25 +109,32 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 19. **Un error de la cola de posiciones puede ser PERMANENTE, no solo "no hay red".** La clave
     `lu-pos-queue` es del **dispositivo**, no del usuario: si se cambia de cuenta en el mismo
     teléfono, los puntos de la cuenta anterior fallan `posiciones_ins` (`id_usuario = auth.uid()`)
-    para siempre. Si el flush corta y los deja, **taponan la cola y nada vuelve a subir nunca**
-    (18/07/2026: 264 puntos atascados, 42501 cada 30 s durante 8 horas, un recorrido perdido).
-    Por eso `flushPosiciones` distingue `CODIGOS_PERMANENTES` y descarta ese lote.
-    **Si tocás el manejo de errores de la cola, no vuelvas a tratar todos los errores como
-    transitorios.**
-20. **Síntoma diagnóstico**: si `estado_dispositivo` sube pero `posiciones` no, **no es la red ni la
+    para siempre y **taponan la cola: nada vuelve a subir nunca** (18/07/2026: 264 puntos
+    atascados, 42501 cada 30 s durante 8 horas). Por eso `flushPosiciones` distingue
+    `CODIGOS_PERMANENTES`. **Si tocás el manejo de errores de la cola, no vuelvas a tratar todos
+    los errores como transitorios.**
+20. **🩸 NUNCA BORRAR puntos de la cola: van a CUARENTENA (`lu-pos-cuarentena`).** El bundle
+    **1.5.26 borró 264 puntos reales en producción** por hacer exactamente eso. Un punto trabado es
+    recuperable; uno borrado no. La cuarentena destapa la cola igual, y `separarPorDueño()` **los
+    devuelve solos** si esa cuenta vuelve a entrar en el teléfono. Vale para cualquier código que
+    saque filas de una cola: si no podés inspeccionar el dato, no lo destruyas.
+21. **Al escribir tests de una cola, la invariante es "no se pierde ni un punto", no "el descarte
+    funciona".** Los tests de 1.5.26 pasaron 9/9 y aun así el cambio destruía datos: probaban que
+    el borrado ocurriera, no si *correspondía*. Contá siempre `subidos + aislados == total`.
+22. **Síntoma diagnóstico**: si `estado_dispositivo` sube pero `posiciones` no, **no es la red ni la
     sesión** — las dos usan la misma. Mirá `cola_pendiente` y los logs de Postgres.
 
 ### Fechas
 
-21. **NUNCA `new Date().toISOString().slice(0, 10)`.** Devuelve UTC; Salta es UTC−3, así que de 21:00
+23. **NUNCA `new Date().toISOString().slice(0, 10)`.** Devuelve UTC; Salta es UTC−3, así que de 21:00
     a 24:00 daba **mañana** y Supervisión mostraba el mapa vacío todas las noches. Usar **`hoyStr()`**
     de [src/lib/format.js:45](src/lib/format.js#L45).
 
 ### General
 
-22. **No borrar los comentarios largos con fechas y números de bug.** No son ruido: son la memoria del
+24. **No borrar los comentarios largos con fechas y números de bug.** No son ruido: son la memoria del
     proyecto. Si se refactoriza el código que explican, migrar el comentario.
-23. **No transcribir valores de credenciales** en docs, commits, issues ni respuestas. Referenciar por
+25. **No transcribir valores de credenciales** en docs, commits, issues ni respuestas. Referenciar por
     ubicación (`archivo:línea`).
 
 ---

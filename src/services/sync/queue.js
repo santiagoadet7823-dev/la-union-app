@@ -12,31 +12,44 @@ import { persistence } from '../persistence'
  * flush no se pisen (read-modify-write concurrente).
  */
 const KEY = 'lu-pos-queue'
+const QKEY = 'lu-pos-cuarentena'
 const MAX = 8000        // tope de puntos en cola (una jornada larga entra de sobra)
+const MAX_Q = 4000      // tope de la cuarentena
 const BATCH = 200       // filas por request al hacer flush
 
 // Telemetría de pérdida: antes los descartes (desborde FIFO al pasar MAX, o fallo
 // de almacenamiento) se tragaban en catch vacíos. Ahora se cuentan y avisan.
 let dropsPorDesborde = 0
 let dropsPorCuota = 0
-let dropsPorAjeno = 0
-let dropsPorRechazo = 0
+let aCuarentena = 0
 
 /**
  * Usuario dueño de la cola AHORA. La clave `lu-pos-queue` es del DISPOSITIVO, no del
  * usuario: si en el mismo teléfono se cierra sesión y entra otra cuenta, los puntos de
- * la anterior quedan en la cola. Esos puntos son VENENO: la policy `posiciones_ins`
- * exige `id_usuario = auth.uid()`, así que RLS los rechaza para siempre, y como el
- * flush cortaba al primer lote fallido, tapaban la cola y NINGÚN punto posterior subía
- * nunca más (18/07/2026: 264 puntos atascados, error 42501 cada 30s durante 8 horas,
- * un recorrido entero perdido — y `estado_dispositivo` seguía subiendo, que es lo que
- * hacía parecer que "la app andaba bien").
+ * la anterior quedan en la cola. La policy `posiciones_ins` exige
+ * `id_usuario = auth.uid()`, así que RLS los rechaza para siempre, y como el flush
+ * cortaba al primer lote fallido, tapaban la cola y NINGÚN punto posterior subía nunca
+ * más (18/07/2026: 264 puntos atascados, error 42501 cada 30s durante 8 horas — y
+ * `estado_dispositivo` seguía subiendo, que es lo que hacía parecer que "la app andaba
+ * bien").
+ *
+ * Esos puntos NO SE BORRAN: van a CUARENTENA (`lu-pos-cuarentena`). Son el recorrido
+ * real de otra persona, y si esa cuenta vuelve a iniciar sesión en este teléfono se
+ * devuelven solos a la cola y suben. La primera versión de este fix (bundle 1.5.26) los
+ * borraba: destapó la cola pero destruyó 264 puntos que eran recuperables. Descartar
+ * datos que no se pueden inspeccionar es peor que dejarlos trabados — la cuarentena
+ * logra lo mismo sin perder nada.
  *
  * Se setea junto con la identidad del tracker. Si es null (rastreo apagado, sesión sin
- * abrir) NO se descarta nada: ante la duda, se conserva.
+ * abrir) NO se mueve nada: ante la duda, no se toca.
  */
 let usuarioActual = null
 export function setUsuarioCola(id) { usuarioActual = id || null }
+
+/** Cuántos puntos hay en cuarentena (diagnóstico / futura UI de recuperación). */
+export async function pendientesCuarentena() {
+  return ((await persistence.get(QKEY, [])) || []).length
+}
 
 // Mutex: encadena las operaciones de la cola para evitar interleaving.
 let chain = Promise.resolve()
@@ -87,16 +100,48 @@ const CODIGOS_PERMANENTES = new Set([
   '23503', // FK: el usuario o la empresa ya no existen
 ])
 
-/** Saca de la cola los puntos que no son del usuario logueado ahora. */
-async function purgarAjenos() {
+async function leerCuarentena() {
+  return (await persistence.get(QKEY, [])) || []
+}
+
+/** Manda filas a cuarentena (FIFO, con tope). Nunca borra sin dejar rastro. */
+async function aislar(filas, motivo) {
+  if (!filas.length) return
+  const marcadas = filas.map((r) => ({ ...r, _motivo: motivo, _aislado_en: new Date().toISOString() }))
+  let q = (await leerCuarentena()).concat(marcadas)
+  if (q.length > MAX_Q) q = q.slice(-MAX_Q)
+  aCuarentena += filas.length
+  console.warn(`[cola GPS] ${filas.length} puntos a CUARENTENA (${motivo}). En cuarentena: ${q.length}`)
+  try { await persistence.set(QKEY, q) } catch (_) { /* si no entra, se pierden igual: ya estaban trabados */ }
+}
+
+/**
+ * Separa la cola por dueño: los puntos de otra cuenta van a cuarentena (destapan la
+ * cola sin perderse) y, al revés, los que estaban en cuarentena y SÍ son del usuario
+ * actual vuelven a la cola para subir. Eso hace que un recorrido atrapado por un cambio
+ * de cuenta se recupere solo cuando su dueño vuelve a entrar en el mismo teléfono.
+ */
+async function separarPorDueño() {
   await serialize(async () => {
     const q = await read()
     const propios = q.filter((r) => r.id_usuario === usuarioActual)
-    const ajenos = q.length - propios.length
-    if (!ajenos) return
-    dropsPorAjeno += ajenos
-    console.warn(`[cola GPS] ${ajenos} puntos de otra cuenta descartados (destapan la cola). Total: ${dropsPorAjeno}`)
-    await writeRaw(propios)
+    const ajenos = q.filter((r) => r.id_usuario !== usuarioActual)
+
+    const cuar = await leerCuarentena()
+    const rescatados = cuar.filter((r) => r.id_usuario === usuarioActual)
+    const siguenAisladas = cuar.filter((r) => r.id_usuario !== usuarioActual)
+
+    if (ajenos.length) await aislar(ajenos, 'otra cuenta')
+    if (rescatados.length) {
+      console.warn(`[cola GPS] ${rescatados.length} puntos recuperados de cuarentena (volvió su dueño).`)
+      // eslint-disable-next-line no-unused-vars
+      const limpios = rescatados.map(({ _motivo, _aislado_en, ...r }) => r)
+      try { await persistence.set(QKEY, siguenAisladas) } catch (_) {}
+      // Los rescatados van ADELANTE: son más viejos que lo que se capturó después.
+      await writeRaw(limpios.concat(propios))
+      return
+    }
+    if (ajenos.length) await writeRaw(propios)
   })
 }
 
@@ -121,9 +166,10 @@ export async function flushPosiciones() {
   // falla y se reintenta igual — el guard sobra y era una fuente de "no envía nada".
   flushing = true
   try {
-    // Antes de intentar nada: sacar los puntos de OTRO usuario (ver `usuarioActual`).
-    // Van a ser rechazados por RLS siempre, así que no son "pendientes": son un tapón.
-    if (usuarioActual) await purgarAjenos()
+    // Antes de intentar nada: separar por dueño (ver `usuarioActual`). Los ajenos van a
+    // cuarentena porque RLS los rechaza siempre y taponan; los propios que estaban en
+    // cuarentena vuelven a la cola.
+    if (usuarioActual) await separarPorDueño()
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -141,14 +187,14 @@ export async function flushPosiciones() {
       if (error) {
         // Error TRANSITORIO (sin red, timeout, 5xx): cortar y reintentar luego, sin perder nada.
         if (!CODIGOS_PERMANENTES.has(error.code)) break
-        // Error PERMANENTE: este lote no va a entrar nunca. Descartarlo para no taponar
-        // la cola, y seguir con el resto (los puntos de atrás pueden ser perfectamente
-        // válidos — de hecho ese fue el caso del 18/07/2026).
-        dropsPorRechazo += batch.length
+        // Error PERMANENTE: este lote no va a entrar nunca tal como está. Sacarlo de la
+        // cola para no taponar el resto, pero A CUARENTENA, no a la basura: no sabemos
+        // por qué lo rechazó y puede ser un recorrido real y recuperable.
         console.error(
           `[cola GPS] lote rechazado de forma permanente (${error.code}: ${error.message}). ` +
-          `${batch.length} puntos descartados para destapar la cola. Total: ${dropsPorRechazo}`,
+          `${batch.length} puntos a cuarentena para destapar la cola.`,
         )
+        await aislar(batch, `rechazo ${error.code}`)
         await serialize(async () => {
           const cur = await read()
           await writeRaw(cur.slice(batch.length))
