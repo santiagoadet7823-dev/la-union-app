@@ -319,7 +319,12 @@ sucursales, incluidas las desactivadas — el corte de acceso a los **datos** ya
   nuevas `mi_corporacion` y `empresas_visibles`. Operan sobre `auth.uid()`, que para anon es null →
   conjunto vacío. Exposición nula, aunque el linter de Supabase las marque.
 - ✅ **No se toca ningún índice de `posiciones`.** El único índice nuevo es sobre `empresas`.
-- ✅ Todo en archivos **nuevos** (`07_` en adelante). Cero ediciones a `02`, `05` o `06`.
+- ✅ Todo en archivos **nuevos**. Cero ediciones a `02`, `05` o `06`.
+
+> ⚠️ **Numeración corrida.** El `07` ya lo ocupó `db/07_diagnostico_auditoria.sql` (telemetría de
+> cuarentena + auditoría de `app_config`), adelantado el 19/07/2026 por una urgencia de campo. En
+> las tablas de abajo, **corporaciones pasa a `08_`**, el backfill a `08b_`, el `NOT NULL` a `08c_`,
+> la reescritura de RLS a `09_`, el gate de `activo` a `10_`, tracking a `11_` y cuotas a `12_`.
 
 ---
 

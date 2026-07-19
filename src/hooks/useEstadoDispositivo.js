@@ -3,7 +3,7 @@ import { supabase, hasSupabase } from '../services/supabase'
 import { APP_VERSION } from '../version'
 import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
-import { pendingCount } from '../services/sync/queue'
+import { pendingCount, pendientesCuarentena } from '../services/sync/queue'
 import { getHeartbeat } from '../services/geolocation/tracker'
 
 /**
@@ -23,7 +23,23 @@ const FORZAR_MS = 600000  // ...pero al menos cada 10 min sí o sí (ver abajo)
 
 // Campos de ESTADO que deciden si vale la pena subir el latido. `ts`/`updated_at`
 // quedan afuera a propósito: cambian siempre y anularían la comparación.
-const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'cola_pendiente']
+const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'cola_pendiente',
+  'cuarentena_pendiente', 'gps_error']
+
+/**
+ * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
+ * POR QUÉ, y eso dejó sin cerrar el caso del 18/07/2026 (un recorrido entero sin
+ * capturar). El objeto de error de geolocalización trae `code` 1/2/3.
+ */
+function describirError(error) {
+  if (!error) return null
+  const code = error.code
+  if (code === 1) return 'permiso denegado'
+  if (code === 2) return 'posicion no disponible (GPS apagado o sin senal)'
+  if (code === 3) return 'timeout esperando el fix'
+  const msg = error.message || String(error)
+  return msg.slice(0, 200)
+}
 function mismoEstado(a, b) {
   return !!a && !!b && CAMPOS.every((k) => a[k] === b[k])
 }
@@ -62,6 +78,7 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       permiso: error ? 'denegado' : (bgRef.current.ok ? 'siempre' : 'ok'),
       visible,
       bg_ok: bgRef.current.ok,
+      gps_error: describirError(error),
     }
   }
 
@@ -84,11 +101,12 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       hbRef.current = hb && hb.id === id ? hb : null
       const s = snapRef.current()
       const cola = await pendingCount().catch(() => null) // diagnóstico: puntos en cola sin subir
+      const cuar = await pendientesCuarentena().catch(() => null) // puntos aislados (ver queue.js)
       // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
       // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
       // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
-      const estado = { app_version: APP_VERSION, cola_pendiente: cola, ...s }
+      const estado = { app_version: APP_VERSION, cola_pendiente: cola, cuarentena_pendiente: cuar, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
