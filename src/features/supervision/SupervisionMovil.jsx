@@ -3,6 +3,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
+import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
@@ -12,6 +13,8 @@ import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import LeafletMap from '../../components/LeafletMap'
 import Logo from '../../components/Logo'
+import Overlay from '../../components/Overlay'
+import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
 import GestionHost from './components/GestionHost'
 import { App as CapApp } from '@capacitor/app'
@@ -62,7 +65,7 @@ const RAIL_W = 44   // lado de los botones del rail vertical (área táctil mín
 const safeTop = (px) => `calc(${px}px + env(safe-area-inset-top))`
 const safeBottom = (px) => `calc(${px}px + env(safe-area-inset-bottom))`
 
-const glass = { backdropFilter: 'blur(14px) saturate(160%)', WebkitBackdropFilter: 'blur(14px) saturate(160%)' }
+const glass = glassBlur // alias local: este archivo lo usa ~10 veces como `...glass`
 
 const KPIS_PROX = [
   { label: 'Pedidos por preventista' },
@@ -103,7 +106,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [snapOn, setSnapOn] = useState(false)    // false = rastro crudo fiel (default); true = pegado a calles
   const [dwellOn, setDwellOn] = useState(true)   // carteles de permanencia sobre el mapa (default: encendidos)
   const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
-  const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)  // encuadrar el mapa solo la 1ª vez
   const [fecha, setFecha] = useState(hoyStr)      // día visualizado en el mapa (default hoy)
   const [gestion, setGestion] = useState(null)   // vista de gestión abierta (Clientes, Zonas, …) o null
@@ -147,8 +149,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     if (fitDone) return
     if (Object.keys(byUser).length || Object.keys(movers).length) setFitDone(true)
   }, [byUser, movers, fitDone])
-  // "hace Xs" en vivo.
-  useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
+  // El "hace Xs" en vivo ya NO se refresca desde acá. Antes había un setInterval de 1 s
+  // que hacía tick() sobre este componente y re-renderizaba el árbol entero (header,
+  // rail, bottom-nav y el sheet completo) una vez por segundo, compitiendo con las
+  // animaciones. Ahora cada etiqueta se refresca sola: ver components/HaceSegundos.jsx.
   useEffect(() => () => clearTimeout(toastRef.current), [])
   // Versión nativa del APK (App.getInfo). En web/PWA falla → queda null (solo se muestra la web).
   useEffect(() => { CapApp.getInfo().then((i) => setApkVer(i?.version || null)).catch(() => {}) }, [])
@@ -294,7 +298,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       </div>
 
       {/* ===== HEADER GLASS ===== */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 12, background: 'var(--glass-bg)', ...glass, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 11px' }}>
           <Logo size={34} radius={11} />
           <div style={{ textAlign: 'center', lineHeight: 1.15 }}>
@@ -312,9 +316,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== PANEL DE CUENTA ===== */}
       {acctOpen && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 30 }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', top: safeTop(HEADER_H + 8), right: 12, left: 56, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', animation: 'lu-rise .22s ease' }}>
+          <div style={{ position: 'absolute', top: safeTop(HEADER_H + 8), right: 12, left: 56, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }} className="lu-rise">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '15px 15px 13px' }}>
               <div style={{ width: 46, height: 46, flex: 'none', borderRadius: 14, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17 }}>{initials(nombre)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -362,7 +366,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== ALERTA GPS APAGADO (si hay) ===== */}
       {Object.values(gpsOff).length > 0 && section === 'mapa' && (
-        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 11, background: 'var(--danger-tint)', ...glass, border: '0.5px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', ...glass, border: '0.5px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
           {Object.values(gpsOff).map((u) => `${u.nombre} (${u.rol})`).join(', ')} · GPS desactivado
         </div>
@@ -373,7 +377,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           de un Android de 393px: los chips scrolleaban en horizontal sin ninguna affordance
           ("botones amontonados"). Ahora cada control es un botón de 44×44 apilado hacia
           arriba desde la bottom-nav; el rail crece agregando ítems, no comprimiéndolos. */}
-      <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 14), zIndex: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 14), zIndex: 'var(--z-chrome)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {/* Vendedores */}
         <RailBtn
           on={filter === 'v'} dim={!!filter && filter !== 'v'} color="var(--info)"
@@ -442,9 +446,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* Fallback final del selector de fecha: WebView sin showPicker() ni click() programático
           → input inline visible para que el usuario lo toque él mismo. */}
       {datePop && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 20 }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setDatePop(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 14, boxShadow: 'var(--shadow-lg)', padding: '10px 12px', animation: 'lu-rise .2s ease' }}>
+          <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 14, boxShadow: 'var(--shadow-lg)', padding: '10px 12px' }} className="lu-rise">
             <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
             <input
               type="date" value={fecha} max={hoyStr()} autoFocus
@@ -457,13 +461,13 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== TARJETA FLOTANTE DE PIN ===== */}
       {pin && (
-        <div style={{ position: 'absolute', left: 14, right: RAIL_W + 24, bottom: safeBottom(NAV_H + 86), zIndex: 16, background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: '13px 14px', animation: 'lu-rise .2s ease' }}>
+        <div style={{ position: 'absolute', left: 14, right: RAIL_W + 24, bottom: safeBottom(NAV_H + 86), zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: '13px 14px' }} className="lu-rise">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
             <div style={{ width: 38, height: 38, flex: 'none', borderRadius: esRep(pin.rol) ? 11 : 99, background: colorPorId(pin.id), color: '#fff', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{initials(nombres[pin.id] || pin.rol)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[pin.id] || pin.rol}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--faint)', whiteSpace: 'nowrap' }}>hace {Math.max(0, Math.round((Date.now() - pin.ts) / 1000))}s</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 1 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{pin.rol} · en vivo</span>
@@ -486,7 +490,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       )}
 
       {/* ===== BOTTOM NAV ===== */}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 12, background: 'var(--glass-bg)', ...glass, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around', padding: '8px 10px 8px' }}>
           <NavBtn active={section === 'mapa'} label="Mapa" onClick={() => { setSection('mapa'); cerrarTodo() }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg>
@@ -504,9 +508,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== MENÚ "+" (encargado) ===== */}
       {plusOpen && !isProp && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 24 }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setPlusOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 28), width: 236, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7, animation: 'lu-rise .22s ease' }}>
+          <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 28), width: 236, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7 }} className="lu-rise">
             <div style={{ padding: '8px 10px 6px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>Gestión</div>
             {gestionItems.map((it) => (
               <div key={it.key} onClick={() => { setPlusOpen(false); setGestion(it.key) }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 10px', borderRadius: 12, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box' }}>
@@ -519,66 +523,60 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         </div>
       )}
 
-      {/* ===== BOTTOM-SHEET · DASHBOARD ===== */}
-      {section === 'dash' && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 22, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-          <div onClick={() => setSection('mapa')} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'relative', maxHeight: '78%', display: 'flex', flexDirection: 'column', background: 'var(--sheet-bg)', ...glass, border: '0.5px solid var(--glass-brd)', borderBottom: 'none', borderRadius: '22px 22px 0 0', boxShadow: 'var(--shadow-lg)', animation: 'lu-rise .26s ease', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            <div style={{ flex: 'none', padding: '9px 18px 6px' }}>
-              <div style={{ width: 38, height: 4, borderRadius: 99, background: 'var(--line2)', margin: '0 auto 10px' }} />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16 }}>Dashboard</div>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{isProp ? 'Vista de dirección · solo lectura' : 'Jornada en curso'}</div>
-                </div>
-                <div onClick={() => setSection('mapa')} style={{ width: 28, height: 28, borderRadius: 9, border: '1px solid var(--line)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--muted)' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></div>
-              </div>
+      {/* ===== BOTTOM-SHEET · DASHBOARD =====
+           Antes esto entraba con `lu-rise .26s` = translateY(18px). Un panel que ocupa
+           el 78% de la pantalla deslizando 18 píxeles se lee como un parpadeo, no como
+           una hoja que sube — era la animación "fea" del dashboard. Ahora usa el Overlay
+           compartido (variant="sheet" → translateY(100%) con la curva de drawer iOS), y
+           además gana lo que ningún overlay de la app tenía: animación de SALIDA. */}
+      <Overlay
+        open={section === 'dash'}
+        onClose={() => setSection('mapa')}
+        variant="sheet"
+        glass
+        title="Dashboard"
+        subtitle={isProp ? 'Vista de dirección · solo lectura' : 'Jornada en curso'}
+      >
+      {/* Informe: por qué no llega la señal (lo ve también el propietario) */}
+      <div style={{ marginBottom: 10 }}><EstadoEquipo /></div>
+
+      {/* Equipo en la calle (real) */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <span style={sheetLabel}>Equipo en la calle</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: 'var(--deep)' }}>{moversArr.length} en vivo</span>
+        </div>
+        {moversArr.length === 0 ? (
+          <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--faint)' }}>Nadie está compartiendo ubicación ahora.</div>
+        ) : moversArr.map((m) => (
+          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+            <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[m.id] || m.rol}</div>
+              <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{m.rol}</div>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '6px 16px 26px' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}><HaceSegundos ts={m.ts} /></div>
+          </div>
+        ))}
+      </div>
 
-              {/* Informe: por qué no llega la señal (lo ve también el propietario) */}
-              <div style={{ marginBottom: 10 }}><EstadoEquipo /></div>
-
-              {/* Equipo en la calle (real) */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                  <span style={sheetLabel}>Equipo en la calle</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: 'var(--deep)' }}>{moversArr.length} en vivo</span>
-                </div>
-                {moversArr.length === 0 ? (
-                  <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--faint)' }}>Nadie está compartiendo ubicación ahora.</div>
-                ) : moversArr.map((m) => (
-                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-                    <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[m.id] || m.rol}</div>
-                      <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{m.rol}</div>
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>hace {Math.max(0, Math.round((Date.now() - m.ts) / 1000))}s</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* KPIs próximamente */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--info-tint)', border: '1px solid var(--info)', borderRadius: 12, padding: '10px 12px', marginBottom: 12, fontSize: 11.5, color: 'var(--info)', fontWeight: 500, lineHeight: 1.35 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
-                {isProp ? 'Indicadores de dirección' : 'Indicadores del día'} — se completan cuando el módulo de pedidos esté en marcha.
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {KPIS_PROX.map((k) => (
-                  <div key={k.label} style={{ background: 'var(--surface)', border: '1px dashed var(--line2)', borderRadius: 14, padding: '14px 13px', minHeight: 108, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', lineHeight: 1.25 }}>{k.label}</div>
-                    <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 600, color: 'var(--faint)' }}>—</span>
-                      <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--info)', background: 'var(--info-tint)', padding: '3px 7px', borderRadius: 99 }}>Próx.</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      {/* KPIs próximamente */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--info-tint)', border: '1px solid var(--info)', borderRadius: 12, padding: '10px 12px', marginBottom: 12, fontSize: 11.5, color: 'var(--info)', fontWeight: 500, lineHeight: 1.35 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
+        {isProp ? 'Indicadores de dirección' : 'Indicadores del día'} — se completan cuando el módulo de pedidos esté en marcha.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {KPIS_PROX.map((k) => (
+          <div key={k.label} style={{ background: 'var(--surface)', border: '1px dashed var(--line2)', borderRadius: 14, padding: '14px 13px', minHeight: 108, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', lineHeight: 1.25 }}>{k.label}</div>
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 600, color: 'var(--faint)' }}>—</span>
+              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--info)', background: 'var(--info-tint)', padding: '3px 7px', borderRadius: 99 }}>Próx.</span>
             </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+      </Overlay>
 
       {/* ===== GESTIÓN (pantalla nativa, abierta desde el botón "Menú") ===== */}
       {gestion && (
@@ -595,7 +593,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         </GestionHost>
       )}
 
-      {/* Modales de alta (se abren desde Clientes / Catálogo). z-index:80 → por encima del host. */}
+      {/* Modales de alta (se abren desde Clientes / Catálogo). Van por Overlay, que
+          los pone en --z-modal (500), por encima del GestionHost (--z-screen, 400). */}
       {(modalCliente || modalProducto || modalPerfil) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
@@ -606,7 +605,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== TOAST ===== */}
       {toast && (
-        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 14), left: 16, right: 16, zIndex: 90, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 13, boxShadow: 'var(--shadow-lg)', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9, animation: 'lu-rise .2s ease' }}>
+        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 14), left: 16, right: 16, zIndex: 'var(--z-toast)', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 13, boxShadow: 'var(--shadow-lg)', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9 }} className="lu-rise">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
@@ -658,13 +657,19 @@ function RailBtn({ on, dim, color, badge, title, onClick, children }) {
   return (
     <div
       onClick={onClick} title={title} role="button" aria-pressed={!!on}
+      className="lu-press"
       style={{
         position: 'relative', width: RAIL_W, height: RAIL_W, flex: 'none', boxSizing: 'border-box',
-        borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
+        borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', cursor: 'pointer',
         background: on ? color : 'var(--glass-bg)',
         border: `0.5px solid ${on ? 'transparent' : 'var(--glass-brd)'}`,
         color: on ? '#fff' : (dim ? 'var(--faint)' : 'var(--text)'),
         opacity: dim && !on ? 0.72 : 1,
+        // El cambio de filtro conmutaba background/border/color/opacity de golpe.
+        // 160 ms los lleva juntos; el scale(.97) da el acuse de toque.
+        // ⚠️ `transform` va SÍ o SÍ en esta lista: el estilo inline pisa entero al
+        // `transition` de .lu-press, así que sin él el scale saltaría sin animar.
+        transition: 'transform 160ms cubic-bezier(.23,1,.32,1), background 160ms cubic-bezier(.23,1,.32,1), border-color 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1), opacity 160ms cubic-bezier(.23,1,.32,1)',
         boxShadow: 'var(--shadow-lg)', ...glass,
       }}
     >
@@ -678,7 +683,7 @@ function RailBtn({ on, dim, color, badge, title, onClick, children }) {
 
 function NavBtn({ active, label, onClick, children }) {
   return (
-    <div onClick={onClick} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '5px 0', cursor: 'pointer', color: active ? 'var(--primary)' : 'var(--muted)' }}>
+    <div onClick={onClick} className="lu-press" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '5px 0', cursor: 'pointer', color: active ? 'var(--primary)' : 'var(--muted)', transition: 'transform 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1)' }}>
       {children}
       <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
     </div>

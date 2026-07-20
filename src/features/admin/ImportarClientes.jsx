@@ -156,7 +156,7 @@ export default function ImportarClientes({ onClose, onToast }) {
   const importables = resumen ? (resumen.ok + resumen['zona?']) : 0
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 90, display: 'flex', flexDirection: 'column', background: 'var(--bg-solid)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-screen)', display: 'flex', flexDirection: 'column', background: 'var(--bg-solid)' }}>
       {/* Header */}
       <div style={sx('display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--surface)')}>
         <button onClick={onClose} style={sx('width:34px;height:34px;flex:none;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center')}>

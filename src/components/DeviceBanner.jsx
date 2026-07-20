@@ -1,5 +1,6 @@
 import { sx } from '../lib/sx'
 import { useDevice } from '../context/DeviceContext'
+import Overlay from './Overlay'
 
 /**
  * Banner inicial (una sola vez) para elegir Celular o PC. Guarda la elección; se
@@ -26,32 +27,32 @@ export default function DeviceBanner() {
   if (chosen) return null
 
   const card = (active) => ({
-    ...sx('flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 14px;border-radius:16px;cursor:pointer;font-weight:600;font-size:14px'),
+    ...sx('flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 14px;border-radius:var(--r-lg);cursor:pointer;font-weight:600;font-size:var(--fs-md)'),
     border: `2px solid ${active ? 'var(--primary)' : 'var(--line2)'}`,
     background: active ? 'var(--primary-tint)' : 'var(--surface)',
     color: active ? 'var(--deep)' : 'var(--muted)',
   })
 
+  // dismissible={false}: es una decisión obligatoria, no hay opción de cerrar.
+  // Eso apaga el botón ✕, el cierre por scrim y el Escape, todo junto.
   return (
-    <div style={sx('position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:var(--scrim);padding:24px')}>
-      <div style={sx('width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line2);border-radius:20px;box-shadow:var(--shadow-lg);padding:24px')}>
-        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:19px;text-align:center')}>¿Desde qué dispositivo entrás?</div>
-        <div style={sx('font-size:12.5px;color:var(--muted);text-align:center;margin:6px 0 18px')}>
-          Ajustamos la vista para que se vea bien. Podés cambiarlo después desde el botón de dispositivo.
-        </div>
-        <div style={sx('display:flex;gap:12px')}>
-          <div onClick={() => setMode('mobile')} style={card(auto === 'mobile')}>
-            <PhoneGlyph />
-            Celular
-            {auto === 'mobile' && <span style={sx('font-size:10px;font-weight:600;color:var(--primary)')}>sugerido</span>}
-          </div>
-          <div onClick={() => setMode('desktop')} style={card(auto === 'desktop')}>
-            <DesktopGlyph />
-            PC
-            {auto === 'desktop' && <span style={sx('font-size:10px;font-weight:600;color:var(--primary)')}>sugerido</span>}
-          </div>
-        </div>
+    <Overlay open onClose={() => {}} maxWidth={420} dismissible={false}>
+      <div style={sx('font-family:var(--font-display);font-weight:600;font-size:var(--fs-xl);text-align:center')}>¿Desde qué dispositivo entrás?</div>
+      <div style={sx('font-size:var(--fs-sm);color:var(--muted);text-align:center;margin:6px 0 18px')}>
+        Ajustamos la vista para que se vea bien. Podés cambiarlo después desde el botón de dispositivo.
       </div>
-    </div>
+      <div style={sx('display:flex;gap:12px')}>
+        <button type="button" onClick={() => setMode('mobile')} className="lu-press" style={card(auto === 'mobile')}>
+          <PhoneGlyph />
+          Celular
+          {auto === 'mobile' && <span style={sx('font-size:var(--fs-2xs);font-weight:600;color:var(--primary)')}>sugerido</span>}
+        </button>
+        <button type="button" onClick={() => setMode('desktop')} className="lu-press" style={card(auto === 'desktop')}>
+          <DesktopGlyph />
+          PC
+          {auto === 'desktop' && <span style={sx('font-size:var(--fs-2xs);font-weight:600;color:var(--primary)')}>sugerido</span>}
+        </button>
+      </div>
+    </Overlay>
   )
 }

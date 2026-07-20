@@ -204,14 +204,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       {/* ===== SIDEBAR IZQUIERDA ===== */}
       {/* En escritorio: columna fija en el flujo. En mobile: drawer flotante sobre scrim. */}
       {isMobile && drawerOpen && (
-        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1260, background: 'var(--scrim)' }} />
+        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-sheet)', background: 'var(--scrim)' }} />
       )}
       <aside
         style={{
           flex: 'none', width: SIDEBAR_W, background: 'var(--surface)', borderRight: '1px solid var(--line)',
           display: 'flex', flexDirection: 'column',
           ...(isMobile
-            ? { position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 1261, transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }
+            ? { position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }
             : { position: 'sticky', top: 0, height: '100vh' }),
         }}
       >
@@ -263,7 +263,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         {/* zIndex 1200: por encima de las capas internas de Leaflet (~1000), para que el
             menú de cuenta se despliegue SOBRE el mapa y sea clickeable. El drawer móvil
             usa 1260/1261 para seguir tapando el header cuando está abierto. */}
-        <header style={{ flex: 'none', minHeight: 58, display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 1200 }}>
+        <header style={{ flex: 'none', minHeight: 58, display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)' }}>
           {/* Hamburguesa (solo mobile) */}
           {isMobile && (
             <button onClick={() => setDrawerOpen(true)} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 38, height: 38, border: '1px solid var(--line)', borderRadius: 10, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
@@ -290,8 +290,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
             {acctOpen && (
               <>
-                <div onClick={() => setAcctOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 44 }} />
-                <div style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 264, zIndex: 45, background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', animation: 'lu-rise .18s ease' }}>
+                <div onClick={() => setAcctOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-popover)' }} />
+                <div style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 264, zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', animation: 'lu-rise .18s ease' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 15px 12px' }}>
                     <div style={{ width: 44, height: 44, flex: 'none', borderRadius: 13, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>{initials(nombre)}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -449,7 +449,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', top: 74, right: 22, zIndex: 90, background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9, animation: 'lu-rise .2s ease' }}>
+        <div style={{ position: 'fixed', top: 74, right: 22, zIndex: 'var(--z-toast)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9, animation: 'lu-rise .2s ease' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>

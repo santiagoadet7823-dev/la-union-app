@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useDevice } from '../../context/DeviceContext'
+import { panel, FilaTabla, CabeceraTabla } from './ui'
 
 /**
  * Gestión de usuarios (RBAC). El admin ve a los usuarios de su empresa + los
@@ -13,7 +15,6 @@ import { useAuth } from '../../context/AuthContext'
 const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 
-const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 130px 120px 80px 140px 100px 110px', gap: 10, alignItems: 'center' }
 
@@ -29,46 +30,61 @@ const rolPill = (r) => {
  * y React remontaría cada fila cada segundo (cerrando los <select> y perdiendo el foco).
  * Con tipo estable, el re-render del padre ya no desmonta las filas.
  */
-function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user }) {
+function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile }) {
+  const selRol = (
+    <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
+      <option value="">Sin rol…</option>
+      {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
+    </select>
+  )
+  const inpNumero = (
+    <input type="number" min="0" placeholder="—" value={ed.numero ?? (u.numero ?? '')} onChange={(e) => setEdit(u.id, { numero: e.target.value })} style={selectStyle} className="lu-input" title="Código de vendedor (ej. 1 = Zona 1)" />
+  )
+  const celdaEmpresa = esSuper ? (
+    <select value={ed.id_empresa || u.id_empresa || idEmpresa || ''} onChange={(e) => setEdit(u.id, { id_empresa: e.target.value })} style={selectStyle} className="lu-input">
+      <option value="">Empresa…</option>
+      {empresas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+    </select>
+  ) : (
+    <span style={sx('font-size:11.5px;color:var(--muted)')}>{empresaNombre[u.id_empresa] || (u.id_empresa ? '—' : 'Sin empresa')}</span>
+  )
+
+  const acciones = (
+    <>
+      <button disabled={savingId === u.id} onClick={() => guardar(u)} className="lu-press" style={{ ...btnPrimary, ...(isMobile ? { flex: 1, minHeight: 44 } : null) }}>{esPendiente ? 'Aprobar' : 'Guardar'}</button>
+      {u.activo && u.id !== user?.id && (
+        <button disabled={savingId === u.id} onClick={() => cambiarEstado(u, false)} className="lu-press" style={{ ...btnGhost, ...(isMobile ? { flex: 'none', minHeight: 44, padding: '0 16px' } : null) }} title="Desactivar acceso">
+          {isMobile ? 'Desactivar' : '✕'}
+        </button>
+      )}
+    </>
+  )
+
   return (
-    <div style={{ ...grid, ...sx('padding:10px;border-bottom:1px solid var(--line);font-size:12.5px') }}>
-      <span style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
-        {u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}
-      </span>
-      <span style={sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{u.email}</span>
-      <span style={sx('color:var(--muted);font-family:var(--font-mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')} title={u.telefono || ''}>{u.telefono || '—'}</span>
-      <span>
-        <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle}>
-          <option value="">Sin rol…</option>
-          {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-      </span>
-      <span>
-        <input type="number" min="0" placeholder="—" value={ed.numero ?? (u.numero ?? '')} onChange={(e) => setEdit(u.id, { numero: e.target.value })} style={selectStyle} title="Código de vendedor (ej. 1 = Zona 1)" />
-      </span>
-      <span>
-        {esSuper ? (
-          <select value={ed.id_empresa || u.id_empresa || idEmpresa || ''} onChange={(e) => setEdit(u.id, { id_empresa: e.target.value })} style={selectStyle}>
-            <option value="">Empresa…</option>
-            {empresas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-          </select>
-        ) : (
-          <span style={sx('font-size:11.5px;color:var(--muted)')}>{empresaNombre[u.id_empresa] || (u.id_empresa ? '—' : 'Sin empresa')}</span>
-        )}
-      </span>
-      <span>{u.activo && u.rol ? rolPill(u.rol) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span>}</span>
-      <span style={sx('display:flex;gap:6px;justify-content:flex-end')}>
-        <button disabled={savingId === u.id} onClick={() => guardar(u)} style={btnPrimary}>{esPendiente ? 'Aprobar' : 'Guardar'}</button>
-        {u.activo && u.id !== user?.id && (
-          <button disabled={savingId === u.id} onClick={() => cambiarEstado(u, false)} style={btnGhost} title="Desactivar acceso">✕</button>
-        )}
-      </span>
-    </div>
+    <FilaTabla
+      grid={grid}
+      isMobile={isMobile}
+      acciones={isMobile ? acciones : <span style={sx('display:flex;gap:6px;justify-content:flex-end')}>{acciones}</span>}
+      celdas={[
+        {
+          label: 'Nombre', titulo: true,
+          contenido: <>{u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}</>,
+          estilo: sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'),
+        },
+        { label: 'Email', contenido: u.email, estilo: sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
+        { label: 'Teléfono', contenido: u.telefono || '—', estilo: sx('color:var(--muted);font-family:var(--font-mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
+        { label: 'Rol', contenido: selRol },
+        { label: 'Código', contenido: inpNumero },
+        { label: 'Empresa', contenido: celdaEmpresa },
+        { label: 'Estado', contenido: u.activo && u.rol ? rolPill(u.rol) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span> },
+      ]}
+    />
   )
 }
 
 export default function UsuariosView({ onToast }) {
   const { rol, idEmpresa, user } = useAuth()
+  const { isMobile } = useDevice()
   const esSuper = rol === 'superadmin'
   const rolesDisponibles = esSuper ? ROLES_SUPER : ROLES_ADMIN
 
@@ -134,26 +150,28 @@ export default function UsuariosView({ onToast }) {
   const activos = usuarios.filter((u) => u.activo && u.rol)
 
   // Props comunes para cada Fila (componente de módulo → tipo estable, no remonta por el tick de 1s del padre).
-  const filaProps = { setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user }
+  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user }
 
   return (
-    <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto')}>
-      <div style={{ ...panel, minWidth: 1120 }}>
-        <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:12px')}>
+    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+      {/* minWidth solo en escritorio: 1120px en un teléfono es scroll horizontal */}
+      <div style={{ ...panel, minWidth: isMobile ? 0 : 1120 }}>
+        <div style={{ ...sx('display:flex;justify-content:space-between;margin-bottom:12px;gap:12px'), alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row' }}>
           <div>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Usuarios y accesos</div>
             <div style={sx('font-size:12px;color:var(--muted);margin-top:2px')}>Asigná el rol para habilitar el ingreso. Los nuevos entran con Google y quedan pendientes.</div>
           </div>
-          <button onClick={cargar} style={btnGhost}>↻ Actualizar</button>
+          <button onClick={cargar} className="lu-press" style={{ ...btnGhost, ...(isMobile ? { minHeight: 44, width: '100%' } : null) }}>↻ Actualizar</button>
         </div>
 
         {loading ? (
           <div style={sx('padding:40px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando usuarios…</div>
         ) : (
           <>
-            <div style={{ ...grid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Nombre</span><span>Email</span><span>Teléfono</span><span>Rol</span><span>Código</span><span>Empresa</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
-            </div>
+            <CabeceraTabla grid={grid} isMobile={isMobile} columnas={[
+              'Nombre', 'Email', 'Teléfono', 'Rol', 'Código', 'Empresa', 'Estado',
+              { label: 'Acción', align: 'right' },
+            ]} />
 
             {pendientes.length > 0 && (
               <>

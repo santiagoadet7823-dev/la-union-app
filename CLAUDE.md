@@ -124,6 +124,17 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 22. **Síntoma diagnóstico**: si `estado_dispositivo` sube pero `posiciones` no, **no es la red ni la
     sesión** — las dos usan la misma. Mirá `cola_pendiente` y los logs de Postgres.
 
+### Navegación nativa
+
+26. **El botón ATRÁS de Android se maneja con la pila de [`services/atras.js`](src/services/atras.js),
+    nunca con un listener suelto.** Cada overlay apila su cierre al abrirse y lo desapila al
+    cerrarse; el atrás ejecuta el de más arriba. Sin el listener registrado, Capacitor aplica su
+    default — y como **esta app no tiene router, nunca hay historial**, así que el atrás cerraba la
+    app estando en cualquier pantalla.
+27. **Con la pila vacía va `minimizeApp()`, JAMÁS `exitApp()`.** `exitApp()` mata el proceso y con él
+    el foreground service de ubicación: el móvil deja de emitir sin que nadie se entere. Minimizar
+    lo manda a segundo plano con el servicio vivo, que es el modo normal de trabajo de esta app.
+
 ### Fechas
 
 23. **NUNCA `new Date().toISOString().slice(0, 10)`.** Devuelve UTC; Salta es UTC−3, así que de 21:00
@@ -208,6 +219,8 @@ git push origin main           # dispara .github/workflows/deploy.yml
 | Cambiar la frecuencia/precisión del GPS | `src/services/gpsConfig.js` (constantes) y `geolocation/estados.js` (presets). Leer antes las reglas 11 y 16 |
 | Cambiar el proveedor de ruteo | `src/services/routing/index.js` — es el único punto de swap, por diseño |
 | Agregar una capa de mapa | `src/services/maps/basemap.js` |
+| Hacer un modal, sheet o cualquier overlay | **`src/components/Overlay.jsx`** — nunca escribir uno a mano (ver §7) |
+| Un radio, tamaño de fuente, espaciado o z-index | Tokens de `src/index.css` (`--r-*`, `--fs-*`, `--sp-*`, `--z-*`). **Nunca un literal** |
 | Cambiar cuándo aparece el aviso de actualización | `src/components/UpdatePrompt.jsx` (web y nativo se bifurcan ahí) |
 
 ---
@@ -265,8 +278,36 @@ Hay **cuatro** números que conviven. Hoy **están desfasados** (ver informe §8
 - **Los comentarios explican el *porqué*, no el qué.** Si se agrega una guarda defensiva, documentar
   qué bug la motivó y cuándo. Es el estándar del repo y hay que sostenerlo.
 - **Sin router.** Renderizado condicional, ver §4.
-- **Estilos**: Tailwind 4 + `sx()` de `src/lib/sx.js` (convierte CSS string a objeto de estilo, para
-  portar mockups del diseñador 1:1) + `glassSurface()` para los controles flotantes.
+- **Estilos**: `sx()` de `src/lib/sx.js` (convierte CSS string a objeto de estilo, para portar
+  mockups del diseñador 1:1) + `glassSurface()` / `glassBlur` de `src/lib/glass.js` para los
+  controles flotantes. **Tailwind 4 está instalado pero NO se usa** (cero utilidades en `src/`): el
+  sistema visual real son las CSS custom properties de `src/index.css`. No empezar a mezclar clases
+  de Tailwind sin decidirlo explícitamente.
+- **Tokens, siempre.** Radios `--r-sm|md|lg|xl|pill`, tipografía `--fs-2xs…--fs-xl`, espaciado
+  `--sp-1…--sp-6`, apilamiento `--z-map|chrome|popover|sheet|screen|modal|toast`. Antes de esto
+  había 11 radios sueltos, 15 tamaños de fuente en decimales arbitrarios y 9 escalas de z-index que
+  colisionaban entre sí. **Un z-index literal es un bug esperando pasar.**
+- **Overlays**: todos salen de [`src/components/Overlay.jsx`](src/components/Overlay.jsx)
+  (`variant="modal" | "sheet"`, más `contained` / `glass` / `dismissible`). Trae animación de entrada
+  **y de salida**, Escape, scroll-lock con contador, ARIA, foco inicial y header/footer fijos con
+  scroll solo en el cuerpo. **No escribir un overlay a mano.** Formularios: `Field` + `inputStyle` de
+  `src/components/form.jsx` y los estilos de `src/lib/botones.js`.
+
+  Dos gotchas del patrón, ambos costaron un bug real (19/07/2026):
+
+  1. **El overlay tiene que seguir montado para animar su salida.** Si el padre lo envuelve en
+     `{cond && <Overlay/>}`, el estado de "abierto" va **adentro** del hijo (`const [abierto,
+     setAbierto] = useState(true)`), se cierra con `setAbierto(false)` y el padre limpia su estado
+     recién en `onClose`. Un `return null` temprano en el hijo produce el mismo bug — ver
+     `PermisoSiemprePrompt.jsx`, que separa "nunca mostrar" de "se cerró".
+  2. **El contenido debe sobrevivir a la animación de salida.** Si el cuerpo deriva del estado que
+     abre el overlay (`deliveries.find(d => d.id === modal)`), ese valor se vuelve `undefined` en el
+     mismo frame en que se cierra y el cuerpo revienta. Retener el último valor en un ref — ver
+     `mdView` en `RepartidorView.jsx`.
+- **Animación**: keyframes `lu-*` de `src/index.css`, sin librerías. Entradas con
+  `cubic-bezier(.23,1,.32,1)` (o la curva de drawer `cubic-bezier(.32,.72,0,1)` para sheets),
+  siempre <300 ms y **solo sobre `transform` y `opacity`**. Las salidas usan la **misma** curva con
+  menos duración — nunca `ease-in`. El estándar sale de la skill `/review-animations` (§9).
 - **Leaflet a mano**, sin React-Leaflet.
 - **Mutaciones de catálogo siempre por la write queue**, nunca `supabase.from().insert()` directo
   desde un componente.
@@ -319,7 +360,62 @@ Formato:
 
 <!-- ── Agregar herramientas debajo de esta línea ── -->
 
-_(vacío — pendiente de que el usuario pase los links)_
+### 🎨 Skills de diseño — cuándo usar cada una
+
+Están instaladas en **`.claude/skills/`** (versionadas: `.gitignore:34-36` ignora `.claude/*` pero
+**exceptúa** `skills/`) y también en `~/.claude/skills/` para el resto de los proyectos.
+
+**Reglas operativas — no son opcionales:**
+
+| Vas a… | Corré primero |
+|---|---|
+| Tocar cualquier UI existente | `/impeccable audit <pantalla>` |
+| Tocar cualquier animación o transición | `/review-animations` |
+| Diseñar una pantalla o componente **nuevo** | `/ui-ux-pro-max` |
+| Planificar una tanda grande de arreglos de motion | `/improve-animations` |
+
+> ⚠️ La app **no usa Tailwind** (está instalado y sin consumidores) ni librerías de animación. Las
+> skills van a proponer `framer-motion`, `tailwind` y `shadcn/ui` por defecto: **traducir siempre a
+> lo que el repo usa de verdad** — CSS vars en `src/index.css`, keyframes `lu-*`, `sx()` y estilos
+> inline (§7). Tomar de las skills el *criterio* (curvas, duraciones, jerarquía, espaciado), no el
+> stack.
+
+#### ui-ux-pro-max
+- **Repo:** https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+- **Para qué:** base de datos consultable de diseño — 84 estilos, 192 paletas, 74 pairings
+  tipográficos, 98 guías UX, presets de motion.
+- **Cómo se usa:** `/ui-ux-pro-max`, o directo el CLI:
+  `python .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain product|style|color|ux|typography`
+  y `--design-system` para generar un sistema completo.
+- **Aplica a:** diseño (PWA + APK).
+- **Notas:** verificado con **Python 3.13 en Windows** (18/07/2026), sin dependencias externas. Es la
+  única de las tres que necesita Python.
+
+#### impeccable
+- **Repo:** https://github.com/pbakaus/impeccable
+- **Para qué:** matar el "AI slop" — jerarquía visual, densidad, espaciado, decisiones intencionales.
+- **Cómo se usa:** un solo skill con subcomandos. Los útiles acá: `/impeccable audit`,
+  `/impeccable polish`, `/impeccable critique`, `/impeccable distill`, `/impeccable animate`.
+- **Aplica a:** diseño (PWA + APK).
+- **Notas:** los scripts son `.mjs` y necesitan **Node** (v24 en la máquina, ya está por el proyecto).
+  `/impeccable init` escribe `PRODUCT.md` y `DESIGN.md` en la raíz — **no correrlo sin avisar**, mete
+  archivos nuevos en el repo.
+
+#### emilkowalski (6 skills)
+- **Repo:** https://github.com/emilkowalski/skills — el oficial de Emil Kowalski.
+- **Para qué:** la autoridad de motion del repo. `src/index.css:164-166` ya lo cita por nombre: el
+  estándar de animación del proyecto sale de acá.
+- **Cómo se usa:**
+  - `/review-animations` — revisa motion contra el estándar. **`disable-model-invocation: true`**:
+    hay que invocarla a mano, no se auto-activa.
+  - `/improve-animations` — auditoría + plan priorizado. Read-only, no aplica cambios.
+  - `/find-animation-opportunities` — dónde *falta* animación. Read-only.
+  - `/emil-design-eng` — filosofía general de pulido de UI.
+  - `/apple-design` — gestos, springs, sheets, materiales translúcidos. Relevante para el
+    bottom-sheet de `SupervisionMovil` y el chrome glass.
+  - `/animation-vocabulary` — glosario inverso ("¿cómo se llama el efecto de…?").
+- **Aplica a:** diseño (sobre todo APK — el chrome de `SupervisionMovil` es todo motion).
+- **Notas:** son las más chicas (128 KB las 6) y las más alineadas con el repo. Cero dependencias.
 
 ---
 

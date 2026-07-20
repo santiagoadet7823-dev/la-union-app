@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt, horaActual } from '../../lib/format'
 import { Truck, Check, Pin } from '../../components/icons'
 import Logo from '../../components/Logo'
+import Overlay from '../../components/Overlay'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -92,6 +93,13 @@ export default function RepartidorView() {
   const porEntregar = deliveries.filter((d) => d.status !== 'entregado').length
   const progressPct = deliveries.length ? Math.round(((deliveries.length - porEntregar) / deliveries.length) * 100) : 0
   const md = deliveries.find((d) => d.id === modal)
+  // 🩸 El Overlay sigue montado durante los ~240 ms de la animación de salida, pero
+  // `md` se vuelve undefined en el mismo frame en que `modal` pasa a null. Sin
+  // retener el último valor, el cuerpo del modal reventaría contra `md.items` justo
+  // al cerrar. Vale para cualquier overlay cuyo contenido derive del estado que lo abre.
+  const mdRef = useRef(md)
+  if (md) mdRef.current = md
+  const mdView = md || mdRef.current
 
   return (
     <div className="lu-mob" style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative')}>
@@ -194,30 +202,50 @@ export default function RepartidorView() {
         })}
       </div>
 
-      {/* MODAL */}
-      {md && (
-        <div style={sx('position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end')}>
-          <div className="lu-modal-scrim" style={sx('position:absolute;inset:0;background:var(--scrim)')} />
-          <div className="lu-sheet-up" style={sx('position:relative;background:var(--surface);border:1px solid var(--line2);border-bottom:none;border-radius:20px 20px 0 0;max-height:88%;display:flex;flex-direction:column')}>
-            <div style={sx('flex:none;padding:10px 16px 12px;border-bottom:1px solid var(--line)')}>
-              <div style={sx('width:36px;height:4px;border-radius:99px;background:var(--line2);margin:2px auto 12px')} />
-              <div style={sx('display:flex;justify-content:space-between;align-items:center')}>
-                <div>
-                  <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>{step === 'cant' ? 'Verificación de cantidades' : 'Firma de conformidad'}</div>
-                  <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>{md.id} · {md.client}</div>
-                </div>
-                <div style={sx('display:flex;gap:4px;align-items:center')}>
-                  <span style={sx('width:22px;height:4px;border-radius:99px;background:var(--primary)')} />
-                  <span style={{ ...sx('width:22px;height:4px;border-radius:99px'), background: step === 'firma' ? 'var(--primary)' : 'var(--line2)' }} />
-                </div>
-              </div>
-            </div>
-
-            {step === 'cant' && (
+      {/* MODAL DE ENTREGA — wizard de 2 pasos (cantidades → firma).
+          `contained`: vive dentro del marco de teléfono en escritorio, sin portal. */}
+      <Overlay
+        open={!!md}
+        onClose={() => setModal(null)}
+        variant="sheet"
+        contained
+        title={step === 'cant' ? 'Verificación de cantidades' : 'Firma de conformidad'}
+        subtitle={mdView ? `${mdView.id} · ${mdView.client}` : ''}
+        aside={
+          <div style={sx('display:flex;gap:4px;align-items:center;margin-top:6px')}>
+            <span style={sx('width:22px;height:4px;border-radius:var(--r-pill);background:var(--primary)')} />
+            <span style={{ ...sx('width:22px;height:4px;border-radius:var(--r-pill)'), background: step === 'firma' ? 'var(--primary)' : 'var(--line2)' }} />
+          </div>
+        }
+        footer={step === 'cant' ? (
+          <>
+            <button type="button" onClick={() => setModal(null)} className="lu-press" style={sx('flex:none;min-height:50px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
+            <button type="button" onClick={() => { setStep('firma'); setHasInk(false) }} className="lu-press" style={sx('flex:1;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);cursor:pointer;border:none')}>Continuar a firma</button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => setStep('cant')} className="lu-press" style={sx('flex:none;min-height:50px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;background:transparent')}>Atrás</button>
+            <button
+              type="button"
+              className="lu-press"
+              onClick={() => {
+                if (!hasInk || !md) return
+                const firma = canvasRef.current ? canvasRef.current.toDataURL('image/png') : null
+                const faltantes = md.items.reduce((a, it, i) => a + (it.gen - (qty[i] ?? it.gen)), 0)
+                setStatus(md.id, 'entregado', { entregado: horaActual(), firma })
+                setModal(null)
+                showToast(`${md.id} entregado${faltantes > 0 ? ` · ${faltantes} u. a reporte de faltante` : ' · completo'}`)
+              }}
+              style={{ ...sx('flex:1;min-height:50px;display:grid;place-items:center;border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);border:none'), background: hasInk ? 'var(--primary)' : 'var(--surface2)', color: hasInk ? 'var(--on-primary)' : 'var(--faint)', cursor: hasInk ? 'pointer' : 'not-allowed' }}
+            >Confirmar entrega</button>
+          </>
+        )}
+      >
+            {mdView && step === 'cant' && (
               <>
-                <div style={sx('flex:1;overflow-y:auto;padding:12px 16px')}>
-                  <div style={sx('font-size:12px;color:var(--muted);margin-bottom:10px')}>Verificá lo que entregás. Si es menos que lo pedido, indicá el motivo — alimenta el <b>reporte de faltante</b>.</div>
-                  {md.items.map((it, i) => {
+                <div style={sx('font-size:12px;color:var(--muted);margin-bottom:10px')}>Verificá lo que entregás. Si es menos que lo pedido, indicá el motivo — alimenta el <b>reporte de faltante</b>.</div>
+                <div>
+                  {mdView.items.map((it, i) => {
                     const del = qty[i] ?? it.gen
                     const short = del < it.gen
                     const motivo = motivos[i] || 'Sin stock'
@@ -251,49 +279,27 @@ export default function RepartidorView() {
                     )
                   })}
                 </div>
-                <div style={sx('flex:none;padding:12px 16px 24px;border-top:1px solid var(--line);display:flex;gap:8px')}>
-                  <button onClick={() => setModal(null)} style={sx('flex:none;min-height:50px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:13.5px;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
-                  <button onClick={() => { setStep('firma'); setHasInk(false) }} style={sx('flex:1;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14.5px;cursor:pointer;border:none')}>Continuar a firma</button>
-                </div>
               </>
             )}
 
-            {step === 'firma' && (
+            {mdView && step === 'firma' && (
               <>
-                <div style={sx('flex:1;overflow-y:auto;padding:14px 16px')}>
-                  <div style={sx('font-size:12px;color:var(--muted);margin-bottom:10px')}>Entregá el teléfono al receptor para que firme la conformidad.</div>
-                  <div style={sx('position:relative;border:1px solid var(--line2);border-radius:14px;overflow:hidden;background:#F7FCFB')}>
-                    <canvas ref={initCanvas} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} style={sx('display:block;width:100%;height:210px;touch-action:none;cursor:crosshair')} />
-                    <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed #C9E0DE;pointer-events:none')} />
-                    {!hasInk && <div style={sx('position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;color:#93A9A7;font-size:14px;font-weight:500')}>Firmá acá</div>}
-                  </div>
-                  <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:8px')}>
-                    <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{kgFmt(md.kg)} kg · {fmtPesos(md.monto)}</div>
-                    <button onClick={clearSig} style={sx('min-height:38px;padding:0 14px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Limpiar</button>
-                  </div>
+                <div style={sx('font-size:12px;color:var(--muted);margin-bottom:10px')}>Entregá el teléfono al receptor para que firme la conformidad.</div>
+                <div style={sx('position:relative;border:1px solid var(--line2);border-radius:var(--r-lg);overflow:hidden;background:#F7FCFB')}>
+                  <canvas ref={initCanvas} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} style={sx('display:block;width:100%;height:210px;touch-action:none;cursor:crosshair')} />
+                  <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed #C9E0DE;pointer-events:none')} />
+                  {!hasInk && <div style={sx('position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;color:#93A9A7;font-size:14px;font-weight:500')}>Firmá acá</div>}
                 </div>
-                <div style={sx('flex:none;padding:12px 16px 24px;border-top:1px solid var(--line);display:flex;gap:8px')}>
-                  <button onClick={() => setStep('cant')} style={sx('flex:none;min-height:50px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:13.5px;color:var(--muted);cursor:pointer;background:transparent')}>Atrás</button>
-                  <button
-                    onClick={() => {
-                      if (!hasInk || !md) return
-                      const firma = canvasRef.current ? canvasRef.current.toDataURL('image/png') : null
-                      const faltantes = md.items.reduce((a, it, i) => a + (it.gen - (qty[i] ?? it.gen)), 0)
-                      setStatus(md.id, 'entregado', { entregado: horaActual(), firma })
-                      setModal(null)
-                      showToast(`${md.id} entregado${faltantes > 0 ? ` · ${faltantes} u. a reporte de faltante` : ' · completo'}`)
-                    }}
-                    style={{ ...sx('flex:1;min-height:50px;display:grid;place-items:center;border-radius:12px;font-weight:600;font-size:14.5px;cursor:pointer;border:none'), background: hasInk ? 'var(--primary)' : 'var(--surface2)', color: hasInk ? 'var(--on-primary)' : 'var(--faint)' }}
-                  >Confirmar entrega</button>
+                <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:8px')}>
+                  <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-family:var(--font-mono)')}>{kgFmt(mdView.kg)} kg · {fmtPesos(mdView.monto)}</div>
+                  <button type="button" onClick={clearSig} className="lu-press" style={sx('min-height:38px;padding:0 14px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Limpiar</button>
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
+      </Overlay>
 
       {toast && (
-        <div style={sx('position:absolute;top:14px;left:14px;right:14px;z-index:30;background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 14px;display:flex;align-items:center;gap:9px')}>
+        <div style={sx('position:absolute;top:14px;left:14px;right:14px;z-index:var(--z-toast);background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 14px;display:flex;align-items:center;gap:9px')}>
           <Check color="var(--success)" />
           <span style={sx('font-size:12.5px;font-weight:500')}>{toast}</span>
         </div>

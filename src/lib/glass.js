@@ -4,15 +4,32 @@
  * para controles flotantes (barra de navegación mobile, píldoras flotantes).
  * Válido en Android (WebView Chromium soporta backdrop-filter).
  *
- * @param {boolean} isDark
+ * 19/07/2026: antes esto hardcodeaba rgba literales que duplicaban EXACTAMENTE
+ * los tokens --glass-bg / --glass-brd de index.css, con el agravante de que
+ * necesitaba recibir `isDark` para elegir cuál. Al leer los tokens el tema lo
+ * resuelve el CSS solo, así que el parámetro ya no hace falta.
+ */
+
+/**
+ * Solo el desenfoque. Es la parte que GestionHost.jsx y SupervisionMovil.jsx
+ * redefinían por su cuenta: aplican el fondo con `background: var(--glass-bg)`
+ * aparte, así que no pueden usar glassSurface() entero.
+ */
+export const glassBlur = {
+  backdropFilter: 'blur(14px) saturate(160%)',
+  WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+}
+
+/**
+ * Superficie de vidrio completa (fondo + desenfoque + borde + sombra).
+ *
  * @returns {object} estilo React para aplicar sobre un contenedor
  */
-export function glassSurface(isDark) {
+export function glassSurface() {
   return {
-    background: isDark ? 'rgba(13,31,30,0.62)' : 'rgba(255,255,255,0.62)',
-    backdropFilter: 'blur(14px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(14px) saturate(160%)',
-    border: isDark ? '0.5px solid rgba(255,255,255,0.14)' : '0.5px solid rgba(11,43,42,0.06)',
-    boxShadow: isDark ? '0 -2px 16px rgba(0,0,0,0.35)' : '0 -2px 16px rgba(11,43,42,0.08)',
+    background: 'var(--glass-bg)',
+    ...glassBlur,
+    border: '0.5px solid var(--glass-brd)',
+    boxShadow: 'var(--glass-shadow)',
   }
 }

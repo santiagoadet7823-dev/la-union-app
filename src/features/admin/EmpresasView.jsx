@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { supabase } from '../../services/supabase'
 import { invalidarTrackCache } from '../../services/tracking'
+import { useDevice } from '../../context/DeviceContext'
+import { CabeceraTabla } from './ui'
 
 /**
  * Gestión de empresas (solo superadmin). Alta de distribuidoras (tenants) y
@@ -12,9 +14,10 @@ import { invalidarTrackCache } from '../../services/tracking'
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const grid = { display: 'grid', gridTemplateColumns: '1.6fr 140px 160px 140px', gap: 10, alignItems: 'center' }
-const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;font-family:var(--font-mono);outline:none') }
+const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;font-family:var(--font-mono)') }
 
 export default function EmpresasView({ onToast }) {
+  const { isMobile } = useDevice()
   const [empresas, setEmpresas] = useState([])
   const [loading, setLoading] = useState(true)
   const [nueva, setNueva] = useState('')
@@ -106,7 +109,7 @@ export default function EmpresasView({ onToast }) {
   }
 
   return (
-    <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto')}>
+    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
       {/* Horario de rastreo (global, superadmin) */}
       <div style={panel}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Horario de rastreo GPS</div>
@@ -132,11 +135,11 @@ export default function EmpresasView({ onToast }) {
           </label>
           <div>
             <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Desde</div>
-            <input type="time" value={track.start} onChange={(e) => setTrack((t) => ({ ...t, start: e.target.value }))} disabled={!track.enabled} style={inpTime} />
+            <input type="time" value={track.start} onChange={(e) => setTrack((t) => ({ ...t, start: e.target.value }))} disabled={!track.enabled} className="lu-input" style={inpTime} />
           </div>
           <div>
             <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Hasta</div>
-            <input type="time" value={track.end} onChange={(e) => setTrack((t) => ({ ...t, end: e.target.value }))} disabled={!track.enabled} style={inpTime} />
+            <input type="time" value={track.end} onChange={(e) => setTrack((t) => ({ ...t, end: e.target.value }))} disabled={!track.enabled} className="lu-input" style={inpTime} />
           </div>
           <button disabled={savingTrack} onClick={guardarTrack} style={sx('padding:10px 18px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             {savingTrack ? 'Guardando…' : 'Guardar horario'}
@@ -144,13 +147,13 @@ export default function EmpresasView({ onToast }) {
         </div>
       </div>
 
-      <div style={{ ...panel, minWidth: 720 }}>
+      <div style={{ ...panel, minWidth: isMobile ? 0 : 720 }}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Empresas (distribuidoras)</div>
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Cada empresa es un espacio aislado. Desactivar una empresa deja sin acceso a todos sus usuarios.</div>
 
-        <div style={sx('display:flex;gap:8px;margin-bottom:16px')}>
+        <div style={{ ...sx('display:flex;gap:8px;margin-bottom:16px'), flexDirection: isMobile ? 'column' : 'row' }}>
           <input value={nueva} onChange={(e) => setNueva(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crear()} placeholder="Nombre de la nueva empresa…"
-            style={sx('flex:1;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;outline:none')} />
+            style={sx('flex:1;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px')} className="lu-input" />
           <button disabled={creando || !nueva.trim()} onClick={crear} style={sx('padding:10px 16px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             + Crear empresa
           </button>
@@ -160,12 +163,12 @@ export default function EmpresasView({ onToast }) {
           <div style={sx('padding:30px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando…</div>
         ) : (
           <>
-            <div style={{ ...grid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Empresa</span><span style={sx('text-align:right')}>Usuarios</span><span>Estado</span><span style={sx('text-align:right')}>Acción</span>
-            </div>
+            <CabeceraTabla grid={grid} isMobile={isMobile} columnas={[
+              'Empresa', { label: 'Usuarios', align: 'right' }, 'Estado', { label: 'Acción', align: 'right' },
+            ]} />
             {empresas.map((e) => (
               <div key={e.id} style={sx('border-bottom:1px solid var(--line)')}>
-                <div style={{ ...grid, ...sx('padding:11px 10px;font-size:13px') }}>
+                <div style={{ ...grid, ...sx('padding:11px 10px;font-size:13px'), gridTemplateColumns: isMobile ? '1fr' : grid.gridTemplateColumns, gap: isMobile ? 8 : 10 }}>
                   <span style={sx('font-weight:600')}>{e.nombre}</span>
                   <span style={sx('text-align:right;font-family:var(--font-mono);color:var(--muted)')}>{e.usuarios}</span>
                   <span>

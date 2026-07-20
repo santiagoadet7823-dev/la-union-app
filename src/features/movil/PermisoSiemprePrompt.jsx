@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { isNative } from '../../services/platform'
 import { abrirAjustesUbicacion } from '../../services/geolocation'
 import { estaExento, pedirExencion } from '../../services/battery'
+import Overlay from '../../components/Overlay'
 
 /**
  * Aviso de un paso (una sola vez) para que el móvil active "Permitir siempre" la
@@ -15,30 +16,35 @@ import { estaExento, pedirExencion } from '../../services/battery'
 const VISTO_KEY = 'lu-permiso-siempre-visto'
 
 export default function PermisoSiemprePrompt() {
-  const [oculto, setOculto] = useState(() => {
+  // Dos condiciones distintas, y mezclarlas rompía la animación de salida:
+  //   - `nuncaMostrar`: no corresponde el aviso (no es nativo, o ya se vio). No se
+  //     renderiza NADA, ni siquiera el Overlay.
+  //   - `abierto`: el usuario lo cerró. Acá sí hay que quedarse montado mientras
+  //     corre la animación de salida, así que NO se puede hacer `return null`.
+  const [nuncaMostrar] = useState(() => {
     try { return !isNative() || localStorage.getItem(VISTO_KEY) === '1' } catch (_) { return !isNative() }
   })
+  const [abierto, setAbierto] = useState(!nuncaMostrar)
   const [abriendo, setAbriendo] = useState(false)
   const [exento, setExento] = useState(null) // null = aún no chequeado (no renderiza para evitar flash)
 
   // Estado de exención de batería: refresca al montar y al volver a foreground (el
   // usuario responde el diálogo del sistema en otra pantalla).
   useEffect(() => {
-    if (oculto) return
+    if (!abierto) return
     let vivo = true
     const chequear = () => estaExento().then((v) => { if (vivo) setExento(v) }).catch(() => {})
     chequear()
     const onVis = () => { if (document.visibilityState === 'visible') chequear() }
     document.addEventListener('visibilitychange', onVis)
     return () => { vivo = false; document.removeEventListener('visibilitychange', onVis) }
-  }, [oculto])
+  }, [abierto])
 
-  if (oculto) return null
+  if (nuncaMostrar) return null
 
-  const cerrar = () => {
-    try { localStorage.setItem(VISTO_KEY, '1') } catch (_) {}
-    setOculto(true)
-  }
+  const cerrar = () => setAbierto(false)
+  // El "ya lo vio" se persiste cuando el overlay terminó de irse, no antes.
+  const marcarVisto = () => { try { localStorage.setItem(VISTO_KEY, '1') } catch (_) {} }
   const abrir = async () => {
     setAbriendo(true)
     await abrirAjustesUbicacion()
@@ -50,17 +56,14 @@ export default function PermisoSiemprePrompt() {
   }
 
   return (
-    <div style={sx('position:fixed;inset:0;z-index:400;display:flex;align-items:flex-end;justify-content:center')}>
-      <div onClick={cerrar} style={sx('position:absolute;inset:0;background:var(--scrim)')} />
-      <div style={sx('position:relative;width:100%;max-width:460px;background:var(--surface);border:1px solid var(--line2);border-radius:22px 22px 0 0;box-shadow:var(--shadow-lg);padding:22px 20px calc(22px + env(safe-area-inset-bottom));animation:lu-rise .26s ease')}>
-        <div style={sx('width:38px;height:4px;border-radius:99px;background:var(--line2);margin:0 auto 16px')} />
+    <Overlay open={abierto} onClose={marcarVisto} variant="sheet" maxWidth={460}>
         <div style={sx('display:flex;align-items:center;gap:12px;margin-bottom:12px')}>
-          <div style={sx('width:46px;height:46px;flex:none;border-radius:14px;background:var(--warning-tint);color:var(--warning);display:grid;place-items:center')}>
+          <div style={sx('width:46px;height:46px;flex:none;border-radius:var(--r-lg);background:var(--warning-tint);color:var(--warning);display:grid;place-items:center')}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
           </div>
           <div style={sx('flex:1;min-width:0')}>
-            <div style={sx('font-family:var(--font-display);font-weight:700;font-size:17px')}>Activá "Permitir siempre"</div>
-            <div style={sx('font-size:11.5px;color:var(--muted);font-family:var(--font-mono);margin-top:1px')}>Ubicación en segundo plano</div>
+            <div style={sx('font-family:var(--font-display);font-weight:700;font-size:var(--fs-lg)')}>Activá "Permitir siempre"</div>
+            <div style={sx('font-size:var(--fs-xs);color:var(--muted);font-family:var(--font-mono);margin-top:1px')}>Ubicación en segundo plano</div>
           </div>
         </div>
         <div style={sx('font-size:13.5px;color:var(--muted);line-height:1.55;margin-bottom:12px')}>
@@ -88,10 +91,9 @@ export default function PermisoSiemprePrompt() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></svg>
           {abriendo ? 'Abriendo ajustes…' : 'Abrir ajustes de ubicación'}
         </button>
-        <button onClick={cerrar} style={sx('width:100%;min-height:44px;margin-top:8px;background:transparent;color:var(--muted);border:none;font-weight:600;font-size:13.5px;cursor:pointer')}>
+        <button type="button" onClick={cerrar} className="lu-press" style={sx('width:100%;min-height:44px;margin-top:8px;background:transparent;color:var(--muted);border:none;font-weight:600;font-size:13.5px;cursor:pointer')}>
           Más tarde
         </button>
-      </div>
-    </div>
+    </Overlay>
   )
 }

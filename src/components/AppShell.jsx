@@ -45,7 +45,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
         style={{
           flex: 'none', minHeight: 52, display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16,
           padding: isMobile ? '6px 10px' : '0 18px', flexWrap: 'wrap',
-          background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 50,
+          background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 'none' }}>
@@ -117,7 +117,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
 
       {acctOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2000 }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setAcctOpen(false)} className="lu-modal-scrim" style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))' }}>
             <MiCuenta onToast={showToast} showDeviceToggle={!isNative()} />
@@ -126,7 +126,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       )}
 
       {toast && (
-        <div style={{ position: 'fixed', top: 66, right: 18, zIndex: 2100, background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div style={{ position: 'fixed', top: 66, right: 18, zIndex: 'var(--z-toast)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>

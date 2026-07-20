@@ -28,7 +28,12 @@ dist-ssr
 .idea
 
 # Config local de Claude/preview (no versionar)
-.claude/
+# OJO: el patrón debe ser `.claude/*` y no `.claude/`. Con la barra al final git
+# excluye el directorio entero y ni siquiera desciende, así que el `!` de abajo
+# nunca llegaría a aplicar y las skills quedarían fuera del repo.
+.claude/*
+# …salvo las skills de diseño, que SÍ se versionan (ver CLAUDE.md §9)
+!.claude/skills/
 
 # Logs
 npm-debug.log*

@@ -12,6 +12,51 @@
   --font-display: 'Space Grotesk', 'Inter', sans-serif;
   --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* --- Radios (19/07/2026) ---------------------------------------------
+     Antes había 11 valores sueltos inline (8/9/10/11/12/13/14/16/18/20/22/99)
+     y hasta 5 conviviendo en un mismo modal. Consolidados en 5 escalones.
+     Regla: un radio por NIVEL jerárquico, no por gusto. Lo de adentro
+     siempre menor que su contenedor. */
+  --r-sm: 8px;      /* chips, badges, botón cerrar */
+  --r-md: 12px;     /* inputs, botones de acción */
+  --r-lg: 16px;     /* cards y paneles */
+  --r-xl: 20px;     /* modales y bottom-sheets */
+  --r-pill: 999px;  /* píldoras */
+
+  /* --- Escala tipográfica ----------------------------------------------
+     Antes 15 tamaños en decimales arbitrarios (9.5, 10.5, 11.5, 12.5,
+     13.5, 14.5…). Consolidados en 6. */
+  --fs-2xs: 10px;   /* labels de tabla, "Próx." */
+  --fs-xs: 11px;    /* labels de campo, hints */
+  --fs-sm: 12.5px;  /* texto secundario */
+  --fs-md: 14px;    /* cuerpo */
+  --fs-lg: 17px;    /* título de modal */
+  --fs-xl: 20px;    /* título de pantalla */
+
+  /* --- Espaciado (múltiplos de 4) --------------------------------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* --- z-index ----------------------------------------------------------
+     🚨 SIEMPRE usar estos tokens, NUNCA un literal.
+     Antes había 9 escalas inconexas (11, 12, 16, 20, 22, 30, 50, 80, 90,
+     200, 300, 400, 1260, 2000, 2100) y colisiones reales: NuevoCliente (80)
+     e ImportarClientes (90) quedaban por debajo del scrim de AppShell (2000),
+     así que un modal abierto desde adentro podía renderizar bajo el chrome.
+     El orden de abajo es el ÚNICO orden válido de apilamiento. */
+  --z-map: 0;         /* el mapa Leaflet, siempre el fondo */
+  --z-chrome: 100;    /* header, rail de controles, bottom-nav */
+  --z-popover: 200;   /* menús de cuenta, selector de fecha, menú "+" */
+  --z-sheet: 300;     /* bottom-sheets (dashboard, entrega) */
+  --z-screen: 400;    /* pantallas full-screen (GestionHost, ImportarClientes) */
+  --z-modal: 500;     /* modales centrados */
+  --z-toast: 600;     /* el toast va arriba de TODO, a propósito: confirma
+                         acciones que pueden dispararse desde un modal */
 }
 
 /* --- LIGHT: Tiffany con degradado a blanco --- */
@@ -49,6 +94,7 @@ html[data-theme='light'] {
   --glass-bg: rgba(255, 255, 255, 0.62);
   --glass-brd: rgba(11, 43, 42, 0.06);
   --glass-strong: rgba(255, 255, 255, 0.86);
+  --glass-shadow: 0 -2px 16px rgba(11, 43, 42, 0.08);
   --sheet-bg: rgba(247, 252, 251, 0.8);
   --sk: rgba(11, 43, 42, 0.07);
   --console-bg: #0b2b2a;
@@ -96,6 +142,7 @@ html[data-theme='dark'] {
   --glass-bg: rgba(13, 31, 30, 0.62);
   --glass-brd: rgba(255, 255, 255, 0.14);
   --glass-strong: rgba(9, 22, 21, 0.82);
+  --glass-shadow: 0 -2px 16px rgba(0, 0, 0, 0.35);
   --sheet-bg: rgba(11, 26, 25, 0.78);
   --sk: rgba(255, 255, 255, 0.07);
   --console-bg: #081414;
@@ -126,6 +173,25 @@ body {
   outline-offset: 2px;
 }
 
+/* Inputs (components/form.jsx). El foco marca el borde ADEMÁS del outline global:
+   en dark --shadow es none y el borde carga todo el peso visual del control. */
+.lu-input {
+  transition: border-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.lu-input:focus-visible {
+  border-color: var(--primary);
+}
+
+/* Campo compuesto: un input SIN borde dentro de un contenedor que sí lo tiene
+   (ej. el buscador con lupa). El input se queda sin outline a propósito — el que
+   marca el foco es el contenedor, con :focus-within. */
+.lu-campo {
+  transition: border-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.lu-campo:focus-within {
+  border-color: var(--primary);
+}
+
 /* Ocultar scrollbars dentro de los marcos móviles */
 .lu-mob *::-webkit-scrollbar {
   display: none;
@@ -140,10 +206,6 @@ body {
   scrollbar-width: none;
 }
 
-@keyframes lu-ping {
-  0% { transform: scale(0.5); opacity: 0.9; }
-  100% { transform: scale(2.8); opacity: 0; }
-}
 @keyframes lu-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.2; }
@@ -156,10 +218,11 @@ body {
   from { transform: translateY(18px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
-@keyframes lu-sheen {
-  0% { background-position: -160px 0; }
-  100% { background-position: 220px 0; }
-}
+/* will-change agregado el 19/07/2026: lu-rise se aplica casi siempre sobre elementos que
+   además llevan backdrop-filter: blur() (el chrome glass de SupervisionMovil). Animar un
+   blur sin promover la capa obliga al WebView de Android a recomponer el desenfoque en
+   cada frame — es la combinación más cara que existe ahí y se veía entrecortado. */
+.lu-rise { animation: lu-rise 220ms cubic-bezier(0.23, 1, 0.32, 1); will-change: transform, opacity; }
 
 /* Modales/carteles centrados — entrada pulida (estándares de animación de Emil Kowalski):
    ease-out fuerte, <300ms, sin scale(0) (arranca en 0.96), solo transform+opacity, origen al
@@ -172,11 +235,30 @@ body {
    con la curva de drawer estilo iOS. */
 @keyframes lu-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .lu-sheet-up { animation: lu-sheet-up 300ms cubic-bezier(0.32, 0.72, 0, 1); will-change: transform; }
+/* --- SALIDA (19/07/2026) -----------------------------------------------------
+   Hasta hoy NINGÚN overlay de la app tenía animación de salida: todos son
+   `{cond && <div/>}`, así que entraban suave y se evaporaban en un frame. Era el
+   defecto perceptual más notorio del chrome. Las consume `components/Overlay.jsx`.
+
+   Dos reglas del estándar de Emil, la segunda contraintuitiva:
+   1. La salida va más RÁPIDA que la entrada. Al entrar, el usuario necesita
+      entender qué apareció; al salir ya decidió y la animación solo estorba.
+   2. La salida TAMBIÉN va ease-out, no ease-in. "Never ease-in on UI": ease-in
+      arranca lento y demora justo el instante que el usuario está mirando.
+      Misma curva que la entrada, menos duración. */
+@keyframes lu-scrim-out { to { opacity: 0; } }
+@keyframes lu-modal-out { to { opacity: 0; transform: scale(0.96); } }
+@keyframes lu-sheet-down { to { transform: translateY(100%); } }
+.lu-scrim-out { animation: lu-scrim-out 160ms cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+.lu-modal-out { animation: lu-modal-out 180ms cubic-bezier(0.23, 1, 0.32, 1) forwards; transform-origin: center; will-change: transform, opacity; }
+.lu-sheet-down { animation: lu-sheet-down 240ms cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform; }
+
 /* Feedback de presión sutil (0.97) para elementos tocables. */
 .lu-press { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
 .lu-press:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
-  .lu-modal-card, .lu-sheet-up { animation: lu-scrim-in 160ms ease; } /* solo opacidad, sin movimiento */
+  .lu-modal-card, .lu-sheet-up, .lu-rise { animation: lu-scrim-in 160ms ease; } /* solo opacidad, sin movimiento */
+  .lu-modal-out, .lu-sheet-down { animation: lu-scrim-out 120ms ease forwards; }
   .lu-press { transition: none; }
   .lu-press:active { transform: none; }
 }

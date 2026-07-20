@@ -75,7 +75,9 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   const sinUbicar = cartera.filter((c) => c.lat == null).length
   const listaMostrada = soloSinUbicar ? carteraSorted.filter((c) => c.lat == null) : carteraSorted
   const porConfirmar = cartera.filter((c) => !c.activo).length
-  const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body);outline:none')
+  // Sin `outline:none`: era estilo inline, le ganaba al :focus-visible global y dejaba
+  // los campos inalcanzables por teclado. El foco lo maneja `.lu-input` (index.css).
+  const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)')
 
   async function guardarUbicacion() {
     if (!fc || !puntoNuevo) return
@@ -185,22 +187,22 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
               <div style={sx('display:grid;gap:9px;margin-bottom:14px')}>
                 <div>
                   <div style={fieldLabel}>Razón social</div>
-                  <input value={nombreEdit} onChange={(e) => setNombreEdit(e.target.value)} placeholder="Nombre del comercio" style={inp} />
+                  <input value={nombreEdit} onChange={(e) => setNombreEdit(e.target.value)} placeholder="Nombre del comercio" className="lu-input" style={inp} />
                 </div>
                 <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>
                   <div>
                     <div style={fieldLabel}>Código</div>
-                    <input value={codigoEdit} onChange={(e) => setCodigoEdit(e.target.value)} placeholder="—" style={inp} />
+                    <input value={codigoEdit} onChange={(e) => setCodigoEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
                   </div>
                   <div>
                     <div style={fieldLabel}>Localidad</div>
-                    <input value={locEdit} onChange={(e) => setLocEdit(e.target.value)} placeholder="—" style={inp} />
+                    <input value={locEdit} onChange={(e) => setLocEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
                   </div>
                 </div>
                 <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>
                   <div>
                     <div style={fieldLabel}>Horario</div>
-                    <input value={horarioEdit} onChange={(e) => setHorarioEdit(e.target.value)} placeholder="—" style={inp} />
+                    <input value={horarioEdit} onChange={(e) => setHorarioEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
                   </div>
                   <div>
                     <div style={fieldLabel}>Zona</div>

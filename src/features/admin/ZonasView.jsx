@@ -13,7 +13,9 @@ const COLORES = ['#0ABAB5', '#6366F1', '#F59E0B', '#EF4444', '#10B981', '#EC4899
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
-const inp = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body);outline:none') }
+// Sin `outline:none`: al ser estilo inline le ganaba al :focus-visible global y
+// dejaba los campos inalcanzables por teclado. El foco lo maneja `.lu-input`.
+const inp = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)') }
 const selectStyle = { ...sx('width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-family:var(--font-body);cursor:pointer') }
 
 export default function ZonasView({ onToast }) {
@@ -60,8 +62,8 @@ export default function ZonasView({ onToast }) {
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Cada zona lleva un número (ej. Zona 1) y un vendedor dueño. Los clientes que se importen a esa zona heredan automáticamente ese vendedor.</div>
 
         <div style={sx('display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px')}>
-          <input type="number" min="0" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="N°" style={{ ...inp, width: 72, flex: 'none' }} title="Número de zona" />
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crearZona()} placeholder="Nueva zona (ej. Centro)" style={{ ...inp, flex: 1, minWidth: 140 }} />
+          <input type="number" min="0" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="N°" className="lu-input" style={{ ...inp, width: 72, flex: 'none' }} title="Número de zona" />
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crearZona()} placeholder="Nueva zona (ej. Centro)" className="lu-input" style={{ ...inp, flex: 1, minWidth: 140 }} />
           <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} style={{ ...selectStyle, width: 'auto', minWidth: 150, flex: 'none' }} title="Vendedor dueño de la zona">
             <option value="">— Vendedor dueño —</option>
             {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre} · {v.rol}</option>)}

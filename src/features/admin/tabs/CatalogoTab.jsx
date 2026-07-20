@@ -1,15 +1,18 @@
 import { sx } from '../../../lib/sx'
 import { fmtPesos, kgFmt } from '../../../lib/format'
 import { useCatalog } from '../../../context/CatalogContext'
-import { panel, label10, catGrid, EmptyState } from '../ui'
+import { useDevice } from '../../../context/DeviceContext'
+import { panel, label10, catGrid, EmptyState, FilaTabla, CabeceraTabla } from '../ui'
 
 /** Pestaña "Catálogo": productos reales de la distribuidora. */
 export default function CatalogoTab({ onNuevoProducto }) {
   const { productos, loading: catLoading } = useCatalog()
+  const { isMobile } = useDevice()
 
   return (
-    <div className="lu-tabs" style={sx('flex:1;padding:20px;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;overflow-x:auto')}>
-      <div style={{ ...panel, minWidth: 700 }}>
+    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+      {/* minWidth solo en escritorio: en el teléfono forzaba scroll horizontal */}
+      <div style={{ ...panel, minWidth: isMobile ? 0 : 700 }}>
         <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
           <div style={label10}>Catálogo · {productos.length} productos</div>
           <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
@@ -22,17 +25,18 @@ export default function CatalogoTab({ onNuevoProducto }) {
           <EmptyState titulo="El catálogo está vacío" texto="Cargá los productos de la distribuidora con “Nuevo producto”. Los vendedores los verán al tomar pedidos." />
         ) : (
           <>
-            <div style={{ ...catGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
-              <span>Código</span><span>Descripción</span><span>Categoría</span><span style={sx('text-align:right')}>Precio</span><span style={sx('text-align:right')}>Peso</span>
-            </div>
+            <CabeceraTabla grid={catGrid} isMobile={isMobile} columnas={[
+              'Código', 'Descripción', 'Categoría',
+              { label: 'Precio', align: 'right' }, { label: 'Peso', align: 'right' },
+            ]} />
             {productos.map((p) => (
-              <div key={p.id} style={{ ...catGrid, ...sx('padding:10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px') }}>
-                <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--deep);font-weight:600')}>{p.codigo || '—'}</span>
-                <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p.name}</span>
-                <span style={sx('color:var(--muted)')}>{p.cat}</span>
-                <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600')}>{fmtPesos(p.price)}</span>
-                <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--muted)')}>{kgFmt(p.kg)} kg</span>
-              </div>
+              <FilaTabla key={p.id} grid={catGrid} isMobile={isMobile} celdas={[
+                { label: 'Código', contenido: p.codigo || '—', estilo: sx('font-family:var(--font-mono);font-size:11px;color:var(--deep);font-weight:600') },
+                { label: 'Descripción', titulo: true, contenido: p.name, estilo: sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
+                { label: 'Categoría', contenido: p.cat, estilo: sx('color:var(--muted)') },
+                { label: 'Precio', contenido: fmtPesos(p.price), estilo: sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600') },
+                { label: 'Peso', contenido: `${kgFmt(p.kg)} kg`, estilo: sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--muted)') },
+              ]} />
             ))}
           </>
         )}

@@ -7,6 +7,9 @@ import { pedirUbicacionUnaVez } from '../../services/geolocation'
 import { CENTRO } from '../../data/demoGeo'
 import LeafletMap from '../../components/LeafletMap'
 import ErrorBoundary from '../../components/ErrorBoundary'
+import Overlay from '../../components/Overlay'
+import { Crosshair } from '../../components/icons'
+import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
 
 /**
  * Edición ACOTADA de un cliente por el VENDEDOR: solo ubicación (mapa) y días de visita.
@@ -32,6 +35,11 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   })
   const [locBusy, setLocBusy] = useState(false)
   const [saving, setSaving] = useState(false)
+  // El padre monta este componente con `{editCliId && <EditarClienteVendedor …/>}`,
+  // así que el estado de "abierto" tiene que vivir ACÁ: si dependiéramos del padre,
+  // nos arrancaría del árbol antes de que corra la animación de salida. Cerramos
+  // con setAbierto(false) y el Overlay avisa al padre recién cuando terminó.
+  const [abierto, setAbierto] = useState(true)
 
   if (!c) return null
   const base = punto || livePos || CENTRO
@@ -58,53 +66,77 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
     setSaving(false)
     if (!ok) { onToast?.('Error: ' + (error?.message || 'no se pudo guardar')); return }
     onToast?.(`${c.name} actualizado`)
-    onClose?.()
+    setAbierto(false)
   }
 
   return (
-    <div className="lu-modal-scrim" style={sx('position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--scrim)')}>
-      <div onClick={onClose} style={sx('position:absolute;inset:0')} />
-      <div className="lu-modal-card" style={sx('position:relative;width:100%;max-width:460px;max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--shadow-lg);padding:18px')}>
-        <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:4px')}>
-          <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Editar cliente</div>
-          <button onClick={onClose} style={sx('width:30px;height:30px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;font-size:16px')}>✕</button>
-        </div>
-        <div style={sx('font-size:12.5px;color:var(--muted);margin-bottom:14px')}>{c.name}</div>
-
-        <div style={sx('font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px')}>Ubicación</div>
-        <div style={sx('display:flex;gap:8px;margin-bottom:8px')}>
-          <button onClick={usarMiUbicacion} disabled={locBusy} style={sx('flex:1;min-height:42px;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:12.5px;font-weight:600;cursor:pointer')}>
-            {locBusy ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
+    <Overlay
+      open={abierto}
+      onClose={onClose}
+      title="Editar cliente"
+      subtitle={c.name}
+      dismissible={!saving}
+      footer={
+        <>
+          <button type="button" onClick={() => setAbierto(false)} disabled={saving} className="lu-press" style={{ ...btnSecundario, flex: 'none', padding: '0 16px', ...(saving ? apagado : null) }}>
+            Cancelar
           </button>
-        </div>
-        <div style={sx('font-size:11px;color:var(--faint);margin-bottom:6px')}>…o tocá el mapa para marcar el punto exacto del comercio.</div>
+          <button type="button" onClick={guardar} disabled={saving} className="lu-press" style={{ ...btnPrimario, flex: 1, ...(saving ? apagado : null) }}>
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </>
+      }
+    >
+      <div style={label}>Ubicación</div>
+      <button type="button" onClick={usarMiUbicacion} disabled={locBusy} className="lu-press" style={{ ...sx('width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--primary);border-radius:var(--r-md);background:var(--primary-tint);color:var(--deep);font-size:var(--fs-sm);font-weight:600;margin-bottom:8px'), ...(locBusy ? apagado : { cursor: 'pointer' }) }}>
+        <Crosshair />
+        {locBusy ? 'Obteniendo…' : 'Usar mi ubicación actual'}
+      </button>
+      <div style={sx('font-size:var(--fs-xs);color:var(--faint);margin-bottom:8px')}>…o tocá el mapa para marcar el punto exacto del comercio.</div>
+
+      {/* El contenedor redondea y recorta: sin esto los tiles de Leaflet quedan
+          con esquinas rectas adentro de una card redondeada. */}
+      <div style={sx('border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line)')}>
         <ErrorBoundary compact message="No se pudo cargar el mapa.">
           <LeafletMap
             theme={theme}
             height={230}
             zoom={15}
             center={base}
-            markers={punto ? [{ lat: punto.lat, lng: punto.lng, color: theme === 'dark' ? '#2DD4CE' : '#0ABAB5', title: c.name }] : []}
+            markers={punto ? [{ lat: punto.lat, lng: punto.lng, color: 'var(--primary)', title: c.name }] : []}
             onMapClick={(p) => setPunto({ lat: p.lat, lng: p.lng })}
           />
         </ErrorBoundary>
-        <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:6px')}>
-          {punto ? `${punto.lat.toFixed(5)}, ${punto.lng.toFixed(5)}` : 'Sin ubicación marcada'}
-        </div>
-
-        <div style={sx('font-size:11px;font-weight:600;color:var(--muted);margin:16px 0 6px')}>Días de visita</div>
-        <div style={sx('display:flex;gap:5px')}>
-          {DIAS.map((d) => {
-            const on = !!dias[d]
-            return <div key={d} onClick={() => setDias((v) => ({ ...v, [d]: !v[d] }))} style={{ ...sx('flex:1;min-height:38px;display:grid;place-items:center;border-radius:9px;font-family:var(--font-mono);font-size:10.5px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'var(--surface)', color: on ? 'var(--deep)' : 'var(--faint)' }}>{d}</div>
-          })}
-        </div>
-
-        <div style={sx('display:flex;gap:8px;margin-top:18px')}>
-          <button onClick={onClose} style={sx('flex:none;min-height:46px;padding:0 16px;border:1px solid var(--line2);border-radius:12px;background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer')}>Cancelar</button>
-          <button onClick={guardar} disabled={saving} style={sx('flex:1;min-height:46px;border:none;border-radius:12px;background:var(--primary);color:var(--on-primary);font-weight:600;font-size:14px;cursor:pointer')}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
-        </div>
       </div>
-    </div>
+      <div style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);margin-top:6px')}>
+        {punto ? `${punto.lat.toFixed(5)}, ${punto.lng.toFixed(5)}` : 'Sin ubicación marcada'}
+      </div>
+
+      <div style={{ ...label, marginTop: 'var(--sp-4)' }}>Días de visita</div>
+      <div style={sx('display:flex;gap:5px')}>
+        {DIAS.map((d) => {
+          const on = !!dias[d]
+          return (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setDias((v) => ({ ...v, [d]: !v[d] }))}
+              className="lu-press"
+              style={{
+                ...sx('flex:1;min-height:44px;display:grid;place-items:center;border-radius:var(--r-sm);font-family:var(--font-mono);font-size:var(--fs-2xs);font-weight:600;cursor:pointer'),
+                border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`,
+                background: on ? 'var(--primary-tint)' : 'var(--surface)',
+                color: on ? 'var(--deep)' : 'var(--faint)',
+              }}
+            >
+              {d}
+            </button>
+          )
+        })}
+      </div>
+    </Overlay>
   )
 }
+
+const label = sx('font-size:var(--fs-xs);font-weight:600;color:var(--muted);margin-bottom:6px')

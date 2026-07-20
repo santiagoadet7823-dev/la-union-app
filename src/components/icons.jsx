@@ -14,6 +14,22 @@ export const Sun = ({ size = 15 }) => (
   </svg>
 )
 
+export const X = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+)
+
+/* Mira de GPS. Reemplaza el emoji 📍 que usaba EditarClienteVendedor: los emoji
+   los dibuja el SO y no combinan con el trazo 2 del resto del set. */
+export const Crosshair = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="2" />
+    <path d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+  </svg>
+)
+
 export const Moon = ({ size = 15 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
     <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />

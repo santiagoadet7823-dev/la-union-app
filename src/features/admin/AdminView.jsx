@@ -77,7 +77,7 @@ export default function AdminView() {
     <div style={sx('flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg-app)')}>
       {/* Barra secundaria de pestañas del Admin. En mobile es un desplegable
           compacto (una fila); en escritorio, pestañas en línea. */}
-      <div style={{ ...sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;position:sticky;top:52px;z-index:30'), padding: isMobile ? '8px 12px' : '0 20px', gap: isMobile ? 8 : 14, height: isMobile ? 'auto' : 48 }}>
+      <div style={{ ...sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;position:sticky;top:52px;z-index:var(--z-chrome)'), padding: isMobile ? '8px 12px' : '0 20px', gap: isMobile ? 8 : 14, height: isMobile ? 'auto' : 48 }}>
         {isMobile ? (
           <select value={tab} onChange={(e) => setTab(e.target.value)} style={{ ...sx('flex:1;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-weight:600;font-family:var(--font-body);font-size:14px;padding:10px 12px;cursor:pointer;-webkit-appearance:none;appearance:none') }}>
             {tabs.map(([k, label]) => <option key={k} value={k} style={{ color: 'var(--text)', background: 'var(--surface)' }}>{label}</option>)}
@@ -141,7 +141,7 @@ export default function AdminView() {
       {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
 
       {toast && (
-        <div style={sx('position:fixed;top:68px;right:20px;z-index:60;background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:12px 16px;display:flex;align-items:center;gap:9px')}>
+        <div style={sx('position:fixed;top:68px;right:20px;z-index:var(--z-toast);background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:12px 16px;display:flex;align-items:center;gap:9px')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
           <span style={sx('font-size:12.5px;font-weight:500')}>{toast}</span>
         </div>

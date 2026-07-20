@@ -47,7 +47,9 @@ export default function VisitaCatalogo({ j }) {
       )}
 
       <div style={sx('flex:none;padding:12px 14px 8px')}>
-        <div style={sx('display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 12px;height:44px')}>
+        {/* El input va sin borde ni outline a propósito: el foco lo marca este
+            contenedor con .lu-campo (:focus-within). Ver index.css. */}
+        <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:44px')}>
           <Search />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
         </div>
