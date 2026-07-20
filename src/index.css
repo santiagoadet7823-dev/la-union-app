@@ -48,7 +48,14 @@
      200, 300, 400, 1260, 2000, 2100) y colisiones reales: NuevoCliente (80)
      e ImportarClientes (90) quedaban por debajo del scrim de AppShell (2000),
      así que un modal abierto desde adentro podía renderizar bajo el chrome.
-     El orden de abajo es el ÚNICO orden válido de apilamiento. */
+     El orden de abajo es el ÚNICO orden válido de apilamiento.
+
+     ⚠️ Esta escala chica SOLO es válida porque `components/LeafletMap.jsx` lleva
+     `isolation: isolate`. Leaflet asigna z-index de hasta 1000 a sus propias capas
+     (las esquinas de controles, .leaflet-top/.leaflet-bottom, están en 1000 y NO
+     viven dentro de .leaflet-map-pane, así que el transform de Leaflet no las
+     contiene). Sin ese isolate, cualquier chrome por debajo de 1000 queda tapado
+     por el mapa. Si se saca, esta escala entera deja de funcionar. */
   --z-map: 0;         /* el mapa Leaflet, siempre el fondo */
   --z-chrome: 100;    /* header, rail de controles, bottom-nav */
   --z-popover: 200;   /* menús de cuenta, selector de fecha, menú "+" */

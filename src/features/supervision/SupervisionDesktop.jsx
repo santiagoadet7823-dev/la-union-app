@@ -260,9 +260,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
 
         {/* ===== TOPBAR ===== */}
-        {/* zIndex 1200: por encima de las capas internas de Leaflet (~1000), para que el
-            menú de cuenta se despliegue SOBRE el mapa y sea clickeable. El drawer móvil
-            usa 1260/1261 para seguir tapando el header cuando está abierto. */}
+        {/* 20/07/2026 — Este header estaba en `zIndex: 1200` con un comentario que explicaba
+            por qué: quedar por encima de las capas internas de Leaflet (~1000) para que el
+            menú de cuenta se despliegue SOBRE el mapa. Al tokenizar los z-index se bajó a
+            --z-chrome (100) SIN leer ese comentario, y el bug volvió: el desplegable se veía
+            sobre el header y desaparecía sobre el mapa.
+            Ahora el número chico es seguro porque la contención se hace en el origen:
+            LeafletMap lleva `isolation: isolate` y confina sus 200–1000 adentro. Si alguna
+            vez se saca ese isolate, este header vuelve a necesitar un z-index > 1000. */}
         <header style={{ flex: 'none', minHeight: 58, display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)' }}>
           {/* Hamburguesa (solo mobile) */}
           {isMobile && (

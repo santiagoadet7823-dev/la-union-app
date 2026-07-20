@@ -371,5 +371,21 @@ export default function LeafletMap({
     })
   }, [clients, theme])
 
-  return <div ref={divRef} style={{ width: '100%', height, borderRadius: 16, overflow: 'hidden', background: 'var(--map-bg)' }} />
+  // 🩸 `isolation: isolate` (20/07/2026) — NO SACAR.
+  //
+  // Leaflet asigna z-index internos altísimos a sus propias capas: los panes van de
+  // 400 a 700, el contenedor de controles 800, y hay reglas que llegan a 1000
+  // (leaflet.css). Sin un stacking context propio, esos números compiten de igual a
+  // igual contra el chrome de la app: el desplegable de "Mi cuenta" quedaba DEBAJO
+  // del mapa de monitoreo, porque los popovers están en --z-popover (200).
+  //
+  // Con `isolate` el mapa crea su propio contexto y todo lo de Leaflet queda
+  // confinado adentro: alcanza cualquier z-index >= 1 para taparlo. Eso es lo que
+  // permite que la escala de tokens siga siendo chica y legible en vez de tener que
+  // perseguir los números de la librería.
+  //
+  // SupervisionMovil.jsx:268 ya hacía esto a mano en su capa de mapa; acá pasa a
+  // valer para TODOS los mapas (SupervisionDesktop, MapaOperativo, RecorridosView,
+  // los mini-mapas de las fichas, etc.), que era donde faltaba.
+  return <div ref={divRef} style={{ width: '100%', height, borderRadius: 16, overflow: 'hidden', background: 'var(--map-bg)', isolation: 'isolate' }} />
 }

@@ -124,6 +124,20 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 22. **Síntoma diagnóstico**: si `estado_dispositivo` sube pero `posiciones` no, **no es la red ni la
     sesión** — las dos usan la misma. Mirá `cola_pendiente` y los logs de Postgres.
 
+### Mapas y apilamiento
+
+28. **`LeafletMap` lleva `isolation: isolate` y NO se saca.** Leaflet asigna z-index de hasta
+    **1000** a sus propias capas, y las esquinas de controles (`.leaflet-top`/`.leaflet-bottom`,
+    z-index 1000) **no** viven dentro de `.leaflet-map-pane`, así que el `transform` que Leaflet
+    le pone a ese pane no las contiene: se escapan al contexto padre. Sin el `isolate`, todo el
+    chrome de la app por debajo de 1000 queda tapado por el mapa. Toda la escala `--z-*` depende
+    de esto. Costó el bug del 20/07/2026: el desplegable de "Mi cuenta" en Monitoreo en vivo se
+    veía sobre el header y desaparecía sobre el mapa.
+29. **Antes de cambiar un z-index, leer el comentario que lo acompaña.** Ese mismo bug ya estaba
+    resuelto en `SupervisionDesktop.jsx` con un `zIndex: 1200` y un comentario que explicaba
+    exactamente por qué. Se lo bajó a `--z-chrome` sin leerlo y el bug volvió. Es el caso
+    concreto de la regla 24.
+
 ### Navegación nativa
 
 26. **El botón ATRÁS de Android se maneja con la pila de [`services/atras.js`](src/services/atras.js),
