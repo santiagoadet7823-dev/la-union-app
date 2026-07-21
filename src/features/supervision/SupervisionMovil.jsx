@@ -98,6 +98,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [section, setSection] = useState('mapa') // 'mapa' | 'dash'
   const [filter, setFilter] = useState(null)     // null | 'v' | 'r'
   const [pinId, setPinId] = useState(null)
+  const [foco, setFoco] = useState(null)         // { id, nonce } — usuario a enfocar en el mapa
   const [acctOpen, setAcctOpen] = useState(false)
   const [plusOpen, setPlusOpen] = useState(false)
   const [toast, setToast] = useState(null)
@@ -170,6 +171,34 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const moversFil = moversArr.filter((m) => pasaFiltro(m.rol))
   const vendCount = moversArr.filter((m) => !esRep(m.rol)).length
   const repCount = moversArr.filter((m) => esRep(m.rol)).length
+
+  // Click en una persona (lista del dashboard o del informe de estado) → cerrar el sheet,
+  // volver al mapa y encuadrar SU recorrido del día. Si no tiene recorrido, cae a su
+  // posición en vivo; si no hay ninguna, avisa. El nonce fuerza el re-enfoque aunque sea
+  // el mismo usuario.
+  const enfocarUsuario = useCallback((id) => {
+    setSection('mapa')
+    setPinId(id)
+    setFoco({ id, nonce: Date.now() })
+  }, [])
+
+  // Puntos a encuadrar para el usuario enfocado: su recorrido (byUser) o, si no tiene, su
+  // último punto en vivo (movers). El toast de "sin recorrido" se dispara en un efecto aparte
+  // para no correr efectos secundarios dentro del render.
+  const focusData = useMemo(() => {
+    if (!foco) return null
+    const pts = byUser[foco.id]?.points
+    if (pts && pts.length) return { points: pts, nonce: foco.nonce }
+    const mv = movers[foco.id]
+    if (mv) return { points: [{ lat: mv.lat, lng: mv.lng }], nonce: foco.nonce }
+    return { points: [], nonce: foco.nonce }
+  }, [foco, byUser, movers])
+
+  // Aviso si la persona enfocada no tiene nada que mostrar hoy (ni recorrido ni señal viva).
+  useEffect(() => {
+    if (foco && focusData && focusData.points.length === 0) showToast('Sin recorrido de esa persona hoy')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foco && foco.nonce])
 
   // Trazos (>=2 puntos) filtrados por chip.
   const trails = useMemo(() => Object.entries(byUser)
@@ -275,6 +304,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           clients={showClientes ? clientMarkers : []}
           dwells={dwells}
           fit={!fitDone}
+          focus={focusData}
           edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 24, left: 16 }}
           onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); setPlusOpen(false); setAcctOpen(false) } }}
         />
@@ -537,8 +567,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         title="Dashboard"
         subtitle={isProp ? 'Vista de dirección · solo lectura' : 'Jornada en curso'}
       >
-      {/* Informe: por qué no llega la señal (lo ve también el propietario) */}
-      <div style={{ marginBottom: 10 }}><EstadoEquipo /></div>
+      {/* Informe: por qué no llega la señal (lo ve también el propietario). Click en una
+          persona → cierra el sheet y encuadra su recorrido. */}
+      <div style={{ marginBottom: 10 }}><EstadoEquipo onSelectUsuario={enfocarUsuario} /></div>
 
       {/* Equipo en la calle (real) */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 10 }}>
@@ -549,7 +580,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         {moversArr.length === 0 ? (
           <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--faint)' }}>Nadie está compartiendo ubicación ahora.</div>
         ) : moversArr.map((m) => (
-          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+          <div key={m.id} onClick={() => enfocarUsuario(m.id)} className="lu-press" role="button" title="Ver su recorrido en el mapa" style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
             <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[m.id] || m.rol}</div>

@@ -69,7 +69,7 @@ export default function ReplayJornada({ onToast }) {
     setPlaying(false); setLoading(true); setIdx(0)
     const desde = new Date(fecha + 'T00:00:00').toISOString()
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
-    const data = await historialPosiciones(userId, desde, hasta)
+    const data = await historialPosiciones(userId, desde, hasta, idEmpresa)
     setPts(data)
     ptsFechaRef.current = fecha
     ptsUserRef.current = userId

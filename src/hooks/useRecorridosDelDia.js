@@ -177,6 +177,14 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   // Persistir lo cargado. Se guarda UNA sola fecha (la clave es fija y el registro lleva
   // adentro fecha/empresa/forma): así cambiar de día pisa la entrada anterior y el storage
   // queda acotado a ~200 KB en vez de crecer un día por cada fecha visitada.
+  //
+  // 20/07/2026 — PLAN_SAAS.md §3.4 pedía namespacear esta clave por empresa. Se decidió
+  // NO hacerlo: la lectura ya valida `cache.idEmpresa === idEmpresa` (más arriba), así
+  // que una entrada de otro tenant se descarta y no hay fuga — a lo sumo un cache-miss
+  // al alternar empresas. Namespacear sí tendría costo: `services/persistence` no expone
+  // keys() ni clear(), así que las entradas de tenants viejos quedarían huérfanas y sin
+  // forma de purgarlas, que es justo lo que el párrafo de arriba evita. Revisar solo si
+  // llega el selector de scope del TenantContext.
   useEffect(() => {
     if (!idEmpresa || !lastTsRef.current) return
     if (!Object.keys(byUser).length) return

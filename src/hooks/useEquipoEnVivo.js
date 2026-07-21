@@ -12,7 +12,12 @@ import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../servic
  *   - gpsOff: { [id]: {nombre, rol, ts} } — móviles que DESACTIVARON su GPS (alerta efímera).
  *   - mqttOn: estado de la conexión de telemetría.
  *
- * No publica nada ni escribe: es solo lectura. El aislamiento por empresa lo da RLS.
+ * No publica nada ni escribe: es solo lectura.
+ *
+ * Aislamiento por empresa: filtro EXPLÍCITO en cada query, además de RLS. RLS solo
+ * no alcanza porque para el superadmin no filtra nada (ve todos los tenants por
+ * diseño), así que sin el .eq() estas queries le mezclaban los datos de todas las
+ * empresas en el mismo mapa. Ver PLAN_SAAS.md §3.4.
  */
 export default function useEquipoEnVivo() {
   const { idEmpresa } = useAuth()
@@ -23,18 +28,21 @@ export default function useEquipoEnVivo() {
 
   // Nombres de los usuarios de la empresa (para etiquetar los móviles en el mapa).
   useEffect(() => {
-    supabase.from('perfiles').select('id, nombre').then(({ data }) => {
+    if (!idEmpresa) return // el perfil todavía no cargó: no disparar la query sin filtro
+    supabase.from('perfiles').select('id, nombre').eq('id_empresa', idEmpresa).then(({ data }) => {
       const m = {}
       ;(data || []).forEach((u) => { m[u.id] = u.nombre })
       setNombres(m)
     })
-  }, [])
+  }, [idEmpresa])
 
   // Sembrar con la ÚLTIMA posición conocida de cada móvil (últimos 15 min), así
   // aparecen de inmediato sin esperar un fix nuevo.
   useEffect(() => {
+    if (!idEmpresa) return
     const desde = new Date(Date.now() - 15 * 60000).toISOString()
-    supabase.from('posiciones').select('id_usuario, rol, lat, lng, ts').gte('ts', desde).order('ts', { ascending: false })
+    supabase.from('posiciones').select('id_usuario, rol, lat, lng, ts')
+      .eq('id_empresa', idEmpresa).gte('ts', desde).order('ts', { ascending: false })
       .then(({ data }) => {
         const seen = {}
         const seed = {}
@@ -52,7 +60,7 @@ export default function useEquipoEnVivo() {
     const offPos = suscribirPosiciones((p) => {
       if (!p || !p.id_usuario) return
       setMovers((m) => ({ ...m, [p.id_usuario]: { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() } }))
-    })
+    }, idEmpresa)
     const offConn = estadoConexion(setMqttOn)
     const offAlert = suscribirAlertas((a) => {
       if (!a || !a.id) return

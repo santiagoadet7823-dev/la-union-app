@@ -202,10 +202,17 @@ export default function Overlay({
   // El criterio de cierre es de VELOCIDAD, no de distancia (estándar de Emil):
   // un envión corto y rápido tiene que alcanzar. El umbral de distancia queda solo
   // como red para el arrastre lento y largo.
+  // 🩸 20/07/2026 — El arrastre nace SOLO del chrome superior (agarradera + header), no
+  // del cuerpo. Antes los handlers vivían en la card entera con `touch-action` por defecto:
+  // en el WebView de Android el navegador reclamaba el swipe vertical como scroll del cuerpo
+  // y emitía `pointercancel` antes de que el arrastre se capturara (a los 4px), así que
+  // `alSoltarDedo` salía por `!capturado` sin evaluar el umbral y el sheet NO cerraba salvo
+  // que agarraras justo la barrita de 36px. Al mover el gesto al chrome fijo con
+  // `touch-action:none` (ver `dragProps`), el cuerpo scrollea nativo y el arrastre se captura
+  // siempre. Por eso ya no hace falta la vieja guarda de `cuerpoRef.scrollTop > 0`: el arrastre
+  // no compite con el scroll del cuerpo.
   function alBajarDedo(e) {
     if (!esSheet || !dismissible || saliendo) return
-    // Si el cuerpo está scrolleado, el gesto es scroll y no arrastre de la hoja.
-    if (cuerpoRef.current && cuerpoRef.current.scrollTop > 0) return
     arrastre.current = { y0: e.clientY, t0: performance.now(), capturado: false }
   }
 
@@ -240,6 +247,13 @@ export default function Overlay({
     ? (saliendo ? 'lu-sheet-down' : (arrastrandoAhora ? '' : 'lu-sheet-up'))
     : (saliendo ? 'lu-modal-out' : 'lu-modal-card')
 
+  // Handlers del arrastre-para-cerrar. Van SOLO en el chrome superior de los sheets
+  // (agarradera + header), con `touch-action:none` para que el WebView no se robe el
+  // gesto como scroll. En modales no hay arrastre (los handlers ya cortan por !esSheet).
+  const dragProps = esSheet
+    ? { onPointerDown: alBajarDedo, onPointerMove: alMoverDedo, onPointerUp: alSoltarDedo, onPointerCancel: alSoltarDedo }
+    : {}
+
   const arbol = (
     <div
       className={saliendo ? 'lu-scrim-out' : 'lu-modal-scrim'}
@@ -261,10 +275,6 @@ export default function Overlay({
         ref={cardRef}
         className={claseCard}
         onAnimationEnd={onAnimationEnd}
-        onPointerDown={alBajarDedo}
-        onPointerMove={alMoverDedo}
-        onPointerUp={alSoltarDedo}
-        onPointerCancel={alSoltarDedo}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? tituloId : undefined}
@@ -295,7 +305,7 @@ export default function Overlay({
             es obligatorio — sin eso el navegador se queda el gesto vertical como scroll
             y los pointermove nunca llegan. Zona táctil generosa (padding), barra chica. */}
         {esSheet && (
-          <div style={{ flex: 'none', display: 'grid', placeItems: 'center', padding: 'var(--sp-2) 0 var(--sp-1)', cursor: dismissible ? 'grab' : 'default', touchAction: 'none' }}>
+          <div {...dragProps} style={{ flex: 'none', display: 'grid', placeItems: 'center', padding: 'var(--sp-2) 0 var(--sp-1)', cursor: dismissible ? 'grab' : 'default', touchAction: 'none' }}>
             <div style={{ width: 36, height: 4, borderRadius: 'var(--r-pill)', background: 'var(--line2)' }} />
           </div>
         )}
@@ -303,6 +313,7 @@ export default function Overlay({
         {/* ===== HEADER (fijo) ===== */}
         {title && (
           <div
+            {...dragProps}
             style={{
               flex: 'none',
               display: 'flex',
@@ -310,6 +321,9 @@ export default function Overlay({
               gap: 'var(--sp-3)',
               padding: 'var(--sp-4)',
               borderBottom: '1px solid var(--line)',
+              // En sheets el header es zona de arrastre: touch-action none para que el
+              // gesto no se lo lleve el scroll. En modales queda default (sin arrastre).
+              ...(esSheet ? { touchAction: 'none' } : null),
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>

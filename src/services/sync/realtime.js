@@ -19,14 +19,22 @@ import { supabase, hasSupabase } from '../supabase'
 // ---------- Posiciones: vivo + historial ----------
 
 /**
- * Se suscribe a las posiciones entrantes (para el Admin). RLS filtra por empresa.
+ * Se suscribe a las posiciones entrantes de UNA empresa (para el Admin).
  * handler recibe {id_usuario, rol, lat, lng, ts, id_empresa}. Devuelve baja.
+ *
+ * El `filter` va del lado del servidor y el canal lleva la empresa en el nombre:
+ * mismo patrón que `canalAlertas` más abajo. Antes el canal era el literal fijo
+ * 'rt-posiciones' sin filtro y el aislamiento quedaba solo en RLS — que para el
+ * superadmin no filtra, así que veía los móviles de todos los tenants en su mapa.
  */
-export function suscribirPosiciones(handler) {
-  if (!hasSupabase) return () => {}
+export function suscribirPosiciones(handler, idEmpresa) {
+  if (!hasSupabase || !idEmpresa) return () => {}
   const ch = supabase
-    .channel('rt-posiciones')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posiciones' }, (payload) => {
+    .channel('rt-posiciones-' + idEmpresa)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'posiciones',
+      filter: 'id_empresa=eq.' + idEmpresa,
+    }, (payload) => {
       if (payload?.new) handler(payload.new)
     })
     .subscribe()
@@ -37,11 +45,12 @@ export function suscribirPosiciones(handler) {
  * Historial de posiciones de un usuario en el rango [desdeISO, hastaISO],
  * ordenado cronológicamente, para reproducir el recorrido de la jornada.
  */
-export async function historialPosiciones(idUsuario, desdeISO, hastaISO) {
-  if (!hasSupabase || !idUsuario) return []
+export async function historialPosiciones(idUsuario, desdeISO, hastaISO, idEmpresa) {
+  if (!hasSupabase || !idUsuario || !idEmpresa) return []
   const { data, error } = await supabase
     .from('posiciones')
     .select('lat,lng,ts')
+    .eq('id_empresa', idEmpresa)
     .eq('id_usuario', idUsuario)
     .gte('ts', desdeISO)
     .lte('ts', hastaISO)

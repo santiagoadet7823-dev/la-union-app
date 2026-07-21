@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth } from '../../context/AuthContext'
 import { APP_VERSION } from '../../version'
+import { inputStyle } from '../../components/form'
 import Logo from '../../components/Logo'
 
 function GoogleIcon() {
@@ -15,19 +17,75 @@ function GoogleIcon() {
 }
 
 export default function LoginView() {
-  const { signInWithGoogle, hasSupabase, authError, authStatus } = useAuth()
+  const { signInWithGoogle, signInWithPassword, hasSupabase, authError, authStatus } = useAuth()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [entrando, setEntrando] = useState(false) // login por email en curso
+
+  const puedeEnviar = hasSupabase && email.trim() && password && !entrando
+
+  async function ingresarConEmail(e) {
+    e.preventDefault()
+    if (!puedeEnviar) return
+    setEntrando(true)
+    // El onAuthStateChange del AuthProvider levanta la sesión y cambia de pantalla;
+    // solo reactivamos el botón si hubo error (si entró, esta vista se desmonta).
+    const { error } = await signInWithPassword({ email, password })
+    if (error) setEntrando(false)
+  }
 
   return (
     <div style={sx('min-height:100vh;display:grid;place-items:center;background:var(--bg-app);color:var(--text);padding:24px')}>
       <div style={sx('width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lg);padding:28px 24px;text-align:center')}>
         <Logo size={52} radius={14} style={{ margin: '0 auto 14px' }} />
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:.03em')}>DisT-At</div>
-        <div style={sx('font-size:12.5px;color:var(--muted);margin:6px 0 22px')}>Ingresá con tu cuenta de Google para continuar.</div>
+        <div style={sx('font-size:12.5px;color:var(--muted);margin:6px 0 22px')}>Ingresá para continuar.</div>
+
+        <form onSubmit={ingresarConEmail} style={sx('text-align:left')}>
+          <input
+            type="email"
+            autoComplete="username"
+            inputMode="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={!hasSupabase || entrando}
+            style={{ ...inputStyle, marginBottom: 10 }}
+            className="lu-input"
+            aria-label="Email"
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={!hasSupabase || entrando}
+            style={inputStyle}
+            className="lu-input"
+            aria-label="Contraseña"
+          />
+          <button
+            type="submit"
+            disabled={!puedeEnviar}
+            className="lu-press"
+            style={{ ...sx('width:100%;min-height:48px;margin-top:14px;display:flex;align-items:center;justify-content:center;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:14px'), cursor: puedeEnviar ? 'pointer' : 'not-allowed', opacity: puedeEnviar ? 1 : 0.6 }}
+          >
+            {entrando ? 'Ingresando…' : 'Ingresar'}
+          </button>
+        </form>
+
+        <div style={sx('display:flex;align-items:center;gap:10px;margin:18px 0')} aria-hidden="true">
+          <span style={sx('flex:1;height:1px;background:var(--line)')} />
+          <span style={sx('font-size:11px;color:var(--faint)')}>o</span>
+          <span style={sx('flex:1;height:1px;background:var(--line)')} />
+        </div>
 
         <button
           onClick={() => signInWithGoogle()}
-          disabled={!hasSupabase}
-          style={sx('width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f2937;border:1px solid #dadce0;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer')}
+          disabled={!hasSupabase || entrando}
+          className="lu-press"
+          style={sx('width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f2937;border:1px solid #dadce0;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer')}
         >
           <GoogleIcon /> Continuar con Google
         </button>
@@ -51,8 +109,8 @@ export default function LoginView() {
         )}
 
         <div style={sx('margin-top:20px;font-size:11px;color:var(--faint);line-height:1.5')}>
-          Al ingresar por primera vez tu cuenta queda <b>pendiente de aprobación</b>. Un administrador
-          te asignará tu rol (vendedor, repartidor, encargado o admin).
+          ¿No tenés cuenta? Pedile el alta a un <b>administrador</b>: él crea tu usuario y te pasa la
+          contraseña. Si entrás con Google por primera vez, quedás <b>pendiente de aprobación</b>.
         </div>
 
         <div style={sx('margin-top:12px;font-size:10px;color:var(--faint);font-family:var(--font-mono)')}>v{APP_VERSION}</div>

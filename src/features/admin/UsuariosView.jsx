@@ -3,6 +3,8 @@ import { sx } from '../../lib/sx'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
+import Overlay from '../../components/Overlay'
+import { Field, inputStyle } from '../../components/form'
 import { panel, FilaTabla, CabeceraTabla } from './ui'
 
 /**
@@ -82,6 +84,129 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, r
   )
 }
 
+// Traduce los códigos de error de la Edge Function crear-usuario a algo legible.
+const MSG_ERROR = {
+  'email-invalido': 'El email no es válido.',
+  'password-corta': 'La contraseña debe tener al menos 6 caracteres.',
+  'email-ya-existe': 'Ya existe una cuenta con ese email.',
+  'rol-no-permitido': 'No podés asignar ese rol.',
+  'sin-empresa': 'Falta asignar la empresa.',
+  'sin-permiso': 'No tenés permiso para crear usuarios.',
+  'sin-perfil': 'Tu cuenta no está habilitada para esto.',
+  'codigo-invalido': 'El código debe ser un número.',
+}
+const traducirError = (code) => MSG_ERROR[code] || code || 'No se pudo crear el usuario.'
+
+/**
+ * Alta manual de un usuario (email + contraseña) por el admin/superadmin. El alta
+ * real la hace la Edge Function `crear-usuario` con service_role — desde el front
+ * no se puede crear en auth.users. Ver supabase/functions/crear-usuario/index.ts.
+ *
+ * DEFINIDO A NIVEL DE MÓDULO por la misma razón que `Fila`: UsuariosView se monta
+ * dentro de SupervisionMovil, que re-renderiza cada 1s; si este modal fuera un tipo
+ * nuevo por render, React lo remontaría cada segundo y el form perdería foco y datos.
+ */
+function CrearUsuarioModal({ open, onClose, esSuper, empresas, idEmpresa, rolesDisponibles, onToast, onCreado }) {
+  const [f, setF] = useState({ email: '', password: '', nombre: '', rol: '', id_empresa: '', numero: '', telefono: '' })
+  const [verPass, setVerPass] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState(null)
+  const set = (patch) => setF((p) => ({ ...p, ...patch }))
+
+  // Reset al abrir: la instancia sobrevive entre aperturas (patrón de Overlay).
+  useEffect(() => {
+    if (open) { setF({ email: '', password: '', nombre: '', rol: '', id_empresa: '', numero: '', telefono: '' }); setVerPass(false); setError(null); setGuardando(false) }
+  }, [open])
+
+  async function crear() {
+    setError(null)
+    if (!f.email.trim()) { setError('Ingresá un email.'); return }
+    if (f.password.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return }
+    if (!f.rol) { setError('Elegí un rol.'); return }
+    const empresaFinal = esSuper ? (f.id_empresa || idEmpresa) : idEmpresa
+    if (!empresaFinal) { setError('Falta la empresa.'); return }
+
+    setGuardando(true)
+    const { data, error: errInvoke } = await supabase.functions.invoke('crear-usuario', {
+      body: {
+        email: f.email, password: f.password, nombre: f.nombre, rol: f.rol,
+        id_empresa: empresaFinal,
+        numero: f.numero, telefono: f.telefono,
+      },
+    })
+    // functions.invoke: ante status !2xx, `data` viene null y el cuerpo con {error}
+    // queda en errInvoke.context — hay que leerlo para saber el motivo real.
+    let code = data?.error || null
+    if (errInvoke && !code) {
+      try { code = (await errInvoke.context.json())?.error } catch (_) { code = errInvoke.message }
+    }
+    setGuardando(false)
+    if (code || errInvoke) { setError(traducirError(code)); return }
+    onToast?.(`Usuario ${f.email} creado como ${f.rol}`)
+    onCreado?.()
+    onClose?.()
+  }
+
+  return (
+    <Overlay
+      open={open}
+      onClose={onClose}
+      title="Crear usuario"
+      subtitle="Alta con email y contraseña. La cuenta queda habilitada al instante."
+      maxWidth={440}
+      footer={
+        <>
+          <button onClick={onClose} disabled={guardando} className="lu-press" style={{ ...btnGhost, flex: 1, minHeight: 44 }}>Cancelar</button>
+          <button onClick={crear} disabled={guardando} className="lu-press" style={{ ...btnPrimary, flex: 1, minHeight: 44 }}>{guardando ? 'Creando…' : 'Crear usuario'}</button>
+        </>
+      }
+    >
+      <Field label="Email">
+        <input type="email" inputMode="email" autoComplete="off" value={f.email} onChange={(e) => set({ email: e.target.value })} style={inputStyle} className="lu-input" placeholder="persona@correo.com" />
+      </Field>
+      <Field label="Contraseña inicial">
+        <div style={sx('display:flex;gap:8px;align-items:center')}>
+          <input type={verPass ? 'text' : 'password'} autoComplete="new-password" value={f.password} onChange={(e) => set({ password: e.target.value })} style={inputStyle} className="lu-input" placeholder="Mínimo 6 caracteres" />
+          <button type="button" onClick={() => setVerPass((v) => !v)} className="lu-press" style={{ ...btnGhost, minHeight: 44, whiteSpace: 'nowrap' }}>{verPass ? 'Ocultar' : 'Ver'}</button>
+        </div>
+      </Field>
+      <Field label="Nombre">
+        <input type="text" value={f.nombre} onChange={(e) => set({ nombre: e.target.value })} style={inputStyle} className="lu-input" placeholder="Nombre y apellido" />
+      </Field>
+      <div style={sx('display:flex;gap:10px')}>
+        <div style={sx('flex:1')}>
+          <Field label="Rol">
+            <select value={f.rol} onChange={(e) => set({ rol: e.target.value })} style={inputStyle} className="lu-input">
+              <option value="">Elegí…</option>
+              {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div style={sx('width:110px')}>
+          <Field label="Código">
+            <input type="number" min="0" value={f.numero} onChange={(e) => set({ numero: e.target.value })} style={inputStyle} className="lu-input" placeholder="—" title="Código de vendedor (opcional)" />
+          </Field>
+        </div>
+      </div>
+      {esSuper && (
+        <Field label="Empresa">
+          <select value={f.id_empresa || idEmpresa || ''} onChange={(e) => set({ id_empresa: e.target.value })} style={inputStyle} className="lu-input">
+            <option value="">Empresa…</option>
+            {empresas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+          </select>
+        </Field>
+      )}
+      <Field label="Teléfono (opcional)">
+        <input type="tel" inputMode="tel" value={f.telefono} onChange={(e) => set({ telefono: e.target.value })} style={inputStyle} className="lu-input" placeholder="—" />
+      </Field>
+
+      {error && (
+        <div style={sx('margin-top:4px;font-size:12px;color:var(--danger);background:var(--danger-tint);border:1px solid var(--danger);border-radius:10px;padding:9px 11px;line-height:1.5')}>{error}</div>
+      )}
+    </Overlay>
+  )
+}
+
 export default function UsuariosView({ onToast }) {
   const { rol, idEmpresa, user } = useAuth()
   const { isMobile } = useDevice()
@@ -93,6 +218,7 @@ export default function UsuariosView({ onToast }) {
   const [edits, setEdits] = useState({}) // { [id]: {rol, id_empresa} }
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState(null)
+  const [crear, setCrear] = useState(false) // modal de alta manual abierto
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -159,9 +285,12 @@ export default function UsuariosView({ onToast }) {
         <div style={{ ...sx('display:flex;justify-content:space-between;margin-bottom:12px;gap:12px'), alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row' }}>
           <div>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Usuarios y accesos</div>
-            <div style={sx('font-size:12px;color:var(--muted);margin-top:2px')}>Asigná el rol para habilitar el ingreso. Los nuevos entran con Google y quedan pendientes.</div>
+            <div style={sx('font-size:12px;color:var(--muted);margin-top:2px')}>Asigná el rol para habilitar el ingreso. Los que entran con Google quedan pendientes; también podés dar de alta uno con email y contraseña.</div>
           </div>
-          <button onClick={cargar} className="lu-press" style={{ ...btnGhost, ...(isMobile ? { minHeight: 44, width: '100%' } : null) }}>↻ Actualizar</button>
+          <div style={{ ...sx('display:flex;gap:8px'), ...(isMobile ? { width: '100%' } : null) }}>
+            <button onClick={() => setCrear(true)} className="lu-press" style={{ ...btnPrimary, ...(isMobile ? { minHeight: 44, flex: 1 } : null) }}>+ Crear usuario</button>
+            <button onClick={cargar} className="lu-press" style={{ ...btnGhost, ...(isMobile ? { minHeight: 44, flex: 1 } : null) }}>↻ Actualizar</button>
+          </div>
         </div>
 
         {loading ? (
@@ -186,6 +315,17 @@ export default function UsuariosView({ onToast }) {
           </>
         )}
       </div>
+
+      <CrearUsuarioModal
+        open={crear}
+        onClose={() => setCrear(false)}
+        esSuper={esSuper}
+        empresas={empresas}
+        idEmpresa={idEmpresa}
+        rolesDisponibles={rolesDisponibles}
+        onToast={onToast}
+        onCreado={cargar}
+      />
     </div>
   )
 }

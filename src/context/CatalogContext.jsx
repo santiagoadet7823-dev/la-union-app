@@ -69,7 +69,7 @@ export function CatalogProvider({ children }) {
 
   const recargar = useCallback(async () => {
     setLoading(true)
-    const { productos: prod, clientes: cli, zonas: zon, error: err } = await fetchCatalogo()
+    const { productos: prod, clientes: cli, zonas: zon, error: err } = await fetchCatalogo(idEmpresa)
     // Offline / falla sin datos: NO pisar con vacío — se conserva lo hidratado de
     // caché (mejor mostrar los últimos datos conocidos que una lista vacía).
     if (err && prod.length === 0 && cli.length === 0 && zon.length === 0) {

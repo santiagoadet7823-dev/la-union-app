@@ -153,6 +153,11 @@ export default function LeafletMap({
   trail = null,
   trailColor = '#2DD4CE',
   trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
+  // Enfoque imperativo puntual: al clickear una persona en la lista, encuadrar SU recorrido.
+  // { points:[{lat,lng}], nonce }. El nonce (timestamp por click) permite re-enfocar al
+  // mismo usuario dos veces. Es independiente del encuadre automático (fit/fitDone): no lo
+  // pisa ni lo desactiva. Ver el efecto de más abajo.
+  focus = null,
   liveColor = null,
   onMarkerClick,
   onMapClick,
@@ -351,6 +356,33 @@ export default function LeafletMap({
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, theme])
+
+  // Enfoque puntual al recorrido de una persona (click en la lista de equipo). Efecto
+  // aparte del redibujo/encuadre: se dispara SOLO cuando cambia `focus.nonce` (un timestamp
+  // por click), así re-enfocar al mismo usuario vuelve a funcionar y no interfiere con el
+  // `fit` automático. `flyToBounds`/`flyTo` dan la animación suave de cámara.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !focus || !focus.points || !focus.points.length) return
+    let bounds = null
+    focus.points.forEach((p) => {
+      if (p.lat == null || p.lng == null) return
+      const ll = [p.lat, p.lng]
+      bounds = bounds ? bounds.extend(ll) : L.latLngBounds(ll, ll)
+    })
+    if (!bounds || !bounds.isValid()) return
+    // Un solo punto (o todos iguales): fitBounds no puede elegir zoom → flyTo con zoom fijo.
+    if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
+      map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || zoom, 16), { duration: 0.6 })
+    } else {
+      map.flyToBounds(bounds, {
+        paddingTopLeft: [edgePadding.left, edgePadding.top],
+        paddingBottomRight: [edgePadding.right, edgePadding.bottom],
+        duration: 0.6,
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus && focus.nonce])
 
   // Capa de clientes (contexto). Efecto SEPARADO del redibujo de overlays: `clients` llega
   // memoizado desde la vista, así que su referencia es estable entre ticks y este efecto no se

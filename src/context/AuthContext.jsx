@@ -166,6 +166,23 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
+  // Ingreso con email + contraseña, para las cuentas que da de alta el admin
+  // (ver Edge Function crear-usuario). Convive con Google: el onAuthStateChange de
+  // arriba levanta la sesión y dispara la carga del perfil igual que en el OAuth.
+  const signInWithPassword = async ({ email, password }) => {
+    setAuthError(null)
+    const correo = (email || '').trim().toLowerCase()
+    if (!correo || !password) {
+      const msg = 'Ingresá tu email y contraseña.'
+      setAuthError(msg)
+      return { error: { message: msg } }
+    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email: correo, password })
+    // Mensaje humano para el error más común; el resto se muestra tal cual.
+    if (error) setAuthError(/invalid login/i.test(error.message) ? 'Email o contraseña incorrectos.' : error.message)
+    return { data, error }
+  }
+
   // Auto-edición del propio perfil (nombre + teléfono) vía RPC. En éxito, mergea
   // el resultado en el estado y refresca la caché (offline-first, igual que el resto).
   const actualizarMiPerfil = async ({ nombre, telefono }) => {
@@ -212,6 +229,7 @@ export function AuthProvider({ children }) {
     authError,
     authStatus,
     signInWithGoogle,
+    signInWithPassword,
     signOut,
     actualizarMiPerfil,
     refetchPerfil: () => cargarPerfil(session?.user?.id),

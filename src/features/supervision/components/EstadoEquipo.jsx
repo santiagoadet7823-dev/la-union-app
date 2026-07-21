@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import { supabase } from '../../../services/supabase'
 import { colorPorId } from '../../../lib/colors'
 import { hoyStr } from '../../../lib/format'
@@ -13,21 +14,30 @@ import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
  *                         Si nunca confirmó 2º plano → nota "puede ser permiso 'solo mientras uso'".
  *   - Sin actividad hoy → no hay ningún latido registrado hoy.
  *
- * Lee `estado_dispositivo` (RLS lo limita a la empresa; incluye al propietario) + `perfiles`.
- * Solo lectura. Reusable en la supervisión móvil y en el panel web.
+ * Lee `estado_dispositivo` + `perfiles`, filtrando por empresa de forma explícita
+ * además de RLS (que para el superadmin no filtra: sin el .eq() le aparecían acá
+ * los móviles de todos los tenants). Solo lectura. Reusable en la supervisión
+ * móvil y en el panel web.
  */
 const RECIENTE_MS = 5 * 60000 // un latido más viejo que esto = "sin señal"
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 
-export default function EstadoEquipo({ compact = false }) {
+export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
+  // Ruta de LECTURA pura: cuando exista el TenantContext de PLAN_SAAS.md §3.2,
+  // esto pasa a `useTenant().idEmpresaActiva`. Las rutas de escritura de GPS
+  // siguen con useAuth() — regla 11 de CLAUDE.md.
+  const { idEmpresa } = useAuth()
   const users = usePerfilesEquipo()
   const [estados, setEstados] = useState({})
   const [, tick] = useState(0)
 
   const cargarEstados = useCallback(async () => {
-    const { data: e } = await supabase.from('estado_dispositivo').select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok')
+    if (!idEmpresa) return
+    const { data: e } = await supabase.from('estado_dispositivo')
+      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok')
+      .eq('id_empresa', idEmpresa)
     if (e) { const m = {}; e.forEach((r) => { m[r.id_usuario] = r }); setEstados(m) }
-  }, [])
+  }, [idEmpresa])
 
   useEffect(() => { cargarEstados() }, [cargarEstados])
   useEffect(() => { const iv = setInterval(cargarEstados, 45000); return () => clearInterval(iv) }, [cargarEstados])
@@ -84,7 +94,14 @@ export default function EstadoEquipo({ compact = false }) {
       {filas.length === 0 ? (
         <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--faint)' }}>No hay móviles activos.</div>
       ) : filas.map((f) => (
-        <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid var(--line)' }}>
+        <div
+          key={f.id}
+          onClick={onSelectUsuario ? () => onSelectUsuario(f.id) : undefined}
+          className={onSelectUsuario ? 'lu-press' : undefined}
+          role={onSelectUsuario ? 'button' : undefined}
+          title={onSelectUsuario ? 'Ver su recorrido en el mapa' : undefined}
+          style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid var(--line)', cursor: onSelectUsuario ? 'pointer' : 'default' }}
+        >
           <span style={{ width: 10, height: 10, flex: 'none', borderRadius: 99, background: f.color, boxShadow: `0 0 0 3px ${f.color}22` }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre} <span style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{f.rol}</span></div>

@@ -88,6 +88,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [dwellOn, setDwellOn] = useState(true) // carteles de permanencia sobre el mapa (default: encendidos)
   const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [pinId, setPinId] = useState(null)
+  const [foco, setFoco] = useState(null)       // { id, nonce } — usuario a enfocar en el mapa
   const [acctOpen, setAcctOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false) // sidebar como drawer en mobile
   const [toast, setToast] = useState(null)
@@ -149,6 +150,28 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const moversFil = moversArr.filter((m) => pasaFiltro(m.rol))
   const vendCount = moversArr.filter((m) => !esRep(m.rol)).length
   const repCount = moversArr.filter((m) => esRep(m.rol)).length
+
+  // Click en una persona (lista de métricas o informe de estado) → volver al mapa y encuadrar
+  // su recorrido del día; si no tiene, su posición en vivo; si no hay ninguna, avisa.
+  const enfocarUsuario = useCallback((id) => {
+    setView('mapa')
+    setPinId(id)
+    setFoco({ id, nonce: Date.now() })
+  }, [])
+
+  const focusData = useMemo(() => {
+    if (!foco) return null
+    const pts = byUser[foco.id]?.points
+    if (pts && pts.length) return { points: pts, nonce: foco.nonce }
+    const mv = movers[foco.id]
+    if (mv) return { points: [{ lat: mv.lat, lng: mv.lng }], nonce: foco.nonce }
+    return { points: [], nonce: foco.nonce }
+  }, [foco, byUser, movers])
+
+  useEffect(() => {
+    if (foco && focusData && focusData.points.length === 0) showToast('Sin recorrido de esa persona hoy')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foco && foco.nonce])
 
   // Trazos (>=2 puntos) filtrados por chip.
   const trails = useMemo(() => Object.entries(byUser)
@@ -423,6 +446,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       markers={mapMarkers}
                       clients={showClientes ? clientMarkers : []}
                       fit={!fitDone}
+                      focus={focusData}
                       edgePadding={{ top: 28, right: 28, bottom: 28, left: 28 }}
                       onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}
                     />
@@ -437,6 +461,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                 isMobile={isMobile}
                 moversArr={moversArr}
                 nombres={nombres}
+                onSelectUsuario={enfocarUsuario}
               />
             </div>
           )}
@@ -466,12 +491,12 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 // ---- MÉTRICAS (Estado del equipo + Equipo en la calle + KPIs) ----
 // Reutiliza EstadoEquipo y replica las tarjetas de PropietarioView / SupervisionMovil.
 // `expanded` (vista Dashboard) usa una grilla más ancha para los KPIs.
-function Metricas({ expanded, isProp, isMobile, moversArr, nombres }) {
+function Metricas({ expanded, isProp, isMobile, moversArr, nombres, onSelectUsuario }) {
   const kpiCols = isMobile ? '1fr 1fr' : (expanded ? 'repeat(4, 1fr)' : 'repeat(auto-fit, minmax(200px, 1fr))')
   return (
     <div style={{ display: 'grid', gap: 16, gridTemplateColumns: !isMobile && !expanded ? '1fr 1fr' : '1fr' }}>
-      {/* Estado del equipo · por qué no llega la señal */}
-      <div><EstadoEquipo /></div>
+      {/* Estado del equipo · por qué no llega la señal. Click → enfoca su recorrido en el mapa. */}
+      <div><EstadoEquipo onSelectUsuario={onSelectUsuario} /></div>
 
       {/* Equipo en la calle (real, en vivo) */}
       <div style={panelSx}>
@@ -483,7 +508,7 @@ function Metricas({ expanded, isProp, isMobile, moversArr, nombres }) {
           {moversArr.length === 0 ? (
             <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--faint)' }}>Nadie está compartiendo ubicación ahora.</div>
           ) : moversArr.map((m) => (
-            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+            <div key={m.id} onClick={onSelectUsuario ? () => onSelectUsuario(m.id) : undefined} className={onSelectUsuario ? 'lu-press' : undefined} role={onSelectUsuario ? 'button' : undefined} title={onSelectUsuario ? 'Ver su recorrido en el mapa' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)', cursor: onSelectUsuario ? 'pointer' : 'default' }}>
               <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[m.id] || m.rol}</div>
