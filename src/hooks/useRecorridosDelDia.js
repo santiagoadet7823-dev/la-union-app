@@ -32,6 +32,10 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const lastTsRef = useRef(null)
+  // Cuántos puntos tenemos cargados en total (todos los usuarios). Sirve para detectar
+  // BACKFILL: si el server tiene más puntos del día que los que tenemos, es que entraron
+  // puntos con ts viejo por detrás del cursor incremental (ver comentario en `load`).
+  const cargadosRef = useRef(0)
   const esHoy = fecha === hoyStr()
 
   const load = useCallback(async (incremental) => {
@@ -88,6 +92,9 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     }
     setError(null)
     const data = filas
+    // Llevamos la cuenta de lo cargado: la completa REEMPLAZA el total, la incremental SUMA.
+    if (incremental) cargadosRef.current += data.length
+    else cargadosRef.current = data.length
     // Autocontrol: el servidor dice cuántas filas hay (`count: 'exact'`) y comparamos contra
     // lo que realmente juntamos. Si no coinciden, el recorrido que se está por dibujar está
     // incompleto — y un recorrido incompleto se ve igual de convincente que uno entero. Este
@@ -131,6 +138,22 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
       setByUser({})
     }
     setUpdatedAt(Date.now())
+
+    // BACKFILL: el refresco incremental solo trae puntos con `ts > cursor`. Cuando una cola de
+    // posiciones drena TARDE (p.ej. tras destaparse un taponamiento), esos puntos entran a la
+    // base con `ts` VIEJO — anterior al cursor — así que el incremental NO los ve nunca y el
+    // recorrido crudo se queda corto (21/07/2026: un vendedor cuya cola drenó ~2.400 puntos de
+    // la mañana no aparecía en crudo, aunque el snap —que baja completo— sí lo mostraba). Para
+    // detectarlo comparamos el total del día en el server contra lo que tenemos; si el server
+    // tiene más, hacemos una recarga COMPLETA (trae también los re-insertados con fecha vieja).
+    // Es un count `head:true` (sin filas): barato aunque corra cada 60 s.
+    if (incremental) {
+      const { count: totalDia } = await supabase.from('posiciones')
+        .select('id', { count: 'exact', head: true })
+        .eq('id_empresa', idEmpresa).gte('ts', desde).lte('ts', hasta)
+      if (typeof totalDia === 'number' && totalDia > cargadosRef.current) load(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idEmpresa, fecha, conRol])
 
   // Carga inicial y al cambiar de fecha/empresa: primero se intenta hidratar desde la caché
@@ -139,6 +162,7 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   useEffect(() => {
     let vigente = true
     lastTsRef.current = null
+    cargadosRef.current = 0
     // Limpiar SINCRÓNICAMENTE al cambiar de fecha/empresa/forma. Si no, durante los ~800 ms que
     // tarda la lectura de caché, `byUser` sigue teniendo los datos del día ANTERIOR, y las vistas
     // (que reencuadran "la primera vez que hay datos") marcan el encuadre como hecho con esos
@@ -165,6 +189,9 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
       if (sirve) {
         setByUser(cache.byUser)
         lastTsRef.current = cache.lastTs
+        // Sembrar el contador con lo que trae la cache, para que la comparación de backfill del
+        // primer refresco incremental sea contra el total real (y no contra 0 → falso positivo).
+        cargadosRef.current = Object.values(cache.byUser).reduce((a, u) => a + (u?.points?.length || 0), 0)
         load(true)
       } else {
         setByUser({})

@@ -26,14 +26,16 @@ const json = (b: unknown, status = 200) =>
 
 // OSRM perfil PEATÓN (FOSSGIS). /route (no /match: el /match público está capado → TooBig).
 const OSRM_ROUTE = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot'
-const ALGO = 3            // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
+const ALGO = 6            // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
 const GAP_MAX = 1500      // m: salto mayor a esto → corta el trazo en dos segmentos
 const STATIONARY_R = 40   // m: si la MEDIANA de distancia al centro es menor → estático (no rutear)
 const MIN_SEP = 25        // m: descarta puntos más cercanos que esto al anterior (jitter)
 const MAX_WP = 90         // waypoints máx por consulta /route
 const MAX_DETOUR = 2.5    // si el ruteo por calles > esto × el crudo → usar crudo (anti calle inventada)
+const SPEED_MAX = 3.3     // m/s (~12 km/h): tramo más rápido que esto = vehículo → no snapear (perfil peatón inventa calles)
+const DRIVE_LEN = 4000    // m: un tramo más largo que esto ya implica vehículo → tampoco snapear (perfil peatón)
 
-type P = { lat: number; lng: number }
+type P = { lat: number; lng: number; ts?: string }
 const hav = (a: P, b: P) => {
   const R = 6371000, d = Math.PI / 180
   const dlat = (b.lat - a.lat) * d, dlng = (b.lng - a.lng) * d
@@ -107,13 +109,35 @@ Deno.serve(async (req) => {
     const hasta: string = body.hasta || `${fecha}T23:59:59`
 
     const admin = createClient(SB_URL, SERVICE)
-    const { data: pos, error: posErr } = await admin.from('posiciones')
-      .select('id_usuario, lat, lng, ts').eq('id_empresa', idEmpresa).gte('ts', desde).lte('ts', hasta)
-      .order('ts', { ascending: true })
-    if (posErr) return json({ error: posErr.message }, 500)
+    // Se PAGINA hasta agotar. PostgREST corta la respuesta en `max-rows` (1000) y devuelve 200
+    // igual, sin señal de que faltan filas. Como acá se pide la empresa ENTERA del día en una
+    // sola consulta, una jornada con varios móviles supera las 1000 fácil y llegaba recortada a
+    // las primeras horas: TODO lo posterior quedaba sin snapear y no se dibujaba (bug 21/07/2026:
+    // 5.205 puntos/empresa, corte a las 08:11 → la visita de la tarde de un vendedor a Apolinario
+    // Saravia no aparecía en el mapa; sus puntos estaban intactos en la tabla). Mismo bug que ya
+    // se arregló del lado del cliente en useRecorridosDelDia.js; a esta función nunca se le aplicó.
+    //
+    // Se avanza por la cantidad REALMENTE recibida y se corta con una página vacía (no con "vino
+    // menos de PAGE"): si el `max-rows` del server fuese menor que PAGE, la 1ª página vendría corta
+    // y perderíamos el resto en silencio — el mismo bug. El desempate por `id` da un orden TOTAL:
+    // dos filas con el mismo `ts` no se reparten entre páginas.
+    const PAGE = 1000
+    const MAX_VUELTAS = 200 // techo de seguridad (~200k puntos/empresa/día): nunca un bucle infinito
+    const pos: { id_usuario: string; lat: number; lng: number; ts: string }[] = []
+    let offset = 0
+    for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+      const { data: pagina, error: posErr } = await admin.from('posiciones')
+        .select('id_usuario, lat, lng, ts').eq('id_empresa', idEmpresa).gte('ts', desde).lte('ts', hasta)
+        .order('ts', { ascending: true }).order('id', { ascending: true })
+        .range(offset, offset + PAGE - 1)
+      if (posErr) return json({ error: posErr.message }, 500)
+      if (!pagina || !pagina.length) break
+      pos.push(...pagina)
+      offset += pagina.length
+    }
 
     const byUser: Record<string, P[]> = {}, lastTs: Record<string, string> = {}
-    for (const p of pos || []) { if (!p.id_usuario) continue; (byUser[p.id_usuario] ||= []).push({ lat: p.lat, lng: p.lng }); lastTs[p.id_usuario] = p.ts }
+    for (const p of pos || []) { if (!p.id_usuario) continue; (byUser[p.id_usuario] ||= []).push({ lat: p.lat, lng: p.lng, ts: p.ts }); lastTs[p.id_usuario] = p.ts }
 
     const { data: cacheRows } = await admin.from('recorridos_snap')
       .select('id_usuario, geometria, puntos, algo').eq('id_empresa', idEmpresa).eq('fecha', fecha)
@@ -131,6 +155,18 @@ Deno.serve(async (req) => {
       for (const seg of splitGaps(pts)) {
         if (seg.length < 2) continue
         if (isStationary(seg)) continue // quieto (jitter) → no rutear vueltas falsas
+        // Tramo MANEJADO (móvil en vehículo, típico entre localidades): el perfil PEATÓN de OSRM
+        // lo reencamina por calles equivocadas e "inventa" recorridos (medido 21/07/2026: un
+        // vendedor manejando entre pueblos → el snap dibujaba una calle que no recorrió; en crudo
+        // estaba fiel). Se detecta por longitud O velocidad y se dibuja el crudo adelgazado:
+        //  - LONGITUD (>4 km): entre localidades es siempre auto. Clave porque la velocidad MEDIA
+        //    no alcanza: si el móvil estuvo 1h+ parado en el medio (mismo segmento, sin corte),
+        //    el promedio del tramo se hunde y no lo marcaría — pero 35 km no se hacen a pie.
+        //  - VELOCIDAD (>12 km/h media): caza el auto en tramos cortos sin parada larga.
+        // El crudo nunca miente; el snap peatón sí, a esa velocidad/distancia.
+        const durS = (new Date(seg[seg.length - 1].ts!).getTime() - new Date(seg[0].ts!).getTime()) / 1000
+        const lenM = segLenP(seg)
+        if (lenM > DRIVE_LEN || (durS > 0 && lenM / durS > SPEED_MAX)) { segmentos.push(thin(seg).map((p) => [p.lat, p.lng])); continue }
         const g = await routeSeg(cap(thin(seg)))
         if (!g) { osrmMiss = true; segmentos.push(thin(seg).map((p) => [p.lat, p.lng])); continue }
         // Guarda anti-detour: se acepta el ruteo si NO se alarga demasiado respecto del crudo
