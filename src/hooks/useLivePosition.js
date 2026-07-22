@@ -30,7 +30,11 @@ export function useLivePosition(enabled) {
     watchPosition(
       // procesarFix persiste SIEMPRE (corre dentro del callback nativo, sobrevive al
       // congelamiento del WebView); setPos es solo para el marcador en vivo (React).
-      (p) => { procesarFix(p); if (active) setPos(p) },
+      // setError(null): un fix entrante significa que el GPS enganchó → limpia cualquier
+      // error viejo (p.ej. un timeout de `request()` en el arranque en frío). Sin esto,
+      // `activo` (que exige `!error`) quedaba en false pese a tener posición y la pantalla
+      // seguía trabada en el muro de GPS aunque el watcher ya entregara fixes (22/07/2026).
+      (p) => { procesarFix(p); if (active) { setPos(p); setError(null) } },
       (e) => { if (active) setError(e) }
     ).then((stop) => {
       stopRef.current = stop
@@ -76,7 +80,7 @@ export function useLivePosition(enabled) {
     if (!enabled) return
     const iv = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-      pedirUbicacionUnaVez({ maximumAge: 30000 }).then((p) => { procesarFix(p); setPos(p) }).catch(() => {})
+      pedirUbicacionUnaVez({ maximumAge: 30000 }).then((p) => { procesarFix(p); setPos(p); setError(null) }).catch(() => {})
     }, 60000)
     return () => clearInterval(iv)
   }, [enabled])
