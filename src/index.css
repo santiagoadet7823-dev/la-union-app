@@ -91,6 +91,13 @@ html[data-theme='light'] {
   --warning-tint: rgba(245, 158, 11, 0.14);
   --danger-tint: rgba(239, 68, 68, 0.1);
   --info-tint: rgba(14, 165, 233, 0.12);
+  /* Marco de rentabilidad del catálogo (nivel 1..4). Código de color privado para el
+     vendedor: NO reusa success/warning/danger (esos son estado) para no leerse como
+     semáforo. Ver VisitaCatalogo.jsx / db/08_catalogo_visual.sql. */
+  --rent-1: #94a3b8;
+  --rent-2: #38bdf8;
+  --rent-3: #a78bfa;
+  --rent-4: #f59e0b;
   --shadow: 0 2px 8px rgba(11, 43, 42, 0.06);
   --shadow-lg: 0 10px 28px rgba(11, 43, 42, 0.12);
   --grid: rgba(11, 43, 42, 0.06);
@@ -139,6 +146,10 @@ html[data-theme='dark'] {
   --warning-tint: rgba(251, 191, 36, 0.14);
   --danger-tint: rgba(248, 113, 113, 0.14);
   --info-tint: rgba(56, 189, 248, 0.14);
+  --rent-1: #a3b2c2;
+  --rent-2: #56c7ff;
+  --rent-3: #b9a3fb;
+  --rent-4: #fbbf24;
   --shadow: none;
   --shadow-lg: none;
   --grid: rgba(255, 255, 255, 0.06);
@@ -160,6 +171,26 @@ html[data-theme='dark'] {
   --hm3: #1ba89f;
   --hm4: #2dd4ce;
   color-scheme: dark;
+}
+
+/*
+ * Fallback de "vidrio" para WebViews que NO soportan backdrop-filter (Chrome viejos de
+ * gama baja). El glass son estilos inline que leen los tokens --glass-*, así que subir acá
+ * la OPACIDAD de esos tokens vuelve las superficies sólidas sin tocar cada componente. Sin
+ * esto, el desenfoque se ignora y quedaba un panel semitransparente que dejaba ver el mapa
+ * detrás (ilegible). El -webkit- cubre los motores que solo tienen la variante con prefijo.
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-bg: rgba(255, 255, 255, 0.94);
+    --glass-strong: rgba(255, 255, 255, 0.98);
+    --sheet-bg: rgba(247, 252, 251, 0.97);
+  }
+  html[data-theme='dark'] {
+    --glass-bg: rgba(13, 31, 30, 0.95);
+    --glass-strong: rgba(9, 22, 21, 0.98);
+    --sheet-bg: rgba(11, 26, 25, 0.97);
+  }
 }
 
 * {

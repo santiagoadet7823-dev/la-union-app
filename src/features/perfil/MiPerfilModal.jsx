@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth } from '../../context/AuthContext'
+import { initials } from '../../lib/format'
+import { subirAvatar } from '../../services/data/productoImagen'
 import Overlay from '../../components/Overlay'
 import { Field, inputStyle } from '../../components/form'
 import { btnSecundario, btnPrimario, apagado } from '../../lib/botones'
@@ -26,14 +28,41 @@ export default function MiPerfilModal({ onClose, onToast }) {
   const [nombre, setNombre] = useState(perfil?.nombre || '')
   const [telefono, setTelefono] = useState(perfil?.telefono || '')
   const [saving, setSaving] = useState(false)
+  // Foto: `preview` es lo que se muestra; `file` el archivo nuevo a subir (null si no cambió);
+  // `fotoTocada` marca que se eligió/quitó una foto (para que el RPC toque foto_url solo entonces).
+  const [preview, setPreview] = useState(perfil?.foto_url || null)
+  const [file, setFile] = useState(null)
+  const [fotoTocada, setFotoTocada] = useState(false)
   // El llamador monta este modal condicionalmente, así que el "abierto" vive acá
   // para que la animación de salida alcance a correr. Ver Overlay.jsx.
   const [abierto, setAbierto] = useState(true)
 
+  function elegirFoto(e) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setFile(f); setFotoTocada(true); setPreview(URL.createObjectURL(f))
+  }
+  function quitarFoto() { setFile(null); setFotoTocada(true); setPreview(null) }
+
   async function guardar() {
     if (!nombre.trim()) { onToast?.('Poné tu nombre'); return }
     setSaving(true)
-    const { error } = await actualizarMiPerfil({ nombre: nombre.trim(), telefono: telefono.trim() })
+
+    // Subida de foto (requiere red). Best-effort: si falla, el resto del perfil se guarda igual.
+    let fotoUrl
+    let setFoto = false
+    if (fotoTocada) {
+      setFoto = true
+      if (file) {
+        const { url, error } = await subirAvatar(user.id, file)
+        if (error) { onToast?.('La foto no pudo subirse (revisá la conexión).'); setFoto = false }
+        else fotoUrl = url
+      } else {
+        fotoUrl = null // se quitó la foto
+      }
+    }
+
+    const { error } = await actualizarMiPerfil({ nombre: nombre.trim(), telefono: telefono.trim(), fotoUrl, setFoto })
     setSaving(false)
     if (error) { onToast?.('Error: ' + (error.message || 'no se pudo guardar')); return }
     onToast?.('Perfil actualizado')
@@ -54,6 +83,25 @@ export default function MiPerfilModal({ onClose, onToast }) {
         </>
       }
     >
+      {/* Foto de perfil: es la que aparece como burbuja en el mapa de monitoreo. Si no hay,
+          la burbuja usa las iniciales. */}
+      <Field label="Foto de perfil (opcional)">
+        <div style={sx('display:flex;align-items:center;gap:12px')}>
+          <div style={sx('width:60px;height:60px;flex:none;border-radius:99px;overflow:hidden;background:var(--tlight);color:var(--deep);border:1px solid var(--line2);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:19px')}>
+            {preview ? <img src={preview} alt="" style={sx('width:100%;height:100%;object-fit:cover')} /> : initials(nombre)}
+          </div>
+          <div style={sx('display:flex;flex-direction:column;gap:6px')}>
+            <label className="lu-press" style={{ ...btnSecundario, flex: 'none', padding: '0 14px', height: 36, display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+              {preview ? 'Cambiar foto' : 'Subir foto'}
+              <input type="file" accept="image/*" onChange={elegirFoto} style={sx('display:none')} />
+            </label>
+            {preview && (
+              <button type="button" onClick={quitarFoto} style={sx('background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;text-align:left;padding:0')}>Quitar foto</button>
+            )}
+          </div>
+        </div>
+      </Field>
+
       <Field label="Nombre *">
         <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Tu nombre y apellido" style={inputStyle} className="lu-input" />
       </Field>

@@ -6,6 +6,7 @@ import { useCatalog } from '../../../context/CatalogContext'
 import LeafletMap from '../../../components/LeafletMap'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 import { colorPorId } from '../../../lib/colors'
+import { initials } from '../../../lib/format'
 import { DEPOSITO, ROUTE_COLOR } from '../../../data/demoGeo'
 import EstadoEquipo from '../../supervision/components/EstadoEquipo'
 import { panel, label10, MiniStat } from '../ui'
@@ -19,7 +20,7 @@ export default function MapaOperativo({ equipo, events, onNuevoCliente }) {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
   const { clientes: cartera, zonas } = useCatalog()
-  const { nombres, movers, gpsOff, mqttOn } = equipo
+  const { nombres, fotos = {}, movers, gpsOff, mqttOn } = equipo
   const [selPin, setSelPin] = useState(0)
 
   const moversArr = Object.values(movers)
@@ -76,7 +77,7 @@ export default function MapaOperativo({ equipo, events, onNuevoCliente }) {
             theme={theme}
             markers={mapMarkers}
             depot={DEPOSITO}
-            movers={moversArr.map((m) => ({ lat: m.lat, lng: m.lng, rol: m.rol, nombre: nombres[m.id] || m.rol, color: colorPorId(m.id) }))}
+            movers={moversArr.map((m) => ({ lat: m.lat, lng: m.lng, rol: m.rol, nombre: nombres[m.id] || m.rol, iniciales: initials(nombres[m.id] || m.rol), foto: fotos[m.id], ts: m.ts, color: colorPorId(m.id) }))}
             route={ruta}
             routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
             optimize

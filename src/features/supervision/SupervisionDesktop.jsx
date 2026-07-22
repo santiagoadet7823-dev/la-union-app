@@ -79,7 +79,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const { theme, isDark, toggleTheme } = useTheme()
   const { perfil, user, idEmpresa, signOut } = useAuth()
   const { isMobile, setMode } = useDevice()
-  const { nombres, movers, gpsOff, mqttOn } = useEquipoEnVivo()
+  const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   const base = useEmpresaBase(idEmpresa) // dónde abre el mapa (depósito de la empresa)
   const isProp = role === 'propietario'
 
@@ -196,6 +196,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const mapMarkers = esHoy ? moversFil.map((m) => ({
     lat: m.lat, lng: m.lng, label: initials(nombres[m.id] || m.rol),
     color: colorPorId(m.id), labelColor: '#fff', title: nombres[m.id] || m.rol,
+    // Burbuja de perfil (Life360): foto del perfil o iniciales, con frescura por ts.
+    bubble: true, foto: fotos[m.id], ts: m.ts,
     selected: m.id === pinId,
   })) : []
   // Por defecto (snapOn=false) rastro CRUDO fiel; con el toggle, geometría por calles (OSRM).

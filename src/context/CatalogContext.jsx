@@ -43,6 +43,13 @@ function mapProducto(p) {
     price: Number(p.precio_unitario) || 0,
     kg: Number(p.peso_kg) || 0,
     cat: p.categoria || inferCategoria(p.descripcion || ''),
+    // Catálogo visual: foto, unidades por bulto, nivel de rentabilidad (1..4 → color del
+    // marco, NO es el margen real) y oferta. Ver db/08_catalogo_visual.sql.
+    imagen: p.imagen_url || null,
+    unidades: p.unidades != null ? Number(p.unidades) : null,
+    nivel: p.nivel_rentabilidad != null ? Number(p.nivel_rentabilidad) : null,
+    oferta: !!p.oferta,
+    precioOferta: p.precio_oferta != null ? Number(p.precio_oferta) : null,
   }
 }
 
@@ -145,12 +152,48 @@ export function CatalogProvider({ children }) {
       precio_unitario: p.precio_unitario || 0,
       peso_kg: p.peso_kg || 0,
       categoria: p.categoria || inferCategoria(p.descripcion || ''),
+      imagen_url: p.imagen_url || null,
+      unidades: p.unidades ?? null,
+      nivel_rentabilidad: p.nivel_rentabilidad ?? null,
+      oferta: !!p.oferta,
+      precio_oferta: p.precio_oferta ?? null,
     }
     setProductos((prev) => [...prev, mapProducto(row)].sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'insert', payload: row })
     flushMutaciones()
     return { ok: true, producto: mapProducto(row) }
   }, [idEmpresa])
+
+  /**
+   * Edición parcial de producto (ABM admin). `patch` en columnas de DB. Offline-first,
+   * mismo patrón que updateCliente: merge optimista + encolar update idempotente.
+   */
+  const updateProducto = useCallback(async (id, patch) => {
+    // Mapea las columnas DB del patch a la forma de vista para el merge optimista.
+    const vista = {}
+    if ('descripcion' in patch) vista.name = patch.descripcion
+    if ('codigo' in patch) vista.codigo = patch.codigo || null
+    if ('precio_unitario' in patch) vista.price = Number(patch.precio_unitario) || 0
+    if ('peso_kg' in patch) vista.kg = Number(patch.peso_kg) || 0
+    if ('categoria' in patch) vista.cat = patch.categoria || inferCategoria(patch.descripcion || '')
+    if ('imagen_url' in patch) vista.imagen = patch.imagen_url || null
+    if ('unidades' in patch) vista.unidades = patch.unidades ?? null
+    if ('nivel_rentabilidad' in patch) vista.nivel = patch.nivel_rentabilidad ?? null
+    if ('oferta' in patch) vista.oferta = !!patch.oferta
+    if ('precio_oferta' in patch) vista.precioOferta = patch.precio_oferta ?? null
+    setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, ...vista } : p)).sort((a, b) => a.name.localeCompare(b.name)))
+    await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id, payload: patch })
+    flushMutaciones()
+    return { ok: true }
+  }, [])
+
+  /** Baja de producto (ABM admin). Offline-first; el DELETE es idempotente al reintentar. */
+  const deleteProducto = useCallback(async (id) => {
+    setProductos((prev) => prev.filter((p) => p.id !== id))
+    await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'delete', id })
+    flushMutaciones()
+    return { ok: true }
+  }, [])
 
   /** Edición parcial de cliente (ficha admin). patch en columnas de DB. Offline-first. */
   const updateCliente = useCallback(async (id, patch) => {
@@ -261,7 +304,7 @@ export function CatalogProvider({ children }) {
   }, [])
 
   return (
-    <CatalogContext.Provider value={{ productos, clientes, zonas, loading, error, recargar, addCliente, addProducto, updateCliente, deleteCliente, importClientes, addZona, updateZona }}>
+    <CatalogContext.Provider value={{ productos, clientes, zonas, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, importClientes, addZona, updateZona }}>
       {children}
     </CatalogContext.Provider>
   )

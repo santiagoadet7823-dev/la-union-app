@@ -26,6 +26,7 @@ export function useJornada() {
   // así que persistía al cambiar de pestaña. Vive acá para conservar ese comportamiento
   // (las pestañas se montan/desmontan por render condicional).
   const [search, setSearch] = useState('')       // buscador de productos (VisitaCatalogo)
+  const [catFilter, setCatFilter] = useState('Todos') // chip de categoría activo (VisitaCatalogo)
   const [routeCalc, setRouteCalc] = useState(false) // ruta calculada (RutaTab)
   const [rutaInfo, setRutaInfo] = useState(null)  // métricas de la ruta (RutaTab)
   const timerRef = useRef(null)
@@ -73,10 +74,12 @@ export function useJornada() {
 
   // --- carrito ---
   const prodById = (id) => PRODUCTS.find((p) => p.id === id)
+  // Precio que se cobra: el de oferta cuando el producto está en oferta y tiene precio_oferta.
+  const precioEfectivo = (p) => (p && p.oferta && p.precioOferta != null ? p.precioOferta : (p?.price || 0))
   const entries = Object.entries(cart)
   const cartCount = entries.reduce((a, [, v]) => a + v, 0)
   const cartKg = entries.reduce((a, [id, v]) => a + v * (prodById(id)?.kg || 0), 0)
-  const cartTotal = entries.reduce((a, [id, v]) => a + v * (prodById(id)?.price || 0), 0)
+  const cartTotal = entries.reduce((a, [id, v]) => a + v * precioEfectivo(prodById(id)), 0)
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
   // --- ruta / metas ---
@@ -88,7 +91,7 @@ export function useJornada() {
   return {
     tab, setTab,
     visit, seconds, cart, sheet, setSheet, motivo, setMotivo,
-    search, setSearch, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,
+    search, setSearch, catFilter, setCatFilter, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,
     catLoading, PRODUCTS,
     clients, nextId, done, conPedido, montoHoy, visitC,
     cartCount, cartKg, cartTotal, timer,

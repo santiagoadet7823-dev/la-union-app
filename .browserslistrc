@@ -1,0 +1,15 @@
+# Piso de compatibilidad ÚNICO y explícito del proyecto (fuente de verdad).
+#
+# Por qué existe: la app corre dentro del WebView del sistema, cuya versión queda
+# CONGELADA en equipos viejos/baratos (tablet Cidea con Chrome 79 de 2019; Moto G10 con
+# Android System WebView desactualizado). El piso se fija acá y el build (vite + plugin-legacy)
+# lo respeta automáticamente — así se deja de parchear "modelo por modelo".
+#
+# Chrome 79 es el piso real medido por adb logcat (22/07/2026). Por DEBAJO de este piso la app
+# muestra el gate de index.html ("actualizá el WebView") en vez de una pantalla negra.
+# NO subir este piso sin re-verificar en un WebView viejo real.
+Chrome >= 79
+Edge >= 79
+Firefox >= 68
+Safari >= 12
+iOS >= 12

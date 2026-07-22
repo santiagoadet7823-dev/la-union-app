@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import legacy from '@vitejs/plugin-legacy'
 
 // base './' → funciona en Capacitor (assets relativos desde el bundle nativo)
 // y en la mayoría de hosts estáticos. Para GitHub Pages en subruta de proyecto,
@@ -18,7 +19,8 @@ export default defineConfig({
   // sintaxis y esos equipos arrancan en PANTALLA NEGRA (SyntaxError al parsear). `es2015`
   // transpila `?.`/`??`/etc. y corre en WebViews viejos; el costo es un bundle un poco mayor.
   // Diagnóstico 22/07/2026 por adb logcat en la tablet. NO subir el target sin re-verificar
-  // en un WebView viejo.
+  // en un WebView viejo. Chrome 79 sí soporta ES modules → carga el bundle MODERNO, por eso
+  // `modernPolyfills` de plugin-legacy (abajo) es lo que cubre las APIs de runtime nuevas.
   build: { target: 'es2015' },
   // mqtt.js (telemetría en vivo) espera `global` en el navegador.
   define: { global: 'globalThis' },
@@ -48,6 +50,16 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,csv,woff2}'],
       },
+    }),
+    // Solución DEFINITIVA de compatibilidad con WebViews viejos (ver .browserslistrc):
+    //  - transpila la sintaxis según el piso (browserslist) Y
+    //  - `modernPolyfills` inyecta polyfills de core-js (structuredClone, Array.at,
+    //    replaceAll, Object.hasOwn, …) también en el bundle MODERNO, que es el que carga
+    //    Chrome 79. Sin esto, `build.target` transpila la sintaxis pero NO las APIs de
+    //    runtime nuevas, y esas rompían igual en los equipos viejos.
+    //  - genera además un bundle legacy `nomodule` para WebViews sin ES modules.
+    legacy({
+      modernPolyfills: true,
     }),
   ],
 })

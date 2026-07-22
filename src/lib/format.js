@@ -8,6 +8,11 @@ export function kgFmt(n) {
   return (n || 0).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 }
 
+/** Iniciales (hasta 2) de un nombre, en mayúsculas. Para avatares/burbujas de perfil. */
+export function initials(n) {
+  return (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
+}
+
 /** '45 s' | '5 min' | '1 h 20 min' — duración humana (p.ej. paradas del recorrido) */
 export function fmtDuracion(ms) {
   if (!Number.isFinite(ms) || ms < 0) return '—'

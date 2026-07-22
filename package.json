@@ -38,9 +38,11 @@
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
     "@tailwindcss/vite": "^4.1.0",
+    "@vitejs/plugin-legacy": "^7.2.1",
     "@vitejs/plugin-react": "^5.0.0",
     "patch-package": "^8.0.1",
     "tailwindcss": "^4.1.0",
+    "terser": "^5.49.0",
     "typescript": "^6.0.3",
     "vite": "^7.0.0",
     "vite-plugin-pwa": "^1.0.0"

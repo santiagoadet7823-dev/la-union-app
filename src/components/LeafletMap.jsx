@@ -110,6 +110,67 @@ function dwellIcon(label, sub, color) {
   })
 }
 
+// Escapa texto para meterlo en el html del divIcon (el nombre es dato de usuario).
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ))
+}
+
+// Frescura de la última posición según su antigüedad. El vendedor con la app cerrada
+// deja de emitir: en vez de desaparecer del mapa, su burbuja queda con el punto en gris
+// ("hace rato / app cerrada"), así se ve de un vistazo quién está desactualizado sin
+// abrir cada cartel. Umbrales: <2 min fresco, <15 min reciente, resto viejo.
+function frescura(ts) {
+  const edad = Date.now() - (ts || 0)
+  if (!ts) return { color: '#94a3b8', dim: true }
+  if (edad < 2 * 60000) return { color: '#22c55e', dim: false }
+  if (edad < 15 * 60000) return { color: '#f59e0b', dim: false }
+  return { color: '#94a3b8', dim: true }
+}
+
+/**
+ * Burbuja de perfil estilo Life360 para los móviles en vivo: avatar circular (FOTO si el
+ * perfil tiene `foto`, si no las INICIALES sobre el color de la persona), borde blanco,
+ * sombra y una PUNTA inferior que ancla la burbuja al punto exacto. Un punto de frescura
+ * (esquina) indica qué tan vieja es la última posición. El nombre va en una píldora arriba.
+ *
+ * opts: { foto, iniciales, color, nombre, ts, selected }
+ */
+function bubbleIcon(opts) {
+  const { foto, iniciales, color, nombre, ts, selected } = opts
+  const D = selected ? 48 : 42            // diámetro del avatar
+  const fr = frescura(ts)
+  const contenido = foto
+    ? `<img src="${esc(foto)}" style="width:100%;height:100%;object-fit:cover;display:block" />`
+    : `<div style="width:100%;height:100%;display:grid;place-items:center;background:${color || '#0EA5E9'};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:${selected ? 15 : 13}px;font-weight:700">${esc(iniciales || '')}</div>`
+  const label = nombre
+    ? `<div style="margin-bottom:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(11,43,42,.82);color:#fff;font-family:Inter,sans-serif;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:99px">${esc(nombre)}</div>`
+    : ''
+  // Alto de referencia para el ancla: avatar + punta (la píldora del nombre queda por
+  // encima y no debe correr el ancla). iconAnchor = tip de la punta sobre la coordenada.
+  const punta = 8
+  const html = `
+    <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;opacity:${fr.dim ? 0.72 : 1}">
+      ${label}
+      <div style="position:relative;width:${D}px;height:${D}px">
+        <div style="width:100%;height:100%;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);overflow:hidden;box-sizing:border-box">
+          ${contenido}
+        </div>
+        <div style="position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;background:${fr.color};border:2px solid #fff;box-sizing:border-box"></div>
+      </div>
+      <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:${punta}px solid #fff;margin-top:-2px;filter:drop-shadow(0 2px 1px rgba(0,0,0,.3))"></div>
+    </div>`
+  const W = 130
+  const H = (nombre ? 17 : 0) + D + punta
+  return L.divIcon({
+    className: 'lu-bubble',
+    html,
+    iconSize: [W, H],
+    iconAnchor: [W / 2, H],
+  })
+}
+
 function depotIcon(theme) {
   const bg = theme === 'dark' ? '#ECF5F4' : '#0B2B2A'
   const fg = theme === 'dark' ? '#0B2B2A' : '#ECF5F4'
@@ -251,7 +312,12 @@ export default function LeafletMap({
       extend([depot.lat, depot.lng])
     }
     markers.forEach((mk, i) => {
-      const m = L.marker([mk.lat, mk.lng], { icon: pinIcon(mk.color, mk.label, mk.labelColor, mk.selected), title: mk.title || '' })
+      // Los marcadores de PERSONA (móviles en vivo) van como burbuja de perfil (opt-in con
+      // `bubble`); el resto (pines de cliente/paradas) sigue con el pin de gota de siempre.
+      const icon = mk.bubble
+        ? bubbleIcon({ foto: mk.foto, iniciales: mk.label, color: mk.color, nombre: mk.title, ts: mk.ts, selected: mk.selected })
+        : pinIcon(mk.color, mk.label, mk.labelColor, mk.selected)
+      const m = L.marker([mk.lat, mk.lng], { icon, title: mk.title || '' })
       m.on('click', () => clickRef.current?.(i))
       m.addTo(layer)
       extend([mk.lat, mk.lng])
@@ -268,8 +334,9 @@ export default function LeafletMap({
       const color = mv.color || (mv.rol === 'repartidor'
         ? (theme === 'dark' ? '#FBBF24' : '#F59E0B')
         : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
-      const m = L.circleMarker([mv.lat, mv.lng], { radius: 8, color: '#fff', weight: 3, fillColor: color, fillOpacity: 1 })
-      if (mv.nombre) m.bindTooltip(mv.nombre, { direction: 'top', offset: [0, -6] })
+      // Burbuja de perfil (Life360): foto o iniciales, ancla al punto, frescura por ts.
+      const icon = bubbleIcon({ foto: mv.foto, iniciales: mv.iniciales, color, nombre: mv.nombre, ts: mv.ts, selected: mv.selected })
+      const m = L.marker([mv.lat, mv.lng], { icon })
       m.addTo(layer)
       extend([mv.lat, mv.lng])
     })

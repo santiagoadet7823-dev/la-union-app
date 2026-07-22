@@ -185,8 +185,8 @@ export function AuthProvider({ children }) {
 
   // Auto-edición del propio perfil (nombre + teléfono) vía RPC. En éxito, mergea
   // el resultado en el estado y refresca la caché (offline-first, igual que el resto).
-  const actualizarMiPerfil = async ({ nombre, telefono }) => {
-    const { data, error } = await actualizarMiPerfilSvc({ nombre, telefono })
+  const actualizarMiPerfil = async ({ nombre, telefono, fotoUrl, setFoto }) => {
+    const { data, error } = await actualizarMiPerfilSvc({ nombre, telefono, fotoUrl, setFoto })
     if (error) return { error }
     if (data) {
       setPerfil((prev) => ({ ...(prev || {}), ...data }))

@@ -51,10 +51,13 @@ export async function fetchPerfil(userId, { intentos = 3, timeoutMs = 8000 } = {
  * admin/superadmin) ni poder tocar rol/empresa ni filas ajenas.
  * Devuelve { data, error }.
  */
-export async function actualizarMiPerfil({ nombre, telefono }) {
+export async function actualizarMiPerfil({ nombre, telefono, fotoUrl, setFoto = false }) {
   const { data, error } = await supabase.rpc('actualizar_mi_perfil', {
     p_nombre: nombre ?? '',
     p_telefono: telefono ?? '',
+    // Solo toca foto_url si setFoto=true (se eligió/quitó una foto); si no, la deja igual.
+    p_foto_url: fotoUrl ?? null,
+    p_set_foto: !!setFoto,
   })
   return { data, error }
 }

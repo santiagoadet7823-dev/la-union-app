@@ -2,7 +2,8 @@
  * "Liquid glass" — elemento del handoff del diseñador (ios-frame.jsx). No usamos
  * el marco iOS (la app es Android nativa), pero sí este tratamiento esmerilado
  * para controles flotantes (barra de navegación mobile, píldoras flotantes).
- * Válido en Android (WebView Chromium soporta backdrop-filter).
+ * En WebViews viejos SIN backdrop-filter, el desenfoque se ignora: index.css tiene un
+ * `@supports not (backdrop-filter)` que vuelve sólidos los tokens --glass-* como fallback.
  *
  * 19/07/2026: antes esto hardcodeaba rgba literales que duplicaban EXACTAMENTE
  * los tokens --glass-bg / --glass-brd de index.css, con el agravante de que

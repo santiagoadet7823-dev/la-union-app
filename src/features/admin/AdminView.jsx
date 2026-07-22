@@ -111,7 +111,7 @@ export default function AdminView() {
 
       {tab === 'mapa' && <MapaOperativo equipo={equipo} events={events} onNuevoCliente={abrirNuevoCliente} />}
       {tab === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => abrirNuevoCliente(null)} />}
-      {tab === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} />}
+      {tab === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} onEditarProducto={(p) => setModalProducto(p)} onToast={showToast} />}
       {tab === 'faltante' && <FaltanteTab />}
 
       {tab === 'dash' && (
@@ -138,7 +138,7 @@ export default function AdminView() {
       {tab === 'empresas' && rol === 'superadmin' && <EmpresasView onToast={showToast} />}
 
       {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={nuevoClienteCenter} />}
-      {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
+      {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} producto={modalProducto === true ? null : modalProducto} />}
 
       {toast && (
         <div style={sx('position:fixed;top:68px;right:20px;z-index:var(--z-toast);background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:12px 16px;display:flex;align-items:center;gap:9px')}>

@@ -22,6 +22,71 @@
         document.documentElement.setAttribute('data-theme', t);
       })();
     </script>
+
+    <!--
+      GATE DE COMPATIBILIDAD (ES5 puro, sin `?.` ni arrow functions a propósito).
+      Corre ANTES del módulo, así funciona aunque el bundle no llegue a parsear.
+
+      Por qué: la app vive dentro del WebView del sistema, que en equipos viejos queda
+      congelado (Chrome 79, o menos). Antes, si el WebView era demasiado viejo para el
+      bundle, la app quedaba en el SPLASH NEGRO ETERNO (el ErrorBoundary de React no ve
+      un SyntaxError de parseo: ocurre antes de que React arranque). Este gate:
+        1. detecta lo mínimo indispensable y avisa "actualizá el WebView";
+        2. atrapa errores globales de arranque (incl. parseo del módulo);
+        3. un watchdog: si a los 8 s #root sigue vacío, muestra el aviso igual.
+      Así, por DEBAJO del piso se ve un mensaje claro en vez de una pantalla rota.
+    -->
+    <script>
+      (function () {
+        var mostrado = false;
+        function mostrarFallback() {
+          if (mostrado) return;
+          // Si la app ya montó, no molestar.
+          var root = document.getElementById('root');
+          if (root && root.children && root.children.length > 0) return;
+          mostrado = true;
+          // Ocultar el splash nativo (Capacitor) para que no tape el aviso.
+          try {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SplashScreen) {
+              window.Capacitor.Plugins.SplashScreen.hide();
+            }
+          } catch (e) {}
+          var wrap = document.createElement('div');
+          wrap.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;background:#0c0c0c;color:#ecf5f4;display:flex;align-items:center;justify-content:center;padding:24px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;text-align:center;');
+          wrap.innerHTML = '<div style="max-width:340px;line-height:1.5">'
+            + '<div style="font-size:40px;margin-bottom:14px">🔄</div>'
+            + '<div style="font-size:17px;font-weight:700;margin-bottom:10px">Tu navegador está desactualizado</div>'
+            + '<div style="font-size:13.5px;color:#8fa9a6">Para usar la app, actualizá <b>Android System WebView</b> y <b>Google Chrome</b> desde Google Play (o el navegador en tu PC) y volvé a abrir.</div>'
+            + '</div>';
+          document.body.appendChild(wrap);
+        }
+        window.__mostrarFallbackCompat = mostrarFallback;
+
+        // 1) Chequeo mínimo inmediato: sin estas bases, ni los polyfills arrancan.
+        if (!window.Promise || !window.fetch || !window.Map || !Object.assign) {
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', mostrarFallback);
+          } else { mostrarFallback(); }
+          return;
+        }
+
+        // 2) Errores globales de arranque (incluye SyntaxError de parseo del módulo, que el
+        //    ErrorBoundary de React NO puede ver). Solo actúa si la app todavía no montó.
+        window.addEventListener('error', function (ev) {
+          var root = document.getElementById('root');
+          if (!root || !root.children || root.children.length === 0) {
+            // dar un respiro por si es un error no fatal en pleno arranque
+            setTimeout(mostrarFallback, 1500);
+          }
+          // no relanzar: log queda en consola igualmente
+          if (ev && ev.message) { try { console.error('[boot]', ev.message); } catch (e) {} }
+        });
+        window.addEventListener('unhandledrejection', function () {});
+
+        // 3) Watchdog: si a los 8 s #root sigue vacío, la app no arrancó → mostrar aviso.
+        setTimeout(mostrarFallback, 8000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -22,37 +22,38 @@ import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../servic
 export default function useEquipoEnVivo() {
   const { idEmpresa } = useAuth()
   const [nombres, setNombres] = useState({}) // { [id_usuario]: nombre }
+  const [fotos, setFotos] = useState({})     // { [id_usuario]: foto_url } para la burbuja del mapa
   const [movers, setMovers] = useState({})   // { [id]: {id, rol, lat, lng, ts} }
   const [gpsOff, setGpsOff] = useState({})   // { [id]: {nombre, rol, ts} }
   const [mqttOn, setMqttOn] = useState(false)
 
-  // Nombres de los usuarios de la empresa (para etiquetar los móviles en el mapa).
+  // Nombres + foto de perfil de los usuarios de la empresa (para etiquetar/ilustrar los
+  // móviles en el mapa). La foto es opcional: si no hay, la burbuja cae a iniciales.
   useEffect(() => {
     if (!idEmpresa) return // el perfil todavía no cargó: no disparar la query sin filtro
-    supabase.from('perfiles').select('id, nombre').eq('id_empresa', idEmpresa).then(({ data }) => {
-      const m = {}
-      ;(data || []).forEach((u) => { m[u.id] = u.nombre })
-      setNombres(m)
+    supabase.from('perfiles').select('id, nombre, foto_url').eq('id_empresa', idEmpresa).then(({ data }) => {
+      const nom = {}
+      const fot = {}
+      ;(data || []).forEach((u) => { nom[u.id] = u.nombre; if (u.foto_url) fot[u.id] = u.foto_url })
+      setNombres(nom)
+      setFotos(fot)
     })
   }, [idEmpresa])
 
-  // Sembrar con la ÚLTIMA posición conocida de cada móvil (últimos 15 min), así
-  // aparecen de inmediato sin esperar un fix nuevo.
+  // Sembrar con la ÚLTIMA posición conocida de CADA móvil (sin corte de tiempo), vía el RPC
+  // ultimas_posiciones (distinct on). Antes se cortaba a los últimos 15 min: al cerrar la app
+  // el móvil desaparecía del mapa y había que revisar cartel por cartel el horario. Ahora la
+  // burbuja queda en su última posición y la UI marca la frescura (fresco/hace rato/viejo).
   useEffect(() => {
     if (!idEmpresa) return
-    const desde = new Date(Date.now() - 15 * 60000).toISOString()
-    supabase.from('posiciones').select('id_usuario, rol, lat, lng, ts')
-      .eq('id_empresa', idEmpresa).gte('ts', desde).order('ts', { ascending: false })
-      .then(({ data }) => {
-        const seen = {}
-        const seed = {}
-        ;(data || []).forEach((p) => {
-          if (!p.id_usuario || seen[p.id_usuario]) return
-          seen[p.id_usuario] = true
-          seed[p.id_usuario] = { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() }
-        })
-        setMovers((m) => ({ ...seed, ...m })) // no pisar los que ya llegaron en vivo
+    supabase.rpc('ultimas_posiciones', { p_empresa: idEmpresa }).then(({ data }) => {
+      const seed = {}
+      ;(data || []).forEach((p) => {
+        if (!p.id_usuario) return
+        seed[p.id_usuario] = { id: p.id_usuario, rol: p.rol, lat: p.lat, lng: p.lng, ts: new Date(p.ts).getTime() }
       })
+      setMovers((m) => ({ ...seed, ...m })) // no pisar los que ya llegaron en vivo
+    })
   }, [idEmpresa])
 
   // Telemetría en vivo (Supabase Realtime): posición de los móviles + alertas GPS on/off.
@@ -75,5 +76,5 @@ export default function useEquipoEnVivo() {
     return () => { offPos(); offConn(); offAlert() }
   }, [idEmpresa])
 
-  return { nombres, movers, gpsOff, mqttOn }
+  return { nombres, fotos, movers, gpsOff, mqttOn }
 }

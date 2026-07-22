@@ -16,3 +16,10 @@ export function inferCategoria(descripcion = '') {
   const match = REGLAS.find((r) => r.patron.test(descripcion))
   return match ? match.categoria : 'Otros'
 }
+
+/**
+ * Lista canónica de categorías para el selector del alta/edición de producto. Se deriva
+ * de las mismas REGLAS que usa inferCategoria + 'Otros', así el form y la inferencia
+ * NUNCA se desincronizan (antes NuevoProducto tenía su propia lista distinta).
+ */
+export const CATEGORIAS = [...REGLAS.map((r) => r.categoria), 'Otros']
