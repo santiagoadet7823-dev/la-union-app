@@ -1,5 +1,6 @@
 package com.launion.app;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -59,6 +60,55 @@ public class BatteryOptimizationPlugin extends Plugin {
         }
         JSObject ret = new JSObject();
         ret.put("ignoring", isIgnoringBatteryOptimizations());
+        call.resolve(ret);
+    }
+
+    /**
+     * Abre la pantalla de "inicio automático / autostart" del OEM. En Xiaomi/Huawei/Oppo/Vivo/etc.
+     * el autostart es una lista APARTE de la exención de batería: sin él, el SO mata el proceso en
+     * segundo plano y el foreground service del GPS deja de capturar (síntoma: captura solo a
+     * ráfagas al abrir la app; diagnóstico 21/07/2026 con un Moto/Xiaomi). Cada marca tiene su
+     * propia Activity y cambian por versión, así que se prueban en orden con startActivity directo
+     * (no resolveActivity: en Android 11+ la visibilidad de paquetes puede ocultarla aunque exista)
+     * y la primera que no tire ActivityNotFoundException gana. Si ninguna, cae al detalle de la app.
+     */
+    @PluginMethod
+    public void abrirAutostart(PluginCall call) {
+        Context ctx = getContext();
+        String[][] comps = new String[][] {
+            {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},              // Xiaomi/Redmi/POCO (MIUI)
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},   // Huawei/Honor (EMUI)
+            {"com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"},
+            {"com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"},                // Oppo/Realme (ColorOS)
+            {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
+            {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"},
+            {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},        // Vivo
+            {"com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"},
+            {"com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity"},                     // Letv
+        };
+        boolean lanzado = false;
+        for (String[] c : comps) {
+            try {
+                Intent i = new Intent();
+                i.setComponent(new ComponentName(c[0], c[1]));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                lanzado = true;
+                break;
+            } catch (Exception ignored) { /* esa marca/versión no la tiene → probar la siguiente */ }
+        }
+        if (!lanzado) {
+            // Fallback universal: detalle de la app (desde ahí el usuario llega a batería/arranque).
+            try {
+                Intent fb = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                fb.setData(Uri.parse("package:" + ctx.getPackageName()));
+                fb.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(fb);
+                lanzado = true;
+            } catch (Exception ignored) {}
+        }
+        JSObject ret = new JSObject();
+        ret.put("abierto", lanzado);
         call.resolve(ret);
     }
 

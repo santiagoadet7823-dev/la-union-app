@@ -40,3 +40,19 @@ export async function pedirExencion() {
     return false
   }
 }
+
+/**
+ * Abre la pantalla de "inicio automático / autostart" del OEM (Xiaomi/Huawei/Oppo/Vivo/etc.).
+ * Es una lista APARTE de la exención de batería: sin ella el SO mata el proceso y el GPS deja de
+ * capturar en segundo plano. En web / APK viejo sin el método → no-op (devuelve false).
+ * @returns {Promise<boolean>} si se pudo abrir alguna pantalla
+ */
+export async function abrirAutostart() {
+  if (!isNative()) return false
+  try {
+    const r = await BatteryOptimization.abrirAutostart()
+    return !!(r && r.abierto)
+  } catch (_) {
+    return false
+  }
+}

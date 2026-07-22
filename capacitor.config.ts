@@ -39,6 +39,16 @@ const config: CapacitorConfig = {
       iosIsEncryption: false,
       androidIsEncryption: false,
     },
+    // Splash controlado a mano: NO se oculta solo (launchAutoHide:false). En OEMs que matan
+    // el proceso (Huawei/Xiaomi/ZTE) cada apertura es en frío y el WebView tarda en pintar;
+    // sin esto queda un hueco negro/blanco entre el splash del sistema y el primer render de
+    // React. Lo ocultamos desde JS (App.jsx) recién cuando la app ya tiene contenido. El color
+    // matchea el theme-color (#0C0C0C) de index.html para que no haya salto.
+    SplashScreen: {
+      launchAutoHide: false,
+      backgroundColor: '#0C0C0C',
+      showSpinner: false,
+    },
   },
 }
 

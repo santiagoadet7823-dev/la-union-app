@@ -12,6 +12,14 @@ export default defineConfig({
   // que hay que compilar con base relativa './'. Se activa exportando CAP_BUILD=1
   // (ej. `CAP_BUILD=1 npm run build`). Ver GUIA_APK_ANDROID.md.
   base: process.env.CAP_BUILD ? './' : '/la-union-app/',
+  // Target de compilación BAJO a propósito: hay tablets Android baratas en uso (Cidea CM915)
+  // con WebView Chrome 79 (2019), que NO soporta optional chaining `?.` ni `??` (llegaron en
+  // Chrome 80). Con el target por defecto de Vite (Chrome 87+) el bundle NO transpila esa
+  // sintaxis y esos equipos arrancan en PANTALLA NEGRA (SyntaxError al parsear). `es2015`
+  // transpila `?.`/`??`/etc. y corre en WebViews viejos; el costo es un bundle un poco mayor.
+  // Diagnóstico 22/07/2026 por adb logcat en la tablet. NO subir el target sin re-verificar
+  // en un WebView viejo.
+  build: { target: 'es2015' },
   // mqtt.js (telemetría en vivo) espera `global` en el navegador.
   define: { global: 'globalThis' },
   plugins: [

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { isNative } from '../../services/platform'
 import { abrirAjustesUbicacion } from '../../services/geolocation'
-import { estaExento, pedirExencion } from '../../services/battery'
+import { estaExento, pedirExencion, abrirAutostart } from '../../services/battery'
 import Overlay from '../../components/Overlay'
 
 /**
@@ -54,6 +54,9 @@ export default function PermisoSiemprePrompt() {
   const pedirBateria = async () => {
     await pedirExencion() // el estado real llega por el visibilitychange al volver del diálogo del sistema
   }
+  const abrirInicioAuto = async () => {
+    await abrirAutostart() // abre la lista de autostart del OEM (o el detalle de la app como fallback)
+  }
 
   return (
     <Overlay open={abierto} onClose={marcarVisto} variant="sheet" maxWidth={460}>
@@ -87,6 +90,16 @@ export default function PermisoSiemprePrompt() {
             Quitar restricción de batería
           </button>
         )}
+        {/* Inicio automático (autostart): lista APARTE de la batería en Xiaomi/Huawei/Oppo/Vivo.
+            Sin esto el SO mata el proceso y el GPS deja de grabar aunque la batería esté sin
+            restricciones. Se muestra siempre (no sabemos la marca desde JS de forma fiable). */}
+        <button onClick={abrirInicioAuto} className="lu-press" style={sx('width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:14px;font-weight:600;font-size:15px;cursor:pointer;margin-bottom:8px')}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v10" /><path d="M18.4 6.6a9 9 0 1 1-12.77.04" /></svg>
+          Permitir inicio automático
+        </button>
+        <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.5;margin-bottom:10px;text-align:center')}>
+          En Xiaomi, Huawei y similares, activá <b style={sx('color:var(--muted)')}>Inicio automático</b> para la app.
+        </div>
         <button onClick={abrir} disabled={abriendo} style={sx('width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--primary);color:var(--on-primary);border:none;border-radius:14px;font-weight:600;font-size:15px;cursor:pointer')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></svg>
           {abriendo ? 'Abriendo ajustes…' : 'Abrir ajustes de ubicación'}

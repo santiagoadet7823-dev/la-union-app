@@ -11,9 +11,10 @@ import UpdatePrompt from './components/UpdatePrompt'
 import DeviceBanner from './components/DeviceBanner'
 import LoginView from './features/auth/LoginView'
 import PendienteView from './features/auth/PendienteView'
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { sx } from './lib/sx'
 import { isNative } from './services/platform'
+import { initNativeUI } from './services/nativeUI'
 
 // Vistas pesadas (incluyen Leaflet / el panel completo) cargadas bajo demanda para
 // que la pantalla de login aparezca sin bajar todo el bundle de una.
@@ -197,6 +198,11 @@ function Gate() {
 }
 
 export default function App() {
+  // Config nativa de arranque (barra de estado edge-to-edge + ocultar el splash controlado).
+  // Al montar: el splash del sistema ya cubrió el warmup del WebView y el parse de JS; acá React
+  // ya tiene contenido, así que es seguro ocultarlo. No-op en web. Ver services/nativeUI.js.
+  useEffect(() => { initNativeUI() }, [])
+
   return (
     <ThemeProvider>
       <DeviceProvider>
