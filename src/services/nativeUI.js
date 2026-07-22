@@ -3,13 +3,16 @@ import { Capacitor } from '@capacitor/core'
 /**
  * Configuración nativa de la UI al arrancar. Solo en la APK; en web/PWA es no-op.
  *
- * (1) Barra de estado EDGE-TO-EDGE: `setOverlaysWebView(true)` hace que el WebView dibuje
- *     DETRÁS de una barra de estado transparente. Recién ahí `env(safe-area-inset-top)`
- *     devuelve la altura real de la barra, y todo el chrome (que YA usa ese inset:
- *     SupervisionMovil, VendedorView, GestionHost…) se acomoda solo. Sin esto, Capacitor
- *     deja el WebView por debajo de la barra, el inset vale 0 y la barra queda como una banda
- *     suelta con color/íconos que no combinan → se veía "tosco como PWA" en Moto G10 y Xiaomi
- *     (22/07/2026). `Style.Dark` = íconos CLAROS (blancos), para el chrome oscuro de la app.
+ * (1) Barra de estado INTEGRADA (sin edge-to-edge): el WebView queda DEBAJO de la barra
+ *     (`setOverlaysWebView(false)`) y le pintamos el mismo color oscuro de la app
+ *     (`#0C0C0C`, igual que el theme-color de index.html) con íconos claros (`Style.Dark`).
+ *     Así la barra se ve como parte de la app y NO la tapa ningún contenido.
+ *
+ *     ⚠️ Antes se probó `overlay:true` (edge-to-edge): la app dibujaba detrás de una barra
+ *     transparente, pero el header del AppShell (vendedor/admin) NO reserva
+ *     `env(safe-area-inset-top)`, así que el contenido se metía debajo y TAPABA la barra de
+ *     notificaciones (22/07/2026). Edge-to-edge exigiría paddear TODOS los tops; el modo
+ *     no-overlay logra el look integrado sin tocar cada pantalla.
  *
  * (2) SPLASH controlado: el plugin arranca con `launchAutoHide:false` (capacitor.config.ts),
  *     así el splash cubre el warmup del WebView en frío + el parse de JS en OEMs que matan el
@@ -21,7 +24,8 @@ export async function initNativeUI() {
   if (!Capacitor.isNativePlatform()) return
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar')
-    await StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {})
+    await StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {})
+    await StatusBar.setBackgroundColor({ color: '#0C0C0C' }).catch(() => {})
     await StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
   } catch (_) { /* sin plugin / no soportado → seguir */ }
   try {
