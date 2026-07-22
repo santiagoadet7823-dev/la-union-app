@@ -85,7 +85,7 @@ export default function FaltanteTab() {
                 </div>
               </div>
               <div style={sx('position:relative;height:230px;border-bottom:1px solid var(--line2);display:flex;align-items:flex-end;padding:0 4px')}>
-                <div style={sx('position:absolute;inset:0;background:repeating-linear-gradient(to top,transparent,transparent 45px,var(--grid) 45px,var(--grid) 46px);pointer-events:none')} />
+                <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(to top,transparent,transparent 45px,var(--grid) 45px,var(--grid) 46px);pointer-events:none')} />
                 {faltBars.map((b, i) => (
                   <div key={i} style={sx('flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end')}>
                     <div style={sx('display:flex;align-items:flex-end;gap:3px;width:100%;justify-content:center;height:100%')}>

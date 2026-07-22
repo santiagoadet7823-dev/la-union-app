@@ -259,7 +259,12 @@ export default function Overlay({
       className={saliendo ? 'lu-scrim-out' : 'lu-modal-scrim'}
       style={{
         position: contained ? 'absolute' : 'fixed',
-        inset: 0,
+        // top/right/bottom/left explícitos en vez de `inset:0`: la shorthand `inset` recién
+        // llegó en Chrome 87 y el WebView viejo de las tablets baratas es Chrome 79 → ahí
+        // `inset` se ignora, el scrim colapsa a 0×0 y el overlay queda mal posicionado y sin
+        // fondo (menú/modal transparente encimado, tablet Cidea CM915, 22/07/2026). Misma
+        // familia que el fix de build.target es2015. Vale para TODO overlay de esta app.
+        top: 0, right: 0, bottom: 0, left: 0,
         zIndex: esSheet ? 'var(--z-sheet)' : 'var(--z-modal)',
         background: 'var(--scrim)',
         display: 'flex',
@@ -269,7 +274,7 @@ export default function Overlay({
       }}
     >
       {/* capta el click fuera de la card */}
-      <div onClick={pedirCierre} style={{ position: 'absolute', inset: 0 }} />
+      <div onClick={pedirCierre} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
 
       <div
         ref={cardRef}

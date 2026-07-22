@@ -227,7 +227,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       {/* ===== SIDEBAR IZQUIERDA ===== */}
       {/* En escritorio: columna fija en el flujo. En mobile: drawer flotante sobre scrim. */}
       {isMobile && drawerOpen && (
-        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-sheet)', background: 'var(--scrim)' }} />
+        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', background: 'var(--scrim)' }} />
       )}
       <aside
         style={{
@@ -318,7 +318,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
             {acctOpen && (
               <>
-                <div onClick={() => setAcctOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-popover)' }} />
+                <div onClick={() => setAcctOpen(false)} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }} />
                 <div style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 264, zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', animation: 'lu-rise .18s ease' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 15px 12px' }}>
                     <div style={{ width: 44, height: 44, flex: 'none', borderRadius: 13, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>{initials(nombre)}</div>

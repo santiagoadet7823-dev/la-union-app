@@ -288,7 +288,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const cerrarTodo = () => { setPlusOpen(false); setAcctOpen(false); setPinId(null) }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'var(--map-bg)', color: 'var(--text)', fontFamily: 'var(--font-body)', overflow: 'hidden', userSelect: 'none' }}>
+    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--map-bg)', color: 'var(--text)', fontFamily: 'var(--font-body)', overflow: 'hidden', userSelect: 'none' }}>
 
       {/* ===== CAPA 0 · MAPA =====
           isolation:isolate crea un stacking context propio → confina los z-index internos
@@ -346,8 +346,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== PANEL DE CUENTA ===== */}
       {acctOpen && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
+          <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', top: safeTop(HEADER_H + 8), right: 12, left: 56, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }} className="lu-rise">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '15px 15px 13px' }}>
               <div style={{ width: 46, height: 46, flex: 'none', borderRadius: 14, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17 }}>{initials(nombre)}</div>
@@ -476,8 +476,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* Fallback final del selector de fecha: WebView sin showPicker() ni click() programático
           → input inline visible para que el usuario lo toque él mismo. */}
       {datePop && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setDatePop(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
+          <div onClick={() => setDatePop(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 14, boxShadow: 'var(--shadow-lg)', padding: '10px 12px' }} className="lu-rise">
             <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
             <input
@@ -538,8 +538,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== MENÚ "+" (encargado) ===== */}
       {plusOpen && !isProp && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setPlusOpen(false)} style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
+          <div onClick={() => setPlusOpen(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 28), width: 236, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7 }} className="lu-rise">
             <div style={{ padding: '8px 10px 6px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>Gestión</div>
             {gestionItems.map((it) => (

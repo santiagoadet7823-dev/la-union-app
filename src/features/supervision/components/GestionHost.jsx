@@ -30,7 +30,7 @@ export default function GestionHost({ title, onClose, children }) {
   useEffect(() => apilarAtras(onClose), [onClose])
 
   return (
-    <div className="lu-rise" style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-screen)', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)' }}>
+    <div className="lu-rise" style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)' }}>
 
       {/* ===== HEADER GLASS (fijo arriba) ===== */}
       <div style={{ flex: 'none', background: 'var(--glass-bg)', ...glassBlur, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>

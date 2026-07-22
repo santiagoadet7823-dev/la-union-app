@@ -117,8 +117,8 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
 
       {acctOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setAcctOpen(false)} className="lu-modal-scrim" style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }} />
+        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
+          <div onClick={() => setAcctOpen(false)} className="lu-modal-scrim" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))' }}>
             <MiCuenta onToast={showToast} showDeviceToggle={!isNative()} />
           </div>

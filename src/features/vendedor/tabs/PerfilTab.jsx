@@ -33,7 +33,7 @@ export default function PerfilTab({ j }) {
               <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface2)" strokeWidth="10" />
               <circle cx="60" cy="60" r="52" fill="none" stroke="var(--primary)" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(meta * 3.267).toFixed(1)} 326.7`} />
             </svg>
-            <div style={sx('position:absolute;inset:0;display:grid;place-items:center')}>
+            <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center')}>
               <div style={sx('text-align:center')}>
                 <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600')}>{meta}%</div>
                 <div style={sx('font-size:9.5px;color:var(--faint);font-family:var(--font-mono)')}>de $ 900.000</div>

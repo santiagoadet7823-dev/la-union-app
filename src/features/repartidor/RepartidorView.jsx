@@ -288,7 +288,7 @@ export default function RepartidorView() {
                 <div style={sx('position:relative;border:1px solid var(--line2);border-radius:var(--r-lg);overflow:hidden;background:#F7FCFB')}>
                   <canvas ref={initCanvas} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} style={sx('display:block;width:100%;height:210px;touch-action:none;cursor:crosshair')} />
                   <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed #C9E0DE;pointer-events:none')} />
-                  {!hasInk && <div style={sx('position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;color:#93A9A7;font-size:14px;font-weight:500')}>Firmá acá</div>}
+                  {!hasInk && <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;pointer-events:none;color:#93A9A7;font-size:14px;font-weight:500')}>Firmá acá</div>}
                 </div>
                 <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:8px')}>
                   <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-family:var(--font-mono)')}>{kgFmt(mdView.kg)} kg · {fmtPesos(mdView.monto)}</div>
