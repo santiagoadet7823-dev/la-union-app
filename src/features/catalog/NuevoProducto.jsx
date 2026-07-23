@@ -23,15 +23,25 @@ const soloNum = (s) => s.replace(/[^\d.]/g, '')
 
 export default function NuevoProducto({ onClose, onToast, producto = null }) {
   const editar = !!producto
-  const { addProducto, updateProducto } = useCatalog()
+  const { addProducto, updateProducto, categorias } = useCatalog()
   const { idEmpresa } = useAuth()
+
+  // Lista del selector: categorías gestionadas por la empresa + 'Otros'. Si la empresa todavía
+  // no cargó ninguna, cae a la constante CATEGORIAS. Incluye la categoría actual del producto
+  // aunque ya no esté en la lista, para no perderla al editar.
+  const gestionadas = (categorias || []).map((c) => c.nombre)
+  const opcionesCat = Array.from(new Set([
+    ...(gestionadas.length ? gestionadas : CATEGORIAS),
+    'Otros',
+    ...(producto?.cat ? [producto.cat] : []),
+  ]))
 
   const [descripcion, setDescripcion] = useState(producto?.name || '')
   const [codigo, setCodigo] = useState(producto?.codigo || '')
   const [precio, setPrecio] = useState(producto?.price ? String(producto.price) : '')
   const [peso, setPeso] = useState(producto?.kg ? String(producto.kg) : '')
   const [unidades, setUnidades] = useState(producto?.unidades != null ? String(producto.unidades) : '')
-  const [categoria, setCategoria] = useState(producto?.cat && CATEGORIAS.includes(producto.cat) ? producto.cat : 'Almacén')
+  const [categoria, setCategoria] = useState(producto?.cat || opcionesCat[0] || 'Otros')
   const [nivel, setNivel] = useState(producto?.nivel || null)
   const [oferta, setOferta] = useState(!!producto?.oferta)
   const [precioOferta, setPrecioOferta] = useState(producto?.precioOferta != null ? String(producto.precioOferta) : '')
@@ -142,7 +152,7 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
         <Field label="Código (opcional)"><input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="P-2031" style={inputStyle} className="lu-input" /></Field>
         <Field label="Categoría">
           <select value={categoria} onChange={(e) => setCategoria(e.target.value)} style={inputStyle} className="lu-input">
-            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            {opcionesCat.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
       </div>

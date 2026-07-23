@@ -4,6 +4,8 @@ import { fmtPesos } from '../../../lib/format'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useDevice } from '../../../context/DeviceContext'
 import { panel, label10, EmptyState, FilaTabla, CabeceraTabla } from '../ui'
+import ImportarProductos from '../ImportarProductos'
+import GestionarCategorias from '../../catalog/GestionarCategorias'
 
 // Grilla del catálogo (escritorio): foto · descripción · categoría · precio · unid. · nivel · acciones.
 const catGrid = { display: 'grid', gridTemplateColumns: '48px 1.7fr 1fr 110px 70px 56px 92px', gap: 10 }
@@ -45,6 +47,8 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   const { productos, loading: catLoading, deleteProducto } = useCatalog()
   const { isMobile } = useDevice()
   const [confirmDel, setConfirmDel] = useState(null) // id con confirmación de borrado pendiente
+  const [importOpen, setImportOpen] = useState(false)
+  const [catsOpen, setCatsOpen] = useState(false)
 
   async function eliminar(p) {
     setConfirmDel(null)
@@ -78,11 +82,19 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
       <div style={{ ...panel, minWidth: isMobile ? 0 : 760 }}>
-        <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px')}>
+        <div style={sx('display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px')}>
           <div style={label10}>Catálogo · {productos.length} productos</div>
-          <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo producto
-          </button>
+          <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
+            <button onClick={() => setCatsOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h18M3 12h18M3 17h18" /></svg>Categorías
+            </button>
+            <button onClick={() => setImportOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>Importar planilla
+            </button>
+            <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo producto
+            </button>
+          </div>
         </div>
         {catLoading ? (
           <div style={sx('padding:40px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando catálogo…</div>
@@ -111,6 +123,9 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
           </>
         )}
       </div>
+
+      {catsOpen && <GestionarCategorias onClose={() => setCatsOpen(false)} onToast={onToast} />}
+      {importOpen && <ImportarProductos onClose={() => setImportOpen(false)} onToast={onToast} />}
     </div>
   )
 }

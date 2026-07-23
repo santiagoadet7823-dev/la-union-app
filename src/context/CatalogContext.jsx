@@ -60,6 +60,7 @@ export function CatalogProvider({ children }) {
   const [productos, setProductos] = useState([])
   const [clientes, setClientes] = useState([])
   const [zonas, setZonas] = useState([])
+  const [categorias, setCategorias] = useState([]) // filas de la tabla `categorias` (gestionadas)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -72,11 +73,12 @@ export function CatalogProvider({ children }) {
     setProductos((raw?.productos || []).map(mapProducto))
     setClientes((raw?.clientes || []).map(mapCliente))
     setZonas(raw?.zonas || [])
+    setCategorias(raw?.categorias || [])
   }, [])
 
   const recargar = useCallback(async () => {
     setLoading(true)
-    const { productos: prod, clientes: cli, zonas: zon, error: err } = await fetchCatalogo(idEmpresa)
+    const { productos: prod, clientes: cli, zonas: zon, categorias: cat, error: err } = await fetchCatalogo(idEmpresa)
     // Offline / falla sin datos: NO pisar con vacío — se conserva lo hidratado de
     // caché (mejor mostrar los últimos datos conocidos que una lista vacía).
     if (err && prod.length === 0 && cli.length === 0 && zon.length === 0) {
@@ -85,7 +87,7 @@ export function CatalogProvider({ children }) {
       return
     }
     setError(err || null)
-    const raw = { productos: prod, clientes: cli, zonas: zon }
+    const raw = { productos: prod, clientes: cli, zonas: zon, categorias: cat }
     netAppliedRef.current = true
     aplicar(raw)
     // Solo persistir un snapshot COMPLETO (sin error). Un fallo PARCIAL (una tabla
@@ -245,36 +247,57 @@ export function CatalogProvider({ children }) {
 
   /**
    * Importación masiva de clientes (planilla). Acción de admin: NO aplica el override
-   * `esMovil` de addCliente (que forzaría id_vendedor=user y activo=false). Cada fila ya
-   * viene resuelta con id_zona + id_vendedor (heredado de la zona). Dedup por `codigo`
-   * (columna UNIQUE): las filas cuyo código ya exista en la cartera se SALTAN, no se
-   * insertan (evita el fallo de constraint). Offline-first: encola todo y flushea al final.
+   * `esMovil` de addCliente (que forzaría id_vendedor=user y activo=false).
    *
-   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, id_zona?, id_vendedor?}>} rows
-   * @returns {{insertados:number, saltados:number, avisos:string[]}}
+   * UPSERT por `codigo`: si el código YA existe en la cartera, la fila NO se saltea — se
+   * ACTUALIZA (ej. reimportar "pepito 113" agregándole ubicación/zona/vendedor). El update es
+   * PARCIAL: solo toca las columnas que la planilla trae con dato; las celdas vacías NO pisan lo
+   * cargado a mano (en particular NO toca lat/lng salvo que vengan). Los duplicados DENTRO del
+   * mismo lote sí se saltan (no tiene sentido aplicar dos veces la misma fila). Offline-first.
+   *
+   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, id_zona?, id_vendedor?, lat?, lng?}>} rows
+   * @returns {{insertados:number, actualizados:number, saltados:number, avisos:string[]}}
    */
   const importClientes = useCallback(async (rows) => {
-    const existentes = new Set(
-      clientes.map((c) => (c.codigo || '').trim().toLowerCase()).filter(Boolean)
-    )
+    // Map codigo→cliente (con su id) para poder ACTUALIZAR, no solo detectar duplicado.
+    const porCodigo = new Map()
+    clientes.forEach((c) => { const k = (c.codigo || '').trim().toLowerCase(); if (k) porCodigo.set(k, c) })
     const vistosEnLote = new Set()
     const avisos = []
     const nuevos = []
+    const updates = [] // { id, patch }
     for (const r of rows || []) {
       const cod = (r.codigo || '').trim()
       const codKey = cod.toLowerCase()
-      if (codKey && (existentes.has(codKey) || vistosEnLote.has(codKey))) {
-        avisos.push(`Código duplicado, se saltó: ${cod}`)
+      if (codKey && vistosEnLote.has(codKey)) {
+        avisos.push(`Código repetido en la planilla, se saltó: ${cod}`)
         continue
       }
       if (codKey) vistosEnLote.add(codKey)
+
+      const existente = codKey ? porCodigo.get(codKey) : null
+      if (existente) {
+        // UPDATE parcial: solo columnas con dato en la planilla (no pisar con vacío).
+        const patch = {}
+        if (r.nombre_comercio) patch.nombre_comercio = r.nombre_comercio
+        if (r.localidad) patch.localidad = r.localidad
+        if (r.dias_visita) patch.dias_visita = r.dias_visita
+        if (r.frecuencia) patch.frecuencia = r.frecuencia
+        if (r.horario) patch.horario = r.horario
+        if (r.id_zona) patch.id_zona = r.id_zona
+        if (r.id_vendedor) patch.id_vendedor = r.id_vendedor
+        if (r.lat != null) patch.lat = r.lat
+        if (r.lng != null) patch.lng = r.lng
+        if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
+        continue
+      }
       nuevos.push({
         id: uid(),
         id_empresa: idEmpresa,
         codigo: cod || null,
         nombre_comercio: r.nombre_comercio,
-        lat: null,
-        lng: null,
+        lat: r.lat ?? null,
+        lng: r.lng ?? null,
         localidad: r.localidad || null,
         dias_visita: r.dias_visita || null,
         frecuencia: r.frecuencia || null,
@@ -285,14 +308,38 @@ export function CatalogProvider({ children }) {
         activo: true, // importación de admin → confirmados
       })
     }
+    // Aplicar altas (optimista + encolar).
     if (nuevos.length) {
       setClientes((prev) => [...prev, ...nuevos.map(mapCliente)].sort((a, b) => a.name.localeCompare(b.name)))
       for (const row of nuevos) {
         await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: row })
       }
-      flushMutaciones()
     }
-    return { insertados: nuevos.length, saltados: (rows?.length || 0) - nuevos.length, avisos }
+    // Aplicar actualizaciones (mismo merge de vista que updateCliente).
+    if (updates.length) {
+      setClientes((prev) => prev.map((c) => {
+        const u = updates.find((x) => x.id === c.id)
+        if (!u) return c
+        const v = {}
+        const p = u.patch
+        if ('nombre_comercio' in p) v.name = p.nombre_comercio
+        if ('localidad' in p) v.loc = p.localidad || ''
+        if ('id_zona' in p) v.idZona = p.id_zona || null
+        if ('id_vendedor' in p) v.idVendedor = p.id_vendedor || null
+        if ('dias_visita' in p) v.dias = p.dias_visita || ''
+        if ('frecuencia' in p) v.frecuencia = p.frecuencia || ''
+        if ('horario' in p) v.horario = p.horario || ''
+        if ('lat' in p) v.lat = p.lat ?? null
+        if ('lng' in p) v.lng = p.lng ?? null
+        return { ...c, ...v }
+      }).sort((a, b) => a.name.localeCompare(b.name)))
+      for (const u of updates) {
+        await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'update', id: u.id, payload: u.patch })
+      }
+    }
+    if (nuevos.length || updates.length) flushMutaciones()
+    const total = rows?.length || 0
+    return { insertados: nuevos.length, actualizados: updates.length, saltados: total - nuevos.length - updates.length, avisos }
   }, [idEmpresa, clientes])
 
   /** Edición de zona (nombre/color), offline-first. */
@@ -303,8 +350,141 @@ export function CatalogProvider({ children }) {
     return { ok: true }
   }, [])
 
+  // ---------- Categorías (gestionadas por empresa) ----------
+  /** Alta de categoría, offline-first. */
+  const addCategoria = useCallback(async (nombre) => {
+    const n = (nombre || '').trim()
+    if (!n) return { ok: false, error: new Error('Nombre vacío') }
+    if (categorias.some((c) => c.nombre.toLowerCase() === n.toLowerCase())) return { ok: false, error: new Error('Ya existe esa categoría') }
+    const row = { id: uid(), id_empresa: idEmpresa, nombre: n }
+    setCategorias((prev) => [...prev, row].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    await enqueueMutacion({ op_uid: uid(), table: 'categorias', op: 'insert', payload: row })
+    flushMutaciones()
+    return { ok: true }
+  }, [idEmpresa, categorias])
+
+  /**
+   * Renombrar categoría: además de la fila, PROPAGA el nombre nuevo a todos los productos que
+   * tengan el nombre viejo (productos.categoria es texto, no FK). Optimista + encola cada update.
+   */
+  const updateCategoria = useCallback(async (id, nuevoNombre) => {
+    const nombre = (nuevoNombre || '').trim()
+    if (!nombre) return { ok: false, error: new Error('Nombre vacío') }
+    const anterior = categorias.find((c) => c.id === id)?.nombre
+    setCategorias((prev) => prev.map((c) => (c.id === id ? { ...c, nombre } : c)).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    await enqueueMutacion({ op_uid: uid(), table: 'categorias', op: 'update', id, payload: { nombre } })
+    if (anterior && anterior !== nombre) {
+      const afectados = productos.filter((p) => p.cat === anterior)
+      setProductos((prev) => prev.map((p) => (p.cat === anterior ? { ...p, cat: nombre } : p)))
+      for (const p of afectados) {
+        await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id: p.id, payload: { categoria: nombre } })
+      }
+    }
+    flushMutaciones()
+    return { ok: true }
+  }, [categorias, productos])
+
+  /** Quitar categoría: sus productos pasan a 'Otros' (no quedan huérfanos) y luego se borra la fila. */
+  const deleteCategoria = useCallback(async (id) => {
+    const nombre = categorias.find((c) => c.id === id)?.nombre
+    if (nombre) {
+      const afectados = productos.filter((p) => p.cat === nombre)
+      if (afectados.length) {
+        setProductos((prev) => prev.map((p) => (p.cat === nombre ? { ...p, cat: 'Otros' } : p)))
+        for (const p of afectados) {
+          await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id: p.id, payload: { categoria: 'Otros' } })
+        }
+      }
+    }
+    setCategorias((prev) => prev.filter((c) => c.id !== id))
+    await enqueueMutacion({ op_uid: uid(), table: 'categorias', op: 'delete', id })
+    flushMutaciones()
+    return { ok: true }
+  }, [categorias, productos])
+
+  /**
+   * Importación masiva de productos (planilla). UPSERT por `codigo`: existe → update PARCIAL
+   * (solo columnas con dato, no pisa lo vacío); no existe → insert. Sirve para carga inicial y
+   * para actualización. Offline-first. Duplicados dentro del lote se saltan.
+   *
+   * @param {Array<{codigo?, descripcion, precio_unitario?, peso_kg?, unidades?, categoria?, nivel_rentabilidad?, oferta?, precio_oferta?}>} rows
+   * @returns {{insertados:number, actualizados:number, saltados:number, avisos:string[]}}
+   */
+  const importProductos = useCallback(async (rows) => {
+    const porCodigo = new Map()
+    productos.forEach((p) => { const k = (p.codigo || '').trim().toLowerCase(); if (k) porCodigo.set(k, p) })
+    const vistos = new Set()
+    const avisos = []
+    const nuevos = []
+    const updates = [] // { id, patch }
+    for (const r of rows || []) {
+      if (!r.descripcion || !String(r.descripcion).trim()) { avisos.push('Fila sin descripción, se saltó'); continue }
+      const cod = (r.codigo || '').trim()
+      const codKey = cod.toLowerCase()
+      if (codKey && vistos.has(codKey)) { avisos.push(`Código repetido en la planilla, se saltó: ${cod}`); continue }
+      if (codKey) vistos.add(codKey)
+
+      const existente = codKey ? porCodigo.get(codKey) : null
+      if (existente) {
+        const patch = {}
+        if (r.descripcion) patch.descripcion = String(r.descripcion).trim()
+        if (r.precio_unitario != null && r.precio_unitario !== '') patch.precio_unitario = Number(r.precio_unitario) || 0
+        if (r.peso_kg != null && r.peso_kg !== '') patch.peso_kg = Number(r.peso_kg) || 0
+        if (r.unidades != null && r.unidades !== '') patch.unidades = Math.round(Number(r.unidades)) || null
+        if (r.categoria) patch.categoria = r.categoria
+        if (r.nivel_rentabilidad != null && r.nivel_rentabilidad !== '') patch.nivel_rentabilidad = Number(r.nivel_rentabilidad) || null
+        if (r.oferta != null && r.oferta !== '') patch.oferta = !!r.oferta
+        if (r.precio_oferta != null && r.precio_oferta !== '') patch.precio_oferta = Number(r.precio_oferta) || null
+        if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
+        continue
+      }
+      nuevos.push({
+        id: uid(),
+        id_empresa: idEmpresa,
+        codigo: cod || null,
+        descripcion: String(r.descripcion).trim(),
+        precio_unitario: Number(r.precio_unitario) || 0,
+        peso_kg: Number(r.peso_kg) || 0,
+        unidades: r.unidades ? Math.round(Number(r.unidades)) : null,
+        categoria: r.categoria || inferCategoria(String(r.descripcion) || ''),
+        nivel_rentabilidad: r.nivel_rentabilidad ? Number(r.nivel_rentabilidad) : null,
+        oferta: !!r.oferta,
+        precio_oferta: r.precio_oferta ? Number(r.precio_oferta) : null,
+        imagen_url: null,
+      })
+    }
+    if (nuevos.length) {
+      setProductos((prev) => [...prev, ...nuevos.map(mapProducto)].sort((a, b) => a.name.localeCompare(b.name)))
+      for (const row of nuevos) {
+        await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'insert', payload: row })
+      }
+    }
+    if (updates.length) {
+      setProductos((prev) => prev.map((p) => {
+        const u = updates.find((x) => x.id === p.id)
+        if (!u) return p
+        const v = {}; const q = u.patch
+        if ('descripcion' in q) v.name = q.descripcion
+        if ('precio_unitario' in q) v.price = Number(q.precio_unitario) || 0
+        if ('peso_kg' in q) v.kg = Number(q.peso_kg) || 0
+        if ('unidades' in q) v.unidades = q.unidades ?? null
+        if ('categoria' in q) v.cat = q.categoria
+        if ('nivel_rentabilidad' in q) v.nivel = q.nivel_rentabilidad ?? null
+        if ('oferta' in q) v.oferta = !!q.oferta
+        if ('precio_oferta' in q) v.precioOferta = q.precio_oferta ?? null
+        return { ...p, ...v }
+      }).sort((a, b) => a.name.localeCompare(b.name)))
+      for (const u of updates) {
+        await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id: u.id, payload: u.patch })
+      }
+    }
+    if (nuevos.length || updates.length) flushMutaciones()
+    const total = rows?.length || 0
+    return { insertados: nuevos.length, actualizados: updates.length, saltados: total - nuevos.length - updates.length, avisos }
+  }, [idEmpresa, productos])
+
   return (
-    <CatalogContext.Provider value={{ productos, clientes, zonas, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, importClientes, addZona, updateZona }}>
+    <CatalogContext.Provider value={{ productos, clientes, zonas, categorias, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
       {children}
     </CatalogContext.Provider>
   )

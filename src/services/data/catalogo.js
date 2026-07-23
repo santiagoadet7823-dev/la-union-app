@@ -15,19 +15,21 @@ import { persistence } from '../persistence'
  */
 const cacheKey = (idEmpresa) => `lu-catalogo-cache-${idEmpresa || 'sin-empresa'}`
 
-/** Trae las 3 tablas de una empresa en paralelo. Devuelve filas crudas + el primer error si hubo. */
+/** Trae las tablas del catálogo de una empresa en paralelo. Devuelve filas crudas + el primer error si hubo. */
 export async function fetchCatalogo(idEmpresa) {
-  if (!idEmpresa) return { productos: [], clientes: [], zonas: [], error: null }
-  const [{ data: prod, error: e1 }, { data: cli, error: e2 }, { data: zon, error: e3 }] = await Promise.all([
+  if (!idEmpresa) return { productos: [], clientes: [], zonas: [], categorias: [], error: null }
+  const [{ data: prod, error: e1 }, { data: cli, error: e2 }, { data: zon, error: e3 }, { data: cat, error: e4 }] = await Promise.all([
     supabase.from('productos').select('*').eq('id_empresa', idEmpresa).order('descripcion'),
     supabase.from('clientes').select('*').eq('id_empresa', idEmpresa).order('nombre_comercio'),
     supabase.from('zonas').select('*').eq('id_empresa', idEmpresa).order('nombre'),
+    supabase.from('categorias').select('*').eq('id_empresa', idEmpresa).order('nombre'),
   ])
   return {
     productos: prod || [],
     clientes: cli || [],
     zonas: zon || [],
-    error: e1 || e2 || e3 || null,
+    categorias: cat || [],
+    error: e1 || e2 || e3 || e4 || null,
   }
 }
 

@@ -20,6 +20,10 @@ import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
  * móvil y en el panel web.
  */
 const RECIENTE_MS = 5 * 60000 // un latido más viejo que esto = "sin señal"
+// A partir de esta profundidad de cola local, avisamos "cola trabada": el móvil late pero
+// no está drenando posiciones a la base (caso Agustín: conectado, pero dejó de enviar). Un
+// puñado de puntos en cola es normal entre flushes; esto marca una acumulación real.
+const UMBRAL_COLA = 10
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 
 export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
@@ -34,7 +38,7 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
   const cargarEstados = useCallback(async () => {
     if (!idEmpresa) return
     const { data: e } = await supabase.from('estado_dispositivo')
-      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok')
+      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok, cola_pendiente, cuarentena_pendiente')
       .eq('id_empresa', idEmpresa)
     if (e) { const m = {}; e.forEach((r) => { m[r.id_usuario] = r }); setEstados(m) }
   }, [idEmpresa])
@@ -80,10 +84,16 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
         color = 'var(--success)'
       }
     }
-    return { id: u.id, nombre: u.nombre || 'Móvil', rol: u.rol, estado, motivo, color }
+    // Cola de posiciones sin subir (la publica el propio móvil en cada latido). Es un carril
+    // distinto del GPS: un móvil puede latir "OK" y aun así NO estar drenando posiciones a la
+    // base (regla 22 de CLAUDE.md). Esto lo destapa.
+    const cola = (e && e.cola_pendiente) || 0
+    const cuarentena = (e && e.cuarentena_pendiente) || 0
+    const colaTrabada = cola >= UMBRAL_COLA || cuarentena > 0
+    return { id: u.id, nombre: u.nombre || 'Móvil', rol: u.rol, estado, motivo, color, cola, cuarentena, colaTrabada }
   }).sort((a, b) => (a.estado === 'ok' ? 1 : 0) - (b.estado === 'ok' ? 1 : 0)) // problemas primero
 
-  const problemas = filas.filter((f) => f.estado !== 'ok').length
+  const problemas = filas.filter((f) => f.estado !== 'ok' || f.colaTrabada).length
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14 }}>
@@ -102,10 +112,22 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
           title={onSelectUsuario ? 'Ver su recorrido en el mapa' : undefined}
           style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid var(--line)', cursor: onSelectUsuario ? 'pointer' : 'default' }}
         >
-          <span style={{ width: 10, height: 10, flex: 'none', borderRadius: 99, background: f.color, boxShadow: `0 0 0 3px ${f.color}22` }} />
+          {(() => {
+            // El punto refleja también la cola: verde "OK" junto a un aviso de cola sería contradictorio.
+            const dot = f.cuarentena > 0 ? 'var(--danger)' : (f.colaTrabada ? 'var(--warning)' : f.color)
+            return <span style={{ width: 10, height: 10, flex: 'none', borderRadius: 99, background: dot, boxShadow: `0 0 0 3px ${dot}22` }} />
+          })()}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre} <span style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{f.rol}</span></div>
             <div style={{ fontSize: 11, color: f.estado === 'ok' ? 'var(--muted)' : f.color, lineHeight: 1.3 }}>{f.motivo}</div>
+            {/* Cola de posiciones sin enviar. Ámbar = acumulación (late pero no drena);
+                rojo = puntos en cuarentena (error permanente, ver reglas 19-22). */}
+            {f.colaTrabada && (
+              <div style={{ fontSize: 10.5, fontWeight: 600, lineHeight: 1.35, marginTop: 2, color: f.cuarentena > 0 ? 'var(--danger)' : 'var(--warning)' }}>
+                ⚠ {f.cola} ubicación{f.cola === 1 ? '' : 'es'} en cola sin enviar
+                {f.cuarentena > 0 ? ` · ${f.cuarentena} en cuarentena (error permanente)` : ''}
+              </div>
+            )}
           </div>
           <span style={{ width: 8, height: 8, flex: 'none', borderRadius: 99, background: colorPorId(f.id), border: '1px solid #fff' }} />
         </div>
