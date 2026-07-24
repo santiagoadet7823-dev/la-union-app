@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "720290370372",
+    "project_id": "gestor-local-celulares",
+    "storage_bucket": "gestor-local-celulares.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:720290370372:android:0f3b202e0fe8b58afcfd11",
+        "android_client_info": {
+          "package_name": "com.launion.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "720290370372-igqt2cupska3koblji3j2i98cnch4ljm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnC7U2127tb9_SpsV7fOrzFb_daOctaOE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "720290370372-igqt2cupska3koblji3j2i98cnch4ljm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
