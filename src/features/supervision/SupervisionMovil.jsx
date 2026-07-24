@@ -617,7 +617,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           <Suspense fallback={<GestionCargando />}>
             {gestion === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
             {gestion === 'zonas' && <ZonasView onToast={showToast} />}
-            {gestion === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} />}
+            {/* onEditarProducto y onToast NO son opcionales: sin el primero el botón de editar
+                del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}
+            {gestion === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} onEditarProducto={(p) => setModalProducto(p)} onToast={showToast} />}
             {gestion === 'faltante' && <FaltanteTab />}
             {gestion === 'consultas' && <ConsultasView />}
             {gestion === 'usuarios' && <UsuariosView onToast={showToast} />}
@@ -631,7 +633,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {(modalCliente || modalProducto || modalPerfil) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
-          {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} />}
+          {/* `true` = alta; un objeto producto = edición (mismo patrón que AdminView). */}
+          {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} producto={modalProducto === true ? null : modalProducto} />}
           {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
         </Suspense>
       )}
