@@ -61,6 +61,16 @@
             android:name=".MovimientoReceiver"
             android:exported="false" />
 
+        <!-- Receptor de la alarma del watchdog OFFLINE. Declarado en el manifest (no dinámico)
+             por el mismo motivo que MovimientoReceiver: el PendingIntent de AlarmManager es un
+             broadcast explícito que puede arrancar el proceso en frío. A diferencia del push,
+             esta alarma dispara sin internet. exported="false": la dispara nuestra propia app.
+             Ver AlarmReceiver.java / AlarmWatchdogPlugin.java. No requiere permiso nuevo:
+             setAndAllowWhileIdle no exige SCHEDULE_EXACT_ALARM y WAKE_LOCK ya está declarado. -->
+        <receiver
+            android:name=".AlarmReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

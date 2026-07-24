@@ -14,6 +14,10 @@ public class MainActivity extends BridgeActivity {
         // tener que dejar el GPS a máxima precisión toda la jornada. Mismo requisito:
         // antes de super.onCreate().
         registerPlugin(MovimientoPlugin.class);
+        // Plugin local: watchdog OFFLINE por AlarmManager. Segundo canal (además del push
+        // FCM) para despertar la app cada ~30 min SIN depender de internet. Ver
+        // AlarmWatchdogPlugin. Mismo requisito de registro antes de super.onCreate().
+        registerPlugin(AlarmWatchdogPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

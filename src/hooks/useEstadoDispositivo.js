@@ -5,6 +5,7 @@ import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
 import { pendingCount, pendientesCuarentena } from '../services/sync/queue'
 import { getHeartbeat } from '../services/geolocation/tracker'
+import { getFcmTokenSync } from '../services/push'
 
 /**
  * Latido de "salud" del dispositivo móvil. Cada tanto (y en transiciones) sube una
@@ -24,7 +25,7 @@ const FORZAR_MS = 600000  // ...pero al menos cada 10 min sí o sí (ver abajo)
 // Campos de ESTADO que deciden si vale la pena subir el latido. `ts`/`updated_at`
 // quedan afuera a propósito: cambian siempre y anularían la comparación.
 const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'cola_pendiente',
-  'cuarentena_pendiente', 'gps_error']
+  'cuarentena_pendiente', 'gps_error', 'fcm_token']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -106,7 +107,9 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
       // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
       // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
-      const estado = { app_version: APP_VERSION, cola_pendiente: cola, cuarentena_pendiente: cuar, ...s }
+      // fcm_token: para que el backend (watchdog) sepa a qué teléfono mandar el push. Puede ser
+      // null hasta que FCM registre el dispositivo; se sube en cuanto aparece.
+      const estado = { app_version: APP_VERSION, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
