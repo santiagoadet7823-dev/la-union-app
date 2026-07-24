@@ -5,6 +5,7 @@ import { useCatalog } from '../../../context/CatalogContext'
 import { useDevice } from '../../../context/DeviceContext'
 import { panel, label10, EmptyState, FilaTabla, CabeceraTabla } from '../ui'
 import ImportarProductos from '../ImportarProductos'
+import ImportarFotos from '../ImportarFotos'
 import GestionarCategorias from '../../catalog/GestionarCategorias'
 
 // Grilla del catálogo (escritorio): foto · descripción · categoría · precio · unid. · nivel · acciones.
@@ -48,6 +49,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   const { isMobile } = useDevice()
   const [confirmDel, setConfirmDel] = useState(null) // id con confirmación de borrado pendiente
   const [importOpen, setImportOpen] = useState(false)
+  const [fotosOpen, setFotosOpen] = useState(false)
   const [catsOpen, setCatsOpen] = useState(false)
 
   async function eliminar(p) {
@@ -91,6 +93,9 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
             <button onClick={() => setImportOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>Importar planilla
             </button>
+            <button onClick={() => setFotosOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>Cargar fotos
+            </button>
             <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo producto
             </button>
@@ -126,6 +131,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
 
       {catsOpen && <GestionarCategorias onClose={() => setCatsOpen(false)} onToast={onToast} />}
       {importOpen && <ImportarProductos onClose={() => setImportOpen(false)} onToast={onToast} />}
+      {fotosOpen && <ImportarFotos onClose={() => setFotosOpen(false)} onToast={onToast} />}
     </div>
   )
 }
