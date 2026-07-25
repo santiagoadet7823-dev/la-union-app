@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
@@ -138,6 +139,8 @@ public class UploaderGpsService extends Service {
             p.put("lng", loc.getLongitude());
             p.put("ts", loc.getTime());                 // epoch ms del fix (la función acepta ms o ISO)
             if (loc.hasAccuracy()) p.put("accuracy", loc.getAccuracy());
+            int bat = nivelBateria();                   // % de batería (nativo, no depende del WebView)
+            if (bat >= 0) p.put("bateria", bat);
             p.put("client_uid", UUID.randomUUID().toString()); // client_uid es uuid en `posiciones`
             cola.put(p);
             while (cola.length() > MAX_COLA) cola.remove(0); // descartar los más viejos si desbordó
@@ -255,6 +258,19 @@ public class UploaderGpsService extends Service {
             if (!hoy) return false;
         }
         return start <= end ? (cur >= start && cur <= end) : (cur >= start || cur <= end);
+    }
+
+    /** % de batería 0-100, o -1 si no se puede leer. Nativo (BatteryManager): no depende del WebView,
+     *  a diferencia de navigator.getBattery() del pipeline JS, que muere congelado en Doze. */
+    private int nivelBateria() {
+        try {
+            BatteryManager bm = (BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+            if (bm != null) {
+                int lvl = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                if (lvl >= 0 && lvl <= 100) return lvl;
+            }
+        } catch (Exception ignored) {}
+        return -1;
     }
 
     private SharedPreferences prefs() {

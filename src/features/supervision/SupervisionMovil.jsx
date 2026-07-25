@@ -245,13 +245,21 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
   // % de batería del móvil seleccionado. El `pin` sale de `movers` (useEquipoEnVivo), cuyo
   // select NO trae `bateria`, así que la sacamos del último punto con dato del recorrido del
-  // día (byUser). Se recorre de atrás para adelante porque los bundles viejos mandan null y
-  // el último fix puede no tenerlo. Sin dato → null (no se muestra nada, ni "—" ni "0%").
+  // día (byUser). Se recorre de atrás para adelante porque el último fix puede no tenerlo.
+  //
+  // GUARD DE FRESCURA (24/07/2026): solo se acepta batería de puntos de los últimos 30 min. Sin esto,
+  // cuando los puntos recientes venían con `bateria=null` (el uploader nativo <1.5.48 no la mandaba),
+  // el escaneo hacia atrás encontraba un valor de HORAS antes y mostraba una batería rancia y falsa
+  // (Gabriel figuraba 92% teniendo 78%). Al pasar la ventana → null (no se muestra nada, ni "—" ni "0%").
   const pinBateria = useMemo(() => {
     const pts = (pinId && byUser[pinId]?.points) || null
     if (!pts) return null
+    const limite = Date.now() - 30 * 60000
     for (let i = pts.length - 1; i >= 0; i--) {
-      const b = pts[i]?.bateria
+      const p = pts[i]
+      const t = p?.ts ? new Date(p.ts).getTime() : 0
+      if (t && t < limite) break // ya entramos en puntos viejos: nada fresco → sin dato
+      const b = p?.bateria
       if (b !== null && b !== undefined) return b
     }
     return null
