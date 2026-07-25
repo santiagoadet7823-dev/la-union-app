@@ -18,4 +18,10 @@ ext {
     // (rootProject.ext gana sobre ese default) en vez de depender de lo que arrastre un
     // plugin de terceros.
     playServicesLocationVersion = '21.0.1'
+    // firebase-messaging: lo arrastra @capacitor/push-notifications como `implementation`, que NO
+    // propaga al classpath de COMPILACIÓN de :app. Nuestro LaUnionMessagingService extiende
+    // MessagingService (FirebaseMessagingService) y usa RemoteMessage, así que :app necesita la
+    // dependencia explícita (mismo caso que playServicesLocation). Fijamos la MISMA versión que el
+    // plugin (su default es 23.3.1) para no divergir; el plugin lee este ext si está presente.
+    firebaseMessagingVersion = '23.3.1'
 }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { App as CapApp } from '@capacitor/app'
 import { supabase, hasSupabase } from '../services/supabase'
+import { primerInstallMs } from '../services/infoApp'
 import { APP_VERSION } from '../version'
 import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
@@ -24,8 +26,8 @@ const FORZAR_MS = 600000  // ...pero al menos cada 10 min sí o sí (ver abajo)
 
 // Campos de ESTADO que deciden si vale la pena subir el latido. `ts`/`updated_at`
 // quedan afuera a propósito: cambian siempre y anularían la comparación.
-const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'cola_pendiente',
-  'cuarentena_pendiente', 'gps_error', 'fcm_token']
+const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_version', 'instalado_ts',
+  'cola_pendiente', 'cuarentena_pendiente', 'gps_error', 'fcm_token']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -57,6 +59,13 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
   const gpsDesdeRef = useRef({ ok: null, since: Date.now() })
   const bgRef = useRef({ dia: null, ok: false }) // ¿latió en 2º plano hoy?
   const hbRef = useRef(null) // heartbeat del tracker (captura real, incl. background)
+  // Versión NATIVA del APK (versionName). Distinta de APP_VERSION, que es la del bundle OTA (JS):
+  // la OTA puede ir más adelante que el APK. Sirve para cazar un APK viejo sin los plugins nativos
+  // nuevos (ej. <1.5.42 sin push). Se lee una sola vez; en web/PWA getInfo no aplica → queda null.
+  const apkRef = useRef(null)
+  // Fecha real de instalación del APK (epoch ms → ISO), leída una vez del plugin nativo InfoApp.
+  // null en web/PWA o APK viejo sin el plugin. Sirve para "instalada hace X" en supervisión.
+  const instaladoRef = useRef(null)
 
   // Última salud calculada (para poder subirla desde el intervalo y los listeners).
   const snapRef = useRef(() => ({}))
@@ -109,7 +118,7 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
       // fcm_token: para que el backend (watchdog) sepa a qué teléfono mandar el push. Puede ser
       // null hasta que FCM registre el dispositivo; se sube en cuanto aparece.
-      const estado = { app_version: APP_VERSION, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...s }
+      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
@@ -128,6 +137,10 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
 
   useEffect(() => {
     if (!enabled || !hasSupabase || !id || !idEmpresa) return
+    // Capturar la versión del APK una sola vez. En web/PWA getInfo no aplica → apkRef queda null.
+    CapApp.getInfo().then((i) => { apkRef.current = i?.version || null }).catch(() => {})
+    // Fecha de instalación del APK (una sola vez, del plugin nativo). null en web/PWA.
+    primerInstallMs().then((ms) => { instaladoRef.current = ms ? new Date(ms).toISOString() : null }).catch(() => {})
     enviar() // al arrancar
     const iv = setInterval(enviar, LATIDO_MS)
     const onVis = () => enviar()

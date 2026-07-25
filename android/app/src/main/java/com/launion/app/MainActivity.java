@@ -18,6 +18,13 @@ public class MainActivity extends BridgeActivity {
         // FCM) para despertar la app cada ~30 min SIN depender de internet. Ver
         // AlarmWatchdogPlugin. Mismo requisito de registro antes de super.onCreate().
         registerPlugin(AlarmWatchdogPlugin.class);
+        // Plugin local SOLO LECTURA: fecha real de instalación del APK (PackageManager.firstInstallTime),
+        // para mostrar en supervisión hace cuánto se instaló. Mismo requisito: antes de super.onCreate().
+        registerPlugin(InfoAppPlugin.class);
+        // Plugin local: uploader GPS NATIVO (Opción B). Captura + POST a la Edge Function sin pasar por
+        // el WebView, para enviar ubicaciones con la pantalla bloqueada (Doze congela el JS). Ver
+        // UploaderGpsService. Mismo requisito de registro antes de super.onCreate().
+        registerPlugin(UploaderGpsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

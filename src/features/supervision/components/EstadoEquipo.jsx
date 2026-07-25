@@ -24,7 +24,36 @@ const RECIENTE_MS = 5 * 60000 // un latido más viejo que esto = "sin señal"
 // no está drenando posiciones a la base (caso Agustín: conectado, pero dejó de enviar). Un
 // puñado de puntos en cola es normal entre flushes; esto marca una acumulación real.
 const UMBRAL_COLA = 10
+// Primer APK que trae el plugin nativo de push (watchdog). Un equipo con APK < esto NO corre el
+// watchdog por más OTA nueva que tenga: es el mismatch que conviene cazar (ver GUIA_PUSH_NATIVO...).
+const APK_MIN_PUSH = '1.5.42'
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+
+// "hace X" legible a partir de un ISO (fecha de instalación). Días/semanas/meses aproximados.
+function haceTexto(iso) {
+  if (!iso) return null
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return null
+  const dias = Math.floor(ms / 86400000)
+  if (dias <= 0) return 'hoy'
+  if (dias === 1) return 'ayer'
+  if (dias < 7) return `hace ${dias} días`
+  if (dias < 30) { const s = Math.floor(dias / 7); return `hace ${s} semana${s === 1 ? '' : 's'}` }
+  if (dias < 365) { const m = Math.floor(dias / 30); return `hace ${m} mes${m === 1 ? '' : 'es'}` }
+  const a = Math.floor(dias / 365); return `hace ${a} año${a === 1 ? '' : 's'}`
+}
+
+// Compara dos versiones "x.y.z" por tramos numéricos. Devuelve <0, 0 o >0. NO comparar strings:
+// '1.5.9' > '1.5.42' como texto. Tolera null/faltantes tratándolos como 0.
+function cmpVer(a, b) {
+  const pa = String(a || '').split('.').map((n) => parseInt(n, 10) || 0)
+  const pb = String(b || '').split('.').map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0)
+    if (d) return d
+  }
+  return 0
+}
 
 export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
   // Ruta de LECTURA pura: cuando exista el TenantContext de PLAN_SAAS.md §3.2,
@@ -33,15 +62,22 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
   const { idEmpresa } = useAuth()
   const users = usePerfilesEquipo()
   const [estados, setEstados] = useState({})
+  const [latestOta, setLatestOta] = useState(null) // app_config.latest_version, para marcar OTA atrasada
   const [, tick] = useState(0)
 
   const cargarEstados = useCallback(async () => {
     if (!idEmpresa) return
     const { data: e } = await supabase.from('estado_dispositivo')
-      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok, cola_pendiente, cuarentena_pendiente')
+      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok, cola_pendiente, cuarentena_pendiente, app_version, apk_version, instalado_ts')
       .eq('id_empresa', idEmpresa)
     if (e) { const m = {}; e.forEach((r) => { m[r.id_usuario] = r }); setEstados(m) }
   }, [idEmpresa])
+
+  // Versión OTA vigente, una sola vez: contra ella se marca "OTA atrasada" por usuario. Singleton.
+  useEffect(() => {
+    supabase.from('app_config').select('latest_version').maybeSingle()
+      .then(({ data }) => { if (data?.latest_version) setLatestOta(data.latest_version) })
+  }, [])
 
   useEffect(() => { cargarEstados() }, [cargarEstados])
   useEffect(() => { const iv = setInterval(cargarEstados, 45000); return () => clearInterval(iv) }, [cargarEstados])
@@ -90,7 +126,15 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
     const cola = (e && e.cola_pendiente) || 0
     const cuarentena = (e && e.cuarentena_pendiente) || 0
     const colaTrabada = cola >= UMBRAL_COLA || cuarentena > 0
-    return { id: u.id, nombre: u.nombre || 'Móvil', rol: u.rol, estado, motivo, color, cola, cuarentena, colaTrabada }
+    // Versiones del equipo. OTA (app_version) puede ir adelante del APK sin problema; lo peligroso es
+    // un APK viejo sin el plugin de push (< APK_MIN_PUSH). apk_version es null en la PWA/escritorio
+    // (no es un teléfono) → no se marca. La OTA atrasada solo se marca si conocemos la vigente.
+    const ota = (e && e.app_version) || null
+    const apk = (e && e.apk_version) || null
+    const otaAtrasada = !!(ota && latestOta && cmpVer(ota, latestOta) < 0)
+    const apkSinPush = !!(apk && cmpVer(apk, APK_MIN_PUSH) < 0)
+    const instalada = haceTexto(e && e.instalado_ts) // "instalada hace X" (null en PWA / sin dato)
+    return { id: u.id, nombre: u.nombre || 'Móvil', rol: u.rol, estado, motivo, color, cola, cuarentena, colaTrabada, ota, apk, otaAtrasada, apkSinPush, instalada }
   }).sort((a, b) => (a.estado === 'ok' ? 1 : 0) - (b.estado === 'ok' ? 1 : 0)) // problemas primero
 
   const problemas = filas.filter((f) => f.estado !== 'ok' || f.colaTrabada).length
@@ -126,6 +170,15 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
               <div style={{ fontSize: 10.5, fontWeight: 600, lineHeight: 1.35, marginTop: 2, color: f.cuarentena > 0 ? 'var(--danger)' : 'var(--warning)' }}>
                 ⚠ {f.cola} ubicación{f.cola === 1 ? '' : 'es'} en cola sin enviar
                 {f.cuarentena > 0 ? ` · ${f.cuarentena} en cuarentena (error permanente)` : ''}
+              </div>
+            )}
+            {/* Versiones: OTA (bundle JS) · APK (nativo). El APK viejo sin push se resalta ámbar
+                porque el watchdog no le funciona por más OTA nueva que tenga. */}
+            {(f.ota || f.apk) && (
+              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', lineHeight: 1.35, marginTop: 2, color: 'var(--faint)' }}>
+                OTA <span style={{ color: f.otaAtrasada ? 'var(--warning)' : 'var(--muted)', fontWeight: f.otaAtrasada ? 600 : 400 }}>{f.ota || '—'}{f.otaAtrasada ? ' ↑' : ''}</span>
+                {' · '}APK <span style={{ color: f.apkSinPush ? 'var(--warning)' : 'var(--muted)', fontWeight: f.apkSinPush ? 600 : 400 }}>{f.apk || '—'}{f.apkSinPush ? ' · sin push' : ''}</span>
+                {f.instalada ? <> · instalada <span style={{ color: 'var(--muted)' }}>{f.instalada}</span></> : null}
               </div>
             )}
           </div>

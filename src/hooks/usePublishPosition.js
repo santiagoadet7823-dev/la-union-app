@@ -3,6 +3,7 @@ import { useLivePosition } from './useLivePosition'
 import { flushPosiciones, setUsuarioCola } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { setIdentidad, setConfig, reset as resetTracker } from '../services/geolocation/tracker'
+import { iniciarUploaderNativo, detenerUploaderNativo } from '../services/uploaderNativo'
 
 /**
  * GPS en vivo + publicación en tiempo real. Lo usan Vendedor y Repartidor: cada
@@ -77,6 +78,16 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     const iv = setInterval(load, 4 * 60000)
     return () => { alive = false; clearInterval(iv); clearTimeout(boundaryTimer) }
   }, [enabled])
+
+  // Uploader GPS NATIVO (Opción B): corre EN PARALELO al pipeline JS de arriba. El servicio nativo
+  // captura y postea sin pasar por el WebView, así la ubicación sigue subiendo con la pantalla
+  // bloqueada (el JS se congela en Doze). Se arranca dentro de horario y se detiene fuera / al
+  // deshabilitar. En web/PWA es no-op. Es la versión "al lado" de validación (ver uploaderNativo.js).
+  useEffect(() => {
+    if (enabled && enHorario) iniciarUploaderNativo({ intervaloMs: 10000 })
+    else detenerUploaderNativo()
+    return () => { detenerUploaderNativo() }
+  }, [enabled, enHorario])
 
   // El filtrado + encolado + subida de cada fix vive ahora en services/geolocation/
   // tracker.js (procesarFix), invocado SÍNCRONO desde el callback nativo del watch en

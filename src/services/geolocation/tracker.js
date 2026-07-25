@@ -15,13 +15,16 @@ import { enqueuePosicion, flushPosiciones } from '../sync/queue'
 import { persistence } from '../persistence'
 import { dentroDeHorario } from '../tracking'
 import { distanciaMetros } from './geofence'
-import { MIN_MOVE_M, KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../gpsConfig'
+import { MIN_MOVE_M, NEAR_LIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../gpsConfig'
 import { uid as nuevoUid } from '../../lib/uid'
 import { hoyStr } from '../../lib/format'
 
 const HB_KEY = 'lu-bg-heartbeat'
 const HB_THROTTLE_MS = 20000 // no saturar SQLite con distanceFilter:10
-const FLUSH_THROTTLE_MS = 15000 // ver nota de batching en procesarFix
+// Casi en vivo: se bajó de 15 s a 10 s para que el punto llegue a la base con la cadencia NEAR_LIVE_MS
+// y el supervisor lo vea "en vivo" (Realtime), sin esperar el lote de 15 s. No bajar mucho más: cada
+// flush es una request HTTP+TLS; a 10 s con BATCH=200 igual se agrupa. Ver nota de batching en procesarFix.
+const FLUSH_THROTTLE_MS = 10000
 
 // Estado a nivel de módulo (fuera de React) → sobrevive al congelamiento del WebView.
 let identidad = null       // { id, rol, idEmpresa }
@@ -31,6 +34,12 @@ let hbUltimoGuardado = 0   // throttle de escritura del heartbeat
 let ultimoFlush = 0        // throttle de subida (el encolado NO se throttlea nunca)
 let nivelBateria = null    // % de batería cacheado (0-100) — se lee SÍNCRONO en procesarFix
 let bateriaIniciada = false
+// Consolidación uploader nativo (Opción B, 24/07/2026): cuando el servicio nativo está activo, ES la
+// fuente ÚNICA de subida (sube aunque el WebView esté congelado). El JS entonces NO encola ni sube —
+// así no se duplican puntos ni se gasta doble red/batería. Se sigue registrando el heartbeat (telemetría
+// bg_ok) y actualizando `last`, que son locales. Ver services/uploaderNativo.js.
+let uploaderNativoActivo = false
+export function setUploaderNativo(v) { uploaderNativoActivo = !!v }
 
 /**
  * Suscribe el % de batería a una variable de módulo. La API es async (Promise +
@@ -135,7 +144,9 @@ export function procesarFix(fix) {
   }
 
   const movio = !prev || distanciaMetros(prev, fix) >= MIN_MOVE_M
-  const keepAlive = prev && Date.now() - prev.sentAt >= KEEPALIVE_MS
+  // Casi en vivo: aunque no se haya movido, reenviar cada NEAR_LIVE_MS (10 s) para que el marcador
+  // avance "en vivo" en la supervisión. Antes era KEEPALIVE_MS (90 s), solo para no caer el marcador.
+  const keepAlive = prev && Date.now() - prev.sentAt >= NEAR_LIVE_MS
   if (!movio && !keepAlive) return
 
   // Actualizar `last` ANTES de cualquier await (JS single-thread → sin interleaving).
@@ -148,21 +159,23 @@ export function procesarFix(fix) {
   }
   if (typeof fix.accuracy === 'number') row.accuracy = fix.accuracy
 
-  // Guardar SIEMPRE en la cola local (mutex en queue.js). Esto NO se throttlea: un
-  // punto encolado nunca se pierde, solo se difiere su subida.
-  enqueuePosicion(row)
+  // Con el uploader nativo activo, él es la fuente ÚNICA de subida: el JS no encola ni sube (evita
+  // puntos dobles). Igual seguimos con el heartbeat de abajo (telemetría bg_ok, local).
+  if (!uploaderNativoActivo) {
+    // Guardar SIEMPRE en la cola local (mutex en queue.js). Esto NO se throttlea: un
+    // punto encolado nunca se pierde, solo se difiere su subida.
+    enqueuePosicion(row)
 
-  // El flush SÍ se throttlea a 15 s. Antes se llamaba en cada fix aceptado → una
-  // request HTTP (y su handshake TLS) por punto: medido en producción, la mediana
-  // entre fixes es de 2,8 s (75,7% en ráfaga) ≈ una conexión cada 3 s mientras el
-  // vendedor se mueve, y el BATCH=200 de queue.js nunca se ejercía porque la cola
-  // jamás acumulaba. Con el throttle los puntos se agrupan y suben de a lotes.
-  // Respaldo: el setInterval(flushPosiciones, 30000) de usePublishPosition drena lo
-  // que quede (y el flush al recuperar red / al volver a foreground).
-  const ahora = Date.now()
-  if (ahora - ultimoFlush >= FLUSH_THROTTLE_MS) {
-    ultimoFlush = ahora
-    flushPosiciones()
+    // El flush SÍ se throttlea. Antes se llamaba en cada fix aceptado → una request HTTP (y su
+    // handshake TLS) por punto: medido en producción, la mediana entre fixes es de 2,8 s (75,7% en
+    // ráfaga) ≈ una conexión cada 3 s mientras el vendedor se mueve, y el BATCH=200 de queue.js nunca
+    // se ejercía porque la cola jamás acumulaba. Con el throttle los puntos se agrupan y suben de a
+    // lotes. Respaldo: el setInterval(flushPosiciones, 30000) de usePublishPosition drena lo que quede.
+    const ahora = Date.now()
+    if (ahora - ultimoFlush >= FLUSH_THROTTLE_MS) {
+      ultimoFlush = ahora
+      flushPosiciones()
+    }
   }
 
   registrarHeartbeat(!visibleAhora())

@@ -22,24 +22,31 @@ export default function EmpresasView({ onToast }) {
   const [loading, setLoading] = useState(true)
   const [nueva, setNueva] = useState('')
   const [creando, setCreando] = useState(false)
-  // Ventana horaria de rastreo (global).
-  const [track, setTrack] = useState({ enabled: true, start: '07:30', end: '22:00' })
+  // Ventana horaria de rastreo (global). `days` = ISO 1=Lun … 7=Dom; null/[] = todos los días.
+  const [track, setTrack] = useState({ enabled: true, start: '07:30', end: '22:00', days: null })
   const [savingTrack, setSavingTrack] = useState(false)
   // Edición manual de la coordenada base (depósito) por empresa: id -> { lat, lng } como strings.
   const [baseEdit, setBaseEdit] = useState({})
   const [savingBase, setSavingBase] = useState(null) // id de la empresa que se está guardando
 
   useEffect(() => {
-    supabase.from('app_config').select('track_enabled, track_start, track_end').maybeSingle()
+    supabase.from('app_config').select('track_enabled, track_start, track_end, track_days').maybeSingle()
       .then(({ data }) => {
-        if (data) setTrack({ enabled: data.track_enabled ?? true, start: data.track_start || '07:30', end: data.track_end || '22:00' })
+        if (data) setTrack({
+          enabled: data.track_enabled ?? true,
+          start: data.track_start || '07:30',
+          end: data.track_end || '22:00',
+          days: Array.isArray(data.track_days) && data.track_days.length ? data.track_days : null,
+        })
       })
   }, [])
 
   async function guardarTrack() {
     setSavingTrack(true)
+    // days null/vacío = todos los días (se guarda null, no []).
+    const dias = track.days && track.days.length ? [...track.days].sort((a, b) => a - b) : null
     const { error } = await supabase.from('app_config')
-      .update({ track_enabled: track.enabled, track_start: track.start, track_end: track.end, updated_at: new Date().toISOString() })
+      .update({ track_enabled: track.enabled, track_start: track.start, track_end: track.end, track_days: dias, updated_at: new Date().toISOString() })
       .eq('id', true)
     setSavingTrack(false)
     invalidarTrackCache()
@@ -114,19 +121,48 @@ export default function EmpresasView({ onToast }) {
       <div style={panel}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Horario de rastreo GPS</div>
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Fuera de esta franja los móviles no envían ubicación (ahorra backend si alguien deja la app abierta). Es global para toda la operación.</div>
-        {/* Aclaración pedida el 18/07/2026: se creyó que un recorrido de un sábado a la
-            tarde no se había registrado "porque los fines de semana no rastrea". No hay
-            ninguna regla de días: la franja aplica los 7. El recorrido se había perdido
-            por otra causa (cola de posiciones taponada, ver queue.js). */}
+        {/* Historia (18/07/2026): se creyó que un recorrido de un sábado no se registró "porque los
+            fines de semana no rastrea". En su momento NO había regla de días (la pérdida fue por la
+            cola de posiciones taponada, ver queue.js). Desde el 24/07/2026 SÍ hay regla de días
+            (pedido del cliente: jornada Lun–Sáb): abajo se elige. Sin días marcados = los 7. */}
         <div style={sx('font-size:12px;color:var(--muted);margin:-10px 0 14px;display:flex;gap:6px;align-items:flex-start')}>
           <span aria-hidden="true">📅</span>
           <span>
-            <strong>Aplica los 7 días de la semana</strong>, sábados y domingos incluidos. No hay
-            distinción por día ni por feriado: lo único que decide es la hora.
+            El rastreo corre en los <strong>días marcados</strong> abajo (sin ninguno marcado = los 7).
+            La <strong>hora</strong> sigue mandando dentro de cada día.
             {track.enabled
               ? <> Hoy se registra de <strong>{track.start}</strong> a <strong>{track.end}</strong>.</>
               : <> Ahora mismo el rastreo está <strong>apagado</strong>: no se registra en ningún horario.</>}
           </span>
+        </div>
+        {/* Selector de días (ISO 1=Lun … 7=Dom). Sin ninguno marcado se guarda null = todos los días. */}
+        <div style={sx('display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px')}>
+          {[[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [7, 'Dom']].map(([n, lbl]) => {
+            const activo = !track.days || track.days.includes(n)
+            const explicito = !!(track.days && track.days.includes(n))
+            return (
+              <button
+                key={n}
+                type="button"
+                disabled={!track.enabled}
+                onClick={() => setTrack((t) => {
+                  const base = t.days ? [...t.days] : [1, 2, 3, 4, 5, 6, 7] // primer click sobre "todos" materializa la lista
+                  const set = new Set(base)
+                  if (set.has(n)) set.delete(n); else set.add(n)
+                  const arr = [...set].sort((a, b) => a - b)
+                  return { ...t, days: arr.length === 7 ? null : arr } // los 7 → null (todos)
+                })}
+                className="lu-press"
+                style={{
+                  ...sx('padding:6px 11px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer'),
+                  border: '1px solid ' + (explicito ? 'var(--primary)' : 'var(--line2)'),
+                  background: explicito ? 'var(--primary)' : 'transparent',
+                  color: explicito ? 'var(--on-primary)' : (activo ? 'var(--muted)' : 'var(--faint)'),
+                  opacity: track.enabled ? 1 : 0.5,
+                }}
+              >{lbl}</button>
+            )
+          })}
         </div>
         <div style={sx('display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end')}>
           <label style={sx('display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>

@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
 <uses-permission android:name="android.permission.INTERNET" />
+<!-- Re-armar el watchdog offline tras un reinicio del teléfono / actualización del APK (BootReceiver). -->
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -70,6 +73,43 @@
         <receiver
             android:name=".AlarmReceiver"
             android:exported="false" />
+
+        <!-- FCM: quitamos el MessagingService de @capacitor/push-notifications del manifest merge y lo
+             reemplazamos por el nuestro, que EXTIENDE de él y llama a super (conserva push en primer
+             plano + captura de token) y suma el trabajo nativo del watchdog. Sin este remove, ambos
+             servicios quedan declarados con el mismo intent-filter y FCM podría entregar dos veces.
+             Ver LaUnionMessagingService.java. -->
+        <service
+            android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
+            tools:node="remove" />
+        <service
+            android:name=".LaUnionMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Re-arma el watchdog offline tras reinicio del teléfono / actualización del APK. exported=true:
+             BOOT_COMPLETED es un broadcast del sistema. Solo re-programa la alarma (no abre Activity ni GPS,
+             que Android 12+ bloquea desde background). Ver BootReceiver.java. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Uploader GPS nativo (Opción B): foreground service propio que captura y postea las
+             posiciones sin depender del WebView (funciona con la pantalla bloqueada). foregroundServiceType
+             location es obligatorio para acceder a GPS en 2º plano en Android 10+. Ver UploaderGpsService.java. -->
+        <service
+            android:name=".UploaderGpsService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

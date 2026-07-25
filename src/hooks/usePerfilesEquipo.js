@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
+import { hydrateColores } from '../lib/colors'
 
 /**
  * Perfiles móviles activos de la empresa (vendedor/repartidor/encargado), para
@@ -20,10 +21,10 @@ const TTL = 60000        // los roles/nombres cambian poco; 1 min alcanza
 function fetchPerfilesEquipo(idEmpresa, force) {
   const hit = cache.get(idEmpresa)
   if (!force && hit && Date.now() - hit.at < TTL) return hit.promesa
-  const promesa = supabase.from('perfiles').select('id, nombre, rol')
+  const promesa = supabase.from('perfiles').select('id, nombre, rol, color_trazo')
     .eq('id_empresa', idEmpresa)
     .in('rol', ['vendedor', 'repartidor', 'encargado']).eq('activo', true)
-    .then(({ data }) => data || [])
+    .then(({ data }) => { hydrateColores(data); return data || [] }) // hidrata los overrides de color
   cache.set(idEmpresa, { promesa, at: Date.now() })
   return promesa
 }

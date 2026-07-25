@@ -15,9 +15,10 @@
  * necesita un cliente conocido de antemano y su comentario miente (dice "histéresis"
  * pero tiene un solo umbral).
  *
- * Nota de densidad: KEEPALIVE_MS = 90000 (gpsConfig.js:7) reenvía un punto cada 90 s
- * aunque el teléfono esté quieto → una parada de 5 min deja apenas ~4 fixes. El
- * algoritmo tiene que funcionar con ventanas chicas, no asume densidad alta.
+ * Nota de densidad: desde el modo "casi en vivo" (24/07/2026) el reenvío estando quieto
+ * es cada NEAR_LIVE_MS = 10 s (antes 90 s), así que una parada deja MÁS fixes que antes.
+ * El algoritmo ya funcionaba con ventanas chicas (no asume densidad alta): más densidad
+ * solo lo hace más preciso, nunca lo rompe.
  */
 import { distanciaMetros } from './geofence'
 

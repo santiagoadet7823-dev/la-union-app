@@ -22,11 +22,11 @@
  *     lo que supere `ACCURACY_MAX_M` = 30 (`gpsConfig.js`): los fixes se adquirirían y se
  *     tirarían. Peor que inútil, porque es silencioso.
  *
- * Por eso `PRESET_QUIETO` mantiene la prioridad 100 y solo estira el intervalo: misma
- * precisión, 18× menos adquisiciones, y los 90 s coinciden con `KEEPALIVE_MS` para que el
- * marcador siga vivo. La variante agresiva (102 + subir ACCURACY_MAX_M) es un experimento
- * posterior que se prueba EN DISPOSITIVO: los presets son constantes exportadas justamente
- * para que ese experimento sea tocar un objeto y nada más.
+ * Por eso `PRESET_QUIETO` mantiene la prioridad 100 y solo toca el intervalo. Desde el pedido
+ * "casi en vivo" (24/07/2026) el intervalo quieto es NEAR_LIVE_MS (10 s), no 90 s: se resignó el
+ * ahorro de batería del reposo a cambio de ver al vendedor en tiempo casi real. La variante agresiva
+ * (102 + subir ACCURACY_MAX_M) es un experimento posterior que se prueba EN DISPOSITIVO: los presets
+ * son constantes exportadas justamente para que ese experimento sea tocar un objeto y nada más.
  *
  * --- Por qué la histéresis es asimétrica ---
  * Un vendedor en un semáforo o esperando en la puerta de un cliente alterna quieto/
@@ -44,17 +44,22 @@
  */
 import { movimientoDisponible, escucharMovimiento } from './movimiento'
 import { actualizarWatcher, OPCIONES_GPS_MOVIMIENTO } from './index'
+import { NEAR_LIVE_MS } from '../gpsConfig'
 
 /**
- * Quieto: MISMA prioridad (100) y mismo distanceFilter, solo el intervalo estirado.
- * 90 s en vez de 5 s → 18× menos adquisiciones del chip, precisión intacta.
- * Los 90 s están alineados con KEEPALIVE_MS (gpsConfig): el marcador nunca se cae.
- * OJO: updateWatcher NO hace merge, por eso se parte de OPCIONES_GPS_MOVIMIENTO entero.
+ * Quieto: MISMA prioridad (100) y mismo distanceFilter, solo el intervalo.
+ *
+ * CAMBIO 24/07/2026 (pedido "casi en vivo"): antes se estiraba a 90 s estando quieto (18× menos
+ * adquisiciones, ahorro de batería). Ahora el cliente pide ver al vendedor moverse en tiempo casi
+ * real AUNQUE esté detenido en un cliente, así que el intervalo quieto baja a NEAR_LIVE_MS (10 s),
+ * alineado con el gate de tracker.js. Costo consciente: se pierde el ahorro de batería del reposo
+ * (el chip adquiere ~cada 10 s todo el día). Si la autonomía no alcanza, subir NEAR_LIVE_MS a 15 s.
+ * OJO: updateWatcher NO hace merge (regla 13), por eso se parte de OPCIONES_GPS_MOVIMIENTO entero.
  */
 export const PRESET_QUIETO = Object.freeze({
   ...OPCIONES_GPS_MOVIMIENTO,
-  interval: 90000,
-  maxWaitTime: 120000,
+  interval: NEAR_LIVE_MS,
+  maxWaitTime: NEAR_LIVE_MS * 2,
 })
 
 /** Movimiento: la jornada normal, exactamente como arranca el watcher hoy. */

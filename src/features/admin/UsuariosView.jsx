@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -6,6 +6,8 @@ import { useDevice } from '../../context/DeviceContext'
 import Overlay from '../../components/Overlay'
 import { Field, inputStyle } from '../../components/form'
 import { panel, FilaTabla, CabeceraTabla } from './ui'
+import { PALETA, colorPorId } from '../../lib/colors'
+import { invalidarPerfilesEquipo } from '../../hooks/usePerfilesEquipo'
 
 /**
  * Gestión de usuarios (RBAC). El admin ve a los usuarios de su empresa + los
@@ -32,7 +34,18 @@ const rolPill = (r) => {
  * y React remontaría cada fila cada segundo (cerrando los <select> y perdiendo el foco).
  * Con tipo estable, el re-render del padre ya no desmonta las filas.
  */
-function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile }) {
+function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile, abrirColor }) {
+  // Muestra de color del trazo del usuario en el mapa. Solo el superadmin la ve y la edita; para el
+  // resto no se renderiza. El color mostrado es el efectivo: el fijado a mano o, si no hay, el del hash.
+  const swatch = esSuper && u.activo && u.rol && (
+    <button
+      type="button"
+      onClick={() => abrirColor(u)}
+      className="lu-press"
+      title="Color en el mapa"
+      style={{ ...sx('flex:none;width:16px;height:16px;border-radius:99px;cursor:pointer;padding:0'), background: u.color_trazo || colorPorId(u.id), border: u.color_trazo ? '2px solid var(--text)' : '1px solid var(--line2)' }}
+    />
+  )
   const selRol = (
     <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
       <option value="">Sin rol…</option>
@@ -70,7 +83,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, r
       celdas={[
         {
           label: 'Nombre', titulo: true,
-          contenido: <>{u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}</>,
+          contenido: <span style={sx('display:flex;align-items:center;gap:8px;min-width:0')}>{swatch}<span style={sx('white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{u.nombre || '—'} {u.id === user?.id && <span style={sx('font-size:10px;color:var(--faint)')}>(vos)</span>}</span></span>,
           estilo: sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'),
         },
         { label: 'Email', contenido: u.email, estilo: sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
@@ -207,6 +220,71 @@ function CrearUsuarioModal({ open, onClose, esSuper, empresas, idEmpresa, rolesD
   )
 }
 
+/**
+ * Selector del color de trazo del usuario en el mapa (solo superadmin). Paleta cerrada de 10 +
+ * "Auto" (vuelve al color por hash, guarda color_trazo = null). Guarda directo con update sobre
+ * perfiles (patrón de `guardar`/`cambiarEstado`, no write queue) e invalida la caché de perfiles
+ * para que el mapa tome el color sin recargar.
+ *
+ * DEFINIDO A NIVEL DE MÓDULO por la misma razón que `Fila`/`CrearUsuarioModal`: UsuariosView se monta
+ * dentro de SupervisionMovil, que re-renderiza cada 1s; un tipo nuevo por render lo remontaría.
+ */
+function ColorTrazoModal({ usuario, onClose, onToast, onGuardado }) {
+  const [guardando, setGuardando] = useState(false)
+  const open = !!usuario
+  // Retener el último usuario: al cerrar, `usuario` pasa a null y el cuerpo (subtítulo/selección) se
+  // quedaría sin datos DURANTE la animación de salida del Overlay (gotcha §7.2 de CLAUDE.md).
+  const vistaRef = useRef(usuario)
+  if (usuario) vistaRef.current = usuario
+  const v = vistaRef.current
+  const actual = v?.color_trazo || null
+
+  async function elegir(hex) {
+    if (!v) return
+    setGuardando(true)
+    const { error } = await supabase.from('perfiles').update({ color_trazo: hex }).eq('id', v.id)
+    setGuardando(false)
+    if (error) { onToast?.('Error: ' + error.message); return }
+    invalidarPerfilesEquipo() // el mapa vuelve a hidratar el override en el próximo fetch
+    onToast?.(hex ? `Color de ${v.nombre || 'usuario'} actualizado` : `Color de ${v.nombre || 'usuario'} en automático`)
+    onGuardado?.()
+    onClose?.()
+  }
+
+  return (
+    <Overlay
+      open={open}
+      onClose={onClose}
+      title="Color en el mapa"
+      subtitle={v ? `Marcador y recorrido de ${v.nombre || 'este usuario'}.` : ''}
+      maxWidth={360}
+    >
+      <div style={sx('display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:6px')}>
+        {PALETA.map((hex) => (
+          <button
+            key={hex}
+            type="button"
+            disabled={guardando}
+            onClick={() => elegir(hex)}
+            className="lu-press"
+            title={hex}
+            style={{ ...sx('width:100%;aspect-ratio:1;border-radius:10px;cursor:pointer'), background: hex, border: actual === hex ? '3px solid var(--text)' : '2px solid var(--line2)' }}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={guardando}
+        onClick={() => elegir(null)}
+        className="lu-press"
+        style={{ ...btnGhost, width: '100%', minHeight: 44, marginTop: 6, ...(actual ? null : sx('border-color:var(--text);color:var(--text)')) }}
+      >
+        {actual ? 'Automático (por hash)' : '✓ Automático (por hash)'}
+      </button>
+    </Overlay>
+  )
+}
+
 export default function UsuariosView({ onToast }) {
   const { rol, idEmpresa, user } = useAuth()
   const { isMobile } = useDevice()
@@ -219,12 +297,13 @@ export default function UsuariosView({ onToast }) {
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState(null)
   const [crear, setCrear] = useState(false) // modal de alta manual abierto
+  const [colorFor, setColorFor] = useState(null) // usuario cuyo color se está editando (solo superadmin)
 
   const cargar = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero')
+      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     setUsuarios(data || [])
@@ -276,7 +355,7 @@ export default function UsuariosView({ onToast }) {
   const activos = usuarios.filter((u) => u.activo && u.rol)
 
   // Props comunes para cada Fila (componente de módulo → tipo estable, no remonta por el tick de 1s del padre).
-  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user }
+  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, abrirColor: setColorFor }
 
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
@@ -326,6 +405,15 @@ export default function UsuariosView({ onToast }) {
         onToast={onToast}
         onCreado={cargar}
       />
+
+      {esSuper && (
+        <ColorTrazoModal
+          usuario={colorFor}
+          onClose={() => setColorFor(null)}
+          onToast={onToast}
+          onGuardado={cargar}
+        />
+      )}
     </div>
   )
 }
