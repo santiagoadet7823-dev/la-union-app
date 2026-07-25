@@ -8,17 +8,27 @@
  * con `hydrateColores()` desde usePerfilesEquipo y `colorPorId` lo consulta primero:
  * así los 7 call sites que solo pasan `id` toman el color elegido sin tocarse.
  */
+// 16 colores elegidos para ser lo más DISTINTOS posible entre sí (antes eran 10 y varios
+// azules/verdes se confundían). Hues repartidos por toda la rueda + dos tonos "no arcoíris"
+// (marrón, pizarra) para sumar variedad. Si aún así dos vendedores caen en colores parecidos,
+// el superadmin puede fijar el color a mano (perfiles.color_trazo, ver UsuariosView).
 export const PALETA = [
-  '#0EA5E9', // celeste
-  '#F59E0B', // ámbar
-  '#10B981', // verde
-  '#EF4444', // rojo
-  '#8B5CF6', // violeta
-  '#EC4899', // rosa
-  '#14B8A6', // teal
+  '#E11D48', // rojo
   '#F97316', // naranja
-  '#6366F1', // índigo
+  '#F59E0B', // ámbar
+  '#EAB308', // amarillo
   '#84CC16', // lima
+  '#22C55E', // verde
+  '#0D9488', // teal
+  '#06B6D4', // cian
+  '#0EA5E9', // celeste
+  '#2563EB', // azul
+  '#6366F1', // índigo
+  '#8B5CF6', // violeta
+  '#C026D3', // magenta
+  '#EC4899', // rosa
+  '#9A3412', // marrón
+  '#475569', // pizarra
 ]
 
 // id (string) -> '#RRGGBB' elegido a mano por el superadmin. Vive a nivel de módulo, como la caché
