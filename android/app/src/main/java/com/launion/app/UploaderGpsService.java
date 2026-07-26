@@ -58,6 +58,10 @@ public class UploaderGpsService extends Service {
     static final String K_START = "startMin";  // minuto del día de inicio (7:30 = 450). -1 = sin ventana
     static final String K_END = "endMin";      // minuto del día de fin (18:00 = 1080)
     static final String K_DIAS = "dias";        // CSV ISO "1,2,3,4,5,6" (Lun-Sáb). vacío = todos
+    // Filtro por movimiento (26/07/2026): mismos valores que el pipeline JS (gpsConfig.MIN_MOVE_M /
+    // STATIONARY_KEEPALIVE_MS), los pasa el JS en configurar() → ajustables por OTA sin recompilar.
+    static final String K_MIN_MOVE = "minMoveM";     // metros mínimos de desplazamiento para GUARDAR un punto
+    static final String K_KEEPALIVE = "keepAliveMs"; // estando quieto, guardar igual cada tanto (marcador "vivo")
 
     private static final String CH_ID = "uploader_gps";
     private static final int NOTIF_ID = 5190;
@@ -72,6 +76,13 @@ public class UploaderGpsService extends Service {
     private LocationCallback callback;
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
     private final AtomicBoolean subiendo = new AtomicBoolean(false);
+
+    // Filtro por movimiento (espejo de procesarFix en tracker.js): último punto GUARDADO + cuándo. Se
+    // encola solo si se movió >= minMove, o si pasó keepAlive estando quieto (marcador "vivo"). Vive en
+    // memoria: si el SO mata el servicio, al re-arrancar se pierde y a lo sumo se guarda un punto extra.
+    private double lastLat, lastLng;
+    private long lastSentAt = 0L;
+    private boolean tieneLast = false;
 
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 
@@ -115,9 +126,23 @@ public class UploaderGpsService extends Service {
                 // Vuelve a arrancar cuando el vendedor abre la app a la mañana (o por boot). La ventana
                 // la pasa el JS en configurar().
                 if (!dentroDeVentana()) { detenerServicio(); return; }
+                SharedPreferences sp = prefs();
+                float minMove = sp.getInt(K_MIN_MOVE, 12);        // metros; default = gpsConfig.MIN_MOVE_M
+                long keepAlive = sp.getInt(K_KEEPALIVE, 60000);   // ms; default = STATIONARY_KEEPALIVE_MS
                 for (Location loc : result.getLocations()) {
                     // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
                     if (loc.hasAccuracy() && loc.getAccuracy() > ACCURACY_MAX_M) continue;
+                    // Filtro por movimiento (espejo de tracker.js): guardar solo si se movió, o cada
+                    // keepAlive estando quieto. Recorta el volumen de un vendedor parado sin perder el
+                    // trazo en movimiento. La CAPTURA sigue a intervaloMs (marcador fluido moviéndose).
+                    long now = System.currentTimeMillis();
+                    boolean movio = !tieneLast || haversine(lastLat, lastLng, loc.getLatitude(), loc.getLongitude()) >= minMove;
+                    boolean vivo = tieneLast && (now - lastSentAt) >= keepAlive;
+                    if (!movio && !vivo) continue;
+                    lastLat = loc.getLatitude();
+                    lastLng = loc.getLongitude();
+                    lastSentAt = now;
+                    tieneLast = true;
                     encolar(loc);
                 }
                 subir();
@@ -271,6 +296,18 @@ public class UploaderGpsService extends Service {
             }
         } catch (Exception ignored) {}
         return -1;
+    }
+
+    /** Distancia en metros entre dos coordenadas (haversine). Espejo de geofence.distanciaMetros del JS,
+     *  para que el filtro por movimiento nativo use el mismo criterio que procesarFix. */
+    private static double haversine(double lat1, double lng1, double lat2, double lng2) {
+        double r = 6371000.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+            + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+            * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return 2 * r * Math.asin(Math.min(1.0, Math.sqrt(a)));
     }
 
     private SharedPreferences prefs() {

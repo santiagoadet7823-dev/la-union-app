@@ -15,7 +15,7 @@ import { enqueuePosicion, flushPosiciones } from '../sync/queue'
 import { persistence } from '../persistence'
 import { dentroDeHorario } from '../tracking'
 import { distanciaMetros } from './geofence'
-import { MIN_MOVE_M, NEAR_LIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../gpsConfig'
+import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, ACCURACY_MAX_M, MAX_SPEED_MPS } from '../gpsConfig'
 import { uid as nuevoUid } from '../../lib/uid'
 import { hoyStr } from '../../lib/format'
 
@@ -144,9 +144,11 @@ export function procesarFix(fix) {
   }
 
   const movio = !prev || distanciaMetros(prev, fix) >= MIN_MOVE_M
-  // Casi en vivo: aunque no se haya movido, reenviar cada NEAR_LIVE_MS (10 s) para que el marcador
-  // avance "en vivo" en la supervisión. Antes era KEEPALIVE_MS (90 s), solo para no caer el marcador.
-  const keepAlive = prev && Date.now() - prev.sentAt >= NEAR_LIVE_MS
+  // Estando QUIETO reenviar cada STATIONARY_KEEPALIVE_MS (60 s) para no caer el marcador ("hace <1 min")
+  // sin inundar la base con puntos redundantes. En MOVIMIENTO manda `movio` (cada ≥MIN_MOVE_M), así el
+  // trazo sigue fluido. Antes el gate usaba NEAR_LIVE_MS (10 s) → 6 puntos/min de quieto: era el volumen
+  // que trababa el mapa y saturaba Realtime (fix 26/07/2026). El servicio nativo replica esta misma regla.
+  const keepAlive = prev && Date.now() - prev.sentAt >= STATIONARY_KEEPALIVE_MS
   if (!movio && !keepAlive) return
 
   // Actualizar `last` ANTES de cualquier await (JS single-thread → sin interleaving).

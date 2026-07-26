@@ -5,6 +5,7 @@ import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
+import { simplificarTrazo } from '../../lib/geo'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
 import { fetchSnapRecorridos } from '../../services/recorridos'
@@ -236,11 +237,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   })) : []
   // Por defecto (snapOn=false) se dibuja el rastro CRUDO fiel (los puntos GPS reales). Con el
   // toggle activo se usa la geometría pegada a calles (OSRM), con fallback al crudo si no está.
-  const leafletTrails = trails.flatMap((t) => {
+  //
+  // El rastro crudo se SIMPLIFICA para dibujar (26/07/2026): una jornada de ~11k puntos trababa el mapa
+  // varios segundos. `simplificarTrazo` lo baja a unos cientos preservando la forma, SOLO para Leaflet —
+  // km y paradas (dwell) siguen sobre los puntos crudos (`trails`/`byUser`), que necesitan la densidad.
+  // La rama snap ya viene simplificada por OSRM, no se re-toca. Memoizado: no rehacerlo en cada render
+  // (tick de móviles en vivo), solo cuando cambian los trazos / el toggle / el snap disponible.
+  const leafletTrails = useMemo(() => trails.flatMap((t) => {
     const segs = snapOn ? snapped[t.id] : null
     if (segs && segs.length) return segs.map((s) => ({ points: s, color: t.color }))
-    return [{ points: t.points, color: t.color }]
-  })
+    return [{ points: simplificarTrazo(t.points), color: t.color }]
+  }), [trails, snapOn, snapped])
   const pin = moversArr.find((m) => m.id === pinId) || null
 
   // % de batería del móvil seleccionado. El `pin` sale de `movers` (useEquipoEnVivo), cuyo

@@ -19,7 +19,8 @@ import org.json.JSONArray;
  * Ver services/uploaderNativo.js y UploaderGpsService.java.
  *
  * Métodos:
- *  - configurar({ token, url, intervaloMs }): guarda credenciales/config del uploader.
+ *  - configurar({ token, url, intervaloMs, startMin, endMin, dias, minMoveM, keepAliveMs }): guarda
+ *    credenciales + ventana horaria + filtro por movimiento del uploader.
  *  - iniciar():   arranca el foreground service (captura nativa + POST).
  *  - detener():   lo para (fuera de horario / logout).
  *  - estado():    { configurado, cola, ultimaOk } para diagnóstico en supervisión.
@@ -35,11 +36,14 @@ public class UploaderGpsPlugin extends Plugin {
     public void configurar(PluginCall call) {
         String token = call.getString("token");
         String url = call.getString("url");
-        int intervaloMs = call.getInt("intervaloMs", 10000);
+        int intervaloMs = call.getInt("intervaloMs", 15000);
         // Ventana horaria (Fase 3): minutos del día + días ISO CSV. -1 = sin ventana (todo el día).
         int startMin = call.getInt("startMin", -1);
         int endMin = call.getInt("endMin", -1);
         String dias = call.getString("dias", "");
+        // Filtro por movimiento (26/07/2026): defaults = gpsConfig.MIN_MOVE_M / STATIONARY_KEEPALIVE_MS.
+        int minMoveM = call.getInt("minMoveM", 12);
+        int keepAliveMs = call.getInt("keepAliveMs", 60000);
         if (token == null || url == null) { call.reject("faltan-token-o-url"); return; }
         prefs().edit()
             .putString(UploaderGpsService.K_TOKEN, token)
@@ -48,6 +52,8 @@ public class UploaderGpsPlugin extends Plugin {
             .putInt(UploaderGpsService.K_START, startMin)
             .putInt(UploaderGpsService.K_END, endMin)
             .putString(UploaderGpsService.K_DIAS, dias == null ? "" : dias)
+            .putInt(UploaderGpsService.K_MIN_MOVE, minMoveM)
+            .putInt(UploaderGpsService.K_KEEPALIVE, keepAliveMs)
             .apply();
         call.resolve();
     }

@@ -4,6 +4,7 @@ import { flushPosiciones, setUsuarioCola } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { setIdentidad, setConfig, reset as resetTracker } from '../services/geolocation/tracker'
 import { iniciarUploaderNativo, detenerUploaderNativo } from '../services/uploaderNativo'
+import { isNative } from '../services/platform'
 
 /**
  * GPS en vivo + publicación en tiempo real. Lo usan Vendedor y Repartidor: cada
@@ -67,7 +68,14 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     const aplicar = (cfg) => {
       cfgRef.current = cfg
       setConfig(cfg) // el tracker lee la ventana horaria SÍNCRONO en procesarFix
-      setEnHorario(dentroDeHorario(cfg))
+      const dentro = dentroDeHorario(cfg)
+      setEnHorario(dentro)
+      // REEMPUJAR la ventana al servicio nativo cuando cambia la config (cada 4 min / en el borde). Sin
+      // esto, un cambio de horario desde EmpresasView no llegaba al teléfono con el nativo ya corriendo:
+      // configurar() solo se llamaba una vez al arrancar. `iniciarUploaderNativo` es re-invocable y
+      // reempuja la ventana (el nativo la relee de prefs) + relevanta el servicio si se auto-apagó. En
+      // web/PWA es no-op. Fuera de horario no se toca acá: el efecto [enabled, enHorario] lo detiene.
+      if (isNative() && dentro) iniciarUploaderNativo(cfg)
       clearTimeout(boundaryTimer)
       const ms = msHastaProximoLimite(cfg)
       if (ms != null) boundaryTimer = setTimeout(() => { if (alive) aplicar(cfgRef.current) }, ms)
@@ -84,7 +92,7 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
   // bloqueada (el JS se congela en Doze). Se arranca dentro de horario y se detiene fuera / al
   // deshabilitar. En web/PWA es no-op. Es la versión "al lado" de validación (ver uploaderNativo.js).
   useEffect(() => {
-    if (enabled && enHorario) iniciarUploaderNativo({ intervaloMs: 10000 })
+    if (enabled && enHorario) iniciarUploaderNativo(cfgRef.current)
     else detenerUploaderNativo()
     return () => { detenerUploaderNativo() }
   }, [enabled, enHorario])
