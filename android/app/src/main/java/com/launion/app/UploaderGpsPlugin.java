@@ -19,8 +19,9 @@ import org.json.JSONArray;
  * Ver services/uploaderNativo.js y UploaderGpsService.java.
  *
  * Métodos:
- *  - configurar({ token, url, intervaloMs, startMin, endMin, dias, minMoveM, keepAliveMs }): guarda
- *    credenciales + ventana horaria + filtro por movimiento del uploader.
+ *  - configurar({ token, url, intervaloMs, startMin, endMin, dias, minMoveM, keepAliveMs,
+ *    intervaloRapidoMs, velUmbralMps, velHistMs }): guarda credenciales + ventana horaria + filtro por
+ *    movimiento + cadencia adaptativa por velocidad del uploader.
  *  - iniciar():   arranca el foreground service (captura nativa + POST).
  *  - detener():   lo para (fuera de horario / logout).
  *  - estado():    { configurado, cola, ultimaOk } para diagnóstico en supervisión.
@@ -44,6 +45,13 @@ public class UploaderGpsPlugin extends Plugin {
         // Filtro por movimiento (26/07/2026): defaults = gpsConfig.MIN_MOVE_M / STATIONARY_KEEPALIVE_MS.
         int minMoveM = call.getInt("minMoveM", 12);
         int keepAliveMs = call.getInt("keepAliveMs", 60000);
+        // Cadencia adaptativa por velocidad (27/07/2026): el servicio sube la cadencia de captura sobre el
+        // umbral de velocidad (auto) para que el trazo siga la calle, y vuelve a intervaloMs al frenar.
+        // Defaults = gpsConfig.NEAR_LIVE_RAPIDO_MS / VEL_UMBRAL_MPS / VEL_HIST_MS. Afinables por OTA.
+        int intervaloRapidoMs = call.getInt("intervaloRapidoMs", 5000);
+        // velUmbralMps llega como float (m/s) desde el JS; getInt lo truncaría a 0 con 4.0 → usar getDouble.
+        double velUmbralMps = call.getDouble("velUmbralMps", 4.0);
+        int velHistMs = call.getInt("velHistMs", 20000);
         if (token == null || url == null) { call.reject("faltan-token-o-url"); return; }
         prefs().edit()
             .putString(UploaderGpsService.K_TOKEN, token)
@@ -54,6 +62,9 @@ public class UploaderGpsPlugin extends Plugin {
             .putString(UploaderGpsService.K_DIAS, dias == null ? "" : dias)
             .putInt(UploaderGpsService.K_MIN_MOVE, minMoveM)
             .putInt(UploaderGpsService.K_KEEPALIVE, keepAliveMs)
+            .putInt(UploaderGpsService.K_INTERVALO_RAPIDO, intervaloRapidoMs)
+            .putFloat(UploaderGpsService.K_VEL_UMBRAL, (float) velUmbralMps)
+            .putInt(UploaderGpsService.K_VEL_HIST, velHistMs)
             .apply();
         call.resolve();
     }

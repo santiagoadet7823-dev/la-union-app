@@ -3,7 +3,7 @@ import { isNative } from './platform'
 import { supabase } from './supabase'
 import { getTrackConfig } from './tracking'
 import { setUploaderNativo } from './geolocation/tracker'
-import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS } from './gpsConfig'
+import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS } from './gpsConfig'
 
 /**
  * Bridge al uploader GPS NATIVO (Opción B, 24/07/2026). El servicio nativo (UploaderGpsService) captura
@@ -62,6 +62,9 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = 15000 } 
       token: tokenCache, url: INGEST_URL, intervaloMs,
       startMin, endMin, dias,
       minMoveM: MIN_MOVE_M, keepAliveMs: STATIONARY_KEEPALIVE_MS,
+      // Cadencia adaptativa por velocidad: el nativo captura más seguido en movimiento rápido (auto) para
+      // que el trazo siga la calle, y vuelve a la lenta al frenar. Afinables por OTA (SharedPreferences).
+      intervaloRapidoMs: NEAR_LIVE_RAPIDO_MS, velUmbralMps: VEL_UMBRAL_MPS, velHistMs: VEL_HIST_MS,
     })
     await UploaderGps.iniciar()
     iniciado = true

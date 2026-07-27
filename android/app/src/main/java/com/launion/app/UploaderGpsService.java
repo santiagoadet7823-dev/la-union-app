@@ -62,6 +62,13 @@ public class UploaderGpsService extends Service {
     // STATIONARY_KEEPALIVE_MS), los pasa el JS en configurar() → ajustables por OTA sin recompilar.
     static final String K_MIN_MOVE = "minMoveM";     // metros mínimos de desplazamiento para GUARDAR un punto
     static final String K_KEEPALIVE = "keepAliveMs"; // estando quieto, guardar igual cada tanto (marcador "vivo")
+    // Cadencia ADAPTATIVA por velocidad (27/07/2026): a 15 s de captura, en auto un fix cada ~165 m → el
+    // trazo une esos puntos con una recta que cruza la manzana. Sobre K_VEL_UMBRAL m/s la captura sube a
+    // K_INTERVALO_RAPIDO ms (más puntos en curvas/avenidas) y vuelve a K_INTERVALO al frenar. Los pasa el
+    // JS en configurar() → afinables por OTA sin recompilar (gpsConfig.NEAR_LIVE_RAPIDO_MS/VEL_UMBRAL_MPS/VEL_HIST_MS).
+    static final String K_INTERVALO_RAPIDO = "intervaloRapidoMs"; // cadencia de captura en movimiento rápido
+    static final String K_VEL_UMBRAL = "velUmbralMps";            // m/s por encima del cual se activa la cadencia rápida
+    static final String K_VEL_HIST = "velHistMs";                 // ms sostenidos bajo el umbral antes de volver a lento
 
     private static final String CH_ID = "uploader_gps";
     private static final int NOTIF_ID = 5190;
@@ -83,6 +90,15 @@ public class UploaderGpsService extends Service {
     private double lastLat, lastLng;
     private long lastSentAt = 0L;
     private boolean tieneLast = false;
+
+    // Cadencia adaptativa: último FIX crudo (todos, no solo los guardados) para estimar velocidad si el fix
+    // no trae getSpeed(), + estado del modo rápido con su histéresis. En memoria: si el SO mata el servicio,
+    // al re-arrancar vuelve a modo lento y se re-evalúa con los primeros fixes (a lo sumo un tramo corto ralo).
+    private double lastFixLat, lastFixLng;
+    private long lastFixTime = 0L;
+    private boolean tieneFix = false;
+    private boolean modoRapido = false;
+    private long ultimoRapidoAt = 0L;
 
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 
@@ -113,11 +129,6 @@ public class UploaderGpsService extends Service {
 
     private void arrancarUpdates() {
         if (callback != null) return;
-        SharedPreferences sp = prefs();
-        long intervalo = sp.getLong(K_INTERVALO, 10000L);
-        LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalo)
-            .setMinUpdateIntervalMillis(intervalo)
-            .build();
         callback = new LocationCallback() {
             @Override public void onLocationResult(@Nullable LocationResult result) {
                 if (result == null) return;
@@ -132,10 +143,18 @@ public class UploaderGpsService extends Service {
                 for (Location loc : result.getLocations()) {
                     // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
                     if (loc.hasAccuracy() && loc.getAccuracy() > ACCURACY_MAX_M) continue;
+                    long now = System.currentTimeMillis();
+                    // Cadencia adaptativa por velocidad: se mide sobre TODOS los fixes crudos (antes del
+                    // filtro por movimiento, que decide qué se GUARDA). Si va rápido, sube la cadencia de
+                    // captura para que el trazo no cruce manzanas; al frenar, vuelve a la lenta.
+                    evaluarCadencia(velocidadMps(loc), now, sp);
+                    lastFixLat = loc.getLatitude();
+                    lastFixLng = loc.getLongitude();
+                    lastFixTime = loc.getTime();
+                    tieneFix = true;
                     // Filtro por movimiento (espejo de tracker.js): guardar solo si se movió, o cada
                     // keepAlive estando quieto. Recorta el volumen de un vendedor parado sin perder el
                     // trazo en movimiento. La CAPTURA sigue a intervaloMs (marcador fluido moviéndose).
-                    long now = System.currentTimeMillis();
                     boolean movio = !tieneLast || haversine(lastLat, lastLng, loc.getLatitude(), loc.getLongitude()) >= minMove;
                     boolean vivo = tieneLast && (now - lastSentAt) >= keepAlive;
                     if (!movio && !vivo) continue;
@@ -148,10 +167,59 @@ public class UploaderGpsService extends Service {
                 subir();
             }
         };
+        modoRapido = false; // cada arranque parte en cadencia lenta; los primeros fixes la re-evalúan
+        pedirUpdates(prefs().getLong(K_INTERVALO, 10000L));
+    }
+
+    /**
+     * (Re)pide fixes al FusedLocation con el intervalo dado, reutilizando el MISMO callback. Cambiar la
+     * cadencia en caliente es seguro con el foreground service ya vivo: NO hay el hueco break-before-make
+     * que mata el FGS (ese riesgo es levantar el servicio desde background, no re-pedir updates). Volver a
+     * llamar requestLocationUpdates con el mismo callback reemplaza el LocationRequest anterior.
+     */
+    private void pedirUpdates(long intervalo) {
+        if (callback == null) return;
+        LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalo)
+            .setMinUpdateIntervalMillis(intervalo)
+            .build();
         try {
             fused.requestLocationUpdates(req, callback, Looper.getMainLooper());
         } catch (SecurityException e) {
             // Sin permiso de ubicación no hay nada que capturar; el servicio queda vivo por si se concede.
+        }
+    }
+
+    /**
+     * Velocidad en m/s del fix: getSpeed() del chip si viene (lo normal con HIGH_ACCURACY), si no la
+     * estima por haversine contra el último fix crudo. 0 en el primer fix (sin referencia).
+     */
+    private double velocidadMps(Location loc) {
+        if (loc.hasSpeed() && loc.getSpeed() > 0f) return loc.getSpeed();
+        if (tieneFix) {
+            long dt = loc.getTime() - lastFixTime;
+            if (dt > 0) return haversine(lastFixLat, lastFixLng, loc.getLatitude(), loc.getLongitude()) / (dt / 1000.0);
+        }
+        return 0.0;
+    }
+
+    /**
+     * Ajusta la cadencia de captura según la velocidad, con histéresis ASIMÉTRICA (misma filosofía que
+     * estados.js: ante la duda, MÁS densidad). Pasa a rápido apenas supera el umbral; vuelve a lento solo
+     * tras `velHistMs` sostenidos por debajo. Solo re-pide updates cuando el modo REALMENTE cambia (no en
+     * cada fix). Los valores (rápido/umbral/histéresis) los pasa el JS por prefs → afinables por OTA.
+     */
+    private void evaluarCadencia(double v, long now, SharedPreferences sp) {
+        double umbral = sp.getFloat(K_VEL_UMBRAL, 4.0f);
+        long histMs = sp.getInt(K_VEL_HIST, 20000);
+        if (v >= umbral) {
+            ultimoRapidoAt = now;
+            if (!modoRapido) {
+                modoRapido = true;
+                pedirUpdates(sp.getInt(K_INTERVALO_RAPIDO, 5000));
+            }
+        } else if (modoRapido && (now - ultimoRapidoAt) >= histMs) {
+            modoRapido = false;
+            pedirUpdates(sp.getLong(K_INTERVALO, 10000L));
         }
     }
 
