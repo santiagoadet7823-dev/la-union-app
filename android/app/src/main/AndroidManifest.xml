@@ -24,6 +24,10 @@
      mande la de arriba. -->
 <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION"
     android:maxSdkVersion="28" />
+<!-- Permite que la app lance el instalador del sistema con un .apk que ella misma descargó
+     (updater de APK nativo, ver ApkUpdaterPlugin.java). Android igual exige que el usuario
+     confirme "Instalar" y que "instalar apps desconocidas" esté habilitado para esta app. -->
+<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

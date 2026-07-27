@@ -1,6 +1,9 @@
 package com.launion.app;
 
 import android.app.AlarmManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -41,6 +44,10 @@ public class AlarmWatchdogPlugin extends Plugin {
 
     /** Código del PendingIntent. Constante: programar y cancelar tienen que hablar del mismo. */
     private static final int CODIGO = 4188;
+
+    /** Canal e id de la notificación de "actualización disponible". */
+    private static final String CANAL_ACT = "actualizaciones";
+    private static final int NOTIF_ACT_ID = 4189;
 
     /**
      * Instancia viva, para que el receiver (clase aparte que instancia el sistema) llegue al bridge.
@@ -92,6 +99,47 @@ public class AlarmWatchdogPlugin extends Plugin {
     public void cancelar(PluginCall call) {
         AlarmManager am = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
         if (am != null) am.cancel(pendingIntent(getContext()));
+        call.resolve();
+    }
+
+    /**
+     * Postea una notificación de sistema que, al tocarla, abre la app (Feature: aviso de
+     * actualización con la app cerrada). Lo dispara el JS (services/updateNotify.js) al despertar por
+     * el watchdog SÓLO si hay versión nueva y estamos en horario de monitoreo. El permiso
+     * POST_NOTIFICATIONS ya se pide en el flujo de push (Android 13+); sin él, notify() es no-op.
+     */
+    @PluginMethod
+    public void notificar(PluginCall call) {
+        String titulo = call.getString("titulo", "Actualización disponible");
+        String cuerpo = call.getString("cuerpo", "Tocá para actualizar DisT-At.");
+        Context ctx = getContext();
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) { call.resolve(); return; }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel canal = new NotificationChannel(
+                CANAL_ACT, "Actualizaciones", NotificationManager.IMPORTANCE_DEFAULT);
+            canal.setDescription("Aviso cuando hay una versión nueva de la app.");
+            nm.createNotificationChannel(canal);
+        }
+
+        // Tocar la notificación abre la app (singleTask): el UpdatePrompt/updater se encarga del resto.
+        Intent abrir = new Intent(ctx, MainActivity.class);
+        abrir.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent pi = PendingIntent.getActivity(ctx, 4190, abrir, flags);
+
+        Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            ? new Notification.Builder(ctx, CANAL_ACT)
+            : new Notification.Builder(ctx);
+        b.setContentTitle(titulo)
+         .setContentText(cuerpo)
+         .setSmallIcon(ctx.getApplicationInfo().icon)
+         .setAutoCancel(true)
+         .setContentIntent(pi);
+
+        try { nm.notify(NOTIF_ACT_ID, b.build()); } catch (Exception e) { /* sin permiso: no-op */ }
         call.resolve();
     }
 

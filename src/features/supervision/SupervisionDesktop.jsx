@@ -7,6 +7,7 @@ import { colorPorId } from '../../lib/colors'
 import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
+import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
@@ -43,7 +44,7 @@ const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
 const ZonasView = lazy(() => import('../admin/ZonasView'))
 const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
 const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
-const ConsultasView = lazy(() => import('../admin/ConsultasView'))
+import InvitarModal from '../../components/InvitarModal'
 const UsuariosView = lazy(() => import('../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../admin/EmpresasView'))
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
@@ -53,13 +54,6 @@ const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
 const REFRESH_MS = 60000
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
-const KPIS_PROX = [
-  { label: 'Pedidos por preventista', hint: 'cantidad semanal por vendedor' },
-  { label: 'Horas trabajadas / semana', hint: 'por preventista, a la semana' },
-  { label: 'Clientes visitados', hint: 'visitas efectivas en la semana' },
-  { label: 'Recaudado en la semana', hint: 'cobrado + a cobrar' },
-]
-
 // Mismos ítems (y gate por rol) que la vista móvil: Usuarios solo admin/superadmin;
 // Empresas solo superadmin; el resto para todo gestor (incl. encargado). El propietario
 // no ve NADA de esta sección (solo lectura, sin Gestión).
@@ -68,7 +62,7 @@ const GESTION_ITEMS = [
   { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'consultas', label: 'Consultas', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
   { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
 ]
@@ -188,8 +182,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // jornada real y bloqueaba el pintado del trazo. Diferido, el mapa aparece primero.
   const byUserDiferido = useDeferredValue(byUser)
   const dwells = useMemo(
-    () => (dwellOn ? calcularDwells(byUserDiferido, pasaFiltro) : []),
-    [byUserDiferido, filter, dwellOn]
+    () => (dwellOn ? calcularDwells(byUserDiferido, pasaFiltro, cartera) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [byUserDiferido, filter, dwellOn, cartera]
   )
 
   // Móviles en vivo → pines clickeables. Solo tienen sentido HOY (posición "ahora").
@@ -201,11 +196,20 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     selected: m.id === pinId,
   })) : []
   // Por defecto (snapOn=false) rastro CRUDO fiel; con el toggle, geometría por calles (OSRM).
-  const leafletTrails = trails.flatMap((t) => {
-    const segs = snapOn ? snapped[t.id] : null
-    if (segs && segs.length) return segs.map((s) => ({ points: s, color: t.color }))
-    return [{ points: t.points, color: t.color }]
-  })
+  // Feature A: al enfocar una persona (foco.id), su trazo va nítido (0.95, más grueso) y el
+  // resto muy tenue (0.12) pero visible. Sin foco, todos con la opacidad de siempre (0.85).
+  const leafletTrails = (() => {
+    const out = trails.flatMap((t) => {
+      const enfocado = foco && t.id === foco.id
+      const opacity = !foco ? 0.85 : (enfocado ? 0.95 : 0.12)
+      const weight = enfocado ? 5 : 4
+      const segs = snapOn ? snapped[t.id] : null
+      const base = (segs && segs.length) ? segs.map((s) => ({ points: s })) : [{ points: t.points }]
+      return base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
+    })
+    if (foco) out.sort((a, b) => (a.id === foco.id ? 1 : 0) - (b.id === foco.id ? 1 : 0))
+    return out
+  })()
 
   function doSync() {
     if (syncing) return
@@ -375,7 +379,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}
               {view === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} onEditarProducto={(p) => setModalProducto(p)} onToast={showToast} />}
               {view === 'faltante' && <FaltanteTab />}
-              {view === 'consultas' && <ConsultasView />}
+              {/* Invitar: ventana flotante con el QR de descarga; el panel de atrás queda vacío. */}
+              {view === 'invitar' && <InvitarModal open onClose={() => setView('mapa')} onToast={showToast} />}
               {view === 'usuarios' && <UsuariosView onToast={showToast} />}
               {view === 'empresas' && <EmpresasView onToast={showToast} />}
             </Suspense>
@@ -465,6 +470,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                 isMobile={isMobile}
                 moversArr={moversArr}
                 nombres={nombres}
+                byUser={byUser}
+                filter={filter}
+                pasaFiltro={pasaFiltro}
                 onSelectUsuario={enfocarUsuario}
               />
             </div>
@@ -496,8 +504,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 // ---- MÉTRICAS (Estado del equipo + Equipo en la calle + KPIs) ----
 // Reutiliza EstadoEquipo y replica las tarjetas de PropietarioView / SupervisionMovil.
 // `expanded` (vista Dashboard) usa una grilla más ancha para los KPIs.
-function Metricas({ expanded, isProp, isMobile, moversArr, nombres, onSelectUsuario }) {
-  const kpiCols = isMobile ? '1fr 1fr' : (expanded ? 'repeat(4, 1fr)' : 'repeat(auto-fit, minmax(200px, 1fr))')
+function Metricas({ expanded, isProp, isMobile, moversArr, nombres, byUser, filter, pasaFiltro, onSelectUsuario }) {
   return (
     <div style={{ display: 'grid', gap: 16, gridTemplateColumns: !isMobile && !expanded ? '1fr 1fr' : '1fr' }}>
       {/* Estado del equipo · por qué no llega la señal. Click → enfoca su recorrido en el mapa. */}
@@ -525,28 +532,17 @@ function Metricas({ expanded, isProp, isMobile, moversArr, nombres, onSelectUsua
         </div>
       </div>
 
-      {/* KPIs próximamente (ocupan todo el ancho de la grilla). */}
+      {/* Métricas reales del día por usuario: km + tiempo de parada (Feature B). */}
       <div style={{ ...panelSx, gridColumn: '1 / -1' }}>
         <div style={{ padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={label10}>{isProp ? 'Métricas de dirección' : 'Indicadores del día'}</div>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 99, fontSize: 10, fontWeight: 700, color: 'var(--info)', background: 'var(--info-tint)' }}>PRÓXIMAMENTE</span>
+            <div style={label10}>{isProp ? 'Métricas de dirección' : 'Rendimiento del día'}</div>
+            <span style={{ fontSize: 10.5, color: 'var(--faint)' }}>km recorridos y tiempo de parada por persona</span>
           </div>
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: kpiCols }}>
-            {KPIS_PROX.map((k) => (
-              <div key={k.label} style={{ background: 'var(--surface2)', border: '1px dashed var(--line2)', borderRadius: 14, padding: 14, minHeight: 108, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', lineHeight: 1.25 }}>{k.label}</div>
-                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 600, color: 'var(--faint)' }}>—</span>
-                  <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--info)', background: 'var(--info-tint)', padding: '3px 7px', borderRadius: 99 }}>Próx.</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--faint)', lineHeight: 1.3, marginTop: 6 }}>{k.hint}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--faint)', lineHeight: 1.5 }}>
-            Estos indicadores se completan con la operación real: se arman a partir de los pedidos y las
-            entregas que carguen los preventistas. Mientras tanto, seguí al equipo en vivo desde el mapa.
+          <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={onSelectUsuario} />
+          <div style={{ marginTop: 12, fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>
+            Los tiempos de parada se estiman por GPS (una parada = ≥3 min quieto). Cuando los
+            preventistas registren check-in/check-out en los comercios, el tiempo por visita será exacto.
           </div>
         </div>
       </div>
@@ -610,7 +606,7 @@ function GestIcon({ k }) {
     zonas: <><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
     catalogo: <path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />,
     faltante: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
-    consultas: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
+    invitar: <><circle cx="9" cy="8" r="3.2" /><path d="M4 21c0-3.4 2.4-5.5 5-5.5s5 2.1 5 5.5" /><path d="M18 8v6M15 11h6" /></>,
     usuarios: <><circle cx="9" cy="8" r="3" /><path d="M2.5 21c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><path d="M17 7.7a3 3 0 0 1 0 5.6" /></>,
     empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
   }[k]

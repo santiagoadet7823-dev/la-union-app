@@ -7,7 +7,6 @@ import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import UsuariosView from './UsuariosView'
 import EmpresasView from './EmpresasView'
 import ZonasView from './ZonasView'
-import ConsultasView from './ConsultasView'
 import RecorridosView from './RecorridosView'
 import ReplayJornada from './components/ReplayJornada'
 import NuevoCliente from '../catalog/NuevoCliente'
@@ -41,7 +40,7 @@ export default function AdminView() {
     const base = [
       ['mapa', 'Mapa operativo'], ['recorridos', 'Recorridos'], ['reproduccion', 'Reproducción'],
       ['clientes', 'Clientes'], ['zonas', 'Zonas'], ['catalogo', 'Catálogo'], ['dash', 'Dashboard'],
-      ['ordenes', 'Órdenes'], ['faltante', 'Faltante'], ['consultas', 'Consultas'],
+      ['ordenes', 'Órdenes'], ['faltante', 'Faltante'],
     ]
     if (rol === 'admin' || rol === 'superadmin') base.push(['usuarios', 'Usuarios'])
     if (rol === 'superadmin') base.push(['empresas', 'Empresas'])
@@ -131,7 +130,6 @@ export default function AdminView() {
       )}
 
       {tab === 'zonas' && (rol === 'admin' || rol === 'encargado' || rol === 'superadmin') && <ZonasView onToast={showToast} />}
-      {tab === 'consultas' && <ConsultasView />}
       {tab === 'recorridos' && <RecorridosView onToast={showToast} />}
       {tab === 'reproduccion' && <ReplayJornada onToast={showToast} />}
       {tab === 'usuarios' && (rol === 'admin' || rol === 'superadmin') && <UsuariosView onToast={showToast} />}

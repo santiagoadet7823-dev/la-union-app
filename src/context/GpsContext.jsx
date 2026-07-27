@@ -4,6 +4,7 @@ import { usePublishPosition } from '../hooks/usePublishPosition'
 import { useEstadoDispositivo } from '../hooks/useEstadoDispositivo'
 import { initPush } from '../services/push'
 import { initAlarm } from '../services/alarm'
+import { chequearYNotificarUpdate } from '../services/updateNotify'
 import { isNative } from '../services/platform'
 
 /**
@@ -35,13 +36,19 @@ export function GpsProvider({ children }) {
   // corre al volver a primer plano). Ver services/push.js.
   useEffect(() => {
     if (!esMovil || !isNative()) return
-    const despertar = () => { try { document.dispatchEvent(new Event('visibilitychange')) } catch (_) {} }
+    const despertar = () => {
+      try { document.dispatchEvent(new Event('visibilitychange')) } catch (_) {}
+      // En cada despertar del watchdog, avisar si hay versión nueva (solo en horario). Best-effort.
+      chequearYNotificarUpdate(id)
+    }
     // Canal 1 — push FCM: despierta cada ~30 min PERO necesita internet.
     initPush(despertar)
     // Canal 2 — alarma local (AlarmManager): despierta cada ~30 min SIN internet, dentro de la
     // ventana horaria de trabajo (así no molesta de madrugada). Cubre el caso "apagó los datos".
-    // Ajustar horaInicio/horaFin (hora local 0..24) al rango de jornada que definamos.
-    initAlarm(despertar, { intervaloMin: 30, horaInicio: 6, horaFin: 22 })
+    // Ventana SUPERSET (6–24): con las categorías de rastreo por usuario (Feature D) hay jornadas
+    // que llegan hasta las 24:00; el wake nativo debe cubrirlas. El corte fino real lo hace el
+    // gating JS (enHorario en usePublishPosition) según la ventana efectiva de cada usuario.
+    initAlarm(despertar, { intervaloMin: 30, horaInicio: 6, horaFin: 24 })
   }, [esMovil])
 
   return (

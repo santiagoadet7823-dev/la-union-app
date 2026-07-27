@@ -16,14 +16,16 @@ import { invalidarPerfilesEquipo } from '../../hooks/usePerfilesEquipo'
  * otros superadmin. Sin ninguna referencia a facturación (abono P2P).
  */
 
-const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin']
+// `propietario` = dueño de la distribuidora, vista de solo lectura (equipo + recorridos + KPIs).
+// Ya se puede asignar desde 1.6.x: el check constraint de perfiles.rol lo acepta (db/20).
+const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'propietario', 'admin']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 130px 120px 80px 140px 100px 110px', gap: 10, alignItems: 'center' }
 
 const rolPill = (r) => {
-  const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
+  const c = { superadmin: 'var(--info)', propietario: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
   return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}</span>
 }
 
@@ -34,7 +36,7 @@ const rolPill = (r) => {
  * y React remontaría cada fila cada segundo (cerrando los <select> y perdiendo el foco).
  * Con tipo estable, el re-render del padre ya no desmonta las filas.
  */
-function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile, abrirColor }) {
+function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, categorias, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile, abrirColor }) {
   // Muestra de color del trazo del usuario en el mapa. Solo el superadmin la ve y la edita; para el
   // resto no se renderiza. El color mostrado es el efectivo: el fijado a mano o, si no hay, el del hash.
   const swatch = esSuper && u.activo && u.rol && (
@@ -46,11 +48,25 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, r
       style={{ ...sx('flex:none;width:16px;height:16px;border-radius:99px;cursor:pointer;padding:0'), background: u.color_trazo || colorPorId(u.id), border: u.color_trazo ? '2px solid var(--text)' : '1px solid var(--line2)' }}
     />
   )
-  const selRol = (
-    <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
-      <option value="">Sin rol…</option>
-      {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
+  // Categoría de rastreo: solo tiene sentido para roles que se trackean por GPS. Vacío = horario global.
+  const rolEfectivo = ed.rol || u.rol
+  const esTrackeado = ['vendedor', 'repartidor', 'encargado'].includes(rolEfectivo)
+  const empresaEfectiva = ed.id_empresa || u.id_empresa
+  const catsEmpresa = (categorias || []).filter((c) => !empresaEfectiva || !c.id_empresa || c.id_empresa === empresaEfectiva)
+  const selCategoria = esTrackeado && catsEmpresa.length > 0 ? (
+    <select value={ed.id_categoria_rastreo ?? (u.id_categoria_rastreo || '')} onChange={(e) => setEdit(u.id, { id_categoria_rastreo: e.target.value })} style={{ ...selectStyle, marginTop: 4 }} className="lu-input" title="Horario de rastreo particular (vacío = horario global)">
+      <option value="">Horario global</option>
+      {catsEmpresa.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
     </select>
+  ) : null
+  const selRol = (
+    <>
+      <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
+        <option value="">Sin rol…</option>
+        {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
+      </select>
+      {selCategoria}
+    </>
   )
   const inpNumero = (
     <input type="number" min="0" placeholder="—" value={ed.numero ?? (u.numero ?? '')} onChange={(e) => setEdit(u.id, { numero: e.target.value })} style={selectStyle} className="lu-input" title="Código de vendedor (ej. 1 = Zona 1)" />
@@ -293,7 +309,8 @@ export default function UsuariosView({ onToast }) {
 
   const [usuarios, setUsuarios] = useState([])
   const [empresas, setEmpresas] = useState([])
-  const [edits, setEdits] = useState({}) // { [id]: {rol, id_empresa} }
+  const [categorias, setCategorias] = useState([]) // categorías de rastreo asignables (Feature D)
+  const [edits, setEdits] = useState({}) // { [id]: {rol, id_empresa, id_categoria_rastreo} }
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState(null)
   const [crear, setCrear] = useState(false) // modal de alta manual abierto
@@ -303,7 +320,7 @@ export default function UsuariosView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo')
+      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     setUsuarios(data || [])
@@ -311,6 +328,9 @@ export default function UsuariosView({ onToast }) {
       const { data: emps } = await supabase.from('empresas').select('id, nombre').order('nombre')
       setEmpresas(emps || [])
     }
+    // Categorías de rastreo (para asignarlas por usuario). RLS las acota a la empresa (o todas si superadmin).
+    const { data: cats } = await supabase.from('categorias_rastreo').select('id, nombre, id_empresa, activo').order('nombre')
+    setCategorias((cats || []).filter((c) => c.activo !== false))
     setLoading(false)
   }, [esSuper])
 
@@ -331,10 +351,12 @@ export default function UsuariosView({ onToast }) {
     if (!nuevoRol) { onToast?.('Elegí un rol antes de aprobar'); return }
     if (!nuevaEmpresa) { onToast?.('Falta asignar la empresa'); return }
     const nuevoNumero = ed.numero != null && ed.numero !== '' ? Number(ed.numero) : (u.numero ?? null)
+    // Categoría de rastreo (Feature D): '' → null (horario global). undefined en el buffer = sin cambio.
+    const nuevaCat = ed.id_categoria_rastreo !== undefined ? (ed.id_categoria_rastreo || null) : (u.id_categoria_rastreo ?? null)
     setSavingId(u.id)
     const { error } = await supabase
       .from('perfiles')
-      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero })
+      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero, id_categoria_rastreo: nuevaCat })
       .eq('id', u.id)
     setSavingId(null)
     if (error) { onToast?.('Error: ' + error.message); return }
@@ -355,7 +377,7 @@ export default function UsuariosView({ onToast }) {
   const activos = usuarios.filter((u) => u.activo && u.rol)
 
   // Props comunes para cada Fila (componente de módulo → tipo estable, no remonta por el tick de 1s del padre).
-  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, abrirColor: setColorFor }
+  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, categorias, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, abrirColor: setColorFor }
 
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>

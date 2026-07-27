@@ -64,9 +64,18 @@ export function comprimirImagen(file, maxLado = MAX_LADO, calidad = CALIDAD) {
   })
 }
 
+// Formatos que puede haber dejado esta u otra subida (comprimirImagen usa webp/jpg; imports viejos
+// pudieron dejar jpeg/png). Se usa para borrar variantes de OTRO formato tras subir la nueva.
+const EXTS_IMG = ['webp', 'jpg', 'jpeg', 'png']
+
 /**
  * Sube un File de imagen a un bucket/carpeta, comprimiéndolo antes. Sobrescribe (upsert)
  * la ruta dada para que reemplazar la foto sea idempotente.
+ *
+ * Además borra cualquier variante de OTRA extensión de la misma carpeta: como el path incluye la
+ * extensión (`carpeta.ext`), un cambio de formato entre subidas (p. ej. webp→jpg en un WebView que
+ * no encodea webp) dejaría la foto anterior HUÉRFANA para siempre (el upsert solo pisa la misma
+ * ruta). Con esto queda SIEMPRE una sola foto por producto, sin importar el formato.
  *
  * @returns {{ url: string|null, error: Error|null }} url pública lista para guardar en la fila.
  */
@@ -81,6 +90,10 @@ async function subir(bucket, carpeta, file) {
       cacheControl: '3600',
     })
     if (error) return { url: null, error }
+    // Borrar las variantes de otra extensión (best-effort: si falla, no rompe la subida que ya salió
+    // bien). Las rutas son exactas por producto, así que no toca fotos de otros productos.
+    const huerfanas = EXTS_IMG.filter((e) => e !== ext).map((e) => `${carpeta}.${e}`)
+    try { await supabase.storage.from(bucket).remove(huerfanas) } catch (_) {}
     const { data } = supabase.storage.from(bucket).getPublicUrl(path)
     // Cache-busting: la ruta es estable (se pisa), así que sin el ?v la CDN seguiría
     // sirviendo la imagen anterior tras un reemplazo.

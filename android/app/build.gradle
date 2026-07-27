@@ -13,8 +13,8 @@ android {
         applicationId "com.launion.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 19
-        versionName "1.5.49"
+        versionCode 22
+        versionName "1.6.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -81,6 +81,9 @@ dependencies {
     // sin esta línea, :app no compila (cannot find symbol: RemoteMessage / FirebaseMessagingService).
     // Misma versión que el plugin (variables.gradle) → sin conflicto de versiones en runtime.
     implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
+    // ZXing: generación del QR de invitación en NATIVO (QrPlugin), para no sumar una librería JS
+    // al bundle. Solo el encoder core (sin la UI de escaneo de zxing-android-embedded).
+    implementation "com.google.zxing:core:3.5.3"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

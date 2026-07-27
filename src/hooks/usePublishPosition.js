@@ -81,11 +81,13 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
       if (ms != null) boundaryTimer = setTimeout(() => { if (alive) aplicar(cfgRef.current) }, ms)
     }
 
-    const load = () => getTrackConfig().then((c) => { if (alive) aplicar(c) }).catch(() => {})
+    // Pasar `id`: aplica el override por categoría del usuario si tiene una (Feature D);
+    // si no, getTrackConfig cae al horario global. Sin id, usa el global.
+    const load = () => getTrackConfig(id).then((c) => { if (alive) aplicar(c) }).catch(() => {})
     load()
     const iv = setInterval(load, 4 * 60000)
     return () => { alive = false; clearInterval(iv); clearTimeout(boundaryTimer) }
-  }, [enabled])
+  }, [enabled, id])
 
   // Uploader GPS NATIVO (Opción B): corre EN PARALELO al pipeline JS de arriba. El servicio nativo
   // captura y postea sin pasar por el WebView, así la ubicación sigue subiendo con la pantalla

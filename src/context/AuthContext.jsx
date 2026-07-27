@@ -4,7 +4,19 @@ import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
+import { persistence } from '../services/persistence'
 import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil, actualizarMiPerfil as actualizarMiPerfilSvc } from '../services/data/perfiles'
+
+// Espejo de la sesión para el auto-login OFFLINE. El access token dura 1 h y, al reabrir la app
+// sin internet pasada esa hora, getSession() intenta refrescar contra la red, falla y devuelve
+// null → la app expulsaba a Login. Guardamos la última sesión conocida en el puerto durable
+// (SQLite nativo / localStorage web) y, si getSession falla offline, la restauramos: la app abre
+// igual (modo sin conexión) y se sincroniza sola al volver la red. NO se borra en un SIGNED_OUT
+// transitorio (un refresh fallido offline emite SIGNED_OUT); solo la borra el signOut() explícito.
+const SESSION_KEY = 'lu-session-cache'
+const leerCacheSesion = () => persistence.get(SESSION_KEY, null)
+const escribirCacheSesion = (s) => { if (s?.access_token) persistence.set(SESSION_KEY, s) }
+const borrarCacheSesion = () => persistence.set(SESSION_KEY, null)
 
 /**
  * Sesión + perfil del usuario (multi-tenant). El perfil trae {rol, id_empresa, activo}.
@@ -58,18 +70,43 @@ export function AuthProvider({ children }) {
     // Red de seguridad: nunca quedarse trabado en "Cargando…".
     const safety = setTimeout(() => { if (active) setLoading(false) }, 6000)
 
-    supabase.auth.getSession().then(({ data }) => {
+    // Restaura la sesión espejada cuando getSession no la devuelve (offline / refresh fallido).
+    // Setea el estado de React para que el Gate pase, y le pasa los tokens a supabase-js para que
+    // pueda refrescar solo al volver la red. El token vencido no importa offline (ninguna API
+    // responde igual). Devuelve la sesión restaurada, o null si no había espejo.
+    const restaurarDesdeEspejo = async () => {
+      const cached = await leerCacheSesion()
+      if (!cached || !active) return null
+      setSession(cached)
+      try { supabase.auth.setSession({ access_token: cached.access_token, refresh_token: cached.refresh_token }) } catch (_) {}
+      cargarPerfil(cached.user?.id)
+      return cached
+    }
+
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return
-      setSession(data.session)
-      setLoading(false) // NO esperamos el perfil (la sesión sale de localStorage, es rápida)
+      if (data.session) {
+        escribirCacheSesion(data.session)
+        setSession(data.session)
+        cargarPerfil(data.session.user?.id) // en background
+      } else {
+        // Sin sesión viva: puede ser primer arranque (no hay espejo → Login) o reapertura offline
+        // con el token vencido (hay espejo → abrir igual, modo sin conexión).
+        await restaurarDesdeEspejo()
+      }
+      setLoading(false) // NO esperamos el perfil (offline-first)
       clearTimeout(safety)
-      cargarPerfil(data.session?.user?.id) // en background
-    }).catch(() => { if (active) setLoading(false) })
+    }).catch(async () => {
+      if (!active) return
+      await restaurarDesdeEspejo()
+      setLoading(false)
+    })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
+      // Solo ESCRIBIR el espejo cuando hay sesión. NO borrarlo ante un `s` null: un refresh
+      // fallido offline emite SIGNED_OUT y perderíamos el auto-login. El borrado va en signOut().
+      if (s) { escribirCacheSesion(s); setSession(s); cargarPerfil(s.user?.id) }
       setLoading(false)
-      cargarPerfil(s?.user?.id)
     })
 
     return () => { active = false; clearTimeout(safety); sub.subscription.unsubscribe() }
@@ -209,6 +246,12 @@ export function AuthProvider({ children }) {
     // Borra el perfil cacheado de este usuario para que no quede filtrado a otra
     // cuenta que inicie sesión después en el mismo dispositivo.
     borrarCachePerfil(session?.user?.id)
+    // Sign-out EXPLÍCITO: borra el espejo de sesión y limpia el estado a mano. El listener
+    // onAuthStateChange ya no procesa `s` null (para sobrevivir a los SIGNED_OUT offline), así
+    // que la baja de sesión visible se hace acá.
+    borrarCacheSesion()
+    setSession(null)
+    setPerfil(null)
     setAuthStatus(null)
     setAuthError(null)
     await supabase.auth.signOut()

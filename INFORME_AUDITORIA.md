@@ -1,7 +1,15 @@
 # Informe de auditoría — DisT-At (PWA + APK Android)
 
-> Fecha: 18/07/2026 · Versión auditada: `APP_VERSION 1.5.25` · Repo: `santiagoadet7823-dev/la-union-app`
+> Auditoría original: 18/07/2026 sobre `APP_VERSION 1.5.25`.
+> **Revisión: 27/07/2026 · Versión real: `APP_VERSION 1.6.3`** ([src/version.js:6](src/version.js#L6)).
+> Repo: `santiagoadet7823-dev/la-union-app`.
 > Documento de **referencia**. Las reglas operativas del día a día están en [CLAUDE.md](CLAUDE.md).
+>
+> ⚠️ **Nota de sincronía de versiones (27/07):** `version.js` va en **1.6.3**, pero
+> [CLAUDE.md §6](CLAUDE.md) todavía dice `1.6.0` en su tabla de versionado. `APP_VERSION` avanzó 3
+> patches por OTA sin actualizar esa tabla — **corregir CLAUDE.md §6 a 1.6.3**. Esta revisión pone al
+> día la auditoría respecto de ~15 migraciones (`db/07`–`db/15`) y features posteriores al 18/07. El
+> detalle de lo entregado en la línea 1.6.x está en el nuevo **§11**.
 
 ---
 
@@ -38,10 +46,10 @@ lint que nunca falla).
 | # | Riesgo | Impacto | Prioridad |
 |---|---|---|---|
 | 1 | `db/02_saas.sql` y `05_schema_real.sql` **reabren agujeros de seguridad** si se re-aplican | Fuga de datos entre empresas | 🔴 Crítica |
-| 2 | Desfase de versiones APK (1.5.8) vs bundle OTA (1.5.25) | Nadie sabe qué corre en cada teléfono | 🔴 Alta |
-| 3 | Rol `propietario` usado en código pero **ausente del check constraint** de la DB | No se puede dar de alta un propietario desde la UI | 🔴 Alta |
+| 2 | ~~Desfase de versiones APK (1.5.8) vs bundle OTA (1.5.25)~~ | ✅ **Resuelto** (27/07): alineado en 1.6.x, `versionCode 20`. Ver §8 #2 | — |
+| 3 | Rol `propietario` usado en código pero **ausente del check constraint** de la DB | No se puede dar de alta un propietario desde la UI | 🔴 Alta · **vigente** (confirmado en base viva 27/07) |
 | 4 | `npm run build` sin `CAP_BUILD=1` → APK en pantalla blanca, sin ninguna protección | Release roto, se detecta recién en el teléfono | 🟠 Media-alta |
-| 5 | Columnas en producción que **ningún `.sql` versiona** | Recrear la base desde `db/` produce una base incompleta | 🟠 Media |
+| 5 | Columnas en producción que **ningún `.sql` versiona** | Recrear la base desde `db/` produce una base incompleta | 🟢 **Mitigado** (27/07): la mayoría ya versionada en `db/07`–`db/15`. Ver §6 |
 
 ---
 
@@ -234,9 +242,14 @@ background-geolocation dispara con la app en Doze, cuando React está congelado.
 **a nivel de módulo**, no en hooks: sobrevive al freeze del WebView.
 
 `procesarFix()` filtra por precisión (>30 m fuera), velocidad imposible (>45 m/s), movimiento mínimo
-(10 m) y keep-alive (90 s). Actualiza `last` **antes** de encolar (evita doble envío). **Siempre
+y keep-alive. Actualiza `last` **antes** de encolar (evita doble envío). **Siempre
 encola**, nunca throttlea el encolado; lo que throttlea es el **flush**, a 15 s — antes hacía un
 handshake TLS por punto cada ~2,8 s.
+
+> **Números actualizados (27/07, `src/services/gpsConfig.js`):** `MIN_MOVE_M=12` (movimiento mínimo),
+> `NEAR_LIVE_MS=10000` (captura casi en vivo, 10 s), `STATIONARY_KEEPALIVE_MS=60000` (keep-alive 60 s
+> en reposo). Los valores originales de esta auditoría (10 m / 90 s) quedaron viejos tras los cambios
+> del 24–26/07 (GPS casi en vivo + filtro por movimiento).
 
 > Este diseño es el fix documentado de "el GPS moría con la pantalla bloqueada": la persistencia
 > colgaba de un `useEffect([pos])` que no corría en background.
@@ -296,16 +309,24 @@ Toda la cadena depende de que `posiciones_client_uid_uidx` sea un índice **úni
 | `posiciones` | id bigint, id_usuario, lat, lng, ts, accuracy, **client_uid UNIQUE**, bateria* | → perfiles, empresas |
 | `rutas` | fecha, objetivo, orden_paradas jsonb | → perfiles |
 | `estado_dispositivo` | id_usuario (PK), app_version, gps_ok, bg_ok, cola_pendiente* | → perfiles |
-| `consultas_rutas` | ledger de cuota (5000/mes) | — |
-| `app_config` | singleton: latest/min_version, apk_url, bundle_version/url, track_enabled/start/end | — |
-| `recorridos_snap`* | geometria, puntos, algo, unique (id_usuario, fecha) | caché de la Edge Function |
+| `consultas_rutas` | ledger de cuota (5000/mes) | — · **sin consumidor en `src/`** (superficie muerta) |
+| `app_config` | singleton: latest/min_version, apk_url, bundle_version/url, track_enabled/start/end, **`track_days int[]`** (días de rastreo, `db/13`, 24/07) | — |
+| `app_config_historial` | auditoría de cambios de `app_config` (`db/07`) | — |
+| `categorias` | categorías de catálogo (`db/09`) | → empresas |
+| `recorridos_snap` | geometria, puntos, algo, unique (id_usuario, fecha) | caché de la Edge Function |
 
-`*` = **existe en producción pero NO está versionada en ningún `.sql`**.
-`db/00_LEER_PRIMERO.md:46-50` ya lista 5 (`recorridos_snap`, `actualizar_mi_perfil()`,
-`perfiles.telefono`, `empresas.base_lat/lng`, `estado_dispositivo.cola_pendiente`).
-**Esta auditoría encontró 4 más, todas en uso por código vivo**: `posiciones.bateria`
-(`tracker.js:147`), `perfiles.numero` (`UsuariosView.jsx:85,116`), `zonas.numero` y
-`zonas.id_vendedor` (`CatalogContext.jsx:195`).
+**Estado de versionado (revisión 27/07):** la auditoría original marcó 9 columnas/objetos "vivos pero
+sin versionar". La mayoría **ya fue versionada** después del 18/07:
+
+- `estado_dispositivo`: `cuarentena_pendiente`, `gps_error` (`db/07`); `apk_version` (`db/11`);
+  `instalado_ts` (`db/14`).
+- `perfiles.color_trazo` (`db/12`); `perfiles.foto_url` + catálogo visual de `productos` (`db/08`).
+- `posiciones`: índice `ts` + cron de retención 60 días (`db/15`).
+- `app_config.track_days` (`db/13`); tabla `app_config_historial` (`db/07`).
+
+Lo que **conviene verificar contra la base viva** que siga sin `.sql`: `posiciones.bateria`
+(`tracker.js`), `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`. Regla de oro sin cambios: los
+`db/*.sql` **no son la fuente de verdad**; consultar la base viva vía MCP.
 
 ### Los archivos `db/` NO son la fuente de verdad
 
@@ -440,9 +461,9 @@ Google Directions.
 | # | Hallazgo | Ubicación | Impacto | Fix propuesto |
 |---|---|---|---|---|
 | 1 | `db/02_saas.sql` y `05_schema_real.sql` reabren agujeros si se re-aplican | `db/00_LEER_PRIMERO.md:14-22` | 🔴 Fuga entre empresas | Renombrar a `.sql.historico` o mover a `db/historico/` para que sea imposible ejecutarlos por accidente |
-| 2 | Versiones desfasadas: `APP_VERSION 1.5.25` vs `versionName 1.5.8` / `versionCode 8` | `src/version.js:6`, `android/app/build.gradle:16-17` | 🔴 Nadie sabe qué corre en cada teléfono; `estado_dispositivo.app_version` reporta el bundle, no el APK | Alinear en el próximo APK y documentar la matriz (§ CLAUDE.md) |
+| 2 | ✅ **Resuelto (27/07):** versiones alineadas en 1.6.x (`versionCode 20`). Queda la desincronía menor de CLAUDE.md §6 (dice 1.6.0, real 1.6.3) | `src/version.js:6`, `android/app/build.gradle:16-17` | 🟢 Bajo | Actualizar la tabla de CLAUDE.md §6 a 1.6.3 |
 | 3 | Rol `propietario` fuera del check constraint | `db/02_saas.sql:22-23` vs `App.jsx:66` | 🔴 No se puede dar de alta un propietario desde la UI | Migración: agregar `propietario` al constraint + a `ROLES_ADMIN`/`ROLES_SUPER` |
-| 4 | 9 columnas/objetos vivos sin versionar | `db/` | 🟠 Recrear la base desde `db/` da una base incompleta | Nuevo `db/07_columnas_faltantes.sql` idempotente (`add column if not exists`) |
+| 4 | 🟢 **Mitigado (27/07):** la mayoría de las 9 columnas ya está versionada en `db/07`–`db/15` (ver §6). **Corrección:** el `db/07` real es `07_diagnostico_auditoria.sql` (no el `07_columnas_faltantes.sql` que proponía esta auditoría) — la numeración se corrió por urgencia | `db/` | 🟢 Quedan pocas columnas por versionar | Versionar las que resten (`posiciones.bateria`, `perfiles.numero`, `zonas.numero`/`id_vendedor`) contra base viva |
 | 5 | `npm run build` sin `CAP_BUILD=1` → pantalla blanca | `vite.config.js:14` | 🟠 Release roto detectado recién en el teléfono | Agregar script `build:apk` = `cross-env CAP_BUILD=1 vite build` |
 | 6 | Docs obsoletas que contradicen el código | `README.md`, `GUIA_APK_ANDROID.md`, `GUIA_API_KEY_GOOGLE_MAPS.md` | 🟠 Inducen a error | Marcar como obsoletas o corregir; `GUIA_APK_ANDROID.md:230` vs `:320` se contradicen sobre `storeFile` (**`:320` es la que funciona**) |
 | 7 | `lint` = `eslint . \|\| true`; **cero tests** en todo el repo | `package.json:11` | 🟠 Sin red de seguridad | Quitar el `\|\| true`; considerar tests de las funciones puras primero (`dwell.js`, `estados.js`, `format.js`, `geofence.js`) |
@@ -462,12 +483,12 @@ Google Directions.
       máquina. Si se pierde, el APK no se puede volver a actualizar nunca.
 - [ ] Mover `db/02_saas.sql` y `db/05_schema_real.sql` a `db/historico/` para volver imposible el
       re-run accidental.
-- [ ] Alinear versiones: subir `versionCode`/`versionName` del gradle al publicar el próximo APK.
-- [ ] Migración para agregar `propietario` al check constraint de `perfiles.rol`.
+- [x] ~~Alinear versiones~~ ✅ hecho: alineadas en 1.6.x (`versionCode 20`). Falta corregir CLAUDE.md §6 (dice 1.6.0, real 1.6.3).
+- [ ] Migración para agregar `propietario` al check constraint de `perfiles.rol` (**sigue pendiente**, confirmado en base viva 27/07). En curso en la actualización 1.6.x (§11).
 
 ### 🟠 Próximo sprint
 
-- [ ] `db/07_columnas_faltantes.sql` idempotente con las 9 columnas/objetos sin versionar.
+- [x] ~~`db/07_columnas_faltantes.sql`~~ La mayoría de columnas ya versionada en `db/07`–`db/15`. Resta versionar las pocas listadas en §6.
 - [ ] Script `build:apk` con `CAP_BUILD=1` incorporado (usar `cross-env` por Windows).
 - [ ] Rotar la key de Stadia y moverla a `VITE_STADIA_KEY` + secret del workflow (§7.1).
 - [ ] Verificar qué origin manda el WebView de Capacitor y registrarlo en el panel de Stadia.
@@ -497,3 +518,31 @@ Vale explicitarlo, porque el instinto de "limpiar" puede romper cosas caras:
 - **`Fila` a nivel de módulo en `UsuariosView.jsx:26-31`** — está así porque el padre re-renderiza
   cada segundo dentro de `SupervisionMovil`.
 - **El zip con Python en `ota-release.sh`.**
+
+---
+
+## 11. Actualización 1.6.x — "premium" (en curso, 27/07/2026)
+
+Tanda grande de UI/UX + funciones. Estado real de la base al arrancar: plan Supabase **free**, base
+**25 MB / 500 MB**, `posiciones` ~4.800/día (retención 60 días), `clientes` **1.998 filas / solo 15
+geolocalizadas**, **1 empresa** (aún monoempresa). Alcance:
+
+| # | Entrega | Canal | Toca |
+|---|---|---|---|
+| A | Al enfocar un usuario, su recorrido queda nítido y los demás **muy tenues** (no se borran) | OTA | `SupervisionMovil/Desktop`, `LeafletMap` |
+| B | Métricas reales por usuario: **km recorridos** y **tiempo de parada** (menor/prom/mayor) | OTA + DB | tabla `visitas` + fallback dwell GPS |
+| C | El vendedor **captura/actualiza la ubicación del cliente en el check-in**; check-in/out persistido | OTA + DB | `visitas`, RPC `reclamar_y_ubicar_cliente`, `useJornada` |
+| — | Clientes geolocalizados **visibles en el mapa de monitoreo** (empresa del registro solo para superadmin); reclamo de cliente **reversible** por admin/encargado | OTA | supervisión + reasignación |
+| D | **Categorías de rastreo por usuario** (horarios/días particulares, ej. Ma/Ju 18–24) | OTA + DB | `categorias_rastreo`, `tracking.js`, `usePublishPosition` |
+| F | **Panel de estado del plan** (base MB, posiciones, dispositivos) para superadmin | OTA + DB | RPC `estado_plan`, `EmpresasView` |
+| G | **Endurecer multi-empresa** antes de sumar empresas: fix dep `idEmpresa` en `useEquipoEnVivo`, validación `id_empresa` server-side en `ingest-posiciones` | OTA + Edge | — |
+| — | **Rol `propietario` asignable** (ALTER del check constraint + listas de `UsuariosView`) | OTA + DB | resuelve §8 #3 |
+| — | Paradas con **nombre de comercio**; **alertas** de batería/GPS/latido; **auto-login offline**; **notificación de actualización** en horario | OTA + APK | varios |
+
+> Regla de tenant reforzada (11): el scope de empresa **nunca** llega a la ruta de escritura de GPS.
+> `visitas` INSERT usa `useAuth().idEmpresa` (identidad), no un scope activo.
+
+**RLS de ubicaciones (verificado en base viva 27/07):** `clientes`, `posiciones`, `zonas` correctamente
+aisladas por `id_empresa` (+ `es_superadmin()`). El aislamiento real depende de esas policies y del
+`.eq('id_empresa')` explícito en las lecturas (RLS **no** filtra para el superadmin). Advisors de
+seguridad: solo `WARN` de funciones `SECURITY DEFINER` que son **falsos positivos** (regla 8, no tocar).

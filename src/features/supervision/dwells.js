@@ -7,6 +7,7 @@
  * de escritorio no aparecían). Cualquier cosa que las dos tengan que mostrar IGUAL va acá.
  */
 import { detectarParadas } from '../../services/geolocation/dwell'
+import { distanciaMetros } from '../../services/geolocation/geofence'
 import { colorPorId } from '../../lib/colors'
 import { fmtDuracion, fmtHora } from '../../lib/format'
 
@@ -33,25 +34,43 @@ export const horarioDwell = (p) => `${fmtHora(p.desde)}–${fmtHora(p.hasta)}`
  * (geometría OSRM pegada a calles) ya descartó los tramos quietos, así que sobre él una
  * parada no existe. Umbrales: los de dwell.js (3 min / 40 m).
  *
- * Pendiente (bloqueado por datos, no por código): cuando la parada caiga dentro del
- * `geofence_radio` de un cliente, el cartel debería decir el nombre del comercio en vez del
- * horario. Hoy es imposible: de 2.001 clientes, UNO tiene coordenadas — y está inactivo.
- * La tabla tampoco tiene domicilio (solo `localidad`, con un único valor), así que no se
- * pueden geocodificar. Primero hay que resolver de dónde salen esas 2.000 coordenadas.
+ * Nombre de comercio (Feature C+, 1.6.x): a medida que los vendedores geolocalizan clientes en
+ * el check-in, si una parada cae cerca (≤ MATCH_RADIO_M) de un cliente con lat/lng, el cartel
+ * muestra el nombre del comercio en la línea secundaria en vez del horario. `clientes` es
+ * opcional: sin él (o sin match), cae al horario de siempre. Antes esto estaba bloqueado por
+ * datos (1 de 2.001 clientes tenía coordenadas); ahora se va desbloqueando solo.
  *
  * @param {Record<string,{rol?:string, points?:Array}>} byUser
  * @param {(rol?:string) => boolean} pasaFiltro filtro por chip (Vend./Rep.) de cada vista
+ * @param {Array<{lat:number,lng:number,name?:string,nombre_comercio?:string}>} [clientes] cartera geolocalizada
  * @returns {Array<{lat:number,lng:number,label:string,sub:string,color:string}>}
  */
-export function calcularDwells(byUser, pasaFiltro) {
+const MATCH_RADIO_M = 60 // un poco más que el radio de parada (40 m) para tolerar el jitter del centro
+
+function comercioCercano(lat, lng, clientes) {
+  if (!clientes || !clientes.length) return null
+  let mejor = null
+  let mejorD = MATCH_RADIO_M
+  for (const c of clientes) {
+    if (c.lat == null || c.lng == null) continue
+    const d = distanciaMetros({ lat, lng }, c)
+    if (d < mejorD) { mejorD = d; mejor = c }
+  }
+  return mejor ? (mejor.name || mejor.nombre_comercio || null) : null
+}
+
+export function calcularDwells(byUser, pasaFiltro, clientes) {
   return Object.entries(byUser)
     .filter(([, v]) => pasaFiltro(v.rol))
     .flatMap(([id, v]) => detectarParadas(v.points || [])
-      .map((p) => ({
-        lat: p.lat,
-        lng: p.lng,
-        label: etiquetaDwell(p),
-        sub: horarioDwell(p),
-        color: colorPorId(id),
-      })))
+      .map((p) => {
+        const comercio = comercioCercano(p.lat, p.lng, clientes)
+        return {
+          lat: p.lat,
+          lng: p.lng,
+          label: etiquetaDwell(p),
+          sub: comercio || horarioDwell(p),
+          color: colorPorId(id),
+        }
+      }))
 }

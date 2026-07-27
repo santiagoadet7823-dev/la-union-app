@@ -3,6 +3,7 @@ import { useAuth } from '../../../context/AuthContext'
 import { supabase } from '../../../services/supabase'
 import { colorPorId } from '../../../lib/colors'
 import { hoyStr } from '../../../lib/format'
+import { cmpVer } from '../../../lib/version'
 import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
 
 /**
@@ -41,18 +42,6 @@ function haceTexto(iso) {
   if (dias < 30) { const s = Math.floor(dias / 7); return `hace ${s} semana${s === 1 ? '' : 's'}` }
   if (dias < 365) { const m = Math.floor(dias / 30); return `hace ${m} mes${m === 1 ? '' : 'es'}` }
   const a = Math.floor(dias / 365); return `hace ${a} año${a === 1 ? '' : 's'}`
-}
-
-// Compara dos versiones "x.y.z" por tramos numéricos. Devuelve <0, 0 o >0. NO comparar strings:
-// '1.5.9' > '1.5.42' como texto. Tolera null/faltantes tratándolos como 0.
-function cmpVer(a, b) {
-  const pa = String(a || '').split('.').map((n) => parseInt(n, 10) || 0)
-  const pb = String(b || '').split('.').map((n) => parseInt(n, 10) || 0)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0)
-    if (d) return d
-  }
-  return 0
 }
 
 export default function EstadoEquipo({ compact = false, onSelectUsuario }) {

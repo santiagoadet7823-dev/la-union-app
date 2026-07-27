@@ -353,12 +353,16 @@ export default function LeafletMap({
     }
 
     // Varios recorridos a la vez (vista estática del encargado), color por persona.
+    // `opacity`/`weight` por trail: al enfocar a una persona, su trazo va nítido y el resto
+    // muy tenue (Feature A). Si el trail no los trae, se usa el valor de siempre (0.85 / 4).
     if (trails && trails.length) {
       trails.forEach((t) => {
         if (!t.points || t.points.length < 2) return
         const pts = t.points.map((p) => [p.lat, p.lng])
-        L.polyline(pts, { color: t.color || trailColor, weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(layer)
-        pts.forEach((ll) => extend(ll))
+        L.polyline(pts, { color: t.color || trailColor, weight: t.weight ?? 4, opacity: t.opacity ?? 0.85, lineJoin: 'round' }).addTo(layer)
+        // Los trazos atenuados (enfoque de otra persona) NO entran al encuadre: el fit lo
+        // manda el recorrido enfocado, no los tenues de fondo.
+        if ((t.opacity ?? 0.85) >= 0.5) pts.forEach((ll) => extend(ll))
       })
     }
 

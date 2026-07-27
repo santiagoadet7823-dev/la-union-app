@@ -25,6 +25,13 @@ public class MainActivity extends BridgeActivity {
         // el WebView, para enviar ubicaciones con la pantalla bloqueada (Doze congela el JS). Ver
         // UploaderGpsService. Mismo requisito de registro antes de super.onCreate().
         registerPlugin(UploaderGpsPlugin.class);
+        // Plugin local: updater del APK nativo. Descarga el .apk (GitHub Releases) y lanza el
+        // instalador del sistema cuando un cambio nativo no lo puede cubrir la OTA. Ver
+        // ApkUpdaterPlugin. Mismo requisito de registro antes de super.onCreate().
+        registerPlugin(ApkUpdaterPlugin.class);
+        // Plugin local: generación de QR en nativo (ZXing) para el modal "Invitar", sin sumar
+        // una librería de QR al bundle web. Ver QrPlugin. Antes de super.onCreate().
+        registerPlugin(QrPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

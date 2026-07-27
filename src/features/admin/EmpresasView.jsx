@@ -4,6 +4,7 @@ import { supabase } from '../../services/supabase'
 import { invalidarTrackCache } from '../../services/tracking'
 import { useDevice } from '../../context/DeviceContext'
 import { CabeceraTabla } from './ui'
+import CategoriasRastreo from './CategoriasRastreo'
 
 /**
  * Gestión de empresas (solo superadmin). Alta de distribuidoras (tenants) y
@@ -28,6 +29,12 @@ export default function EmpresasView({ onToast }) {
   // Edición manual de la coordenada base (depósito) por empresa: id -> { lat, lng } como strings.
   const [baseEdit, setBaseEdit] = useState({})
   const [savingBase, setSavingBase] = useState(null) // id de la empresa que se está guardando
+  // Estado del plan de Supabase (Feature F). RPC estado_plan (SECURITY DEFINER, solo superadmin).
+  const [plan, setPlan] = useState(null)
+
+  useEffect(() => {
+    supabase.rpc('estado_plan').then(({ data }) => { if (data) setPlan(data) }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     supabase.from('app_config').select('track_enabled, track_start, track_end, track_days').maybeSingle()
@@ -117,6 +124,9 @@ export default function EmpresasView({ onToast }) {
 
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+      {/* Estado del plan de Supabase (Feature F, solo superadmin) */}
+      <PanelPlan plan={plan} />
+
       {/* Horario de rastreo (global, superadmin) */}
       <div style={panel}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Horario de rastreo GPS</div>
@@ -183,6 +193,9 @@ export default function EmpresasView({ onToast }) {
         </div>
       </div>
 
+      {/* Categorías de rastreo por usuario (Feature D) */}
+      <CategoriasRastreo empresas={empresas} onToast={onToast} />
+
       <div style={{ ...panel, minWidth: isMobile ? 0 : 720 }}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Empresas (distribuidoras)</div>
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Cada empresa es un espacio aislado. Desactivar una empresa deja sin acceso a todos sus usuarios.</div>
@@ -243,6 +256,66 @@ export default function EmpresasView({ onToast }) {
             ))}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// --- Panel de estado del plan (Feature F) ---
+const mb = (bytes) => (bytes || 0) / 1048576
+const fmtMb = (bytes) => {
+  const m = mb(bytes)
+  return m >= 1024 ? (m / 1024).toFixed(2) + ' GB' : m.toFixed(m < 10 ? 1 : 0) + ' MB'
+}
+
+function Metrica({ valor, etiqueta, sub }) {
+  return (
+    <div style={sx('background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px')}>
+      <div style={sx('font-family:var(--font-mono);font-weight:700;font-size:20px;color:var(--deep)')}>{valor}</div>
+      <div style={sx('font-size:11px;font-weight:600;color:var(--muted);margin-top:2px')}>{etiqueta}</div>
+      {sub && <div style={sx('font-size:10px;color:var(--faint);margin-top:2px')}>{sub}</div>}
+    </div>
+  )
+}
+
+function PanelPlan({ plan }) {
+  if (!plan) {
+    return (
+      <div style={panel}>
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Estado del plan</div>
+        <div style={sx('font-size:12px;color:var(--faint);margin-top:8px')}>Cargando uso de la base…</div>
+      </div>
+    )
+  }
+  const pct = plan.db_limit_bytes ? Math.min(100, (plan.db_bytes / plan.db_limit_bytes) * 100) : 0
+  const color = pct < 60 ? 'var(--success)' : pct < 85 ? 'var(--warning)' : 'var(--danger)'
+  const nf = (n) => (n ?? 0).toLocaleString('es-AR')
+  return (
+    <div style={panel}>
+      <div style={sx('display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px')}>
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Estado del plan · Supabase Free</div>
+        <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:700'), color, background: 'var(--surface2)', border: '1px solid var(--line)' }}>
+          {pct.toFixed(pct < 10 ? 1 : 0)}% de la base
+        </span>
+      </div>
+      <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Uso de la base de datos y volumen de la operación. El egress mensual y los usuarios activos (MAU) no se pueden leer por SQL — revisalos en el panel de Supabase.</div>
+
+      {/* Barra de uso de la base (límite 500 MB del plan free) */}
+      <div style={sx('margin-bottom:14px')}>
+        <div style={sx('display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px')}>
+          <span style={sx('font-weight:600;color:var(--muted)')}>Base de datos</span>
+          <span style={sx('font-family:var(--font-mono);color:var(--deep);font-weight:600')}>{fmtMb(plan.db_bytes)} / {fmtMb(plan.db_limit_bytes)}</span>
+        </div>
+        <div style={sx('height:10px;border-radius:99px;background:var(--surface2);border:1px solid var(--line);overflow:hidden')}>
+          <div style={{ width: pct + '%', height: '100%', background: color, borderRadius: 99, transition: 'width .5s cubic-bezier(.23,1,.32,1)' }} />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+        <Metrica valor={nf(plan.posiciones)} etiqueta="Posiciones GPS" sub={`${fmtMb(plan.posiciones_bytes)} · retención 60 días`} />
+        <Metrica valor={nf(plan.dispositivos)} etiqueta="Dispositivos" sub="con telemetría" />
+        <Metrica valor={nf(plan.clientes_geo) + ' / ' + nf(plan.clientes)} etiqueta="Clientes con ubicación" sub="geolocalizados / total" />
+        <Metrica valor={nf(plan.empresas)} etiqueta="Empresas" sub={`${nf(plan.perfiles)} usuarios`} />
       </div>
     </div>
   )

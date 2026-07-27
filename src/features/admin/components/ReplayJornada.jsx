@@ -23,14 +23,13 @@ const panel = { ...sx('background:var(--surface);border:1px solid var(--line);bo
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const VELOCIDADES = [1, 2, 4, 8]
 const TICK_MS = 350
-const LIMITE_MENSUAL = 5000 // consultas de rutas por empresa/mes (bloquea al llegar)
 
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 export default function ReplayJornada({ onToast }) {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
-  const { idEmpresa, user } = useAuth()
+  const { idEmpresa } = useAuth()
   const users = usePerfilesEquipo()
   const [userId, setUserId] = useState('')
   const [fecha, setFecha] = useState(hoyStr)
@@ -53,19 +52,6 @@ export default function ReplayJornada({ onToast }) {
 
   const cargar = useCallback(async () => {
     if (!userId) { onToast?.('Elegí un usuario'); return }
-
-    // Cupo mensual de consultas por empresa. Si se alcanzó, se bloquea la carga.
-    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-    const { count } = await supabase
-      .from('consultas_rutas')
-      .select('id', { count: 'exact', head: true })
-      .eq('id_empresa', idEmpresa)
-      .gte('ts', inicioMes)
-    if ((count || 0) >= LIMITE_MENSUAL) {
-      onToast?.(`Se alcanzó el límite mensual de ${LIMITE_MENSUAL} consultas de rutas. Se reanuda el mes próximo.`)
-      return
-    }
-
     setPlaying(false); setLoading(true); setIdx(0)
     const desde = new Date(fecha + 'T00:00:00').toISOString()
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
@@ -74,11 +60,8 @@ export default function ReplayJornada({ onToast }) {
     ptsFechaRef.current = fecha
     ptsUserRef.current = userId
     setLoading(false)
-    // Registrar la consulta (cuenta para el heatmap y el cupo).
-    supabase.from('consultas_rutas').insert({ id_empresa: idEmpresa, id_usuario: user?.id, id_vendedor: userId })
-      .then(({ error }) => { if (error) console.warn('[consultas_rutas]', error.message) })
     if (!data.length) onToast?.('No hay recorrido grabado para ese día')
-  }, [userId, fecha, onToast, idEmpresa, user])
+  }, [userId, fecha, onToast, idEmpresa])
 
   // Motor de reproducción.
   useEffect(() => {

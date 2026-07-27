@@ -8,6 +8,7 @@ import { hoyStr } from '../../lib/format'
 import { simplificarTrazo } from '../../lib/geo'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
+import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
@@ -27,7 +28,7 @@ const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
 const ZonasView = lazy(() => import('../admin/ZonasView'))
 const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
 const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
-const ConsultasView = lazy(() => import('../admin/ConsultasView'))
+import InvitarModal from '../../components/InvitarModal'
 const UsuariosView = lazy(() => import('../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../admin/EmpresasView'))
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
@@ -50,7 +51,7 @@ const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
  *   - role         'encargado' | 'propietario' | 'admin' | 'superadmin'
  *   - onIrAJornada () => void | null   (solo encargado: volver a "Mi jornada")
  *
- * Las funciones de gestión (Clientes, Zonas, Catálogo, Faltante, Consultas, Usuarios,
+ * Las funciones de gestión (Clientes, Zonas, Catálogo, Faltante, Invitar, Usuarios,
  * Empresas) se abren NATIVAS desde el botón "Menú" (GestionHost). Ya no se navega al
  * AdminView de escritorio (PWA) desde la APK.
  */
@@ -68,12 +69,6 @@ const safeBottom = (px) => `calc(${px}px + env(safe-area-inset-bottom))`
 
 const glass = glassBlur // alias local: este archivo lo usa ~10 veces como `...glass`
 
-const KPIS_PROX = [
-  { label: 'Pedidos por preventista' },
-  { label: 'Horas trabajadas / semana' },
-  { label: 'Clientes visitados' },
-  { label: 'Recaudado en la semana' },
-]
 
 // Acciones de gestión que abren en pantalla nativa (GestionHost) desde el botón "Menú".
 // Reemplazan al viejo "Panel de gestión" (AdminView / PWA). Gate por rol: Usuarios solo
@@ -83,7 +78,7 @@ const GESTION_ITEMS = [
   { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'consultas', label: 'Consultas', roles: ['encargado', 'admin', 'superadmin'] },
+  { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
   { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
 ]
@@ -222,8 +217,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // necesita la densidad para medir cuánto duró cada parada.
   const byUserDiferido = useDeferredValue(byUser)
   const dwells = useMemo(
-    () => (dwellOn ? calcularDwells(byUserDiferido, pasaFiltro) : []),
-    [byUserDiferido, filter, dwellOn]
+    () => (dwellOn ? calcularDwells(byUserDiferido, pasaFiltro, cartera) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [byUserDiferido, filter, dwellOn, cartera]
   )
 
   // Móviles en vivo → pines clickeables (marcadores del mapa). Solo tienen sentido HOY
@@ -243,11 +239,23 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // km y paradas (dwell) siguen sobre los puntos crudos (`trails`/`byUser`), que necesitan la densidad.
   // La rama snap ya viene simplificada por OSRM, no se re-toca. Memoizado: no rehacerlo en cada render
   // (tick de móviles en vivo), solo cuando cambian los trazos / el toggle / el snap disponible.
-  const leafletTrails = useMemo(() => trails.flatMap((t) => {
-    const segs = snapOn ? snapped[t.id] : null
-    if (segs && segs.length) return segs.map((s) => ({ points: s, color: t.color }))
-    return [{ points: simplificarTrazo(t.points), color: t.color }]
-  }), [trails, snapOn, snapped])
+  // Feature A: al enfocar una persona (foco.id), su trazo va nítido (0.95, más grueso) y el
+  // resto muy tenue (0.12) pero visible. Sin foco, todos con la opacidad de siempre (0.85).
+  const leafletTrails = useMemo(() => {
+    const out = trails.flatMap((t) => {
+      const enfocado = foco && t.id === foco.id
+      const opacity = !foco ? 0.85 : (enfocado ? 0.95 : 0.12)
+      const weight = enfocado ? 5 : 4
+      const segs = snapOn ? snapped[t.id] : null
+      const base = (segs && segs.length)
+        ? segs.map((s) => ({ points: s }))
+        : [{ points: simplificarTrazo(t.points) }]
+      return base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
+    })
+    // El enfocado se dibuja ÚLTIMO (encima) para que los tenues no lo tapen.
+    if (foco) out.sort((a, b) => (a.id === foco.id ? 1 : 0) - (b.id === foco.id ? 1 : 0))
+    return out
+  }, [trails, snapOn, snapped, foco])
   const pin = moversArr.find((m) => m.id === pinId) || null
 
   // % de batería del móvil seleccionado. El `pin` sale de `movers` (useEquipoEnVivo), cuyo
@@ -608,26 +616,19 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         ))}
       </div>
 
-      {/* KPIs próximamente */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--info-tint)', border: '1px solid var(--info)', borderRadius: 12, padding: '10px 12px', marginBottom: 12, fontSize: 11.5, color: 'var(--info)', fontWeight: 500, lineHeight: 1.35 }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>
-        {isProp ? 'Indicadores de dirección' : 'Indicadores del día'} — se completan cuando el módulo de pedidos esté en marcha.
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {KPIS_PROX.map((k) => (
-          <div key={k.label} style={{ background: 'var(--surface)', border: '1px dashed var(--line2)', borderRadius: 14, padding: '14px 13px', minHeight: 108, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)', lineHeight: 1.25 }}>{k.label}</div>
-            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 600, color: 'var(--faint)' }}>—</span>
-              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--info)', background: 'var(--info-tint)', padding: '3px 7px', borderRadius: 99 }}>Próx.</span>
-            </div>
-          </div>
-        ))}
+      {/* Métricas reales del día: km + tiempo de parada por persona (Feature B). */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={sheetLabel}>{isProp ? 'Métricas de dirección' : 'Rendimiento del día'}</span>
+          <span style={{ fontSize: 10, color: 'var(--faint)' }}>km · tiempo de parada</span>
+        </div>
+        <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={enfocarUsuario} />
       </div>
       </Overlay>
 
       {/* ===== GESTIÓN (pantalla nativa, abierta desde el botón "Menú") ===== */}
-      {gestion && (
+      {/* 'invitar' NO usa GestionHost: es una ventana flotante (InvitarModal), se maneja abajo. */}
+      {gestion && gestion !== 'invitar' && (
         <GestionHost title={GESTION_TITLES[gestion]} onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}>
           <Suspense fallback={<GestionCargando />}>
             {gestion === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
@@ -636,12 +637,14 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
                 del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}
             {gestion === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} onEditarProducto={(p) => setModalProducto(p)} onToast={showToast} />}
             {gestion === 'faltante' && <FaltanteTab />}
-            {gestion === 'consultas' && <ConsultasView />}
             {gestion === 'usuarios' && <UsuariosView onToast={showToast} />}
             {gestion === 'empresas' && <EmpresasView onToast={showToast} />}
           </Suspense>
         </GestionHost>
       )}
+
+      {/* Invitar: ventana flotante con el QR de descarga (encargado/admin/superadmin). */}
+      <InvitarModal open={gestion === 'invitar'} onClose={() => setGestion(null)} onToast={showToast} />
 
       {/* Modales de alta (se abren desde Clientes / Catálogo). Van por Overlay, que
           los pone en --z-modal (500), por encima del GestionHost (--z-screen, 400). */}
@@ -681,7 +684,7 @@ function GestIcon({ k }) {
     zonas: <><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
     catalogo: <path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />,
     faltante: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
-    consultas: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
+    invitar: <><circle cx="9" cy="8" r="3.2" /><path d="M4 21c0-3.4 2.4-5.5 5-5.5s5 2.1 5 5.5" /><path d="M18 8v6M15 11h6" /></>,
     usuarios: <><circle cx="9" cy="8" r="3" /><path d="M2.5 21c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><path d="M17 7.7a3 3 0 0 1 0 5.6" /></>,
     empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
   }[k]

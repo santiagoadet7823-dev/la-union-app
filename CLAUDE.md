@@ -262,14 +262,15 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay **cuatro** números que conviven. Hoy **están desfasados** (ver informe §8).
+Hay varios números que conviven. Alineados en **1.6.0** (agosto 2026).
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js:6](src/version.js#L6) | `1.5.25` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle:17](android/app/build.gradle#L17) | `1.5.8` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle:16](android/app/build.gradle#L16) | `8` | Entero incremental de Android |
+| `APP_VERSION` | [src/version.js:6](src/version.js#L6) | `1.6.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle:17](android/app/build.gradle#L17) | `1.6.0` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle:16](android/app/build.gradle#L16) | `20` | Entero incremental de Android |
 | `app_config.bundle_version` | Supabase | — | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | `1.0.0` / `null` | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Inerte** hasta setear `apk_url`. Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 **¿OTA o APK nuevo?**
 
@@ -282,7 +283,8 @@ Hay **cuatro** números que conviven. Hoy **están desfasados** (ver informe §8
 | Código en `android/app/src/main/java/` | | ✅ |
 
 > Al publicar un APK nuevo, publicar **también** la misma versión como OTA, para los que ya lo tienen
-> instalado.
+> instalado. Con el auto-updater (1.6.0+), la reinstalación del APK ya no es manual: ver
+> [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md).
 
 ---
 
@@ -334,11 +336,17 @@ Hay **cuatro** números que conviven. Hoy **están desfasados** (ver informe §8
 
 Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urgentes:
 
-- 🔴 **Backup del keystore** (`android/app/launion.keystore` + `keystore.properties`) fuera de la
-  máquina. Si se pierde, **el APK no se puede volver a actualizar nunca**.
+- 🔴 **Backup del keystore** (`android/app/launion.keystore` + las contraseñas de `keystore.properties`)
+  fuera de la máquina. **Punto único de falla.** Android exige que toda actualización esté firmada con
+  la MISMA llave que la app instalada; no estamos en Play Store, así que no hay respaldo de Google que
+  valga. Si se pierde el archivo **o** se olvidan las contraseñas (`storePassword`/`keyPassword`/`keyAlias`):
+  la OTA sigue viva, pero **ningún APK nuevo se puede instalar como actualización** — habría que hacer
+  desinstalar+reinstalar en cada teléfono (se pierden datos locales: cola de posiciones, cuarentena,
+  sesión). Respaldar YA: contraseñas en un gestor, el `.keystore` en 2 lugares privados (no repo público).
+  Esto ahora también sostiene el auto-update del APK — ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md).
 - 🔴 **`db/02_saas.sql` y `05_schema_real.sql` reabren agujeros si se re-ejecutan.** Mover a
   `db/historico/`.
-- 🔴 **Versiones desfasadas** (§6): alinear en el próximo APK.
+- ✅ **Versiones desfasadas** (§6): alineadas en 1.6.0 (versionName 1.6.0 / versionCode 20 / APP_VERSION 1.6.0).
 - 🔴 **Rol `propietario` fuera del check constraint** de `perfiles.rol`. El código lo usa
   (`App.jsx:66,105`), la DB lo rechazaría. No se puede dar de alta un propietario desde `UsuariosView`.
 - 🟠 **9 columnas/objetos vivos sin versionar** en ningún `.sql` (`posiciones.bateria`,
