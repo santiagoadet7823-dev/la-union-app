@@ -128,7 +128,7 @@ public class UploaderGpsService extends Service {
                 if (!dentroDeVentana()) { detenerServicio(); return; }
                 SharedPreferences sp = prefs();
                 float minMove = sp.getInt(K_MIN_MOVE, 12);        // metros; default = gpsConfig.MIN_MOVE_M
-                long keepAlive = sp.getInt(K_KEEPALIVE, 60000);   // ms; default = STATIONARY_KEEPALIVE_MS
+                long keepAlive = sp.getInt(K_KEEPALIVE, 30000);   // ms; default = STATIONARY_KEEPALIVE_MS (30 s)
                 for (Location loc : result.getLocations()) {
                     // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
                     if (loc.hasAccuracy() && loc.getAccuracy() > ACCURACY_MAX_M) continue;
