@@ -9,9 +9,10 @@ import { card, Stat } from '../ui'
 const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
 
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
-export default function InicioTab({ j, onNuevoCliente, onEditarCliente }) {
+export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
-  const { perfil, user } = useAuth()
+  const { perfil, user, permisos } = useAuth()
+  const puedeCatalogo = !!onAbrirCatalogo && (permisos || []).includes('catalogo')
   const nombre = perfil?.nombre || 'Vendedor'
   const { clients, done, conPedido, montoHoy, meta, efect, nextId, startVisit, catLoading } = j
 
@@ -22,7 +23,20 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente }) {
           <Logo size={26} radius={8} />
           <div style={sx("font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em")}>DisT-At</div>
         </div>
-        <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{hoy()}</div>
+        <div style={sx('display:flex;align-items:center;gap:8px')}>
+          {/* Acceso al catálogo para quien tiene el permiso EXTRA (típicamente un vendedor que
+              además carga las fotos). Va acá y no en la bottom-nav a propósito: es una tarea
+              ocasional de escritorio, no un destino de la jornada — la nav de 3 pestañas es el
+              recorrido diario y no se toca. */}
+          {puedeCatalogo && (
+            <button onClick={onAbrirCatalogo} className="lu-press" title="Editar productos y fotos del catálogo"
+              style={sx('display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--deep);font-size:11px;font-weight:700;cursor:pointer')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5" /><circle cx="8.5" cy="9" r="1.8" /><path d="m21 15-5-5L5 21" /></svg>
+              Catálogo
+            </button>
+          )}
+          <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{hoy()}</div>
+        </div>
       </div>
 
       {/* Activación de GPS — en móvil el permiso se pide con un toque del usuario */}

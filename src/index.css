@@ -21,6 +21,7 @@
   --r-sm: 8px;      /* chips, badges, botón cerrar */
   --r-md: 12px;     /* inputs, botones de acción */
   --r-lg: 16px;     /* cards y paneles */
+  --r-card: 18px;   /* tarjetas de KPI del dashboard del dueño (28/07/2026) */
   --r-xl: 20px;     /* modales y bottom-sheets */
   --r-pill: 999px;  /* píldoras */
 
@@ -111,6 +112,11 @@ html[data-theme='light'] {
   --glass-shadow: 0 -2px 16px rgba(11, 43, 42, 0.08);
   --sheet-bg: rgba(247, 252, 251, 0.8);
   --sk: rgba(11, 43, 42, 0.07);
+  /* Pista neutra de una barra que se llena: el fondo de las sparklines, el riel del
+     "km sobre el máximo del equipo" y el avatar de quien no reportó. Es más oscuro que
+     --sk (que es el gris del skeleton, pensado para desaparecer) porque acá la parte
+     vacía SIGNIFICA algo: es la referencia contra la que se lee lo lleno. */
+  --bar: rgba(11, 43, 42, 0.09);
   --console-bg: #0b2b2a;
   --console-fg: #a7e8e3;
   --hm0: #eaf4f3;
@@ -163,6 +169,7 @@ html[data-theme='dark'] {
   --glass-shadow: 0 -2px 16px rgba(0, 0, 0, 0.35);
   --sheet-bg: rgba(11, 26, 25, 0.78);
   --sk: rgba(255, 255, 255, 0.07);
+  --bar: rgba(255, 255, 255, 0.1);
   --console-bg: #081414;
   --console-fg: #5fd9d3;
   --hm0: #12302e;
@@ -252,6 +259,20 @@ body {
   to { transform: rotate(360deg); }
 }
 .lu-spin { animation: lu-spin 0.9s linear infinite; }
+/* Brillo del skeleton de carga (dashboard del dueño, 28/07/2026). Anima background-position
+   y no transform/opacity: es la excepción a la regla de §7, y es deliberada — un skeleton
+   necesita que el brillo RECORRA la silueta, y desplazarlo con transform obligaría a un
+   wrapper con overflow por cada barra. El costo es acotado: son 6 nodos, solo mientras carga. */
+@keyframes lu-sheen {
+  from { background-position: -170px 0; }
+  to { background-position: 230px 0; }
+}
+.lu-sk {
+  background: linear-gradient(90deg, var(--sk) 0%, var(--bar) 50%, var(--sk) 100%);
+  background-size: 200px 100%;
+  animation: lu-sheen 1.3s infinite linear;
+  border-radius: var(--r-sm);
+}
 @keyframes lu-rise {
   from { transform: translateY(18px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }

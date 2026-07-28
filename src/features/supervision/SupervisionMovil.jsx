@@ -10,21 +10,25 @@ import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
 import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
+import { apilarAtras } from '../../services/atras'
+import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import LeafletMap from '../../components/LeafletMap'
+import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
 import Overlay from '../../components/Overlay'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
-import GestionHost from './components/GestionHost'
+import GestionHost from '../../components/GestionHost'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
 
 // Vistas de gestión migradas al botón "Menú" (antes vivían en el Panel de gestión / AdminView,
 // la vista de escritorio tipo PWA). Se cargan bajo demanda para no engordar el chunk del mapa.
 const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
+const RevisarDuplicados = lazy(() => import('../admin/RevisarDuplicados'))
 const ZonasView = lazy(() => import('../admin/ZonasView'))
 const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
 const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
@@ -73,24 +77,12 @@ const glass = glassBlur // alias local: este archivo lo usa ~10 veces como `...g
 // Acciones de gestión que abren en pantalla nativa (GestionHost) desde el botón "Menú".
 // Reemplazan al viejo "Panel de gestión" (AdminView / PWA). Gate por rol: Usuarios solo
 // admin/superadmin; Empresas solo superadmin; el resto para todo gestor (incl. encargado).
-const GESTION_ITEMS = [
-  { key: 'clientes', label: 'Clientes', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
-  { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
-]
-const GESTION_TITLES = Object.fromEntries(GESTION_ITEMS.map((i) => [i.key, i.label]))
 
 export default function SupervisionMovil({ role = 'encargado', onIrAJornada = null }) {
   const { theme, isDark, toggleTheme } = useTheme()
-  const { perfil, user, idEmpresa, signOut } = useAuth()
+  const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   const base = useEmpresaBase(idEmpresa) // dónde abre el mapa (depósito de la empresa)
-  const isProp = role === 'propietario'
-
   const [section, setSection] = useState('mapa') // 'mapa' | 'dash'
   const [filter, setFilter] = useState(null)     // null | 'v' | 'r'
   const [pinId, setPinId] = useState(null)
@@ -111,13 +103,12 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [modalProducto, setModalProducto] = useState(false)
   const [modalPerfil, setModalPerfil] = useState(false)
   const [datePop, setDatePop] = useState(false)  // fallback: popover con el <input date> inline
+  const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin chrome
   const toastRef = useRef(null)
   const dateRef = useRef(null)                   // <input type="date"> oculto (picker nativo)
 
-  // Ítems del menú de gestión visibles para el rol actual. El propietario es SOLO LECTURA:
-  // se corta explícito (igual que Desktop) en vez de depender de que 'propietario' no figure
-  // en ningún array `roles` — esa invariante implícita se rompe sola al agregar un ítem.
-  const gestionItems = useMemo(() => (isProp ? [] : GESTION_ITEMS.filter((it) => it.roles.includes(role))), [role, isProp])
+  // Ítems del menú de gestión visibles para el rol actual.
+  const gestionItems = useMemo(() => itemsDeGestion(role, permisos), [role, permisos])
 
   const esHoy = fecha === hoyStr()
 
@@ -310,7 +301,25 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const nombre = perfil?.nombre || user?.email || 'Usuario'
   const roleLabel = { propietario: 'Propietario', encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
   const title = section === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard total'
-  const cerrarTodo = () => { setPlusOpen(false); setAcctOpen(false); setPinId(null) }
+  const cerrarTodo = () => { setPlusOpen(false); setAcctOpen(false); setDatePop(false); setPinId(null) }
+
+  // Modo INMERSIVO: el mapa a pantalla completa, sin header, sin rail y sin bottom-nav.
+  //
+  // Al entrar se cierra todo lo que esté abierto (si no, un popover quedaría flotando sobre un
+  // mapa sin el chrome que le da referencia) y se fuerza la sección 'mapa': entrar en inmersivo
+  // desde el Dashboard mostraría el sheet tapando justo lo que se quería ver.
+  //
+  // La tarjeta del pin NO se oculta: es información sobre lo que el usuario acaba de tocar, no un
+  // control. Ocultarla haría que tocar un móvil en inmersivo no tuviera ningún efecto visible.
+  const entrarInmersivo = () => { cerrarTodo(); setSection('mapa'); setInmersivo(true) }
+
+  // Botón ATRÁS de Android. Esta pantalla no apilaba nada, así que el atrás minimizaba la app
+  // (services/atras.js con pila vacía → minimizeApp, regla 27). En inmersivo eso sería
+  // desconcertante: la salida natural de "pantalla completa" es el atrás.
+  useEffect(() => {
+    if (!inmersivo) return
+    return apilarAtras(() => setInmersivo(false))
+  }, [inmersivo])
 
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--map-bg)', color: 'var(--text)', fontFamily: 'var(--font-body)', overflow: 'hidden', userSelect: 'none' }}>
@@ -319,10 +328,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           isolation:isolate crea un stacking context propio → confina los z-index internos
           de Leaflet (panes/controles 200–1000) DEBAJO del chrome (header/chips/nav), si no
           el mapa tapa los menús. */}
-      <div style={{ position: 'absolute', top: safeTop(HEADER_H), bottom: safeBottom(NAV_H), left: 0, right: 0, isolation: 'isolate' }}>
+      <div style={{ position: 'absolute', top: inmersivo ? 0 : safeTop(HEADER_H), bottom: inmersivo ? 0 : safeBottom(NAV_H), left: 0, right: 0, isolation: 'isolate' }}>
         <LeafletMap
           theme={theme}
           height="100%"
+          radius={0}
           center={base}
           trails={leafletTrails.length ? leafletTrails : null}
           markers={mapMarkers}
@@ -353,6 +363,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       </div>
 
       {/* ===== HEADER GLASS ===== */}
+      {!inmersivo && (
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 11px' }}>
           <Logo size={34} radius={11} />
@@ -368,6 +379,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           </div>
         </div>
       </div>
+      )}
 
       {/* ===== PANEL DE CUENTA ===== */}
       {acctOpen && (
@@ -384,7 +396,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             </div>
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
             <div style={{ padding: 6 }}>
-              {onIrAJornada && !isProp && (
+              {onIrAJornada && (
                 <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
                   <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg></div>
                   <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
@@ -420,7 +432,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       )}
 
       {/* ===== ALERTA GPS APAGADO (si hay) ===== */}
-      {Object.values(gpsOff).length > 0 && section === 'mapa' && (
+      {Object.values(gpsOff).length > 0 && section === 'mapa' && !inmersivo && (
         <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', ...glass, border: '0.5px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
           {Object.values(gpsOff).map((u) => `${u.nombre} (${u.rol})`).join(', ')} · GPS desactivado
@@ -432,7 +444,12 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           de un Android de 393px: los chips scrolleaban en horizontal sin ninguna affordance
           ("botones amontonados"). Ahora cada control es un botón de 44×44 apilado hacia
           arriba desde la bottom-nav; el rail crece agregando ítems, no comprimiéndolos. */}
+      {!inmersivo && (
       <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 14), zIndex: 'var(--z-chrome)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Pantalla completa: va arriba de todo el rail porque es el control que ELIMINA al
+            resto — leerlo primero explica de dónde salen (y a dónde vuelven) los demás. */}
+        <BtnInmersivo activo={false} onToggle={entrarInmersivo} />
+
         {/* Vendedores */}
         <RailBtn
           on={filter === 'v'} dim={!!filter && filter !== 'v'} color="var(--info)"
@@ -497,6 +514,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           </div>
         </RailBtn>
       </div>
+      )}
+
+      {/* En inmersivo queda ESTE botón y nada más. Se posiciona contra el borde real de la
+          pantalla (ya no hay bottom-nav que lo empuje) respetando la safe-area. */}
+      {inmersivo && (
+        <BtnInmersivo
+          activo
+          onToggle={() => setInmersivo(false)}
+          style={{ position: 'absolute', right: 12, bottom: safeBottom(14), zIndex: 'var(--z-chrome)' }}
+        />
+      )}
 
       {/* Fallback final del selector de fecha: WebView sin showPicker() ni click() programático
           → input inline visible para que el usuario lo toque él mismo. */}
@@ -514,9 +542,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         </div>
       )}
 
-      {/* ===== TARJETA FLOTANTE DE PIN ===== */}
+      {/* ===== TARJETA FLOTANTE DE PIN =====
+          En inmersivo SE MANTIENE (es información sobre lo que el usuario acaba de tocar, no un
+          control), pero baja: ya no hay bottom-nav ni rail que la empujen. */}
       {pin && (
-        <div style={{ position: 'absolute', left: 14, right: RAIL_W + 24, bottom: safeBottom(NAV_H + 86), zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: '13px 14px' }} className="lu-rise">
+        <div style={{ position: 'absolute', left: 14, right: inmersivo ? 14 : RAIL_W + 24, bottom: safeBottom(inmersivo ? NAV_H + 14 : NAV_H + 86), zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: '13px 14px' }} className="lu-rise">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
             <div style={{ width: 38, height: 38, flex: 'none', borderRadius: esRep(pin.rol) ? 11 : 99, background: colorPorId(pin.id), color: '#fff', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{initials(nombres[pin.id] || pin.rol)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -545,6 +575,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       )}
 
       {/* ===== BOTTOM NAV ===== */}
+      {!inmersivo && (
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around', padding: '8px 10px 8px' }}>
           <NavBtn active={section === 'mapa'} label="Mapa" onClick={() => { setSection('mapa'); cerrarTodo() }}>
@@ -553,16 +584,15 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           <NavBtn active={section === 'dash'} label="Dashboard" onClick={() => { setSection('dash'); setPlusOpen(false); setAcctOpen(false); setPinId(null) }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" rx="1" /><rect x="12.5" y="8" width="3" height="10" rx="1" /><rect x="18" y="5" width="3" height="13" rx="1" /></svg>
           </NavBtn>
-          {!isProp && (
-            <NavBtn active={plusOpen} label="Menú" onClick={() => { setPlusOpen((v) => !v); setPinId(null); setAcctOpen(false) }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h11M3 18h11" /><path d="M18 15v6M15 18h6" /></svg>
-            </NavBtn>
-          )}
+          <NavBtn active={plusOpen} label="Menú" onClick={() => { setPlusOpen((v) => !v); setPinId(null); setAcctOpen(false) }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h11M3 18h11" /><path d="M18 15v6M15 18h6" /></svg>
+          </NavBtn>
         </div>
       </div>
+      )}
 
       {/* ===== MENÚ "+" (encargado) ===== */}
-      {plusOpen && !isProp && (
+      {plusOpen && (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setPlusOpen(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 28), width: 236, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7 }} className="lu-rise">
@@ -590,7 +620,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         variant="sheet"
         glass
         title="Dashboard"
-        subtitle={isProp ? 'Vista de dirección · solo lectura' : 'Jornada en curso'}
+        subtitle="Jornada en curso"
       >
       {/* Informe: por qué no llega la señal (lo ve también el propietario). Click en una
           persona → cierra el sheet y encuadra su recorrido. */}
@@ -619,7 +649,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* Métricas reales del día: km + tiempo de parada por persona (Feature B). */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={sheetLabel}>{isProp ? 'Métricas de dirección' : 'Rendimiento del día'}</span>
+          <span style={sheetLabel}>Rendimiento del día</span>
           <span style={{ fontSize: 10, color: 'var(--faint)' }}>km · tiempo de parada</span>
         </div>
         <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={enfocarUsuario} />
@@ -632,6 +662,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         <GestionHost title={GESTION_TITLES[gestion]} onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}>
           <Suspense fallback={<GestionCargando />}>
             {gestion === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
+              {gestion === 'duplicados' && <RevisarDuplicados onToast={showToast} />}
             {gestion === 'zonas' && <ZonasView onToast={showToast} />}
             {/* onEditarProducto y onToast NO son opcionales: sin el primero el botón de editar
                 del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}

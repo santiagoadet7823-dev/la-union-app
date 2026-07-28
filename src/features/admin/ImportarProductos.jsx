@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
+import { normalizar } from '../../lib/texto'
 import { useCatalog } from '../../context/CatalogContext'
 import { descargarArchivo } from '../../services/download'
 
@@ -12,18 +13,23 @@ import { descargarArchivo } from '../../services/download'
  * Las fotos NO van en la planilla (se cargan después desde el form de cada producto).
  */
 
-// Encabezados aceptados (case-insensitive, sin tildes) → campo interno.
+// Encabezados aceptados → campo interno.
+//
+// Claves YA NORMALIZADAS con `normalizar()` (minúsculas, sin tildes, puntuación → espacio): una
+// sola entrada cubre "Precio Unitario", "precio_unitario" y "precio-unitario". Antes había que
+// listar cada separador a mano, y a `peso_kg` y `nivel_rentabilidad` les faltaba la variante con
+// espacio — una planilla con "Peso Kg" en el encabezado se importaba sin peso y sin avisar.
 const ALIAS = {
   codigo: 'codigo', cod: 'codigo', code: 'codigo', sku: 'codigo',
   descripcion: 'descripcion', nombre: 'descripcion', producto: 'descripcion', detalle: 'descripcion',
-  precio: 'precio_unitario', 'precio_unitario': 'precio_unitario', 'precio unitario': 'precio_unitario',
-  peso: 'peso_kg', 'peso_kg': 'peso_kg', kg: 'peso_kg', kilos: 'peso_kg',
+  precio: 'precio_unitario', 'precio unitario': 'precio_unitario',
+  peso: 'peso_kg', 'peso kg': 'peso_kg', kg: 'peso_kg', kilos: 'peso_kg',
   unidades: 'unidades', 'unidades por bulto': 'unidades', bulto: 'unidades', 'x bulto': 'unidades',
   categoria: 'categoria', rubro: 'categoria',
-  nivel: 'nivel_rentabilidad', 'nivel_rentabilidad': 'nivel_rentabilidad', rentabilidad: 'nivel_rentabilidad',
-  oferta: 'oferta', 'precio_oferta': 'precio_oferta', 'precio oferta': 'precio_oferta',
+  nivel: 'nivel_rentabilidad', 'nivel rentabilidad': 'nivel_rentabilidad', rentabilidad: 'nivel_rentabilidad',
+  oferta: 'oferta', 'precio oferta': 'precio_oferta',
 }
-const norm = (s) => (s == null ? '' : String(s)).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+const norm = normalizar
 const soloNum = (v) => { const s = norm(v).replace(/[^\d.]/g, ''); return s === '' ? null : Number(s) }
 // "sí/si/true/1/x" → true; "no/false/0/vacío" → false.
 const aBool = (v) => /^(si|sí|s|true|1|x|oferta)$/i.test(String(v ?? '').trim())

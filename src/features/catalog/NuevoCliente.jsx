@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
+import { buscarParecidos, motivoTexto } from '../../lib/texto'
 import { useCatalog } from '../../context/CatalogContext'
 import { useTheme } from '../../context/ThemeContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
@@ -18,8 +19,10 @@ import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
 const FRECUENCIAS = ['Semanal', 'Quincenal', 'Mensual']
 const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
 
-export default function NuevoCliente({ onClose, onToast, center }) {
-  const { addCliente } = useCatalog()
+export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente }) {
+  // `clientesTodos` incluye los archivados: si alguien vuelve a cargar un comercio que se archivó,
+  // avisarlo es MÁS importante, no menos — es la señal de que hay que desarchivarlo, no duplicarlo.
+  const { addCliente, clientesTodos } = useCatalog()
   const { theme } = useTheme()
   const [nombre, setNombre] = useState('')
   const [codigo, setCodigo] = useState('')
@@ -34,6 +37,13 @@ export default function NuevoCliente({ onClose, onToast, center }) {
   const [abierto, setAbierto] = useState(true) // ver Overlay.jsx: el padre monta condicionalmente
 
   const base = center || CENTRO
+
+  // Candidatos a duplicado, recalculados mientras se escribe. Es 100 % local (la cartera ya está
+  // en memoria), así que funciona con el teléfono sin señal — que es donde el vendedor carga.
+  const parecidos = useMemo(
+    () => buscarParecidos(nombre, clientesTodos, { lat: punto?.lat, lng: punto?.lng }),
+    [nombre, clientesTodos, punto],
+  )
 
   async function usarMiUbicacion() {
     setLocBusy(true)
@@ -82,13 +92,54 @@ export default function NuevoCliente({ onClose, onToast, center }) {
       footer={
         <>
           <button type="button" onClick={() => setAbierto(false)} disabled={saving} className="lu-press" style={{ ...btnSecundario, flex: 'none', padding: '0 16px', ...(saving ? apagado : null) }}>Cancelar</button>
-          <button type="button" onClick={guardar} disabled={saving} className="lu-press" style={{ ...btnPrimario, flex: 1, ...(saving ? apagado : null) }}>{saving ? 'Guardando…' : 'Guardar cliente'}</button>
+          {/* El label cambia cuando hay parecidos: el botón deja de decir "guardar" y pasa a decir
+              qué se está afirmando al tocarlo. Es lo que convierte el aviso en una decisión. */}
+          <button type="button" onClick={guardar} disabled={saving} className="lu-press" style={{ ...btnPrimario, flex: 1, ...(saving ? apagado : null) }}>
+            {saving ? 'Guardando…' : parecidos.length ? 'Es otro · guardar igual' : 'Guardar cliente'}
+          </button>
         </>
       }
     >
       <Field label="Nombre del comercio *">
         <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Kiosco San Martín" style={inputStyle} className="lu-input" />
       </Field>
+
+      {/* AVISO DE POSIBLE DUPLICADO.
+          No bloquea a propósito: el vendedor está parado frente al comercio y sabe más que
+          cualquier algoritmo. Lo que sí hace es poner el dato a la vista ANTES de guardar, con el
+          código y la localidad del candidato, para que la decisión sea informada. El caso que
+          motivó esto: dos vendedores cargaron el mismo comercio con las palabras al revés y
+          códigos distintos, y nada lo detectó. */}
+      {parecidos.length > 0 && (
+        <div style={sx('margin:-4px 0 12px;padding:11px 13px;border-radius:var(--r-md);background:var(--warning-tint);border:1px solid var(--warning)')}>
+          <div style={sx('display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);font-weight:700;color:var(--warning)')}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
+            {parecidos.length === 1 ? 'Puede que ya esté cargado' : 'Puede que ya estén cargados'}
+          </div>
+          <div style={sx('display:flex;flex-direction:column;gap:7px;margin-top:9px')}>
+            {parecidos.map((p) => (
+              <div key={p.cliente.id} style={sx('display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px')}>
+                <div style={sx('flex:1;min-width:0')}>
+                  <div style={sx('font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p.cliente.name}</div>
+                  <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint);margin-top:2px')}>
+                    {p.cliente.codigo || 's/código'} · {p.cliente.loc || 'sin localidad'} · {motivoTexto(p)}
+                    {p.distancia != null && ` · a ${p.distancia} m`}
+                  </div>
+                </div>
+                {onAbrirCliente && (
+                  <button type="button" onClick={() => { setAbierto(false); onAbrirCliente(p.cliente.id) }} className="lu-press"
+                    style={sx('flex:none;border:1px solid var(--line2);background:var(--surface2);color:var(--deep);border-radius:var(--r-sm);padding:7px 11px;font-size:var(--fs-2xs);font-weight:700;cursor:pointer')}>
+                    Es este
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={sx('margin-top:9px;font-size:var(--fs-2xs);color:var(--muted);line-height:1.5')}>
+            Si es otro comercio distinto, seguí y guardalo igual.
+          </div>
+        </div>
+      )}
       <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
         <Field label="Código (opcional)"><input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="CLI-005" style={inputStyle} className="lu-input" /></Field>
         <Field label="Localidad"><input value={localidad} onChange={(e) => setLocalidad(e.target.value)} style={inputStyle} className="lu-input" /></Field>

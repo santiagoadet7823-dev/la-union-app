@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
+import { normalizar, buscarParecidos } from '../../lib/texto'
 import { useCatalog } from '../../context/CatalogContext'
 import { descargarArchivo } from '../../services/download'
 
@@ -13,21 +14,32 @@ import { descargarArchivo } from '../../services/download'
  * bundle principal. La lógica de alta/dedup vive en CatalogContext.importClientes.
  */
 
-// Encabezados aceptados (case-insensitive, sin tildes) → campo interno.
+// Encabezados aceptados → campo interno.
+//
+// Las claves están escritas YA NORMALIZADAS con `normalizar()`: minúsculas, sin tildes y con la
+// puntuación convertida en espacio. Por eso no hace falta listar `nombre_comercio` y
+// `nombre comercio` por separado — "Nombre Comercio", "nombre_comercio" y "nombre-comercio" caen
+// todas en la misma clave. Antes esto usaba una `norm` local que solo sacaba tildes, así que cada
+// variante de separador había que enumerarla a mano (y faltaban).
 const ALIAS = {
   codigo: 'codigo', cod: 'codigo', code: 'codigo',
-  nombre: 'nombre', 'nombre_comercio': 'nombre', comercio: 'nombre', 'razon social': 'nombre', 'razon_social': 'nombre', 'razonsocial': 'nombre',
+  nombre: 'nombre', 'nombre comercio': 'nombre', comercio: 'nombre', 'razon social': 'nombre', razonsocial: 'nombre',
   localidad: 'localidad', loc: 'localidad', ciudad: 'localidad',
   zona: 'zona', 'n zona': 'zona', 'nro zona': 'zona', 'numero zona': 'zona',
-  dias: 'dias', 'dias_visita': 'dias', 'dias visita': 'dias',
+  dias: 'dias', 'dias visita': 'dias',
   frecuencia: 'frecuencia', freq: 'frecuencia',
   horario: 'horario',
 }
-const norm = (s) => (s == null ? '' : String(s)).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+// `norm` vive ahora en lib/texto.js (estaba duplicado letra por letra acá y en ImportarProductos).
+const norm = normalizar
 const soloEnteroZona = (v) => { const m = norm(v).match(/\d+/); return m ? Number(m[0]) : null }
 
 export default function ImportarClientes({ onClose, onToast }) {
-  const { zonas, clientes, importClientes } = useCatalog()
+  // `clientesTodos` y no `clientes`: acá hacen falta TAMBIÉN los archivados. `codigo` es UNIQUE en
+  // la base, así que si una planilla trae el código de un cliente archivado y lo tratáramos como
+  // inexistente, el insert reventaría contra el índice. Con los archivados a la vista, cae en la
+  // rama de "se actualiza" — que además es lo correcto: ese comercio volvió.
+  const { zonas, clientesTodos: clientes, importClientes } = useCatalog()
   const fileRef = useRef(null)
   const [parsed, setParsed] = useState(null) // filas parseadas + estado
   const [busy, setBusy] = useState(false)
@@ -89,14 +101,23 @@ export default function ImportarClientes({ onClose, onToast }) {
         const zona = zonaNum != null ? zonaPorNumero[zonaNum] : null
         const codKey = codigo.toLowerCase()
         let estado = 'ok'
+        let parecidoA = null
         if (!nombre) estado = 'sin-nombre'
         else if (codKey && vistos.has(codKey)) estado = 'dup'          // repetido DENTRO del lote → saltar
         else if (codKey && existentes.has(codKey)) estado = 'update'   // ya existe en la cartera → ACTUALIZAR
         else if (String(campo.zona ?? '').trim() && !zona) estado = 'zona?'
+        // Duplicado por NOMBRE, no por código. Hasta acá el importador solo miraba `codigo`, así
+        // que una fila sin código nunca era duplicado y el nombre no se comparaba con nada: por eso
+        // entraron a la cartera pares como "SA MARTINEZ MARIELA" / "SA MARIELA MARTINEZ". Es un
+        // AVISO, no un descarte — la fila se importa igual y queda marcada para revisar.
+        if (estado === 'ok' && nombre) {
+          const p = buscarParecidos(nombre, clientes)[0]
+          if (p) { estado = 'parecido'; parecidoA = p }
+        }
         if (codKey) vistos.add(codKey)
         return {
           fila: i + 2, // +2: fila 1 = encabezados
-          codigo, nombre,
+          codigo, nombre, parecidoA,
           localidad: String(campo.localidad ?? '').trim(),
           dias: String(campo.dias ?? '').trim(),
           frecuencia: String(campo.frecuencia ?? '').trim(),
@@ -116,17 +137,21 @@ export default function ImportarClientes({ onClose, onToast }) {
 
   const resumen = useMemo(() => {
     if (!parsed) return null
-    const c = { ok: 0, update: 0, dup: 0, 'zona?': 0, 'sin-nombre': 0 }
+    const c = { ok: 0, update: 0, dup: 0, parecido: 0, 'zona?': 0, 'sin-nombre': 0 }
     parsed.forEach((f) => { c[f.estado] = (c[f.estado] || 0) + 1 })
     return c
   }, [parsed])
 
   async function importar() {
     if (!parsed) return
-    // Importables: nuevos ('ok'/'zona?') + existentes a actualizar ('update'). Los 'dup'
+    // Importables: nuevos ('ok'/'zona?'/'parecido') + existentes a actualizar ('update'). Los 'dup'
     // (repetidos dentro del lote) y 'sin-nombre' se saltan. importClientes hace el upsert por código.
+    //
+    // 'parecido' SÍ se importa: es un aviso, no un veto. Descartarlo automáticamente perdería
+    // comercios reales de nombre similar, y en una importación de miles de filas nadie podría
+    // decidir uno por uno. Lo que queda es la pantalla de revisión, para resolverlos después.
     const rows = parsed
-      .filter((f) => f.estado === 'ok' || f.estado === 'zona?' || f.estado === 'update')
+      .filter((f) => f.estado === 'ok' || f.estado === 'zona?' || f.estado === 'update' || f.estado === 'parecido')
       .map((f) => ({
         codigo: f.codigo || null,
         nombre_comercio: f.nombre,
@@ -154,13 +179,14 @@ export default function ImportarClientes({ onClose, onToast }) {
       ok: { t: 'Nuevo', c: 'var(--success)', b: 'var(--success-tint)' },
       update: { t: 'Se actualizará', c: 'var(--info)', b: 'var(--info-tint)' },
       dup: { t: 'Repetido en planilla', c: 'var(--warning)', b: 'var(--warning-tint)' },
+      parecido: { t: 'Ya hay uno parecido', c: 'var(--warning)', b: 'var(--warning-tint)' },
       'zona?': { t: 'Zona no encontrada', c: 'var(--info)', b: 'var(--surface2)' },
       'sin-nombre': { t: 'Sin nombre', c: 'var(--danger)', b: 'var(--danger-tint)' },
     }[estado] || { t: estado, c: 'var(--muted)', b: 'var(--surface2)' }
     return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap'), color: map.c, background: map.b }}>{map.t}</span>
   }
 
-  const importables = resumen ? (resumen.ok + resumen['zona?'] + resumen.update) : 0
+  const importables = resumen ? (resumen.ok + resumen['zona?'] + resumen.update + resumen.parecido) : 0
 
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', display: 'flex', flexDirection: 'column', background: 'var(--bg-solid)' }}>

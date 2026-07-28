@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
+import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
@@ -13,6 +14,7 @@ import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import LeafletMap from '../../components/LeafletMap'
+import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
 import { APP_VERSION } from '../../version'
@@ -41,6 +43,7 @@ import { APP_VERSION } from '../../version'
 
 // Vistas de gestión reutilizadas tal cual del panel (lazy, como en SupervisionMovil).
 const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
+const RevisarDuplicados = lazy(() => import('../admin/RevisarDuplicados'))
 const ZonasView = lazy(() => import('../admin/ZonasView'))
 const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
 const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
@@ -54,24 +57,11 @@ const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
 const REFRESH_MS = 60000
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
-// Mismos ítems (y gate por rol) que la vista móvil: Usuarios solo admin/superadmin;
-// Empresas solo superadmin; el resto para todo gestor (incl. encargado). El propietario
-// no ve NADA de esta sección (solo lectura, sin Gestión).
-const GESTION_ITEMS = [
-  { key: 'clientes', label: 'Clientes', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
-  { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
-]
-const GESTION_TITLES = Object.fromEntries(GESTION_ITEMS.map((i) => [i.key, i.label]))
 const SIDEBAR_W = 232
 
 export default function SupervisionDesktop({ role = 'admin', vista = null, onIrAJornada = null }) {
   const { theme, isDark, toggleTheme } = useTheme()
-  const { perfil, user, idEmpresa, signOut } = useAuth()
+  const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { isMobile, setMode } = useDevice()
   const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   const base = useEmpresaBase(idEmpresa) // dónde abre el mapa (depósito de la empresa)
@@ -91,6 +81,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [snapOn, setSnapOn] = useState(false) // false = rastro crudo fiel (default)
   const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)
+  const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin sidebar ni topbar
   const [fecha, setFecha] = useState(hoyStr)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
@@ -98,7 +89,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const toastRef = useRef(null)
 
   // Ítems de gestión visibles para el rol (vacío para propietario → sin sección).
-  const gestionItems = useMemo(() => (isProp ? [] : GESTION_ITEMS.filter((it) => it.roles.includes(role))), [role, isProp])
+  const gestionItems = useMemo(() => (isProp ? [] : itemsDeGestion(role, permisos)), [role, isProp, permisos])
   const esGestion = !!GESTION_TITLES[view]
   const esHoy = fecha === hoyStr()
 
@@ -130,6 +121,15 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // "hace Xs" en vivo.
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
   useEffect(() => () => clearTimeout(toastRef.current), [])
+  // Escape sale de pantalla completa. Es el gesto que espera cualquiera en escritorio, y acá
+  // importa más que en otras capas: el panel inmersivo tapa la sidebar, así que sin esto el único
+  // camino de vuelta es encontrar el botón. Mismo patrón que GestionHost.
+  useEffect(() => {
+    if (!inmersivo) return
+    const onKey = (e) => { if (e.key === 'Escape') setInmersivo(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inmersivo])
 
   function showToast(m) {
     clearTimeout(toastRef.current)
@@ -374,6 +374,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
             // Vistas de gestión reutilizadas inline (mismo componente que el panel/APK).
             <Suspense fallback={<Cargando />}>
               {view === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
+              {view === 'duplicados' && <RevisarDuplicados onToast={showToast} />}
               {view === 'zonas' && <ZonasView onToast={showToast} />}
               {/* onEditarProducto y onToast NO son opcionales: sin el primero el botón de editar
                   del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}
@@ -397,8 +398,15 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
               {/* MAPA (solo en Monitoreo; en Dashboard se expanden las métricas). */}
               {view === 'mapa' && (
-                <div style={panelSx}>
+                /* En INMERSIVO el panel sale del flujo y tapa sidebar, topbar y métricas con una
+                   sola capa, en vez de ocultar cada pieza por separado. Es el mismo elemento de
+                   React (no se remonta), así que el mapa conserva el pan y el zoom donde estaba —
+                   remontarlo lo devolvería al centro por defecto, porque `fitDone` ya es true. */
+                <div style={inmersivo
+                  ? { position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--surface)', display: 'flex', flexDirection: 'column' }
+                  : panelSx}>
                   {/* Barra superior del panel (no glass flotante): chips + fecha + calles + sync. */}
+                  {!inmersivo && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
                     <Chip on={filter === 'v'} dim={filter && filter !== 'v'} color="var(--info)" dotRadius={99} count={vendCount} label="Vendedores" onClick={() => { setFilter((f) => f === 'v' ? null : 'v'); setPinId(null) }} />
                     <Chip on={filter === 'r'} dim={filter && filter !== 'r'} color="var(--warning)" dotRadius={4} count={repCount} label="Repartidores" onClick={() => { setFilter((f) => f === 'r' ? null : 'r'); setPinId(null) }} />
@@ -432,7 +440,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     <div onClick={doSync} title="Actualizar ubicaciones" style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
                       <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg></div>
                     </div>
+                    {/* Pantalla completa */}
+                    <BtnInmersivo activo={false} onToggle={() => { setInmersivo(true); setAcctOpen(false); setDrawerOpen(false) }} style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--line)', boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none', color: 'var(--muted)' }} />
                   </div>
+                  )}
 
                   {/* Aviso si la carga de ubicaciones falló: antes un error dejaba el mapa vacío y
                       MUDO (no se distinguía de "no hay datos"). Ahora se ve y se puede reintentar. */}
@@ -445,10 +456,11 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   )}
 
                   {/* Mapa grande */}
-                  <div style={{ padding: 0 }}>
+                  <div style={inmersivo ? { flex: 1, minHeight: 0, position: 'relative' } : { padding: 0 }}>
                     <LeafletMap
                       theme={theme}
-                      height={isMobile ? 380 : 'clamp(420px, 58vh, 680px)'}
+                      height={inmersivo ? '100%' : (isMobile ? 380 : 'clamp(420px, 58vh, 680px)')}
+                      radius={inmersivo ? 0 : 16}
                       center={base}
                       trails={leafletTrails.length ? leafletTrails : null}
                       dwells={dwells}
@@ -459,6 +471,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       edgePadding={{ top: 28, right: 28, bottom: 28, left: 28 }}
                       onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}
                     />
+                    {inmersivo && (
+                      <BtnInmersivo activo onToggle={() => setInmersivo(false)} style={{ position: 'absolute', right: 16, top: 16, zIndex: 'var(--z-chrome)' }} />
+                    )}
                   </div>
                 </div>
               )}

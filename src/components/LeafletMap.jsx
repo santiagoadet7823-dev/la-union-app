@@ -224,6 +224,15 @@ export default function LeafletMap({
   onMapClick,
   basemapControl = true, // muestra el selector de capas (se puede apagar en algún mapa puntual)
   basemapPosition = 'topright', // esquina del selector de capas (para no chocar con otros controles)
+  // Mapa de SOLO LECTURA: sin arrastre, sin zoom, sin controles. Lo usa el dashboard del dueño
+  // (28/07/2026), donde el mapa del inicio es "una imagen que se lee" y el único target táctil es
+  // la tarjeta entera, que lo abre a pantalla completa. Sin esto, un dedo que quiere scrollear la
+  // página arrastra el mapa y la pantalla se traba.
+  interactive = true,
+  // Radio de las esquinas. 16 (= --r-lg) es el de siempre, para no cambiar ninguna vista existente;
+  // el modo inmersivo lo pone en 0, porque un mapa a pantalla completa con esquinas redondeadas
+  // deja cuatro muescas del fondo contra el borde del teléfono.
+  radius = 16,
 }) {
   const routeInfoRef = useRef(onRouteInfo)
   routeInfoRef.current = onRouteInfo
@@ -241,8 +250,21 @@ export default function LeafletMap({
   // Init único.
   useEffect(() => {
     if (!divRef.current || mapRef.current) return
-    const map = L.map(divRef.current, { center: [center.lat, center.lng], zoom, zoomControl: true })
+    const map = L.map(divRef.current, {
+      center: [center.lat, center.lng],
+      zoom,
+      zoomControl: interactive,
+      dragging: interactive,
+      scrollWheelZoom: interactive,
+      touchZoom: interactive,
+      doubleClickZoom: interactive,
+      boxZoom: interactive,
+      keyboard: interactive,
+      tap: interactive,
+    })
     mapRef.current = map
+    // El contenedor deja pasar el scroll vertical de la página cuando el mapa no se opera.
+    if (!interactive) divRef.current.style.touchAction = 'pan-y'
     // Pane propio para los carteles de permanencia, con z-index EXPLÍCITO entre el de los
     // trazos (overlayPane, 400) y el de los pines en vivo (markerPane, 600).
     //
@@ -266,7 +288,32 @@ export default function LeafletMap({
     // Reajustar el mapa al rotar / cambiar tamaño (alturas en vh).
     const onResize = () => map.invalidateSize()
     window.addEventListener('resize', onResize)
-    return () => { window.removeEventListener('resize', onResize); map.remove(); mapRef.current = null }
+
+    // 🩸 28/07/2026 — El `resize` de window NO alcanza: Leaflet cachea el tamaño del contenedor y
+    // solo lo recalcula cuando se le avisa. Si el DIV cambia de alto sin que cambie la ventana
+    // —modo inmersivo, un panel que se colapsa, un sheet que se abre— el mapa sigue dibujando con
+    // el tamaño viejo: aparecen franjas de tiles GRISES y los clicks caen desplazados respecto de
+    // lo que se ve. Con `position:fixed` y alturas en vh eso pasa sin un solo evento de window.
+    //
+    // El rAF no es decorativo: `invalidateSize` fuerza layout, y llamarlo sincrónicamente dentro
+    // del callback del observer puede volver a disparar el observer ("ResizeObserver loop
+    // completed with undelivered notifications").
+    let pendiente = 0
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          if (pendiente) return
+          pendiente = requestAnimationFrame(() => { pendiente = 0; map.invalidateSize() })
+        })
+      : null
+    if (ro && divRef.current) ro.observe(divRef.current)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (pendiente) cancelAnimationFrame(pendiente)
+      if (ro) ro.disconnect()
+      map.remove()
+      mapRef.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -490,5 +537,5 @@ export default function LeafletMap({
   // SupervisionMovil.jsx:268 ya hacía esto a mano en su capa de mapa; acá pasa a
   // valer para TODOS los mapas (SupervisionDesktop, MapaOperativo, RecorridosView,
   // los mini-mapas de las fichas, etc.), que era donde faltaba.
-  return <div ref={divRef} style={{ width: '100%', height, borderRadius: 16, overflow: 'hidden', background: 'var(--map-bg)', isolation: 'isolate' }} />
+  return <div ref={divRef} style={{ width: '100%', height, borderRadius: radius, overflow: 'hidden', background: 'var(--map-bg)', isolation: 'isolate' }} />
 }

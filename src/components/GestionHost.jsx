@@ -1,10 +1,14 @@
 import { useEffect } from 'react'
-import { glassBlur } from '../../../lib/glass'
-import { apilarAtras } from '../../../services/atras'
+import { glassBlur } from '../lib/glass'
+import { apilarAtras } from '../services/atras'
 
 /**
  * Contenedor NATIVO full-screen para las vistas de gestión (Usuarios, Zonas,
  * Clientes, etc.) que se abren desde el botón "Menú" de la Supervisión Móvil.
+ *
+ * 28/07/2026 — Se movió de `features/supervision/components/` a `components/`: dejó de ser de
+ * supervisión. Ahora también lo usa el VENDEDOR con permiso de catálogo, que abre `CatalogoTab`
+ * desde su pantalla de inicio sin pasar por ninguna vista de gestión.
  *
  * Tapa el mapa y el chrome de vidrio, mostrando la vista hija como una pantalla
  * propia: header de vidrio fijo con botón "atrás" + título, y cuerpo scrolleable.

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
 import { uid } from '../lib/uid'
@@ -28,7 +28,10 @@ function mapCliente(c) {
     frecuencia: c.frecuencia || '',
     geofence: c.geofence_radio || 75,
     horario: c.horario || '',
+    // `activo` = CONFIRMADO (lo cargó un móvil y falta que gestión lo valide).
+    // `archivado` = sacado de circulación. Son dos ejes independientes, no dos valores del mismo.
     activo: c.activo,
+    archivado: !!c.archivado_ts,
     idZona: c.id_zona || null,
     idVendedor: c.id_vendedor || null,
   }
@@ -204,6 +207,7 @@ export function CatalogProvider({ children }) {
     if ('id_zona' in patch) vista.idZona = patch.id_zona || null
     if ('id_vendedor' in patch) vista.idVendedor = patch.id_vendedor || null
     if ('activo' in patch) vista.activo = patch.activo
+    if ('archivado_ts' in patch) vista.archivado = !!patch.archivado_ts
     if ('nombre_comercio' in patch) vista.name = patch.nombre_comercio
     if ('localidad' in patch) vista.loc = patch.localidad || ''
     // Edición a profundidad (ficha admin): reflejar también estos campos en la vista al toque.
@@ -231,6 +235,31 @@ export function CatalogProvider({ children }) {
     await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'delete', id })
     flushMutaciones()
     return { ok: true }
+  }, [])
+
+  /**
+   * Archiva (o desarchiva) VARIOS clientes de una. Los saca de circulación sin borrarlos.
+   *
+   * 🩸 Va por `updateMany`, UNA entrada en la cola para las N filas. Encolar N mutaciones sueltas
+   * era lo obvio y está mal: la cola tiene tope de 2.000 con `slice(-MAX)`, así que archivar 195
+   * clientes puede empujar fuera de la ventana mutaciones más viejas todavía sin subir, y se
+   * pierden calladas (regla 20 de CLAUDE.md).
+   *
+   * `archivado_ts` lo pone el cliente y no `now()` de Postgres a propósito: la operación tiene que
+   * poder encolarse sin red y conservar el instante REAL en que la persona la hizo, no el de
+   * cuando la cola drenó — que puede ser horas después.
+   *
+   * @param {string[]} ids
+   * @param {boolean} archivar  true archiva, false devuelve a circulación
+   */
+  const archivarClientes = useCallback(async (ids, archivar = true) => {
+    if (!Array.isArray(ids) || !ids.length) return { ok: true, n: 0 }
+    const ts = archivar ? new Date().toISOString() : null
+    const set = new Set(ids)
+    setClientes((prev) => prev.map((c) => (set.has(c.id) ? { ...c, archivado: archivar } : c)))
+    await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'updateMany', ids, payload: { archivado_ts: ts } })
+    flushMutaciones()
+    return { ok: true, n: ids.length }
   }, [])
 
   /** Alta de zona (admin/encargado), offline-first. La zona lleva número (código) y vendedor dueño. */
@@ -483,8 +512,14 @@ export function CatalogProvider({ children }) {
     return { insertados: nuevos.length, actualizados: updates.length, saltados: total - nuevos.length - updates.length, avisos }
   }, [idEmpresa, productos])
 
+  // `clientes` que ve la app = SOLO los vigentes. La inversión es deliberada: hay 8 consumidores
+  // (jornada del vendedor, capa de clientes de los dos mapas, zonas, importador…) y si el default
+  // fuera "todos", cualquiera que se olvide de filtrar muestra clientes archivados como si nada.
+  // Con este default, olvidarse es seguro. Quien necesita ver lo archivado lo pide explícito.
+  const clientesVigentes = useMemo(() => clientes.filter((c) => !c.archivado), [clientes])
+
   return (
-    <CatalogContext.Provider value={{ productos, clientes, zonas, categorias, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
+    <CatalogContext.Provider value={{ productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
       {children}
     </CatalogContext.Provider>
   )

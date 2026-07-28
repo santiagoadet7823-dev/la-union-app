@@ -262,6 +262,11 @@ export function AuthProvider({ children }) {
     user: session?.user || null,
     perfil,
     rol: perfil?.rol || null,
+    // Permisos EXTRA, además del rol (`perfiles.permisos`). El `?? []` no es decorativo: el perfil
+    // se cachea local (SQLite/localStorage) y una caché escrita antes de que existiera la columna
+    // llega sin ella. Sin el default, todo consumidor reventaría hasta la próxima revalidación
+    // online — justo en el arranque offline, que es cuando la caché se usa.
+    permisos: perfil?.permisos ?? [],
     idEmpresa: perfil?.id_empresa || null,
     activo: !!perfil?.activo,
     aprobado: !!perfil?.activo && !!perfil?.rol,

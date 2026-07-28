@@ -21,10 +21,10 @@ import { initNativeUI } from './services/nativeUI'
 const VendedorView = lazy(() => import('./features/vendedor/VendedorView'))
 const RepartidorView = lazy(() => import('./features/repartidor/RepartidorView'))
 const AdminView = lazy(() => import('./features/admin/AdminView'))
-const PropietarioView = lazy(() => import('./features/propietario/PropietarioView'))
+const PropietarioMovil = lazy(() => import('./features/propietario/PropietarioMovil'))
 const SupervisionMovil = lazy(() => import('./features/supervision/SupervisionMovil'))
 // Shell de escritorio (PWA/.exe) para los roles de supervisión: sidebar izq + topbar +
-// mapa + métricas. Reemplaza al AppShell+AdminView/PropietarioView SOLO en web.
+// mapa + métricas. Reemplaza al AppShell+AdminView SOLO en web.
 const SupervisionDesktop = lazy(() => import('./features/supervision/SupervisionDesktop'))
 
 // La supervisión móvil (mapa full-screen) es el diseño nuevo SOLO para la APK nativa.
@@ -40,8 +40,9 @@ function usarSupervisionMovil() {
  *  - vendedor / repartidor → vista móvil con GPS obligatorio (GpsGate).
  *  - encargado → es preventista Y auditor: alterna entre "Mi jornada" (misma
  *    vista del vendedor, con GPS) y "Panel" (auditoría). El switch vive en AppShell.
- *  - propietario → vista del dueño: solo lectura, pensada para el celular (sin GPS propio).
  *  - admin / superadmin → panel de escritorio (AdminView).
+ *
+ * El PROPIETARIO no llega hasta acá: `AuthedApp` lo atiende antes (ver más abajo).
  */
 function RoleRouter({ vista }) {
   const { rol } = useAuth()
@@ -64,7 +65,6 @@ function RoleRouter({ vista }) {
       </PhoneFrame>
     )
   }
-  if (rol === 'propietario') return <PropietarioView />
   return <AdminView />
 }
 
@@ -101,9 +101,10 @@ function CargandoPerfil({ error, onRetry }) {
  * hoc que hay que reinventar/recordar cada vez que se agregue un rol o vista.
  */
 function decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor }) {
-  // El PROPIETARIO usa SIEMPRE la vista móvil de solo-lectura, tanto en la APK como en la
-  // PWA: el dueño abre el sistema desde su celular (la PWA de escritorio es solo para PC/gestores).
-  if (rol === 'propietario') return true
+  // OJO: el PROPIETARIO ya NO pasa por acá. Hasta el 28/07/2026 esta función lo devolvía `true`
+  // como primera regla, y eso lo mandaba a `SupervisionMovil` (la pantalla del encargado en modo
+  // solo-lectura) — que además dejaba a `PropietarioView.jsx` inalcanzable, código muerto que
+  // nadie vio nunca. Ahora tiene su propia pantalla y `AuthedApp` lo atiende antes de llegar acá.
   if (!nativo) return false
   if (esEncargado && vista === 'panel') return true
   // Admin/superadmin en la APK: SIEMPRE supervisión móvil. La gestión se abre nativa desde
@@ -113,11 +114,28 @@ function decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor }) 
 }
 
 /**
+ * Rol efectivo para el ruteo.
+ *
+ * En DESARROLLO se puede forzar con `localStorage['lu-dev-rol']`, para poder abrir una pantalla de
+ * un rol que todavía no tiene usuarios en la base (hoy: `propietario` y `repartidor`, ambos con 0
+ * perfiles). Es solo de ruteo: la RPC y las policies siguen aplicando el rol REAL del usuario, así
+ * que esto no da acceso a ningún dato que la sesión no tuviera igual.
+ *
+ * `import.meta.env.DEV` lo deja fuera de cualquier build de producción — Vite lo reemplaza por
+ * `false` y el bloque entero desaparece en el tree-shaking.
+ */
+function rolEfectivo(rolReal) {
+  if (!import.meta.env.DEV) return rolReal
+  try { return localStorage.getItem('lu-dev-rol') || rolReal } catch (_) { return rolReal }
+}
+
+/**
  * App ya autenticada. Mantiene el estado del switch del encargado (Mi jornada /
  * Panel), persistido en localStorage. Para el resto de roles el switch no aplica.
  */
 function AuthedApp() {
-  const { rol } = useAuth()
+  const { rol: rolReal } = useAuth()
+  const rol = rolEfectivo(rolReal)
   const esEncargado = rol === 'encargado'
   const esGestor = rol === 'admin' || rol === 'superadmin'
   const [vista, setVista] = useState(() => {
@@ -128,8 +146,21 @@ function AuthedApp() {
     setVista(v)
   }
 
+  // El DUEÑO tiene su propia pantalla, y es la misma en la APK y en la PWA: abre el sistema desde
+  // el celular. Va antes que todo lo demás porque no comparte nada con la supervisión del
+  // encargado — no es una variante de otra vista, es otro producto.
+  if (rol === 'propietario') {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<Cargando />}>
+          <PropietarioMovil />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
+
   // Supervisión móvil (full-screen, sin el marco del AppShell). Solo en la APK nativa
-  // (o ?mobile=1 en web): dueño siempre; encargado en "Panel"; admin/superadmin siempre
+  // (o ?mobile=1 en web): encargado en "Panel"; admin/superadmin siempre
   // (la gestión se abre nativa desde el botón "Menú", sin el AdminView de escritorio).
   const nativo = usarSupervisionMovil()
   const supMovil = decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor })

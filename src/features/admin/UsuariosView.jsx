@@ -59,6 +59,27 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
       {catsEmpresa.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
     </select>
   ) : null
+  // Permisos EXTRA, además del rol. Se muestran solo para los roles que NO los tienen ya por su
+  // rol (admin/encargado/superadmin editan catálogo de por sí): ofrecerle "puede editar catálogo"
+  // a un admin sugiere que hoy no puede, y sí puede.
+  const permisosActuales = ed.permisos ?? (u.permisos || [])
+  const rolYaEditaCatalogo = ['admin', 'encargado', 'superadmin'].includes(rolEfectivo)
+  const chkPermisos = !rolYaEditaCatalogo && rolEfectivo ? (
+    <label style={sx('display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer')}
+      title="Deja que esta persona edite productos y suba fotos del catálogo, sin dejar de ser lo que es">
+      <input
+        type="checkbox"
+        checked={permisosActuales.includes('catalogo')}
+        onChange={(e) => setEdit(u.id, {
+          permisos: e.target.checked
+            ? [...permisosActuales.filter((p) => p !== 'catalogo'), 'catalogo']
+            : permisosActuales.filter((p) => p !== 'catalogo'),
+        })}
+      />
+      Puede editar catálogo
+    </label>
+  ) : null
+
   const selRol = (
     <>
       <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
@@ -66,6 +87,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
         {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
       {selCategoria}
+      {chkPermisos}
     </>
   )
   const inpNumero = (
@@ -320,7 +342,7 @@ export default function UsuariosView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo')
+      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo, permisos')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     setUsuarios(data || [])
@@ -353,10 +375,14 @@ export default function UsuariosView({ onToast }) {
     const nuevoNumero = ed.numero != null && ed.numero !== '' ? Number(ed.numero) : (u.numero ?? null)
     // Categoría de rastreo (Feature D): '' → null (horario global). undefined en el buffer = sin cambio.
     const nuevaCat = ed.id_categoria_rastreo !== undefined ? (ed.id_categoria_rastreo || null) : (u.id_categoria_rastreo ?? null)
+    // Permisos extra. Si el rol nuevo ya edita catálogo por sí mismo, se limpia el permiso: dejarlo
+    // guardado sería una promesa muda para el día en que a esa persona la bajen a vendedor.
+    const yaEdita = ['admin', 'encargado', 'superadmin'].includes(nuevoRol)
+    const nuevosPermisos = yaEdita ? [] : (ed.permisos ?? (u.permisos || []))
     setSavingId(u.id)
     const { error } = await supabase
       .from('perfiles')
-      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero, id_categoria_rastreo: nuevaCat })
+      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero, id_categoria_rastreo: nuevaCat, permisos: nuevosPermisos })
       .eq('id', u.id)
     setSavingId(null)
     if (error) { onToast?.('Error: ' + error.message); return }

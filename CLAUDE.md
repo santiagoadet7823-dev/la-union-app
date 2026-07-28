@@ -38,8 +38,15 @@ de `App.jsx` lo consultan. Desactivar una empresa no tiene efecto, aunque la UI 
 
 `superadmin` · `admin` · `encargado` · `vendedor` · `repartidor` · `propietario`
 
-`propietario` **existe en el código pero NO en el check constraint de la DB** — ver §8.
-`encargado` es dual: se lo trackea por GPS **y** supervisa.
+`encargado` es dual: se lo trackea por GPS **y** supervisa. `propietario` tiene su propia pantalla
+(`features/propietario/PropietarioMovil.jsx`) y **ya está en el check constraint** (`db/20`,
+verificado en base viva 28/07/2026 — el §8 decía lo contrario y estaba desactualizado).
+
+**Los roles son EXCLUYENTES** (`RoleRouter` es un if/else). Para dar una capacidad extra sin cambiar
+lo que la persona *es*, va por **`perfiles.permisos text[]`** (`db/23`), no por un rol nuevo: un
+vendedor con `'catalogo'` sigue siendo vendedor —conserva GPS, jornada y su lugar en el mapa— y
+además edita el catálogo. La tabla de quién ve qué pantalla de gestión vive en
+[`src/lib/gestion.js`](src/lib/gestion.js).
 
 ---
 
@@ -227,7 +234,8 @@ git push origin main           # dispara .github/workflows/deploy.yml
 
 | Quiero… | Ir a |
 |---|---|
-| Agregar una vista o cambiar quién ve qué | `src/App.jsx:102` (`decidirSupervisionMovil`) + las tablas de menú en `SupervisionMovil.jsx:78-84` **y** `SupervisionDesktop.jsx:67-73` (⚠️ están duplicadas — cambiar **las dos**) |
+| Agregar una vista o cambiar quién ve qué | `src/App.jsx` (`decidirSupervisionMovil`) + **`src/lib/gestion.js`** (`GESTION_ITEMS`, un solo lugar desde el 28/07/2026: antes estaba duplicado en las dos supervisiones) + el despacho `{gestion === 'x' && …}` en `SupervisionMovil.jsx` **y** `SupervisionDesktop.jsx` |
+| Dar una capacidad extra a alguien sin cambiarle el rol | `perfiles.permisos` + el campo `permiso` de la fila en `src/lib/gestion.js` + la policy correspondiente (ver `db/23_perfiles_permisos.sql`) |
 | Agregar un campo a cliente/producto | Migración en la base viva + `mapCliente`/`mapProducto` en `CatalogContext.jsx:18-48` + el form correspondiente |
 | Agregar un tipo de mutación offline | `src/services/sync/writeQueue.js` — la op debe ser **idempotente** en reintento |
 | Cambiar la frecuencia/precisión del GPS | `src/services/gpsConfig.js` (constantes) y `geolocation/estados.js` (presets). Leer antes las reglas 11 y 16 |
@@ -347,8 +355,21 @@ Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urge
 - 🔴 **`db/02_saas.sql` y `05_schema_real.sql` reabren agujeros si se re-ejecutan.** Mover a
   `db/historico/`.
 - ✅ **Versiones desfasadas** (§6): alineadas en 1.6.0 (versionName 1.6.0 / versionCode 20 / APP_VERSION 1.6.0).
-- 🔴 **Rol `propietario` fuera del check constraint** de `perfiles.rol`. El código lo usa
-  (`App.jsx:66,105`), la DB lo rechazaría. No se puede dar de alta un propietario desde `UsuariosView`.
+- ✅ **Rol `propietario` en el check constraint**: resuelto por `db/20_propietario_rol.sql`
+  (verificado en base viva el 28/07/2026). Ya se puede dar de alta un propietario desde
+  `UsuariosView`. **Pero** `supabase/functions/crear-usuario/index.ts` NO tiene `'propietario'` en
+  su lista de roles permitidos: crearlo desde el modal "Crear usuario" devuelve `rol-no-permitido`.
+  El camino que sí funciona es aprobar un usuario de Google pendiente. 🔴 Falta corregir la edge
+  function.
+- 🔴 **`AdminView` es inalcanzable**: `AuthedApp` intercepta a los 6 roles antes de que
+  `RoleRouter` llegue a su `return <AdminView/>`. Con él quedan muertos `RecorridosView`,
+  `MapaOperativo` y `ReplayJornada` — y la pestaña "Catálogo" de `AdminView`, que además no tiene
+  gate de rol.
+- 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
+  pueden usar el mismo código de cliente.
+- 🟠 **Policies de `storage.objects` sin scope**: son `to authenticated` a secas, así que cualquier
+  usuario logueado puede sobrescribir o borrar fotos de **cualquier** empresa. Hoy solo lo contiene
+  la UI.
 - 🟠 **9 columnas/objetos vivos sin versionar** en ningún `.sql` (`posiciones.bateria`,
   `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, y las 5 ya listadas en `00_LEER_PRIMERO.md`).
 - 🟠 **Key de Stadia** hardcodeada en `src/services/maps/basemap.js:13` — mover a `VITE_STADIA_KEY` y
