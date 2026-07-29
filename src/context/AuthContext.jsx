@@ -19,6 +19,57 @@ const escribirCacheSesion = (s) => { if (s?.access_token) persistence.set(SESSIO
 const borrarCacheSesion = () => persistence.set(SESSION_KEY, null)
 
 /**
+ * Última cuenta que entró en ESTE teléfono: { nombre, email }. Es lo que le permite al login
+ * saludar con "Continuar como José" en vez de una pantalla en blanco (diseño v1.4).
+ *
+ * 🩸 Guarda SOLO nombre y email — nunca la contraseña ni ningún token. El espejo de sesión
+ * (SESSION_KEY) es otra cosa y va por el puerto durable; esto es un dato de presentación y va en
+ * localStorage a secas para poder leerlo SÍNCRONO en el primer render del login (con la lectura
+ * async del puerto, la tarjeta aparecería un instante después y la pantalla saltaría).
+ *
+ * NO se borra en signOut: cerrar sesión no es "este teléfono no es más mío", y justamente después
+ * de cerrar sesión es cuando más sirve que el login sepa quién sos. Se pisa sola con la próxima
+ * cuenta que entre.
+ */
+const ULTIMO_KEY = 'lu-ultimo-ingreso'
+const RECORDAR_KEY = 'lu-recordar-usuario'
+
+export function leerUltimoIngreso() {
+  try {
+    const raw = localStorage.getItem(ULTIMO_KEY)
+    const v = raw ? JSON.parse(raw) : null
+    return v && v.email ? v : null
+  } catch (_) { return null }
+}
+
+/** El "Recordar mi usuario" del login. Prendido salvo que se lo apague explícitamente. */
+export function quiereRecordar() {
+  try { return localStorage.getItem(RECORDAR_KEY) !== '0' } catch (_) { return true }
+}
+
+/** Lo llama el login al tocar la casilla. Apagarlo borra además lo que ya estaba guardado. */
+export function setRecordarUsuario(valor) {
+  try {
+    localStorage.setItem(RECORDAR_KEY, valor ? '1' : '0')
+    if (!valor) localStorage.removeItem(ULTIMO_KEY)
+  } catch (_) { /* modo privado: la preferencia dura lo que dure la sesión */ }
+}
+
+function recordarIngreso(s) {
+  const u = s?.user
+  if (!u?.email) return
+  if (!quiereRecordar()) return // la persona pidió que este teléfono no se acuerde de ella
+  const m = u.user_metadata || {}
+  try {
+    localStorage.setItem(ULTIMO_KEY, JSON.stringify({
+      email: u.email,
+      nombre: m.full_name || m.name || '',
+      foto: m.avatar_url || m.picture || '',
+    }))
+  } catch (_) { /* modo privado: el login arranca sin tarjeta, y no pasa nada */ }
+}
+
+/**
  * Sesión + perfil del usuario (multi-tenant). El perfil trae {rol, id_empresa, activo}.
  * El acceso a la app se decide con esto: sin sesión → Login; sesión pendiente
  * (sin rol o inactivo) → Pendiente; ok → app según rol.
@@ -105,7 +156,7 @@ export function AuthProvider({ children }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       // Solo ESCRIBIR el espejo cuando hay sesión. NO borrarlo ante un `s` null: un refresh
       // fallido offline emite SIGNED_OUT y perderíamos el auto-login. El borrado va en signOut().
-      if (s) { escribirCacheSesion(s); setSession(s); cargarPerfil(s.user?.id) }
+      if (s) { escribirCacheSesion(s); recordarIngreso(s); setSession(s); cargarPerfil(s.user?.id) }
       setLoading(false)
     })
 
@@ -220,6 +271,31 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
+  /**
+   * Manda el mail con el enlace para poner una contraseña nueva (diseño v1.4).
+   *
+   * Hasta ahora no existía NINGÚN camino: si un vendedor se olvidaba la contraseña tenía que
+   * llamar al admin para que se la cambiara a mano.
+   *
+   * ⚠️ DOS COSAS QUE HAY QUE MIRAR EN EL PANEL DE SUPABASE, no se resuelven desde acá:
+   *   1. `redirectTo` tiene que estar en la lista de Redirect URLs, o el enlace del mail no
+   *      vuelve a la app.
+   *   2. El enlace vence según la config de Auth (por defecto 1 hora). El diseño proponía decir
+   *      "vale 30 minutos": NO se escribe ningún número en la UI hasta confirmar el valor real,
+   *      porque un número inventado en una pantalla de ayuda es peor que no decir nada.
+   *
+   * No revela si el email existe (Supabase tampoco): responder distinto según eso deja averiguar
+   * quién tiene cuenta. Por eso la pantalla dice siempre lo mismo.
+   */
+  const enviarEnlaceContrasena = async (email) => {
+    const correo = (email || '').trim().toLowerCase()
+    if (!correo) return { error: { message: 'Escribí tu email.' } }
+    const { error } = await supabase.auth.resetPasswordForEmail(correo, {
+      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
+    })
+    return { error }
+  }
+
   // Auto-edición del propio perfil (nombre + teléfono) vía RPC. En éxito, mergea
   // el resultado en el estado y refresca la caché (offline-first, igual que el resto).
   const actualizarMiPerfil = async ({ nombre, telefono, fotoUrl, setFoto }) => {
@@ -278,6 +354,7 @@ export function AuthProvider({ children }) {
     authStatus,
     signInWithGoogle,
     signInWithPassword,
+    enviarEnlaceContrasena,
     signOut,
     actualizarMiPerfil,
     refetchPerfil: () => cargarPerfil(session?.user?.id),

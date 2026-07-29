@@ -24,7 +24,15 @@ const cors = {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 
-const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin']
+// 'propietario' se sumó el 29/07/2026. Faltaba desde que el rol existe: el CHECK de la base lo
+// acepta (db/20), `UsuariosView` lo ofrece en el desplegable y tiene su propia pantalla construida
+// (`PropietarioMovil`), pero crear uno desde el modal devolvía `rol-no-permitido` — el rol era
+// inalcanzable por el único camino que la UI ofrece.
+//
+// Va en ROLES_ADMIN y no solo en ROLES_SUPER a propósito: el propietario es el DUEÑO de esa
+// distribuidora y es SOLO LECTURA, así que un admin dándole de alta a su propio dueño no escala
+// privilegios — está creando un rol menos poderoso que el suyo.
+const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin', 'propietario']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

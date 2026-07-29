@@ -14,28 +14,45 @@ export const STADIA_KEY = 'ec37db38-e3d9-4105-a11c-eb327aecab76'
 
 const stadiaParam = STADIA_KEY ? `?api_key=${STADIA_KEY}` : ''
 
-// Lista ordenada: el orden es el que se ve en el selector. `crossOrigin:'anonymous'` mantiene la
-// exportación a PNG del informe sin "tainted canvas" (los tres proveedores mandan CORS).
+/**
+ * Opciones comunes a las tres capas.
+ *
+ * `crossOrigin:'anonymous'` mantiene la exportación a PNG del informe sin "tainted canvas"
+ * (los tres proveedores mandan CORS).
+ *
+ * `updateWhenIdle` + `keepBuffer` son de PERFORMANCE, no de estética (28/07/2026). Al pasar el
+ * mapa a pantalla completa el viewport se duplica y el reencuadre es una animación: por defecto
+ * Leaflet pide tiles en CADA paso intermedio de ese vuelo, y en un teléfono con datos móviles
+ * eso son decenas de pedidos que se descartan antes de llegar. Con `updateWhenIdle` solo se
+ * piden los del estado final. El buffer de 2 anillos deja los vecinos ya cargados, así un
+ * arrastre corto no vuelve a pedir nada.
+ *
+ * ⚠️ `updateWhenIdle: true` es el DEFAULT de Leaflet en móvil y false en escritorio; se explicita
+ * para que las dos plataformas se comporten igual.
+ */
+const COMUNES = { crossOrigin: 'anonymous', updateWhenIdle: true, keepBuffer: 2 }
+
+// Lista ordenada: el orden es el que se ve en el selector.
 export const BASEMAPS = [
   {
     id: 'osm',
     label: 'Mapa (OSM)',
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    opts: { subdomains: 'abc', maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' },
+    opts: { ...COMUNES, subdomains: 'abc', maxZoom: 19, attribution: '&copy; OpenStreetMap' },
   },
   {
     id: 'stadia_dark',
     label: 'Oscuro (Stadia)',
     needsKey: true,
     url: `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png${stadiaParam}`,
-    opts: { maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap' },
+    opts: { ...COMUNES, maxZoom: 20, attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap' },
   },
   {
     id: 'stadia_sat',
     label: 'Satélite (Stadia)',
     needsKey: true,
     url: `https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg${stadiaParam}`,
-    opts: { maxZoom: 20, crossOrigin: 'anonymous', attribution: '&copy; Stadia Maps, &copy; OpenStreetMap, imágenes satelitales' },
+    opts: { ...COMUNES, maxZoom: 20, attribution: '&copy; Stadia Maps, &copy; OpenStreetMap, imágenes satelitales' },
   },
 ]
 

@@ -21,11 +21,34 @@ import { useEffect, useState } from 'react'
  */
 export default function HaceSegundos({ ts }) {
   const [, tick] = useState(0)
+  const seg = Math.max(0, Math.round((Date.now() - ts) / 1000))
 
+  // 28/07/2026 — El intervalo se adapta a la antigüedad. Un móvil que reportó hace 4 horas no
+  // necesita refrescarse cada segundo: el número no cambia de forma perceptible y cada burbuja
+  // del equipo tiene su propio contador. Bajo el minuto, donde el segundo SÍ se ve, sigue a 1 s.
+  const cada = seg < 60 ? 1000 : 30000
   useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 1000)
+    const t = setInterval(() => tick((n) => n + 1), cada)
     return () => clearInterval(t)
-  }, [])
+  }, [cada])
 
-  return <>hace {Math.max(0, Math.round((Date.now() - ts) / 1000))}s</>
+  return <>hace {humano(seg)}</>
+}
+
+/**
+ * "45s" · "12 min" · "4 h" · "3 d".
+ *
+ * Antes esto era siempre segundos crudos, y estaba bien mientras solo lo usaban dos etiquetas de
+ * móviles activos. Al llevarlo a las burbujas del equipo apareció el problema: `ultimas_posiciones`
+ * siembra la ÚLTIMA posición conocida de cada persona sin corte de tiempo (a propósito, para que
+ * quien cerró la app no desaparezca del mapa), así que se leían cosas como "hace 643219s".
+ * Ese número no es un dato: es ruido con forma de dato.
+ */
+function humano(seg) {
+  if (seg < 60) return seg + 's'
+  const min = Math.round(seg / 60)
+  if (min < 60) return min + ' min'
+  const h = Math.round(min / 60)
+  if (h < 24) return h + ' h'
+  return Math.round(h / 24) + ' d'
 }

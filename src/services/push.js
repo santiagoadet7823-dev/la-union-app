@@ -15,6 +15,9 @@ import { persistence } from './persistence'
  */
 
 const KEY_TOKEN = 'lu-fcm-token'
+// 🩸 La MISMA clave que usa `services/updateNotify.js` (KEY_VER). Si se cambia allá, se cambia acá:
+// es el único punto de encuentro entre los dos caminos que pueden avisar de una versión nueva.
+const KEY_UPDATE_VER = 'lu-update-notif-ver'
 let tokenActual = null
 let iniciado = false
 
@@ -49,7 +52,17 @@ export async function initPush(onWake) {
     PushNotifications.addListener('registration', (token) => { guardarToken(token?.value) })
     PushNotifications.addListener('registrationError', () => { /* sin token: el watchdog no aplica a este equipo */ })
     // Mensaje recibido con la app viva o en 2º plano → despertar el latido/re-armado.
-    PushNotifications.addListener('pushNotificationReceived', () => { try { onWake && onWake() } catch (_) {} })
+    PushNotifications.addListener('pushNotificationReceived', (msg) => {
+      // Si el push YA es el aviso de actualización (Edge Function push-actualizacion), lo anotamos
+      // como avisado para que `updateNotify.js` no postee un SEGUNDO cartel diciendo lo mismo
+      // cuando el watchdog despierte la app. Los dos caminos conviven a propósito —el push necesita
+      // internet, la alarma local no— pero el usuario tiene que ver un aviso, no dos.
+      try {
+        const d = msg?.data || {}
+        if (d.tipo === 'actualizacion' && d.version) persistence.set(KEY_UPDATE_VER, String(d.version))
+      } catch (_) { /* best-effort: nunca romper el despertar por esto */ }
+      try { onWake && onWake() } catch (_) {}
+    })
 
     // Permiso (Android 13+ pide POST_NOTIFICATIONS en runtime; en <13 se concede solo).
     let permiso = await PushNotifications.checkPermissions()

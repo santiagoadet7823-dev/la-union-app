@@ -4,11 +4,11 @@ import { useAuth } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { glassBlur } from '../../lib/glass'
-import { hoyStr } from '../../lib/format'
+import { fmtDuracion, hoyStr } from '../../lib/format'
 import { simplificarTrazo } from '../../lib/geo'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { calcularDwells } from './dwells'
-import MetricasEquipo from './MetricasEquipo'
+import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import { apilarAtras } from '../../services/atras'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
@@ -21,6 +21,7 @@ import Logo from '../../components/Logo'
 import Overlay from '../../components/Overlay'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
+import BurbujasEquipo from './components/BurbujasEquipo'
 import GestionHost from '../../components/GestionHost'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
@@ -68,6 +69,7 @@ const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).j
 const NAV_H = 56    // alto de la bottom-nav (sin safe-area)
 const HEADER_H = 56 // alto del header glass (sin safe-area)
 const RAIL_W = 44   // lado de los botones del rail vertical (área táctil mínima)
+const PIN_ZOOM_KEY = 'lu-pin-zoom' // tamaño elegido para la tarjeta del pin (1 | 1.5)
 const safeTop = (px) => `calc(${px}px + env(safe-area-inset-top))`
 const safeBottom = (px) => `calc(${px}px + env(safe-area-inset-bottom))`
 
@@ -104,6 +106,13 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [modalPerfil, setModalPerfil] = useState(false)
   const [datePop, setDatePop] = useState(false)  // fallback: popover con el <input date> inline
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin chrome
+  // Escala de la tarjeta del pin: 1 (como siempre) o 1,5. Se PERSISTE porque no es una
+  // preferencia del momento: el que necesita el tamaño grande lo necesita todos los días.
+  // Leer 14,5 px a un brazo de distancia, con sol de frente y el teléfono en una mano, no se
+  // puede — de ahí el pedido (28/07/2026).
+  const [pinK, setPinK] = useState(() => {
+    try { return localStorage.getItem(PIN_ZOOM_KEY) === '1.5' ? 1.5 : 1 } catch (_) { return 1 }
+  })
   const toastRef = useRef(null)
   const dateRef = useRef(null)                   // <input type="date"> oculto (picker nativo)
 
@@ -215,13 +224,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
   // Móviles en vivo → pines clickeables (marcadores del mapa). Solo tienen sentido HOY
   // (son la posición "ahora"); en un día pasado se muestran únicamente los recorridos.
-  const mapMarkers = esHoy ? moversFil.map((m) => ({
+  // Memoizado: sin esto el array salía nuevo en cada render del padre (cambio de filtro, de
+  // sección, de modo inmersivo) y le llegaba distinto a LeafletMap aunque nada hubiera cambiado.
+  const mapMarkers = useMemo(() => (esHoy ? moversFil.map((m) => ({
     lat: m.lat, lng: m.lng, label: initials(nombres[m.id] || m.rol),
     color: colorPorId(m.id), labelColor: '#fff', title: nombres[m.id] || m.rol,
     // Burbuja de perfil (Life360): foto del perfil o iniciales, con frescura por ts.
     bubble: true, foto: fotos[m.id], ts: m.ts,
     selected: m.id === pinId,
-  })) : []
+  })) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [esHoy, movers, filter, nombres, fotos, pinId])
   // Por defecto (snapOn=false) se dibuja el rastro CRUDO fiel (los puntos GPS reales). Con el
   // toggle activo se usa la geometría pegada a calles (OSRM), con fallback al crudo si no está.
   //
@@ -270,6 +283,27 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     }
     return null
   }, [pinId, byUser])
+
+  // Alterna el tamaño de la tarjeta del pin y lo deja guardado.
+  const togglePinK = useCallback(() => {
+    setPinK((k) => {
+      const nuevo = k === 1 ? 1.5 : 1
+      // Modo privado / almacenamiento lleno: el tamaño igual vale para esta sesión.
+      try { localStorage.setItem(PIN_ZOOM_KEY, String(nuevo)) } catch (_) { /* no pasa nada */ }
+      return nuevo
+    })
+  }, [])
+
+  // Resumen del día de la persona del pin: km recorridos y paradas. Solo se calcula con la
+  // tarjeta AMPLIADA — agrandarla sirve para mostrar más, no solo para mostrar lo mismo más
+  // grande. Y el detector de paradas cuesta ~410 ms sobre una jornada real (ver MetricasEquipo),
+  // así que no puede correr mientras la tarjeta está chica.
+  const pinResumen = useMemo(() => {
+    if (!pinId || pinK === 1) return null
+    const pts = byUser[pinId]?.points
+    if (!pts || pts.length < 2) return null
+    return { km: kmDeTrazo(pts), paradas: metricasParadas(pts) }
+  }, [pinId, pinK, byUser])
 
   // Abre el date picker NATIVO sobre el <input type="date"> oculto del rail.
   // 1) showPicker()  → WebView/Chrome moderno (gesto de usuario ⇒ permitido).
@@ -526,6 +560,22 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         />
       )}
 
+      {/* ===== BURBUJAS DEL EQUIPO (solo en inmersivo) =====
+          Abajo a la IZQUIERDA: la derecha es del botón de salir. El `right` reserva ese ancho
+          (44 del botón + 12 de margen + 12 de aire) para que una fila larga scrollee en vez de
+          meterse abajo del botón. */}
+      {inmersivo && (
+        <BurbujasEquipo
+          movers={moversFil}
+          nombres={nombres}
+          fotos={fotos}
+          byUser={byUser}
+          focoId={foco?.id || null}
+          onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
+          style={{ position: 'absolute', left: 12, right: 12 + RAIL_W + 12, bottom: safeBottom(14), zIndex: 'var(--z-chrome)' }}
+        />
+      )}
+
       {/* Fallback final del selector de fecha: WebView sin showPicker() ni click() programático
           → input inline visible para que el usuario lo toque él mismo. */}
       {datePop && (
@@ -544,22 +594,41 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== TARJETA FLOTANTE DE PIN =====
           En inmersivo SE MANTIENE (es información sobre lo que el usuario acaba de tocar, no un
-          control), pero baja: ya no hay bottom-nav ni rail que la empujen. */}
-      {pin && (
-        <div style={{ position: 'absolute', left: 14, right: inmersivo ? 14 : RAIL_W + 24, bottom: safeBottom(inmersivo ? NAV_H + 14 : NAV_H + 86), zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: '13px 14px' }} className="lu-rise">
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
-            <div style={{ width: 38, height: 38, flex: 'none', borderRadius: esRep(pin.rol) ? 11 : 99, background: colorPorId(pin.id), color: '#fff', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{initials(nombres[pin.id] || pin.rol)}</div>
+          control), pero baja: ya no hay bottom-nav ni rail que la empujen.
+
+          TOCARLA ALTERNA SU TAMAÑO entre 100 % y 150 % (`pinK`). Todas las medidas salen del
+          factor, así que no hay dos versiones del componente que se puedan desincronizar.
+
+          La animación se resuelve con el `key`: al cambiar `pinK` React remonta la tarjeta y
+          `lu-rise` se vuelve a ejecutar, o sea que "vuelve a entrar" con su nuevo tamaño. Es
+          transform + opacity, que es lo único que el repo permite animar (§7); transicionar el
+          padding o el font-size sería animar layout. */}
+      {pin && (() => {
+        const px = (n) => n * pinK  // sin redondear: en 1× devuelve el valor exacto de siempre
+        const grande = pinK > 1
+        return (
+        <div
+          key={`pin-${pin.id}-${pinK}`}
+          onClick={togglePinK}
+          className="lu-rise lu-press"
+          role="button"
+          aria-expanded={grande}
+          title={grande ? 'Tocar para achicar' : 'Tocar para agrandar'}
+          style={{ position: 'absolute', left: 14, right: inmersivo ? 14 : RAIL_W + 24, bottom: safeBottom(inmersivo ? NAV_H + 14 : NAV_H + 86), zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: grande ? 'var(--r-xl)' : 'var(--r-lg)', boxShadow: 'var(--shadow-lg)', padding: `${px(13)}px ${px(14)}px`, cursor: 'pointer' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: px(11) }}>
+            <div style={{ width: px(38), height: px(38), flex: 'none', borderRadius: esRep(pin.rol) ? px(11) : 99, background: colorPorId(pin.id), color: '#fff', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: px(13) }}>{initials(nombres[pin.id] || pin.rol)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[pin.id] || pin.rol}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: px(8) }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: px(14.5), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[pin.id] || pin.rol}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: px(10), color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 1 }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{pin.rol} · en vivo</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: px(7), marginTop: 1 }}>
+                <span style={{ fontSize: px(11), color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{pin.rol} · en vivo</span>
                 {/* Batería: solo si el dispositivo la reporta (bundles viejos mandan null). */}
                 {pinBateria !== null && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600, color: pinBateria <= 20 ? 'var(--danger)' : 'var(--muted)' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: px(11), fontFamily: 'var(--font-mono)', fontWeight: 600, color: pinBateria <= 20 ? 'var(--danger)' : 'var(--muted)' }}>
+                    <svg width={px(13)} height={px(13)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
                       <rect x="2" y="8" width="16" height="9" rx="2" />
                       <path d="M21 11.5v2" />
                       <rect x="4" y="10" width={Math.max(1, Math.round(12 * Math.min(100, Math.max(0, pinBateria)) / 100))} height="5" rx="1" fill="currentColor" stroke="none" />
@@ -569,10 +638,29 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
                 )}
               </div>
             </div>
-            <div onClick={() => setPinId(null)} style={{ flex: 'none', width: 26, height: 26, borderRadius: 8, border: '1px solid var(--line)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--muted)' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></div>
+            {/* stopPropagation: sin esto, cerrar también alternaría el tamaño — y cerrar era la
+                única acción que esta tarjeta tenía. No se puede perder. */}
+            <div onClick={(e) => { e.stopPropagation(); setPinId(null) }} style={{ flex: 'none', width: px(26), height: px(26), borderRadius: px(8), border: '1px solid var(--line)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--muted)' }}><svg width={px(13)} height={px(13)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></div>
           </div>
+
+          {/* Ampliada, la tarjeta muestra MÁS: el resumen del día de esa persona. Es el sentido
+              de agrandarla — si solo creciera el mismo texto, el espacio ganado se desperdicia. */}
+          {grande && (
+            <div style={{ display: 'flex', gap: px(8), marginTop: px(12), paddingTop: px(11), borderTop: '1px solid var(--line)' }}>
+              {pinResumen ? (
+                <>
+                  <ResumenPin etiqueta="Recorrido" valor={`${pinResumen.km.toFixed(1)} km`} px={px} />
+                  <ResumenPin etiqueta="Paradas" valor={String(pinResumen.paradas.n)} px={px} />
+                  <ResumenPin etiqueta="Mayor parada" valor={pinResumen.paradas.n ? fmtDuracion(pinResumen.paradas.maxMs) : '—'} px={px} />
+                </>
+              ) : (
+                <span style={{ fontSize: px(11), color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>Sin recorrido registrado hoy.</span>
+              )}
+            </div>
+          )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ===== BOTTOM NAV ===== */}
       {!inmersivo && (
@@ -703,6 +791,16 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 const acctItem = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', borderRadius: 11, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box', color: 'var(--text)' }
 const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', display: 'grid', placeItems: 'center' }
 const sheetLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--faint)' }
+
+/** Un dato del resumen del día en la tarjeta ampliada del pin. `px` escala con `pinK`. */
+function ResumenPin({ etiqueta, valor, px }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: px(14), color: 'var(--deep)', whiteSpace: 'nowrap' }}>{valor}</div>
+      <div style={{ fontSize: px(9), fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--faint)', marginTop: px(2) }}>{etiqueta}</div>
+    </div>
+  )
+}
 
 function Chevron() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>

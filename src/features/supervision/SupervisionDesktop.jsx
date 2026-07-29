@@ -7,6 +7,7 @@ import { colorPorId } from '../../lib/colors'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
+import { simplificarTrazo } from '../../lib/geo'
 import { calcularDwells } from './dwells'
 import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
@@ -17,6 +18,7 @@ import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
+import BurbujasEquipo from './components/BurbujasEquipo'
 import { APP_VERSION } from '../../version'
 
 /**
@@ -188,28 +190,44 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   )
 
   // Móviles en vivo → pines clickeables. Solo tienen sentido HOY (posición "ahora").
-  const mapMarkers = esHoy ? moversFil.map((m) => ({
+  // Memoizado: este componente re-renderiza una vez por segundo (el tick de "hace Xs"), y sin
+  // memo el array salía nuevo en cada uno. Ver el bloque de firmas de LeafletMap.jsx.
+  const mapMarkers = useMemo(() => (esHoy ? moversFil.map((m) => ({
     lat: m.lat, lng: m.lng, label: initials(nombres[m.id] || m.rol),
     color: colorPorId(m.id), labelColor: '#fff', title: nombres[m.id] || m.rol,
     // Burbuja de perfil (Life360): foto del perfil o iniciales, con frescura por ts.
     bubble: true, foto: fotos[m.id], ts: m.ts,
     selected: m.id === pinId,
-  })) : []
+  })) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [esHoy, movers, filter, nombres, fotos, pinId])
   // Por defecto (snapOn=false) rastro CRUDO fiel; con el toggle, geometría por calles (OSRM).
   // Feature A: al enfocar una persona (foco.id), su trazo va nítido (0.95, más grueso) y el
   // resto muy tenue (0.12) pero visible. Sin foco, todos con la opacidad de siempre (0.85).
-  const leafletTrails = (() => {
+  //
+  // 🩸 DOS ARREGLOS DE 28/07/2026, los dos costaban lo mismo: que esta pantalla se arrastre.
+  //
+  // 1. `simplificarTrazo`. El fix del 26/07/2026 (una jornada llegó a ~11k puntos y el mapa se
+  //    trababa varios segundos) se aplicó SOLO a SupervisionMovil; acá se seguía mandando el
+  //    rastro crudo entero a Leaflet. km y paradas siguen calculándose sobre los puntos crudos
+  //    (`trails`/`byUser`), que necesitan la densidad — esto es solo la geometría del dibujo.
+  //    La rama snap ya viene simplificada por OSRM y no se re-toca.
+  // 2. `useMemo`. Esto era una IIFE suelta en el cuerpo del componente, y el componente
+  //    re-renderiza UNA VEZ POR SEGUNDO por el tick de "hace Xs" (:122). O sea que se estaba
+  //    resimplificando el recorrido entero del día, 60 veces por minuto, sin que cambiara nada.
+  const leafletTrails = useMemo(() => {
     const out = trails.flatMap((t) => {
       const enfocado = foco && t.id === foco.id
       const opacity = !foco ? 0.85 : (enfocado ? 0.95 : 0.12)
       const weight = enfocado ? 5 : 4
       const segs = snapOn ? snapped[t.id] : null
-      const base = (segs && segs.length) ? segs.map((s) => ({ points: s })) : [{ points: t.points }]
+      const base = (segs && segs.length) ? segs.map((s) => ({ points: s })) : [{ points: simplificarTrazo(t.points) }]
       return base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
     })
+    // El enfocado se dibuja ÚLTIMO (encima) para que los tenues no lo tapen.
     if (foco) out.sort((a, b) => (a.id === foco.id ? 1 : 0) - (b.id === foco.id ? 1 : 0))
     return out
-  })()
+  }, [trails, snapOn, snapped, foco])
 
   function doSync() {
     if (syncing) return
@@ -471,8 +489,28 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       edgePadding={{ top: 28, right: 28, bottom: 28, left: 28 }}
                       onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}
                     />
+                    {/* 🩸 ABAJO a la derecha, no arriba (28/07/2026). Estaba en `top:16` y ahí
+                        vive el selector de capas de Leaflet ('topright', LeafletMap.jsx): en
+                        pantalla completa se superponían y el botón de salir quedaba tapado.
+                        Además es la misma esquina que usa SupervisionMovil, que es lo que pide
+                        el comentario de BtnInmersivo.jsx: un solo control, un solo lugar. */}
                     {inmersivo && (
-                      <BtnInmersivo activo onToggle={() => setInmersivo(false)} style={{ position: 'absolute', right: 16, top: 16, zIndex: 'var(--z-chrome)' }} />
+                      <BtnInmersivo activo onToggle={() => setInmersivo(false)} style={{ position: 'absolute', right: 16, bottom: 16, zIndex: 'var(--z-chrome)' }} />
+                    )}
+
+                    {/* Burbujas del equipo: en inmersivo se oculta la barra de filtros y las
+                        métricas de abajo, así que este es el único acceso al enfoque por
+                        persona. Abajo a la izquierda; la derecha es del botón de salir. */}
+                    {inmersivo && (
+                      <BurbujasEquipo
+                        movers={moversFil}
+                        nombres={nombres}
+                        fotos={fotos}
+                        byUser={byUser}
+                        focoId={foco?.id || null}
+                        onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
+                        style={{ position: 'absolute', left: 16, right: 76, bottom: 16, zIndex: 'var(--z-chrome)' }}
+                      />
                     )}
                   </div>
                 </div>

@@ -68,8 +68,8 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 
 ### Base de datos
 
-5. **Los archivos `db/*.sql` NO son la fuente de verdad y son peligrosos.** `02_saas.sql` y
-   `05_schema_real.sql` contienen políticas históricas **inseguras** que reabren agujeros entre
+5. **Los archivos `db/*.sql` NO son la fuente de verdad y son peligrosos.** `historico/02_saas.sql` y
+   `historico/05_schema_real.sql` contienen políticas históricas **inseguras** que reabren agujeros entre
    empresas si se re-ejecutan. Para saber cómo está la base: **consultar la base viva** (MCP de
    Supabase), nunca leer los `.sql` y asumir. Ver [db/00_LEER_PRIMERO.md](db/00_LEER_PRIMERO.md).
 6. **El índice de `posiciones.client_uid` JAMÁS puede ser parcial (con `WHERE`).** Un índice parcial
@@ -352,24 +352,25 @@ Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urge
   desinstalar+reinstalar en cada teléfono (se pierden datos locales: cola de posiciones, cuarentena,
   sesión). Respaldar YA: contraseñas en un gestor, el `.keystore` en 2 lugares privados (no repo público).
   Esto ahora también sostiene el auto-update del APK — ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md).
-- 🔴 **`db/02_saas.sql` y `05_schema_real.sql` reabren agujeros si se re-ejecutan.** Mover a
-  `db/historico/`.
+- ✅ **`02_saas.sql` y `05_schema_real.sql`**: movidos a `db/historico/` el 29/07/2026, con un
+  `LEER_ANTES_DE_TOCAR.md` al lado. Ya no están en el camino de un `psql -f` distraído.
 - ✅ **Versiones desfasadas** (§6): alineadas en 1.6.0 (versionName 1.6.0 / versionCode 20 / APP_VERSION 1.6.0).
-- ✅ **Rol `propietario` en el check constraint**: resuelto por `db/20_propietario_rol.sql`
-  (verificado en base viva el 28/07/2026). Ya se puede dar de alta un propietario desde
-  `UsuariosView`. **Pero** `supabase/functions/crear-usuario/index.ts` NO tiene `'propietario'` en
-  su lista de roles permitidos: crearlo desde el modal "Crear usuario" devuelve `rol-no-permitido`.
-  El camino que sí funciona es aprobar un usuario de Google pendiente. 🔴 Falta corregir la edge
-  function.
+- ✅ **Rol `propietario` de punta a punta**: el CHECK lo acepta (`db/20`), `UsuariosView` lo ofrece y
+  desde el 29/07/2026 `crear-usuario` también (v3 desplegada). Ya se puede dar de alta un
+  propietario desde el modal.
+- ✅ **Storage con alcance por empresa** (`db/25`, 29/07/2026): las policies de escritura eran
+  `to authenticated` mirando solo el `bucket_id`, así que cualquier usuario de cualquier empresa
+  podía borrar las fotos de otra. Ahora exigen ser dueño de la ruta. El **SELECT sigue abierto a
+  propósito**: los buckets son públicos y el upsert lo necesita.
 - 🔴 **`AdminView` es inalcanzable**: `AuthedApp` intercepta a los 6 roles antes de que
   `RoleRouter` llegue a su `return <AdminView/>`. Con él quedan muertos `RecorridosView`,
   `MapaOperativo` y `ReplayJornada` — y la pestaña "Catálogo" de `AdminView`, que además no tiene
   gate de rol.
 - 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
   pueden usar el mismo código de cliente.
-- 🟠 **Policies de `storage.objects` sin scope**: son `to authenticated` a secas, así que cualquier
-  usuario logueado puede sobrescribir o borrar fotos de **cualquier** empresa. Hoy solo lo contiene
-  la UI.
+- 🟠 **`firmas_ins`** sigue siendo `to authenticated` sin alcance (el bucket de firmas de entrega).
+  Hoy no muerde —la tabla `pedidos` está vacía y nadie firma nada— pero cuando arranque el módulo
+  de entregas hay que darle el mismo tratamiento que `db/25`.
 - 🟠 **9 columnas/objetos vivos sin versionar** en ningún `.sql` (`posiciones.bateria`,
   `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, y las 5 ya listadas en `00_LEER_PRIMERO.md`).
 - 🟠 **Key de Stadia** hardcodeada en `src/services/maps/basemap.js:13` — mover a `VITE_STADIA_KEY` y

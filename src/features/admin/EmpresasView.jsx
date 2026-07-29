@@ -29,6 +29,8 @@ export default function EmpresasView({ onToast }) {
   // Edición manual de la coordenada base (depósito) por empresa: id -> { lat, lng } como strings.
   const [baseEdit, setBaseEdit] = useState({})
   const [savingBase, setSavingBase] = useState(null) // id de la empresa que se está guardando
+  const [telEdit, setTelEdit] = useState({})         // teléfono de soporte por empresa (editable)
+  const [savingTel, setSavingTel] = useState(null)
   // Estado del plan de Supabase (Feature F). RPC estado_plan (SECURITY DEFINER, solo superadmin).
   const [plan, setPlan] = useState(null)
 
@@ -64,7 +66,7 @@ export default function EmpresasView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('empresas')
-      .select('id, nombre, activo, created_at, base_lat, base_lng')
+      .select('id, nombre, activo, created_at, base_lat, base_lng, telefono_soporte')
       .order('created_at', { ascending: true })
     // conteo de usuarios por empresa
     const { data: perf } = await supabase.from('perfiles').select('id_empresa')
@@ -73,8 +75,13 @@ export default function EmpresasView({ onToast }) {
     setEmpresas((data || []).map((e) => ({ ...e, usuarios: conteo[e.id] || 0 })))
     // Inicializa los inputs de base con los valores guardados (o vacío si son null).
     const be = {}
-    ;(data || []).forEach((e) => { be[e.id] = { lat: e.base_lat == null ? '' : String(e.base_lat), lng: e.base_lng == null ? '' : String(e.base_lng) } })
+    const te = {}
+    ;(data || []).forEach((e) => {
+      be[e.id] = { lat: e.base_lat == null ? '' : String(e.base_lat), lng: e.base_lng == null ? '' : String(e.base_lng) }
+      te[e.id] = e.telefono_soporte || ''
+    })
     setBaseEdit(be)
+    setTelEdit(te)
     setLoading(false)
   }, [])
 
@@ -96,6 +103,18 @@ export default function EmpresasView({ onToast }) {
     const { error } = await supabase.from('empresas').update({ activo: !e.activo }).eq('id', e.id)
     if (error) { onToast?.('Error: ' + error.message); return }
     onToast?.(`${e.nombre} ${!e.activo ? 'activada' : 'desactivada'}`)
+    cargar()
+  }
+
+  // Guarda el teléfono de soporte de la empresa. Vacío = null, y entonces la pantalla de espera
+  // no muestra ninguna línea de contacto para esa empresa.
+  async function guardarTelefono(e) {
+    const tel = (telEdit[e.id] || '').trim()
+    setSavingTel(e.id)
+    const { error } = await supabase.from('empresas').update({ telefono_soporte: tel || null }).eq('id', e.id)
+    setSavingTel(null)
+    if (error) { onToast?.('Error: ' + error.message); return }
+    onToast?.(tel ? `Teléfono de ${e.nombre} guardado` : `Teléfono de ${e.nombre} borrado`)
     cargar()
   }
 
@@ -251,6 +270,23 @@ export default function EmpresasView({ onToast }) {
                     {savingBase === e.id ? 'Guardando…' : 'Guardar base'}
                   </button>
                   <span style={sx('font-size:11px;color:var(--muted);flex:1;min-width:180px')}>Coordenada base del depósito (dónde abre el mapa)</span>
+                </div>
+
+                {/* Teléfono de soporte: lo ve quien tiene la cuenta sin habilitar, en la pantalla
+                    de espera. Vacío = esa pantalla NO muestra ninguna línea de contacto (nunca un
+                    número de relleno). Ver db/24_telefono_soporte.sql. */}
+                <div style={sx('display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:0 10px 12px')}>
+                  <div>
+                    <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Teléfono de soporte</div>
+                    <input type="tel" value={(telEdit[e.id]) ?? ''} placeholder="+54 9 387 …"
+                      onChange={(ev) => setTelEdit((t) => ({ ...t, [e.id]: ev.target.value }))}
+                      style={{ ...inpTime, width: 190 }} />
+                  </div>
+                  <button disabled={savingTel === e.id} onClick={() => guardarTelefono(e)}
+                    style={{ ...sx('padding:9px 14px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer'), border: '1px solid var(--line2)', background: 'transparent', color: 'var(--text)' }}>
+                    {savingTel === e.id ? 'Guardando…' : 'Guardar teléfono'}
+                  </button>
+                  <span style={sx('font-size:11px;color:var(--muted);flex:1;min-width:180px')}>Se lo muestra a quien está esperando que le habiliten la cuenta</span>
                 </div>
               </div>
             ))}

@@ -9,6 +9,7 @@ import GpsGate from './components/GpsGate'
 import ErrorBoundary from './components/ErrorBoundary'
 import UpdatePrompt from './components/UpdatePrompt'
 import DeviceBanner from './components/DeviceBanner'
+import SplashIntro, { yaSeVioHoy } from './components/SplashIntro'
 import LoginView from './features/auth/LoginView'
 import PendienteView from './features/auth/PendienteView'
 import { lazy, Suspense, useState, useEffect } from 'react'
@@ -234,6 +235,12 @@ export default function App() {
   // ya tiene contenido, así que es seguro ocultarlo. No-op en web. Ver services/nativeUI.js.
   useEffect(() => { initNativeUI() }, [])
 
+  // Animación de arranque: UNA VEZ POR DÍA. Va como capa por encima de todo, no como un paso
+  // previo — la app monta y decide su pantalla DETRÁS de esto, así que no demora el ingreso ni
+  // un milisegundo. La decisión de si corresponde mostrarla se toma una sola vez, al montar: si
+  // se evaluara en cada render, marcar "visto" la haría desaparecer a mitad de la animación.
+  const [splash, setSplash] = useState(() => !yaSeVioHoy())
+
   return (
     <ThemeProvider>
       <DeviceProvider>
@@ -243,6 +250,7 @@ export default function App() {
           </ErrorBoundary>
           <UpdatePrompt />
           <DeviceBanner />
+          {splash && <SplashIntro onDone={() => setSplash(false)} />}
         </AuthProvider>
       </DeviceProvider>
     </ThemeProvider>

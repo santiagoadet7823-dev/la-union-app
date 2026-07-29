@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { obtenerRutaMulti, obtenerRutaOptimaTSP } from '../services/routing'
@@ -26,6 +26,12 @@ function crearTileLayer(id) {
 
 // Control custom para elegir el basemap. Vive dentro del mapa → aparece en todas las vistas.
 // Botón "capas" que despliega la lista; al elegir, setBasemap() persiste y avisa a los demás mapas.
+//
+// Desde el 28/07/2026 este menú también lleva el CRÉDITO del proveedor de tiles al pie. El cartel
+// de atribución que Leaflet dibuja solo (abajo a la derecha, sobre el mapa) está apagado —
+// `attributionControl: false`— porque en un mapa a pantalla completa tapa contenido y no se puede
+// mover. Pero la atribución NO se elimina: la política de uso de los tiles de OSM la exige. Vive
+// acá, a un toque de distancia, que es lo que hacen las apps de mapas full-screen.
 function crearControlBasemap(getId, position) {
   const ctrl = L.control({ position: position || 'topright' })
   ctrl.onAdd = () => {
@@ -50,13 +56,21 @@ function crearControlBasemap(getId, position) {
         pintarActivo()
       })
     })
+    // Crédito del proveedor, al pie del menú. Se actualiza al cambiar de capa porque cada una
+    // tiene el suyo (OSM / Stadia + OpenMapTiles / satélite).
+    const credito = L.DomUtil.create('div', '', menu)
+    credito.style.cssText = 'padding:6px 12px 7px;border-top:1px solid var(--line,#e5e5e5);font:400 9px/1.4 var(--font-mono,monospace);color:var(--faint,#93a9a7);max-width:190px'
+
     const pintarActivo = () => {
       const cur = getId()
-      menu.querySelectorAll('a').forEach((a) => {
+      // `a[data-id]` y no `a` a secas: el crédito del pie puede traer enlaces del proveedor.
+      menu.querySelectorAll('a[data-id]').forEach((a) => {
         const on = a.dataset.id === cur
         a.style.background = on ? 'var(--primary-tint,#e6f7f6)' : 'transparent'
         a.style.color = on ? 'var(--deep,#0ABAB5)' : 'var(--text,#222)'
       })
+      // innerHTML y no textContent: los `attribution` traen entidades (&copy;) y enlaces.
+      credito.innerHTML = basemapById(cur).opts?.attribution || ''
     }
     L.DomEvent.on(btn, 'click', (e) => {
       L.DomEvent.stop(e)
@@ -171,6 +185,69 @@ function bubbleIcon(opts) {
   })
 }
 
+/* ============================================================================================
+   FIRMAS DE REDIBUJO — 🩸 NINGUNA de estas funciones puede recorrer las coordenadas de un
+   recorrido (28/07/2026).
+
+   Antes había UNA sola clave para todo el mapa:
+       JSON.stringify({ markers, depot, live, route, circle, movers, trail, trails, dwells })
+   Eso serializaba los recorridos completos —miles de puntos por persona— y corría en CADA
+   render, y el padre re-renderiza con cada posición que llega por Realtime. Era el costo más
+   alto del componente y se pagaba entero aunque no hubiera cambiado nada.
+
+   Estas firmas son O(cantidad de trazos), no O(cantidad de puntos): de cada lista de puntos
+   miran el largo y los dos extremos. Con eso alcanza — un recorrido crece agregando puntos al
+   final (cambia el largo y el último punto) y al pegarlo a las calles se reemplaza entero
+   (cambian los extremos). Si alguna vez apareciera una transformación que conserve largo Y
+   extremos y mueva solo el medio, hay que sumarle un contador de versión, NO volver al
+   stringify.
+
+   MEDIDO sobre un día real de la empresa (5 personas, 5.203 puntos, 7 móviles, 85 carteles),
+   en una PC: la clave vieja costaba 2,08 ms por render y las firmas cuestan 0,045 ms — 46 veces
+   menos. En un Android de gama baja hay que multiplicar las dos cifras por 5-10.
+   ============================================================================================ */
+const firmaPunto = (p) => (p ? p.lat + ',' + p.lng : '')
+
+function firmaPuntos(pts) {
+  if (!pts || !pts.length) return '0'
+  return pts.length + '@' + firmaPunto(pts[0]) + '>' + firmaPunto(pts[pts.length - 1])
+}
+
+function firmaTrails(trails) {
+  if (!trails || !trails.length) return ''
+  let s = ''
+  for (const t of trails) s += (t.id || '') + ':' + (t.color || '') + ':' + (t.opacity ?? '') + ':' + (t.weight ?? '') + ':' + firmaPuntos(t.points) + '|'
+  return s
+}
+
+function firmaMarkers(ms) {
+  if (!ms || !ms.length) return ''
+  let s = ''
+  for (const m of ms) {
+    s += firmaPunto(m) + ':' + (m.label || '') + ':' + (m.color || '') + ':' + (m.labelColor || '') +
+         ':' + (m.title || '') + ':' + (m.selected ? 1 : 0) + ':' + (m.bubble ? 1 : 0) +
+         ':' + (m.foto || '') + ':' + (m.ts || '') + '|'
+  }
+  return s
+}
+
+function firmaMovers(ms) {
+  if (!ms || !ms.length) return ''
+  let s = ''
+  for (const m of ms) {
+    s += firmaPunto(m) + ':' + (m.rol || '') + ':' + (m.color || '') + ':' + (m.iniciales || '') +
+         ':' + (m.nombre || '') + ':' + (m.foto || '') + ':' + (m.ts || '') + ':' + (m.selected ? 1 : 0) + '|'
+  }
+  return s
+}
+
+function firmaDwells(ds) {
+  if (!ds || !ds.length) return ''
+  let s = ''
+  for (const d of ds) s += firmaPunto(d) + ':' + (d.label || '') + ':' + (d.sub || '') + ':' + (d.color || '') + '|'
+  return s
+}
+
 function depotIcon(theme) {
   const bg = theme === 'dark' ? '#ECF5F4' : '#0B2B2A'
   const fg = theme === 'dark' ? '#0B2B2A' : '#ECF5F4'
@@ -240,7 +317,26 @@ export default function LeafletMap({
   const mapRef = useRef(null)
   const tileRef = useRef(null)
   const basemapRef = useRef(getBasemap()) // id del basemap activo (para el control y el redibujo)
-  const layerRef = useRef(null)
+  // 🩸 UNA CAPA POR FRECUENCIA DE ACTUALIZACIÓN (28/07/2026) — no volver a juntarlas.
+  //
+  // Hasta hoy TODO vivía en un solo layerGroup que se vaciaba con clearLayers() cada vez que
+  // cambiaba cualquier cosa. Como los móviles en vivo publican posición cada 5-15 segundos, la
+  // llegada de UN punto borraba y volvía a dibujar los recorridos enteros del día y todos los
+  // carteles de permanencia. El mapa se estaba reconstruyendo solo, permanentemente; a pantalla
+  // completa —más viewport, más elementos visibles— se notaba como que "la app se pone lenta".
+  //
+  // Ahora cada capa se redibuja únicamente cuando cambia LO SUYO:
+  //   estáticos → depósito, punto en vivo, ruta, círculo, rastro suelto (casi nunca)
+  //   trazos    → recorridos del día (al recargar o cambiar filtro/fecha)
+  //   carteles  → paradas (derivadas de los trazos, ya diferidas)
+  //   móviles   → burbujas en vivo (ALTA frecuencia: es la única que se redibuja seguido)
+  //   clientes  → cartera geolocalizada (ya estaba separada, y es el patrón que se copió)
+  //
+  // El orden de addTo() define el apilado dentro del mismo pane: primero lo de más abajo.
+  const staticLayerRef = useRef(null)
+  const trailsLayerRef = useRef(null)
+  const dwellsLayerRef = useRef(null)
+  const moversLayerRef = useRef(null)
   const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
   clickRef.current = onMarkerClick
@@ -253,6 +349,11 @@ export default function LeafletMap({
     const map = L.map(divRef.current, {
       center: [center.lat, center.lng],
       zoom,
+      // Sin el cartel "Leaflet | © OpenStreetMap" flotando abajo a la derecha. En un mapa a
+      // pantalla completa tapa contenido y Leaflet no deja moverlo de esquina sin pelearse con
+      // los demás controles. El crédito NO se pierde: va al pie del menú de capas
+      // (crearControlBasemap), que es de donde sale la capa que se está mirando.
+      attributionControl: false,
       zoomControl: interactive,
       dragging: interactive,
       scrollWheelZoom: interactive,
@@ -279,10 +380,15 @@ export default function LeafletMap({
     // Selector de capas (arriba a la derecha, no choca con el zoom que va arriba a la izquierda).
     // Solo si hay 2+ capas usables (en producción sin key Stadia queda solo OSM → sin selector).
     if (basemapControl && usableBasemaps().length >= 2) crearControlBasemap(() => basemapRef.current, basemapPosition).addTo(map)
-    // Capa de clientes DEBAJO de la de overlays (se agrega primero) → los recorridos y pines en
-    // vivo quedan por encima de los puntitos de comercios.
+    // Capa de clientes DEBAJO de todo (se agrega primero) → los recorridos y pines en vivo
+    // quedan por encima de los puntitos de comercios.
     clientsLayerRef.current = L.layerGroup().addTo(map)
-    layerRef.current = L.layerGroup().addTo(map)
+    staticLayerRef.current = L.layerGroup().addTo(map)
+    trailsLayerRef.current = L.layerGroup().addTo(map)
+    moversLayerRef.current = L.layerGroup().addTo(map)
+    // Los carteles de permanencia van a su propio pane ('luDwells', z 450), así que su lugar en
+    // este orden no cambia nada: el grupo existe solo para poder vaciarlos por separado.
+    dwellsLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     setTimeout(() => map.invalidateSize(), 60)
     // Reajustar el mapa al rotar / cambiar tamaño (alturas en vh).
@@ -342,22 +448,92 @@ export default function LeafletMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center && center.lat, center && center.lng, fit, hasOverlays])
 
-  // Redibujar overlays.
-  const key = JSON.stringify({ markers, depot, live, route, circle, movers, trail, trails, dwells })
+  // ---- Firmas de cada capa (ver el bloque de refs para el porqué del corte) ----------------
+  // Las vistas arman estos arrays nuevos en cada render, así que comparar por referencia no
+  // sirve. Se comparan por firma, y la firma NUNCA recorre las coordenadas de un recorrido.
+  const kStatic = useMemo(
+    () => [firmaPunto(depot), firmaPunto(live), firmaPunto(circle), circle?.radiusM ?? '', circle?.color ?? '', firmaPuntos(trail), trailColor, firmaPuntos(route), routeColor, optimize ? 1 : 0, roundtrip ? 1 : 0].join('~'),
+    [depot, live, circle, trail, trailColor, route, routeColor, optimize, roundtrip]
+  )
+  const kTrails = useMemo(() => firmaTrails(trails), [trails])
+  const kMarkers = useMemo(() => firmaMarkers(markers), [markers])
+  const kMovers = useMemo(() => firmaMovers(movers), [movers])
+  const kDwells = useMemo(() => firmaDwells(dwells), [dwells])
+
+  // ---- Capa ESTÁTICA: depósito, punto en vivo, círculo, rastro suelto y ruta por calles ----
   useEffect(() => {
     const map = mapRef.current
-    const layer = layerRef.current
+    const layer = staticLayerRef.current
     if (!map || !layer) return
-    let cancelled = false
+    let cancelado = false
     layer.clearLayers()
 
-    let bounds = null
-    const extend = (latlng) => { bounds = bounds ? bounds.extend(latlng) : L.latLngBounds(latlng, latlng) }
+    if (depot) L.marker([depot.lat, depot.lng], { icon: depotIcon(theme), title: depot.title || 'Depósito' }).addTo(layer)
 
-    if (depot) {
-      L.marker([depot.lat, depot.lng], { icon: depotIcon(theme), title: depot.title || 'Depósito' }).addTo(layer)
-      extend([depot.lat, depot.lng])
+    if (live) {
+      // Posición GPS en vivo. No se incluye en el fitBounds para no descuadrar el
+      // encuadre del recorrido si el dispositivo está lejos del área de trabajo.
+      const lc = liveColor || (theme === 'dark' ? '#38BDF8' : '#0EA5E9')
+      L.circleMarker([live.lat, live.lng], { radius: 7, color: '#fff', weight: 3, fillColor: lc, fillOpacity: 1 }).addTo(layer)
     }
+
+    if (circle) {
+      L.circle([circle.lat, circle.lng], { radius: circle.radiusM, color: circle.color, weight: 1.5, fillColor: circle.color, fillOpacity: 0.12 }).addTo(layer)
+    }
+
+    // Rastro crudo (recorrido GPS grabado): polilínea literal, sin ruteo por calles.
+    if (trail && trail.length >= 2) {
+      L.polyline(trail.map((p) => [p.lat, p.lng]), { color: trailColor, weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(layer)
+    }
+
+    // Ruteo por calles (OSRM). optimize=true → orden óptimo (TSP). Si falla la red,
+    // cae a línea punteada directa para no dejar el mapa sin recorrido.
+    if (route && route.length >= 2) {
+      const pedido = optimize ? obtenerRutaOptimaTSP(route, { roundtrip }) : obtenerRutaMulti(route)
+      pedido
+        .then((r) => {
+          if (cancelado || !staticLayerRef.current) return
+          if (r.coords?.length) L.polyline(r.coords, { color: routeColor, weight: 5, opacity: 0.9 }).addTo(staticLayerRef.current)
+          routeInfoRef.current?.({ distancia: r.distancia, duracion: r.duracion, orden: r.orden })
+        })
+        .catch(() => {
+          if (cancelado || !staticLayerRef.current) return
+          // Sin red / OSRM caído: línea directa punteada y aviso a la vista.
+          L.polyline(route.map((p) => [p.lat, p.lng]), { color: routeColor, weight: 3, opacity: 0.5, dashArray: '6 6' }).addTo(staticLayerRef.current)
+          routeInfoRef.current?.({ error: true })
+        })
+    }
+
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kStatic, theme])
+
+  // ---- Capa de TRAZOS: los recorridos del día, uno por persona ------------------------------
+  // Es la capa CARA (miles de puntos) y la que menos cambia: se recarga cada 60 s o al tocar un
+  // filtro. Separarla de los móviles en vivo es el grueso del arreglo de performance.
+  useEffect(() => {
+    const layer = trailsLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    // `opacity`/`weight` por trail: al enfocar a una persona, su trazo va nítido y el resto
+    // muy tenue. Si el trail no los trae, se usa el valor de siempre (0.85 / 4).
+    ;(trails || []).forEach((t) => {
+      if (!t.points || t.points.length < 2) return
+      L.polyline(t.points.map((p) => [p.lat, p.lng]), {
+        color: t.color || trailColor, weight: t.weight ?? 4, opacity: t.opacity ?? 0.85, lineJoin: 'round',
+      }).addTo(layer)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kTrails, trailColor])
+
+  // ---- Capa de MÓVILES: pines de cliente + burbujas en vivo ---------------------------------
+  // La de ALTA frecuencia: se redibuja con cada posición que llega por Realtime. Es barata
+  // (una docena de marcadores) y ahora es la única que se toca en ese evento.
+  useEffect(() => {
+    const layer = moversLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+
     markers.forEach((mk, i) => {
       // Los marcadores de PERSONA (móviles en vivo) van como burbuja de perfil (opt-in con
       // `bubble`); el resto (pines de cliente/paradas) sigue con el pin de gota de siempre.
@@ -367,14 +543,8 @@ export default function LeafletMap({
       const m = L.marker([mk.lat, mk.lng], { icon, title: mk.title || '' })
       m.on('click', () => clickRef.current?.(i))
       m.addTo(layer)
-      extend([mk.lat, mk.lng])
     })
-    if (live) {
-      // Posición GPS en vivo. No se incluye en el fitBounds para no descuadrar el
-      // encuadre del recorrido si el dispositivo está lejos del área de trabajo.
-      const lc = liveColor || (theme === 'dark' ? '#38BDF8' : '#0EA5E9')
-      L.circleMarker([live.lat, live.lng], { radius: 7, color: '#fff', weight: 3, fillColor: lc, fillOpacity: 1 }).addTo(layer)
-    }
+
     // Movers = personas en vivo (vendedor/repartidor) que el Admin sigue. Cada uno
     // con su color propio (mv.color) para diferenciarlos; si no viene, por rol.
     movers.forEach((mv) => {
@@ -383,45 +553,24 @@ export default function LeafletMap({
         : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
       // Burbuja de perfil (Life360): foto o iniciales, ancla al punto, frescura por ts.
       const icon = bubbleIcon({ foto: mv.foto, iniciales: mv.iniciales, color, nombre: mv.nombre, ts: mv.ts, selected: mv.selected })
-      const m = L.marker([mv.lat, mv.lng], { icon })
-      m.addTo(layer)
-      extend([mv.lat, mv.lng])
+      L.marker([mv.lat, mv.lng], { icon }).addTo(layer)
     })
-    if (circle) {
-      const c = L.circle([circle.lat, circle.lng], { radius: circle.radiusM, color: circle.color, weight: 1.5, fillColor: circle.color, fillOpacity: 0.12 }).addTo(layer)
-      bounds = bounds ? bounds.extend(c.getBounds()) : c.getBounds()
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kMarkers, kMovers, theme])
 
-    // Rastro crudo (recorrido GPS grabado): polilínea literal, sin ruteo por calles.
-    if (trail && trail.length >= 2) {
-      const pts = trail.map((p) => [p.lat, p.lng])
-      L.polyline(pts, { color: trailColor, weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(layer)
-      pts.forEach((ll) => extend(ll))
-    }
-
-    // Varios recorridos a la vez (vista estática del encargado), color por persona.
-    // `opacity`/`weight` por trail: al enfocar a una persona, su trazo va nítido y el resto
-    // muy tenue (Feature A). Si el trail no los trae, se usa el valor de siempre (0.85 / 4).
-    if (trails && trails.length) {
-      trails.forEach((t) => {
-        if (!t.points || t.points.length < 2) return
-        const pts = t.points.map((p) => [p.lat, p.lng])
-        L.polyline(pts, { color: t.color || trailColor, weight: t.weight ?? 4, opacity: t.opacity ?? 0.85, lineJoin: 'round' }).addTo(layer)
-        // Los trazos atenuados (enfoque de otra persona) NO entran al encuadre: el fit lo
-        // manda el recorrido enfocado, no los tenues de fondo.
-        if ((t.opacity ?? 0.85) >= 0.5) pts.forEach((ll) => extend(ll))
-      })
-    }
-
-    // Carteles de permanencia ("permaneció 5 min acá"), sobre el trazo.
-    //  - pane 'luDwells' (z 450, creado al montar) → ENCIMA del trazo (overlayPane, 400) y
-    //    debajo de los pines en vivo (markerPane, 600). Estuvieron en 'overlayPane', el mismo
-    //    pane que las polilíneas, y el trazo los tapaba: el cartel no se podía leer. Con
-    //    zIndexOffset tampoco alcanza — el z de un marker depende de su latitud, así que un
-    //    cartel al norte treparía por encima de los pines.
-    //  - interactive:false → no roban el click al pin que tengan debajo.
-    //  - NO entran al fitBounds (a diferencia de `circle`): un cartel lejano descuadraría
-    //    el encuadre del recorrido.
+  // ---- Capa de CARTELES de permanencia ("permaneció 5 min acá") ------------------------------
+  //  - pane 'luDwells' (z 450, creado al montar) → ENCIMA del trazo (overlayPane, 400) y
+  //    debajo de los pines en vivo (markerPane, 600). Estuvieron en 'overlayPane', el mismo
+  //    pane que las polilíneas, y el trazo los tapaba: el cartel no se podía leer. Con
+  //    zIndexOffset tampoco alcanza — el z de un marker depende de su latitud, así que un
+  //    cartel al norte treparía por encima de los pines.
+  //  - interactive:false → no roban el click al pin que tengan debajo.
+  //  - NO entran al fitBounds (a diferencia de `circle`): un cartel lejano descuadraría
+  //    el encuadre del recorrido.
+  useEffect(() => {
+    const layer = dwellsLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
     ;(dwells || []).forEach((d) => {
       L.marker([d.lat, d.lng], {
         icon: dwellIcon(d.label, d.sub, d.color),
@@ -430,50 +579,62 @@ export default function LeafletMap({
         keyboard: false,
       }).addTo(layer)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kDwells])
 
-    // Ruteo por calles (OSRM). optimize=true → orden óptimo (TSP). Si falla la red,
-    // cae a línea punteada directa para no dejar el mapa sin recorrido.
-    if (route && route.length >= 2) {
-      const pedido = optimize ? obtenerRutaOptimaTSP(route, { roundtrip }) : obtenerRutaMulti(route)
-      pedido
-        .then((r) => {
-          if (cancelled || !layerRef.current) return
-          if (r.coords?.length) L.polyline(r.coords, { color: routeColor, weight: 5, opacity: 0.9 }).addTo(layerRef.current)
-          routeInfoRef.current?.({ distancia: r.distancia, duracion: r.duracion, orden: r.orden })
-        })
-        .catch(() => {
-          if (cancelled || !layerRef.current) return
-          // Sin red / OSRM caído: línea directa punteada y aviso a la vista.
-          L.polyline(route.map((p) => [p.lat, p.lng]), { color: routeColor, weight: 3, opacity: 0.5, dashArray: '6 6' }).addTo(layerRef.current)
-          routeInfoRef.current?.({ error: true })
-        })
-    }
+  // ---- ENCUADRE ------------------------------------------------------------------------------
+  // El encuadre necesita ver TODAS las geometrías juntas, así que no puede vivir dentro de
+  // ninguna capa: es su propio efecto. El recorrido de puntos se hace solo si `fit` está
+  // encendido — en las supervisiones eso es `!fitDone`, o sea la primera vez y nada más.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
 
     if (followLive && live) {
       // Modo seguimiento: la cámara sigue al vendedor en vivo (Admin observando el teléfono).
       map.setView([live.lat, live.lng], Math.max(map.getZoom() || zoom, 16))
-    } else if (fit && bounds && bounds.isValid()) {
-      // "Un solo punto" = todos los puntos extendidos coinciden (NE == SW). Se decide por
-      // la extensión REAL del bounds, no por el conteo de markers: en la Supervisión Móvil
-      // el contenido son recorridos (trails) y móviles en vivo, así que contar solo markers
-      // mandaba un trazo entero a setView(zoom fijo) y lo recortaba. Con 2+ coords distintas
-      // → fitBounds. No cambia MapaOperativo (depot + cartera + ruta → siempre multi).
-      const single = !circle && bounds.getNorthEast().equals(bounds.getSouthWest())
-      if (single) {
-        map.setView(bounds.getCenter(), zoom)
-        // Un solo punto: setView lo centra en el viewport, pero header/nav lo taparían.
-        // Desplazamos el centro para compensar el chrome asimétrico (más abajo → el punto
-        // sube; más a la derecha → el punto va a la izquierda) y así queda visible.
-        map.panBy([(edgePadding.right - edgePadding.left) / 2, (edgePadding.bottom - edgePadding.top) / 2], { animate: false })
-      } else {
-        // Padding asimétrico: reserva arriba/abajo/izq/der según el chrome que flota encima.
-        map.fitBounds(bounds, { paddingTopLeft: [edgePadding.left, edgePadding.top], paddingBottomRight: [edgePadding.right, edgePadding.bottom] })
-      }
+      return
     }
+    if (!fit) return
 
-    return () => { cancelled = true }
+    let bounds = null
+    const extend = (latlng) => { bounds = bounds ? bounds.extend(latlng) : L.latLngBounds(latlng, latlng) }
+
+    if (depot) extend([depot.lat, depot.lng])
+    markers.forEach((mk) => extend([mk.lat, mk.lng]))
+    movers.forEach((mv) => extend([mv.lat, mv.lng]))
+    if (trail && trail.length >= 2) trail.forEach((p) => extend([p.lat, p.lng]))
+    ;(trails || []).forEach((t) => {
+      if (!t.points || t.points.length < 2) return
+      // Los trazos atenuados (enfoque de otra persona) NO entran al encuadre: el fit lo
+      // manda el recorrido enfocado, no los tenues de fondo.
+      if ((t.opacity ?? 0.85) < 0.5) return
+      t.points.forEach((p) => extend([p.lat, p.lng]))
+    })
+    if (circle) {
+      const b = L.circle([circle.lat, circle.lng], { radius: circle.radiusM }).getBounds()
+      bounds = bounds ? bounds.extend(b) : b
+    }
+    if (!bounds || !bounds.isValid()) return
+
+    // "Un solo punto" = todos los puntos extendidos coinciden (NE == SW). Se decide por
+    // la extensión REAL del bounds, no por el conteo de markers: en la Supervisión Móvil
+    // el contenido son recorridos (trails) y móviles en vivo, así que contar solo markers
+    // mandaba un trazo entero a setView(zoom fijo) y lo recortaba. Con 2+ coords distintas
+    // → fitBounds. No cambia MapaOperativo (depot + cartera + ruta → siempre multi).
+    const single = !circle && bounds.getNorthEast().equals(bounds.getSouthWest())
+    if (single) {
+      map.setView(bounds.getCenter(), zoom)
+      // Un solo punto: setView lo centra en el viewport, pero header/nav lo taparían.
+      // Desplazamos el centro para compensar el chrome asimétrico (más abajo → el punto
+      // sube; más a la derecha → el punto va a la izquierda) y así queda visible.
+      map.panBy([(edgePadding.right - edgePadding.left) / 2, (edgePadding.bottom - edgePadding.top) / 2], { animate: false })
+    } else {
+      // Padding asimétrico: reserva arriba/abajo/izq/der según el chrome que flota encima.
+      map.fitBounds(bounds, { paddingTopLeft: [edgePadding.left, edgePadding.top], paddingBottomRight: [edgePadding.right, edgePadding.bottom] })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, theme])
+  }, [kStatic, kTrails, kMarkers, kMovers, fit, followLive])
 
   // Enfoque puntual al recorrido de una persona (click en la lista de equipo). Efecto
   // aparte del redibujo/encuadre: se dispara SOLO cuando cambia `focus.nonce` (un timestamp

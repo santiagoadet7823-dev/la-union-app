@@ -8,8 +8,11 @@ políticas **históricas** que **NO reflejan la base actual**.
 
 Los archivos:
 
-- `02_saas.sql`
-- `05_schema_real.sql`
+- `historico/02_saas.sql`
+- `historico/05_schema_real.sql`
+
+> 📦 **Desde el 29/07/2026 viven en `db/historico/`**, fuera del camino, para que no se los corra
+> por costumbre al ver la carpeta llena de `.sql` numerados. Ver `historico/LEER_ANTES_DE_TOCAR.md`.
 
 contienen políticas viejas e inseguras. Si los re-corrés contra la base viva,
 **dropean las políticas buenas y reabren agujeros de seguridad**. Ejemplos:
@@ -29,11 +32,12 @@ el que refleja el estado real de la base viva.
 Para levantar una base desde cero, aplicar en este orden:
 
 1. `schema.sql`
-2. `02_saas.sql`
+2. `historico/02_saas.sql`
 3. `03_retention.sql`
 4. `04_posiciones_idempotencia.sql`
-5. `05_schema_real.sql`
+5. `historico/05_schema_real.sql`
 6. `06_seguridad_fixes.sql`  ← **imprescindible, va último y deja todo endurecido**
+7. …y después, en orden, todas las migraciones numeradas de `db/` (07 en adelante).
 
 **Sobre la base viva (con datos): NO reaplicar 02 ni 05.** Si necesitás algún
 cambio puntual, hacelo con una migración nueva y aditiva, no re-corriendo estos.
