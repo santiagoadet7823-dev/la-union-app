@@ -6,9 +6,8 @@ import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
-import { distanciaMetros } from '../../services/geolocation/geofence'
-import { simplificarTrazo } from '../../lib/geo'
 import { calcularDwells } from './dwells'
+import { construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
@@ -96,7 +95,16 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (misma lógica que la vista móvil). ----
-  const { byUser, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+
+  // 🩸 El recorrido se limpia UNA vez y de acá salen trazos, km y paradas — ver ./trazos.js. Sobre
+  // los puntos crudos, el 29/07/2026 un vendedor figuraba con 524,8 km (cuatro fixes falsos lo
+  // mandaban 127 km al norte y lo traían); su día real fueron 17,9 km.
+  const byUser = useMemo(() => limpiarPorUsuario(byUserCrudo), [byUserCrudo])
+  const descartados = useMemo(() => totalDescartados(byUser), [byUser])
+  useEffect(() => {
+    if (descartados) console.info(`[recorridos] ${fecha}: ${descartados} punto(s) descartados por salto imposible`)
+  }, [descartados, fecha])
 
   // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada para que su
   // referencia sea estable entre ticks y LeafletMap no la re-dibuje cada segundo.
@@ -169,14 +177,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foco && foco.nonce])
 
-  // Trazos (>=2 puntos) filtrados por chip.
-  const trails = useMemo(() => Object.entries(byUser)
-    .filter(([, v]) => v.points.length >= 2 && pasaFiltro(v.rol))
-    .map(([id, v]) => {
-      let km = 0
-      for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
-      return { id, points: v.points, color: colorPorId(id), km: km / 1000 }
-    }), [byUser, filter])
+  // Trazos (>=2 puntos) filtrados por chip. Compartido con Movil en ./trazos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const trails = useMemo(() => construirTrails(byUser, pasaFiltro), [byUser, filter])
 
   // Paradas → carteles sobre el mapa. Misma lógica exacta que Movil (./dwells): hasta 1.5.7
   // los carteles existían solo en la vista móvil, así que en la PWA de escritorio no aparecían.
@@ -188,6 +191,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [byUserDiferido, filter, dwellOn, cartera]
   )
+  // Cartel de parada ampliado (índice dentro de `dwells`) o null. Ver la nota en SupervisionMovil:
+  // el índice deja de ser válido cuando cambia la lista, por eso se limpia en un efecto.
+  const [dwellSel, setDwellSel] = useState(null)
+  useEffect(() => { setDwellSel(null) }, [fecha, filter, dwellOn])
 
   // Móviles en vivo → pines clickeables. Solo tienen sentido HOY (posición "ahora").
   // Memoizado: este componente re-renderiza una vez por segundo (el tick de "hace Xs"), y sin
@@ -201,33 +208,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   })) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [esHoy, movers, filter, nombres, fotos, pinId])
-  // Por defecto (snapOn=false) rastro CRUDO fiel; con el toggle, geometría por calles (OSRM).
-  // Feature A: al enfocar una persona (foco.id), su trazo va nítido (0.95, más grueso) y el
-  // resto muy tenue (0.12) pero visible. Sin foco, todos con la opacidad de siempre (0.85).
-  //
-  // 🩸 DOS ARREGLOS DE 28/07/2026, los dos costaban lo mismo: que esta pantalla se arrastre.
-  //
-  // 1. `simplificarTrazo`. El fix del 26/07/2026 (una jornada llegó a ~11k puntos y el mapa se
-  //    trababa varios segundos) se aplicó SOLO a SupervisionMovil; acá se seguía mandando el
-  //    rastro crudo entero a Leaflet. km y paradas siguen calculándose sobre los puntos crudos
-  //    (`trails`/`byUser`), que necesitan la densidad — esto es solo la geometría del dibujo.
-  //    La rama snap ya viene simplificada por OSRM y no se re-toca.
-  // 2. `useMemo`. Esto era una IIFE suelta en el cuerpo del componente, y el componente
-  //    re-renderiza UNA VEZ POR SEGUNDO por el tick de "hace Xs" (:122). O sea que se estaba
-  //    resimplificando el recorrido entero del día, 60 veces por minuto, sin que cambiara nada.
-  const leafletTrails = useMemo(() => {
-    const out = trails.flatMap((t) => {
-      const enfocado = foco && t.id === foco.id
-      const opacity = !foco ? 0.85 : (enfocado ? 0.95 : 0.12)
-      const weight = enfocado ? 5 : 4
-      const segs = snapOn ? snapped[t.id] : null
-      const base = (segs && segs.length) ? segs.map((s) => ({ points: s })) : [{ points: simplificarTrazo(t.points) }]
-      return base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
-    })
-    // El enfocado se dibuja ÚLTIMO (encima) para que los tenues no lo tapen.
-    if (foco) out.sort((a, b) => (a.id === foco.id ? 1 : 0) - (b.id === foco.id ? 1 : 0))
-    return out
-  }, [trails, snapOn, snapped, foco])
+  // Geometría final del mapa: ./trazos, la MISMA que usa Movil. El bloque que estaba acá era una
+  // copia y ya había divergido (le faltó `simplificarTrazo` del 26/07 hasta el 28/07, y era una
+  // IIFE suelta que se recalculaba una vez por segundo con el tick de "hace Xs"). El `useMemo`
+  // sigue siendo obligatorio por ese mismo tick.
+  const leafletTrails = useMemo(
+    () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
+    [trails, snapOn, snapped, foco]
+  )
 
   function doSync() {
     if (syncing) return
@@ -482,6 +470,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       center={base}
                       trails={leafletTrails.length ? leafletTrails : null}
                       dwells={dwells}
+                      dwellSel={dwellSel}
+                      onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
                       markers={mapMarkers}
                       clients={showClientes ? clientMarkers : []}
                       fit={!fitDone}

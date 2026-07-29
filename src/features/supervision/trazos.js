@@ -1,0 +1,97 @@
+/**
+ * Recorridos → geometría de Leaflet, para las DOS supervisiones (Movil y Desktop).
+ *
+ * Vive acá por el MISMO motivo que ./dwells.js, y con la misma cicatriz: `SupervisionMovil` y
+ * `SupervisionDesktop` no comparten una línea de código, y este bloque ya divergió una vez. El
+ * arreglo de performance del 26/07/2026 (`simplificarTrazo`, para una jornada de ~11k puntos que
+ * trababa el mapa varios segundos) se aplicó SOLO en Movil; en Desktop se siguió mandando el rastro
+ * crudo entero durante dos días, hasta que alguien se dio cuenta el 28/07. Duplicar esto es
+ * garantizar que vuelva a pasar, así que ahora hay una sola copia.
+ *
+ * Tres funciones, en el orden en que se usan:
+ *   limpiarPorUsuario  → saca los saltos imposibles y parte por huecos (lib/geo.limpiarTrazo)
+ *   construirTrails    → uno por persona, con sus km, filtrado por el chip Vend./Rep.
+ *   construirLeaflet   → las polilíneas finales, con foco, snap y conectores de hueco
+ */
+import { colorPorId } from '../../lib/colors'
+import { limpiarTrazo, simplificarTrazo } from '../../lib/geo'
+import { distanciaMetros } from '../../services/geolocation/geofence'
+
+/**
+ * Limpia el recorrido de cada persona UNA sola vez. De acá salen las cuatro cosas que se muestran
+ * —trazos, km, paradas y el resumen del pin—, así que ninguna puede contar un recorrido distinto.
+ *
+ * @param {Record<string,{rol?:string, points?:Array}>} byUserCrudo lo que devuelve useRecorridosDelDia
+ * @returns {Record<string,{rol?:string, points:Array, segmentos:Array<Array>, descartados:number}>}
+ */
+export function limpiarPorUsuario(byUserCrudo) {
+  const out = {}
+  for (const [id, v] of Object.entries(byUserCrudo || {})) {
+    const r = limpiarTrazo(v.points || [])
+    out[id] = { rol: v.rol, points: r.puntos, segmentos: r.segmentos, descartados: r.descartados }
+  }
+  return out
+}
+
+/** Cuántos puntos se descartaron en toda la empresa (para reportarlo, no para decidir nada). */
+export const totalDescartados = (byUser) =>
+  Object.values(byUser || {}).reduce((a, v) => a + (v.descartados || 0), 0)
+
+/**
+ * Un trazo por persona con >= 2 puntos que pase el filtro del chip. Los km salen de los puntos
+ * LIMPIOS: sobre los crudos, el 29/07/2026 un vendedor figuraba con 524,8 km porque cuatro fixes
+ * falsos lo mandaban 127 km al norte y lo traían. Su día real fueron 17,9 km.
+ */
+export function construirTrails(byUser, pasaFiltro) {
+  return Object.entries(byUser)
+    .filter(([, v]) => v.points.length >= 2 && pasaFiltro(v.rol))
+    .map(([id, v]) => {
+      let km = 0
+      for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
+      return { id, points: v.points, segmentos: v.segmentos, color: colorPorId(id), km: km / 1000 }
+    })
+}
+
+/**
+ * Geometría final para `<LeafletMap trails={...}>`.
+ *
+ * - `snapOn` → geometría pegada a calles (OSRM, Edge Function); si no hay, cae al crudo.
+ * - El crudo se SIMPLIFICA para dibujar (RDP): km y paradas siguen sobre los puntos densos.
+ *   La rama snap ya viene simplificada por OSRM y no se re-toca.
+ * - Con una persona enfocada, su trazo va nítido (0.95, más grueso) y el resto muy tenue (0.12)
+ *   pero visible; sin foco, todos con la opacidad de siempre. El enfocado se dibuja ÚLTIMO para
+ *   que los tenues no lo tapen.
+ * - 🩸 CONECTORES DE HUECO (30/07/2026). Cada segmento es su propia polilínea, así que entre dos
+ *   queda un vacío. Sin nada en el medio, el recorrido parece dos recorridos distintos; con una
+ *   línea llena, vuelve la mentira original (una recta que cruza manzanas por las que no pasó).
+ *   La línea punteada y fina es la única lectura honesta: "siguió siendo la misma persona, pero
+ *   acá no hay datos". No entra al encuadre porque su opacidad queda bajo 0.5 (ver LeafletMap).
+ */
+export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId = null }) {
+  const out = trails.flatMap((t) => {
+    const enfocado = focoId && t.id === focoId
+    const opacity = !focoId ? 0.85 : (enfocado ? 0.95 : 0.12)
+    const weight = enfocado ? 5 : 4
+    const segs = snapOn ? snapped[t.id] : null
+    const base = (segs && segs.length)
+      ? segs.map((s) => ({ points: s }))
+      : (t.segmentos || []).map((s) => ({ points: simplificarTrazo(s) }))
+    const piezas = base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
+    // Los conectores solo tienen sentido sobre el crudo: la rama snap trae los segmentos que
+    // decidió OSRM, que no se corresponden con los huecos de captura.
+    if (!segs || !segs.length) {
+      for (let i = 1; i < base.length; i++) {
+        const a = base[i - 1].points
+        const b = base[i].points
+        if (!a?.length || !b?.length) continue
+        piezas.push({
+          id: t.id, color: t.color, weight: 2, opacity: opacity * 0.5,
+          dashArray: '3 7', points: [a[a.length - 1], b[0]],
+        })
+      }
+    }
+    return piezas
+  })
+  if (focoId) out.sort((a, b) => (a.id === focoId ? 1 : 0) - (b.id === focoId ? 1 : 0))
+  return out
+}

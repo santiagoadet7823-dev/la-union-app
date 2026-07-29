@@ -4,10 +4,9 @@ import { useAuth } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { glassBlur } from '../../lib/glass'
-import { fmtDuracion, hoyStr } from '../../lib/format'
-import { simplificarTrazo } from '../../lib/geo'
-import { distanciaMetros } from '../../services/geolocation/geofence'
+import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
+import { construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import { apilarAtras } from '../../services/atras'
@@ -22,6 +21,7 @@ import Overlay from '../../components/Overlay'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
+import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
@@ -96,6 +96,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [snapped, setSnapped] = useState({})     // { id: [{lat,lng}] } pegado a calles
   const [snapOn, setSnapOn] = useState(false)    // false = rastro crudo fiel (default); true = pegado a calles
   const [dwellOn, setDwellOn] = useState(true)   // carteles de permanencia sobre el mapa (default: encendidos)
+  // Cartel de parada AMPLIADO (índice dentro de `dwells`) o null. Uno a la vez, y NO se persiste
+  // —a diferencia de `pinK`—: ampliar una parada es el gesto de "mirá ésta", no una preferencia
+  // que alguien quiera encontrarse mañana. Se limpia solo al cambiar de día o de filtro, porque
+  // ahí el índice ya no apunta a la misma parada.
+  const [dwellSel, setDwellSel] = useState(null)
   const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [fitDone, setFitDone] = useState(false)  // encuadrar el mapa solo la 1ª vez
   const [fecha, setFecha] = useState(hoyStr)      // día visualizado en el mapa (default hoy)
@@ -122,7 +127,25 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (trazos por persona). Auto-refresh incremental solo si es hoy. ----
-  const { byUser, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+
+  // 🩸 EL RECORRIDO SE LIMPIA UNA SOLA VEZ Y DE ACÁ SALE TODO (30/07/2026): trazos, km, paradas y
+  // el resumen del pin. Si alguna de esas cuatro leyera `byUserCrudo`, contaría un recorrido que
+  // no existió — y es exactamente lo que pasaba: el 29/07 un vendedor figuraba con **524,8 km**
+  // porque cuatro fixes falsos lo mandaban 127 km al norte y lo traían de vuelta. Su día real
+  // fueron 17,9 km. Ver `limpiarTrazo` en lib/geo.js para el detalle de los dos filtros.
+  //
+  // `segmentos` (para dibujar) y `points` (para medir) salen de la MISMA pasada a propósito: son
+  // dos vistas del mismo recorrido limpio, no dos cálculos que se puedan desincronizar.
+  const byUser = useMemo(() => limpiarPorUsuario(byUserCrudo), [byUserCrudo])
+
+  // Los descartes se REPORTAN. Un filtro silencioso que empieza a comerse puntos buenos es
+  // indistinguible de uno que funciona bien; con esto queda el rastro en consola para poder
+  // contrastarlo contra la base. Va en efecto y no en el memo para no loguear dos veces en StrictMode.
+  const descartados = useMemo(() => totalDescartados(byUser), [byUser])
+  useEffect(() => {
+    if (descartados) console.info(`[recorridos] ${fecha}: ${descartados} punto(s) descartados por salto imposible`)
+  }, [descartados, fecha])
 
   // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada: referencia estable
   // entre ticks para que LeafletMap no la redibuje cada segundo.
@@ -196,14 +219,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foco && foco.nonce])
 
-  // Trazos (>=2 puntos) filtrados por chip.
-  const trails = useMemo(() => Object.entries(byUser)
-    .filter(([, v]) => v.points.length >= 2 && pasaFiltro(v.rol))
-    .map(([id, v]) => {
-      let km = 0
-      for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
-      return { id, points: v.points, color: colorPorId(id), km: km / 1000 }
-    }), [byUser, filter])
+  // Trazos (>=2 puntos) filtrados por chip. La lógica vive en ./trazos, compartida con Desktop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const trails = useMemo(() => construirTrails(byUser, pasaFiltro), [byUser, filter])
 
   // Paradas → carteles sobre el mapa. La lógica vive en ./dwells (compartida con Desktop,
   // que antes no los tenía porque estaban cableados solo acá). Mismo filtro por chip y mismo
@@ -221,6 +239,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [byUserDiferido, filter, dwellOn, cartera]
   )
+  // `dwellSel` es un ÍNDICE dentro de `dwells`. Cambiar de día o de filtro rehace la lista entera,
+  // así que ese índice pasa a señalar otra parada — la de otra persona, en otro lugar. Limpiarlo en
+  // un efecto (y no en cada handler) cubre también los caminos que se agreguen después.
+  useEffect(() => { setDwellSel(null) }, [fecha, filter, dwellOn])
 
   // Móviles en vivo → pines clickeables (marcadores del mapa). Solo tienen sentido HOY
   // (son la posición "ahora"); en un día pasado se muestran únicamente los recorridos.
@@ -235,31 +257,13 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   })) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [esHoy, movers, filter, nombres, fotos, pinId])
-  // Por defecto (snapOn=false) se dibuja el rastro CRUDO fiel (los puntos GPS reales). Con el
-  // toggle activo se usa la geometría pegada a calles (OSRM), con fallback al crudo si no está.
-  //
-  // El rastro crudo se SIMPLIFICA para dibujar (26/07/2026): una jornada de ~11k puntos trababa el mapa
-  // varios segundos. `simplificarTrazo` lo baja a unos cientos preservando la forma, SOLO para Leaflet —
-  // km y paradas (dwell) siguen sobre los puntos crudos (`trails`/`byUser`), que necesitan la densidad.
-  // La rama snap ya viene simplificada por OSRM, no se re-toca. Memoizado: no rehacerlo en cada render
-  // (tick de móviles en vivo), solo cuando cambian los trazos / el toggle / el snap disponible.
-  // Feature A: al enfocar una persona (foco.id), su trazo va nítido (0.95, más grueso) y el
-  // resto muy tenue (0.12) pero visible. Sin foco, todos con la opacidad de siempre (0.85).
-  const leafletTrails = useMemo(() => {
-    const out = trails.flatMap((t) => {
-      const enfocado = foco && t.id === foco.id
-      const opacity = !foco ? 0.85 : (enfocado ? 0.95 : 0.12)
-      const weight = enfocado ? 5 : 4
-      const segs = snapOn ? snapped[t.id] : null
-      const base = (segs && segs.length)
-        ? segs.map((s) => ({ points: s }))
-        : [{ points: simplificarTrazo(t.points) }]
-      return base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
-    })
-    // El enfocado se dibuja ÚLTIMO (encima) para que los tenues no lo tapen.
-    if (foco) out.sort((a, b) => (a.id === foco.id ? 1 : 0) - (b.id === foco.id ? 1 : 0))
-    return out
-  }, [trails, snapOn, snapped, foco])
+  // Geometría final del mapa (simplificación, snap, foco y conectores de hueco): ./trazos.
+  // Memoizado: sin esto se rehace en cada render, y el padre re-renderiza con cada posición que
+  // llega por Realtime.
+  const leafletTrails = useMemo(
+    () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
+    [trails, snapOn, snapped, foco]
+  )
   const pin = moversArr.find((m) => m.id === pinId) || null
 
   // % de batería del móvil seleccionado. El `pin` sale de `movers` (useEquipoEnVivo), cuyo
@@ -372,6 +376,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           markers={mapMarkers}
           clients={showClientes ? clientMarkers : []}
           dwells={dwells}
+          dwellSel={dwellSel}
+          onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
           fit={!fitDone}
           focus={focusData}
           edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 24, left: 16 }}
@@ -594,73 +600,25 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== TARJETA FLOTANTE DE PIN =====
           En inmersivo SE MANTIENE (es información sobre lo que el usuario acaba de tocar, no un
-          control), pero baja: ya no hay bottom-nav ni rail que la empujen.
+          control), pero baja: ya no hay bottom-nav ni rail que la empujen. El posicionamiento vive
+          acá y el contenido en ./components/TarjetaPin — la tarjeta era una IIFE de 70 líneas en el
+          medio de este archivo, y SupervisionDesktop todavía no tiene ninguna (deuda anotada).
 
-          TOCARLA ALTERNA SU TAMAÑO entre 100 % y 150 % (`pinK`). Todas las medidas salen del
-          factor, así que no hay dos versiones del componente que se puedan desincronizar.
-
-          La animación se resuelve con el `key`: al cambiar `pinK` React remonta la tarjeta y
-          `lu-rise` se vuelve a ejecutar, o sea que "vuelve a entrar" con su nuevo tamaño. Es
-          transform + opacity, que es lo único que el repo permite animar (§7); transicionar el
-          padding o el font-size sería animar layout. */}
-      {pin && (() => {
-        const px = (n) => n * pinK  // sin redondear: en 1× devuelve el valor exacto de siempre
-        const grande = pinK > 1
-        return (
-        <div
+          El `key` es el que hace la animación: al cambiar `pinK`, React remonta la tarjeta y
+          `lu-rise` se vuelve a ejecutar, o sea que "vuelve a entrar" con su nuevo tamaño. */}
+      {pin && (
+        <TarjetaPin
           key={`pin-${pin.id}-${pinK}`}
-          onClick={togglePinK}
-          className="lu-rise lu-press"
-          role="button"
-          aria-expanded={grande}
-          title={grande ? 'Tocar para achicar' : 'Tocar para agrandar'}
-          style={{ position: 'absolute', left: 14, right: inmersivo ? 14 : RAIL_W + 24, bottom: safeBottom(inmersivo ? NAV_H + 14 : NAV_H + 86), zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: grande ? 'var(--r-xl)' : 'var(--r-lg)', boxShadow: 'var(--shadow-lg)', padding: `${px(13)}px ${px(14)}px`, cursor: 'pointer' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: px(11) }}>
-            <div style={{ width: px(38), height: px(38), flex: 'none', borderRadius: esRep(pin.rol) ? px(11) : 99, background: colorPorId(pin.id), color: '#fff', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: px(13) }}>{initials(nombres[pin.id] || pin.rol)}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: px(8) }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: px(14.5), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[pin.id] || pin.rol}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: px(10), color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: px(7), marginTop: 1 }}>
-                <span style={{ fontSize: px(11), color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{pin.rol} · en vivo</span>
-                {/* Batería: solo si el dispositivo la reporta (bundles viejos mandan null). */}
-                {pinBateria !== null && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: px(11), fontFamily: 'var(--font-mono)', fontWeight: 600, color: pinBateria <= 20 ? 'var(--danger)' : 'var(--muted)' }}>
-                    <svg width={px(13)} height={px(13)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
-                      <rect x="2" y="8" width="16" height="9" rx="2" />
-                      <path d="M21 11.5v2" />
-                      <rect x="4" y="10" width={Math.max(1, Math.round(12 * Math.min(100, Math.max(0, pinBateria)) / 100))} height="5" rx="1" fill="currentColor" stroke="none" />
-                    </svg>
-                    {pinBateria}%
-                  </span>
-                )}
-              </div>
-            </div>
-            {/* stopPropagation: sin esto, cerrar también alternaría el tamaño — y cerrar era la
-                única acción que esta tarjeta tenía. No se puede perder. */}
-            <div onClick={(e) => { e.stopPropagation(); setPinId(null) }} style={{ flex: 'none', width: px(26), height: px(26), borderRadius: px(8), border: '1px solid var(--line)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--muted)' }}><svg width={px(13)} height={px(13)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></div>
-          </div>
-
-          {/* Ampliada, la tarjeta muestra MÁS: el resumen del día de esa persona. Es el sentido
-              de agrandarla — si solo creciera el mismo texto, el espacio ganado se desperdicia. */}
-          {grande && (
-            <div style={{ display: 'flex', gap: px(8), marginTop: px(12), paddingTop: px(11), borderTop: '1px solid var(--line)' }}>
-              {pinResumen ? (
-                <>
-                  <ResumenPin etiqueta="Recorrido" valor={`${pinResumen.km.toFixed(1)} km`} px={px} />
-                  <ResumenPin etiqueta="Paradas" valor={String(pinResumen.paradas.n)} px={px} />
-                  <ResumenPin etiqueta="Mayor parada" valor={pinResumen.paradas.n ? fmtDuracion(pinResumen.paradas.maxMs) : '—'} px={px} />
-                </>
-              ) : (
-                <span style={{ fontSize: px(11), color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>Sin recorrido registrado hoy.</span>
-              )}
-            </div>
-          )}
-        </div>
-        )
-      })()}
+          pin={pin}
+          nombre={nombres[pin.id]}
+          bateria={pinBateria}
+          resumen={pinResumen}
+          k={pinK}
+          onToggle={togglePinK}
+          onClose={() => setPinId(null)}
+          style={{ position: 'absolute', left: 14, right: inmersivo ? 14 : RAIL_W + 24, bottom: safeBottom(inmersivo ? NAV_H + 14 : NAV_H + 86), zIndex: 'var(--z-popover)' }}
+        />
+      )}
 
       {/* ===== BOTTOM NAV ===== */}
       {!inmersivo && (
@@ -793,15 +751,6 @@ const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, back
 const sheetLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--faint)' }
 
 /** Un dato del resumen del día en la tarjeta ampliada del pin. `px` escala con `pinK`. */
-function ResumenPin({ etiqueta, valor, px }) {
-  return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: px(14), color: 'var(--deep)', whiteSpace: 'nowrap' }}>{valor}</div>
-      <div style={{ fontSize: px(9), fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--faint)', marginTop: px(2) }}>{etiqueta}</div>
-    </div>
-  )
-}
-
 function Chevron() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
 }

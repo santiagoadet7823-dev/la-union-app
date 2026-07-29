@@ -3,7 +3,7 @@ import { isNative } from './platform'
 import { supabase } from './supabase'
 import { getTrackConfig } from './tracking'
 import { setUploaderNativo } from './geolocation/tracker'
-import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS } from './gpsConfig'
+import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS } from './gpsConfig'
 
 /**
  * Bridge al uploader GPS NATIVO (Opción B, 24/07/2026). El servicio nativo (UploaderGpsService) captura
@@ -44,8 +44,14 @@ function aMinutos(hhmm) {
  * `minMoveM`/`keepAliveMs` gobiernan el filtro por movimiento del servicio nativo (encolar solo si se
  * movió, o cada keepAlive estando quieto): así son ajustables por OTA sin recompilar el APK. Se pasa el
  * `cfg` ya cargado (por usePublishPosition) para no re-consultar getTrackConfig en cada reempuje.
+ *
+ * 🩸 `intervaloMs` sale de `NEAR_LIVE_MS`, NO de un literal (30/07/2026). Estuvo hardcodeado en 15000
+ * mientras `gpsConfig.js` —el archivo que dice ser la única fuente de verdad de estas constantes—
+ * declaraba 10 s. O sea que la constante existía, se documentaba, y el uploader nativo (que es el
+ * que está en la calle) la ignoraba: bajar NEAR_LIVE_MS no hacía absolutamente nada. Los dos únicos
+ * llamadores no pasan la opción, así que el default ES el valor real de producción.
  */
-export async function iniciarUploaderNativo(cfg = null, { intervaloMs = 15000 } = {}) {
+export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIVE_MS } = {}) {
   if (!isNative() || !INGEST_URL) return
   try {
     if (!tokenCache) {

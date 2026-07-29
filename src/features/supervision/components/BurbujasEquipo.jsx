@@ -17,14 +17,14 @@ import { kmDeTrazo, metricasParadas } from '../MetricasEquipo'
  * que reparten. Una fila sin gente NO se dibuja: una fila vacía sobre un mapa a pantalla completa
  * es ruido, no información.
  *
- * **Arrancan CERRADAS: solo el círculo.** Al tocar una se abre con su resumen del día y, en el
- * mismo gesto, se enfoca su recorrido. Se abre UNA sola a la vez porque el estado de "abierta" no
- * es un estado propio: **es el foco** (`focoId`). Tocarla de nuevo cierra y limpia el foco. Eso
- * mantiene la fila y el mapa contando siempre lo mismo, sin poder desincronizarse.
+ * **Arrancan CERRADAS: solo el círculo.** Al tocar una se abre y, en el mismo gesto, se enfoca su
+ * recorrido. Se abre UNA sola a la vez porque el estado de "abierta" no es un estado propio: **es
+ * el foco** (`focoId`). Tocarla de nuevo cierra y limpia el foco. Eso mantiene la fila y el mapa
+ * contando siempre lo mismo, sin poder desincronizarse.
  *
  * Vive en components/ y no dentro de una supervisión porque lo usan las dos, y `SupervisionMovil`
- * y `SupervisionDesktop` no comparten una línea de código (mismo criterio que ./dwells.js y
- * MetricasEquipo.jsx: lo que las dos tienen que mostrar IGUAL va afuera).
+ * y `SupervisionDesktop` no comparten una línea de código (mismo criterio que ./dwells.js,
+ * ./trazos.js y MetricasEquipo.jsx: lo que las dos tienen que mostrar IGUAL va afuera).
  *
  * ⚠️ SIN `backdrop-filter` acá, a propósito. `index.css:280-283` documenta que desenfocar sobre
  * el mapa es la combinación más cara que existe en el WebView de Android — y este componente
@@ -53,8 +53,17 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
   const repartidores = movers.filter((m) => m.rol === 'repartidor')
   if (!vendedores.length && !repartidores.length) return null
 
+  const abierta = movers.find((m) => m.id === focoId) || null
+
   const fila = (gente) => (
-    <div className="lu-tabs" style={{ display: 'flex', gap: 8, overflowX: 'auto', maxWidth: '100%' }}>
+    // 🩸 `pointerEvents:'auto'` acá, y `'none'` en el contenedor de abajo (30/07/2026).
+    //
+    // El contenedor es `position:absolute` con `left`/`right` fijos: ocupa TODO el ancho a la
+    // altura de las filas, y se tragaba los toques del mapa aunque las burbujas midieran 40 px.
+    // En la PWA se sentía como que la parte de abajo del mapa estaba muerta. La fila, en cambio,
+    // mide lo que miden las burbujas (el `alignItems:'flex-start'` del contenedor la deja en
+    // `fit-content`), así que donde NO hay burbuja el toque pasa derecho al mapa. Sin condicionales.
+    <div className="lu-tabs" style={{ display: 'flex', gap: 8, overflowX: 'auto', maxWidth: '100%', pointerEvents: 'auto' }}>
       {gente.map((m) => {
         const c = colorPorId(m.id)
         const activo = focoId === m.id
@@ -91,21 +100,11 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
                 ? <img src={fotos[m.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 : initials(nombre)}
             </span>
-            {/* 🩸 El texto SOLO en la abierta (29/07/2026). Con las 7 abiertas la fila se iba del
-                ancho de la pantalla y tapaba el mapa que se acababa de poner a pantalla completa —
-                que es exactamente lo contrario de para qué existe este modo. Cerradas son una fila
-                de círculos y el mapa se ve. */}
+            {/* Abierta, la píldora lleva SOLO el nombre. Los números viven en la tarjeta de
+                arriba — ver el comentario de `detalle`. */}
             {activo && (
-              <span className="lu-rise" style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {nombre}
-                </span>
-                <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                  {/* Sin recorrido todavía (recién arrancó la jornada) se muestra solo la
-                      frescura: poner "0.0 km · 0 paradas" se lee como un dato malo, no como
-                      "todavía no hay dato". */}
-                  {resumen ? `${resumen.km.toFixed(1)} km · ${resumen.paradas} par.` : 'sin recorrido'} · <HaceSegundos ts={m.ts} />
-                </span>
+              <span className="lu-rise" style={{ minWidth: 0, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {nombre}
               </span>
             )}
           </div>
@@ -114,10 +113,72 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
     </div>
   )
 
+  /* 🩸 EL DETALLE SALIÓ DE LA PÍLDORA (30/07/2026).
+   *
+   * Estaba adentro, y la píldora está capada a 190 px: entre el avatar (30) y el padding se van
+   * ~55, así que al texto le quedaban ~135 px para "Nombre" + "2.4 km · 7 par. · hace 27s". Se
+   * cortaba con puntos suspensivos — el dato se mostraba a medias, que es peor que no mostrarlo.
+   * Agrandar la píldora no alcanzaba: en un teléfono angosto vuelve a chocar contra el borde.
+   *
+   * Como tarjeta propia el texto entra entero y además caben cosas que antes no: la última señal
+   * con su unidad y el porcentaje de batería. Aparece con `lu-rise` — transform + opacity, que es
+   * lo único que el repo permite animar (§7); animar el ancho de la píldora sería animar layout.
+   *
+   * Es HERMANA de las filas, no hija: adentro la recortaría el `overflowX:auto` de la fila.
+   *
+   * El `key` por persona no es decorativo: al pasar de una burbuja a otra, React reusaría el mismo
+   * nodo y la tarjeta cambiaría de contenido sin animar. Con la clave se remonta y vuelve a entrar,
+   * que es lo que hace legible el cambio de foco.
+   */
+  const detalle = abierta && (
+    <div
+      key={abierta.id}
+      className="lu-rise"
+      onClick={() => onSelect?.(abierta.id)}
+      title="Tocar para cerrar"
+      style={{
+        pointerEvents: 'auto', cursor: 'pointer', maxWidth: '100%', boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        padding: '8px 12px', borderRadius: 'var(--r-lg)',
+        background: 'var(--glass-strong)',
+        border: '1px solid var(--glass-brd)',
+        // Filete del color de la persona: el mismo hilo que ata la burbuja con su trazo.
+        borderLeft: `3px solid ${colorPorId(abierta.id)}`,
+        boxShadow: 'var(--shadow-lg)',
+      }}
+    >
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>{nombres[abierta.id] || abierta.rol}</span>
+      {/* Sin recorrido todavía (recién arrancó la jornada) se muestra solo la frescura: poner
+          "0.0 km · 0 paradas" se lee como un dato malo, no como "todavía no hay dato". */}
+      {resumen ? (
+        <>
+          <Dato valor={`${resumen.km.toFixed(1)} km`} etiqueta="recorrido" />
+          <Dato valor={String(resumen.paradas)} etiqueta={resumen.paradas === 1 ? 'parada' : 'paradas'} />
+        </>
+      ) : (
+        <span style={{ fontSize: 10.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>sin recorrido todavía</span>
+      )}
+      <Dato valor={<HaceSegundos ts={abierta.ts} />} etiqueta="última señal" />
+    </div>
+  )
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start', ...style }}>
+    // `pointerEvents:'none'` en el contenedor: ver la nota de `fila`. Lo que sí recibe toques son
+    // las filas y la tarjeta, que miden lo que ocupan.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start', pointerEvents: 'none', ...style }}>
+      {detalle}
       {!!vendedores.length && fila(vendedores)}
       {!!repartidores.length && fila(repartidores)}
     </div>
+  )
+}
+
+/** Valor + etiqueta. Los datos de la tarjeta se leen todos igual. */
+function Dato({ valor, etiqueta }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--deep)' }}>{valor}</span>
+      <span style={{ fontSize: 9.5, color: 'var(--muted)' }}>{etiqueta}</span>
+    </span>
   )
 }

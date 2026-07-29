@@ -105,20 +105,35 @@ function pinIcon(color, label, labelColor, selected) {
  *
  * Se dibuja con iconSize [0,0] + hijo centrado por transform: la píldora mide lo que mida
  * el texto (no hay que adivinar el ancho) y queda centrada sobre la coordenada.
+ *
+ * 🩸 `k` es el factor de escala, 1 o 1.5 (30/07/2026). A 10 px, leer un cartel de parada a un
+ * brazo de distancia con sol de frente no se puede — el mismo pedido que ya había agrandado la
+ * tarjeta del pin, que resultó ser otra cosa. TODAS las medidas se derivan de `k`, así que no hay
+ * dos versiones del cartel que se puedan desincronizar, y con k = 1 el HTML es idéntico al de
+ * antes (10 · 1 = 10; los decimales que aparecen en 1.5 no molestan a nadie).
+ *
+ * `extra` es el tercer renglón, que SOLO existe ampliado: hoy `sub` tiene que elegir entre el
+ * horario y el nombre del comercio (dwells.js) y descarta el otro. Ampliar sirve para mostrar más,
+ * no para mostrar lo mismo más grande — mismo criterio que la tarjeta del pin.
  */
-function dwellIcon(label, sub, color) {
+function dwellIcon({ label, sub, extra, color, k = 1 }) {
   const c = color || '#2DD4CE'
-  // `sub` (el horario) va en un segundo renglón, más chico y translúcido. En una sola línea
-  // la píldora se iba a ~180 px: como el ancho lo fija el texto (nowrap + iconSize [0,0]),
-  // apilar es lo que la mantiene angosta. El radio baja de 99 a 9 cuando hay dos líneas —
-  // una píldora de dos renglones con borde 99 parece un huevo.
-  const dosLineas = !!sub
-  const linea2 = dosLineas
-    ? `<div style="font-size:8.5px;font-weight:500;opacity:.82;letter-spacing:.02em">${sub}</div>`
-    : ''
+  const px = (n) => n * k
+  // `sub` va en un segundo renglón, más chico y translúcido. En una sola línea la píldora se iba a
+  // ~180 px: como el ancho lo fija el texto (nowrap + iconSize [0,0]), apilar es lo que la mantiene
+  // angosta. El radio baja de 99 a 9 cuando hay más de una línea — una píldora de dos renglones con
+  // borde 99 parece un huevo.
+  const renglones = [
+    sub && `<div style="font-size:${px(8.5)}px;font-weight:500;opacity:.82;letter-spacing:.02em">${sub}</div>`,
+    extra && `<div style="font-size:${px(8.5)}px;font-weight:500;opacity:.7;letter-spacing:.02em">${extra}</div>`,
+  ].filter(Boolean).join('')
+  const apilado = !!renglones
   return L.divIcon({
     className: 'lu-dwell',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;text-align:center;background:${c};color:#fff;border:1.5px solid rgba(255,255,255,.9);border-radius:${dosLineas ? 9 : 99}px;padding:${dosLineas ? '3px 7px' : '2px 7px'};box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;line-height:1.35">${label || ''}${linea2}</div>`,
+    // `pointer-events:auto` (antes `none`): el cartel es el objetivo del toque. Le gana el click a
+    // la polilínea que tenga debajo —que no es clickeable— y NO a los pines en vivo, que viven en
+    // markerPane (z 600) por encima de este pane (450).
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:auto;cursor:pointer;text-align:center;background:${c};color:#fff;border:${px(1.5)}px solid rgba(255,255,255,.9);border-radius:${apilado ? px(9) : 99}px;padding:${apilado ? `${px(3)}px ${px(7)}px` : `${px(2)}px ${px(7)}px`};box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:${px(10)}px;font-weight:600;line-height:1.35">${label || ''}${renglones}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
@@ -216,7 +231,7 @@ function firmaPuntos(pts) {
 function firmaTrails(trails) {
   if (!trails || !trails.length) return ''
   let s = ''
-  for (const t of trails) s += (t.id || '') + ':' + (t.color || '') + ':' + (t.opacity ?? '') + ':' + (t.weight ?? '') + ':' + firmaPuntos(t.points) + '|'
+  for (const t of trails) s += (t.id || '') + ':' + (t.color || '') + ':' + (t.opacity ?? '') + ':' + (t.weight ?? '') + ':' + (t.dashArray || '') + ':' + firmaPuntos(t.points) + '|'
   return s
 }
 
@@ -244,7 +259,7 @@ function firmaMovers(ms) {
 function firmaDwells(ds) {
   if (!ds || !ds.length) return ''
   let s = ''
-  for (const d of ds) s += firmaPunto(d) + ':' + (d.label || '') + ':' + (d.sub || '') + ':' + (d.color || '') + '|'
+  for (const d of ds) s += firmaPunto(d) + ':' + (d.label || '') + ':' + (d.sub || '') + ':' + (d.extra || '') + ':' + (d.color || '') + '|'
   return s
 }
 
@@ -275,6 +290,12 @@ export default function LeafletMap({
   // Carteles de permanencia ("5 min"): [{lat,lng,label,color}]. Opcional; con [] o undefined
   // el mapa se comporta exactamente igual que antes (SupervisionDesktop no la pasa).
   dwells = [],
+  // Índice del cartel de parada AMPLIADO (o null). Va como prop suelta y NO adentro de cada
+  // `dwells[i]` a propósito: `dwells` sale de `calcularDwells`, que cuesta ~410 ms por persona-día,
+  // y meter la selección adentro obligaría a recalcular el detector de paradas entero cada vez que
+  // se toca un cartel. Así la selección solo re-dibuja la capa.
+  dwellSel = null,
+  onDwellClick,
   height = 460,
   followLive = false,
   fit = true, // si es false, no reencuadra (preserva el zoom/pan del usuario)
@@ -340,6 +361,8 @@ export default function LeafletMap({
   const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
   clickRef.current = onMarkerClick
+  const dwellClickRef = useRef(onDwellClick)
+  dwellClickRef.current = onDwellClick
   const mapClickRef = useRef(onMapClick)
   mapClickRef.current = onMapClick
 
@@ -375,7 +398,9 @@ export default function LeafletMap({
     // leía. Un pane propio hace el apilado determinista en vez de accidental.
     map.createPane('luDwells')
     map.getPane('luDwells').style.zIndex = 450
-    map.getPane('luDwells').style.pointerEvents = 'none'
+    // El pane NO lleva `pointerEvents:'none'` desde el 30/07/2026: los carteles se tocan para
+    // ampliarlos. No genera un bloqueador de pantalla — un pane de Leaflet es un contenedor de 0×0
+    // y lo único que ocupa lugar son los divs de cada cartel.
     tileRef.current = crearTileLayer(basemapRef.current).addTo(map)
     // Selector de capas (arriba a la derecha, no choca con el zoom que va arriba a la izquierda).
     // Solo si hay 2+ capas usables (en producción sin key Stadia queda solo OSM → sin selector).
@@ -521,6 +546,11 @@ export default function LeafletMap({
       if (!t.points || t.points.length < 2) return
       L.polyline(t.points.map((p) => [p.lat, p.lng]), {
         color: t.color || trailColor, weight: t.weight ?? 4, opacity: t.opacity ?? 0.85, lineJoin: 'round',
+        // `dashArray`: lo usan los CONECTORES DE HUECO (features/supervision/trazos.js). Un trazo
+        // se parte en segmentos donde el GPS dejó de reportar, y entre dos segmentos va una línea
+        // punteada: dice "siguió siendo la misma persona" sin afirmar que fue por esa recta.
+        // Undefined = línea llena, que es el trazo normal.
+        dashArray: t.dashArray,
       }).addTo(layer)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -564,23 +594,33 @@ export default function LeafletMap({
   //    pane que las polilíneas, y el trazo los tapaba: el cartel no se podía leer. Con
   //    zIndexOffset tampoco alcanza — el z de un marker depende de su latitud, así que un
   //    cartel al norte treparía por encima de los pines.
-  //  - interactive:false → no roban el click al pin que tengan debajo.
+  //  - interactive:TRUE desde el 30/07/2026 (antes false, "para no robarle el click al pin que
+  //    tengan debajo"). Ahora el cartel ES un objetivo: se toca para ampliarlo al 150 % y ver el
+  //    horario junto con el comercio. Lo único que queda debajo de este pane son las polilíneas
+  //    de los recorridos, que no son clickeables; los pines en vivo viven en markerPane (z 600),
+  //    por encima, así que siguen ganando el toque.
   //  - NO entran al fitBounds (a diferencia de `circle`): un cartel lejano descuadraría
   //    el encuadre del recorrido.
   useEffect(() => {
     const layer = dwellsLayerRef.current
     if (!layer) return
     layer.clearLayers()
-    ;(dwells || []).forEach((d) => {
-      L.marker([d.lat, d.lng], {
-        icon: dwellIcon(d.label, d.sub, d.color),
+    ;(dwells || []).forEach((d, i) => {
+      const abierto = dwellSel === i
+      const m = L.marker([d.lat, d.lng], {
+        icon: dwellIcon({ label: d.label, sub: d.sub, extra: abierto ? d.extra : null, color: d.color, k: abierto ? 1.5 : 1 }),
         pane: 'luDwells',
-        interactive: false,
         keyboard: false,
-      }).addTo(layer)
+        // El ampliado se dibuja por encima de sus vecinos: si no, un cartel chico de al lado le
+        // puede tapar justo el renglón que se acaba de destapar.
+        zIndexOffset: abierto ? 100 : 0,
+        title: abierto ? 'Tocar para achicar' : 'Tocar para ampliar',
+      })
+      m.on('click', () => dwellClickRef.current?.(i))
+      m.addTo(layer)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kDwells])
+  }, [kDwells, dwellSel])
 
   // ---- ENCUADRE ------------------------------------------------------------------------------
   // El encuadre necesita ver TODAS las geometrías juntas, así que no puede vivir dentro de

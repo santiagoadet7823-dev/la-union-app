@@ -78,6 +78,21 @@ public class UploaderGpsService extends Service {
     // regla 18): un fix impreciso mete "vueltas" falsas en el recorrido. Sin esto el uploader nativo
     // subiría ruido que el pipeline JS sí filtraba.
     private static final float ACCURACY_MAX_M = 30f;
+    // 🩸 SALTO IMPOSIBLE (30/07/2026). `tracker.js:143` descarta un fix cuya velocidad implícita contra
+    // el último punto bueno supera esto (gpsConfig.MAX_SPEED_MPS = 45 m/s ≈ 160 km/h), pero ESE FILTRO
+    // SOLO EXISTÍA EN EL CAMINO JS. El uploader nativo —el que está en la calle desde 1.6.x— miraba
+    // únicamente la precisión, así que la basura entraba igual a la base.
+    //
+    // Lo que encontró el 29/07/2026: un vendedor con cuatro fixes que ALTERNAN entre dos lugares a
+    // 127 km uno del otro, entre las 12:47 y las 12:49. Sus precisiones eran 21 y 29 m, o sea que el
+    // filtro de ACCURACY_MAX_M no los podía cazar ni en teoría. El mapa le marcó 524,8 km ese día; su
+    // recorrido real fueron 17,9 km.
+    //
+    // El dibujo ya se defiende solo (lib/geo.limpiarTrazo filtra al pintar, y así arregla también los
+    // días ya guardados), pero eso tapa el síntoma: esto es lo que evita que la basura ENTRE.
+    private static final double MAX_SPEED_MPS = 45.0;
+    private static final float MIN_JUMP_M = 9f; // = gpsConfig.MIN_MOVE_M: por debajo, la velocidad no es fiable
+    private static final int MAX_SALTOS_SEGUIDOS = 3; // ver el comentario del descarte, en el callback
 
     private FusedLocationProviderClient fused;
     private LocationCallback callback;
@@ -97,6 +112,7 @@ public class UploaderGpsService extends Service {
     private double lastFixLat, lastFixLng;
     private long lastFixTime = 0L;
     private boolean tieneFix = false;
+    private int saltosSeguidos = 0; // descartes consecutivos por salto imposible (ver MAX_SALTOS_SEGUIDOS)
     private boolean modoRapido = false;
     private long ultimoRapidoAt = 0L;
 
@@ -138,12 +154,29 @@ public class UploaderGpsService extends Service {
                 // la pasa el JS en configurar().
                 if (!dentroDeVentana()) { detenerServicio(); return; }
                 SharedPreferences sp = prefs();
-                float minMove = sp.getInt(K_MIN_MOVE, 12);        // metros; default = gpsConfig.MIN_MOVE_M
+                float minMove = sp.getInt(K_MIN_MOVE, 9);         // metros; default = gpsConfig.MIN_MOVE_M (bajado de 12 el 30/07/2026)
                 long keepAlive = sp.getInt(K_KEEPALIVE, 30000);   // ms; default = STATIONARY_KEEPALIVE_MS (30 s)
                 for (Location loc : result.getLocations()) {
                     // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
                     if (loc.hasAccuracy() && loc.getAccuracy() > ACCURACY_MAX_M) continue;
                     long now = System.currentTimeMillis();
+                    // Salto imposible → glitch del chip. Se compara contra el último fix CRUDO bueno
+                    // (no contra el último guardado): el filtro por movimiento descarta puntos a
+                    // propósito y usar su referencia daría dt enormes que hacen pasar cualquier salto.
+                    // Se descarta el fix ENTERO: no actualiza la referencia ni la cadencia, así que un
+                    // punto malo no puede arrastrar al que le sigue.
+                    if (tieneFix && saltosSeguidos < MAX_SALTOS_SEGUIDOS) {
+                        long dtMs = loc.getTime() - lastFixTime;
+                        if (dtMs > 0) {
+                            double d = haversine(lastFixLat, lastFixLng, loc.getLatitude(), loc.getLongitude());
+                            if (d > MIN_JUMP_M && d / (dtMs / 1000.0) > MAX_SPEED_MPS) { saltosSeguidos++; continue; }
+                        }
+                    }
+                    // Si se descartaron MAX_SALTOS_SEGUIDOS seguidos, el sospechoso es la REFERENCIA, no
+                    // los fixes nuevos (pasa cuando el primer fix tras arrancar el servicio es el malo).
+                    // Se acepta el siguiente y se vuelve a empezar: mejor un tramo raro que perder la
+                    // jornada entera creyéndole a un solo punto.
+                    saltosSeguidos = 0;
                     // Cadencia adaptativa por velocidad: se mide sobre TODOS los fixes crudos (antes del
                     // filtro por movimiento, que decide qué se GUARDA). Si va rápido, sube la cadencia de
                     // captura para que el trazo no cruce manzanas; al frenar, vuelve a la lenta.

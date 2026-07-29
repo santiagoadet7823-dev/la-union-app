@@ -7,14 +7,25 @@
 // `foot` el mismo pipeline da ~1037 m (fiel). No se usa /match: el /match del host público
 // está capado por tamaño (TooBig incluso con 20 puntos).
 //
-// Antes de rutear: (1) cortamos en SALTOS grandes (teleports/pérdida de GPS), (2)
-// descartamos segmentos ESTÁTICOS (jitter con el teléfono quieto — si no, el ruteo los
-// convierte en "vueltas" a la manzana; se detecta con la MEDIANA de distancia al centro,
-// robusta a outliers), y (3) adelgazamos el jitter. Guarda anti-detour: si el ruteo por
-// calles se alarga más de MAX_DETOUR× el crudo (calle equivocada), se dibuja el crudo del
-// segmento — el snap nunca empeora el resultado. Se cachea en recorridos_snap (service-role);
-// el cache se invalida por `algo` (versión del algoritmo).
+// Antes de rutear: (1) cortamos por HUECO — salto grande o silencio de más de 4 min —, (2) cortamos
+// por MODO (caminata vs. vehículo, por velocidad suavizada), (3) descartamos segmentos ESTÁTICOS
+// (jitter con el teléfono quieto — si no, el ruteo los convierte en "vueltas" a la manzana; se
+// detecta con la MEDIANA de distancia al centro, robusta a outliers), y (4) adelgazamos el jitter.
+// Guarda anti-detour: si el ruteo por calles se alarga más de MAX_DETOUR× el crudo (calle
+// equivocada), se dibuja el crudo del tramo — el snap nunca empeora el resultado.
+//
+// 🩸 EL CORTE POR MODO (ALGO 7, 30/07/2026) es lo que hace que esto sirva para algo. Sin él, el día
+// entero quedaba en UN segmento y la guarda de DRIVE_LEN lo mandaba crudo completo: el botón
+// "Calles" no pegaba nada a las calles en ningún día real. Ver el comentario de `splitModo`.
+//
+// Se cachea en recorridos_snap (service-role) POR TRAMO, no por día: durante la jornada el día
+// cambia todo el tiempo y un cache por día no acierta nunca. Ver el bloque de cache.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+// La geometría (cortes por hueco y por modo, adelgazado, longitudes) vive en ./segmentar.ts, que se
+// puede probar sin levantar Deno ni Supabase. Acá queda lo que necesita red: auth, consultas y OSRM.
+import {
+  type P, cap, firmaRun, isStationary, ms, pathLenLL, segLenP, splitGaps, splitModo, thin,
+} from './segmentar.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -26,49 +37,12 @@ const json = (b: unknown, status = 200) =>
 
 // OSRM perfil PEATÓN (FOSSGIS). /route (no /match: el /match público está capado → TooBig).
 const OSRM_ROUTE = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot'
-const ALGO = 6            // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
-const GAP_MAX = 1500      // m: salto mayor a esto → corta el trazo en dos segmentos
-const STATIONARY_R = 40   // m: si la MEDIANA de distancia al centro es menor → estático (no rutear)
-const MIN_SEP = 25        // m: descarta puntos más cercanos que esto al anterior (jitter)
-const MAX_WP = 90         // waypoints máx por consulta /route
+const ALGO = 7            // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
+const MIN_RUN_M = 150     // m: un tramo a pie más corto que esto no vale una consulta a OSRM
+const MAX_RUTEOS = 25     // techo de consultas OSRM por invocación (ver el comentario de abajo)
 const MAX_DETOUR = 2.5    // si el ruteo por calles > esto × el crudo → usar crudo (anti calle inventada)
-const SPEED_MAX = 3.3     // m/s (~12 km/h): tramo más rápido que esto = vehículo → no snapear (perfil peatón inventa calles)
 const DRIVE_LEN = 4000    // m: un tramo más largo que esto ya implica vehículo → tampoco snapear (perfil peatón)
 
-type P = { lat: number; lng: number; ts?: string }
-const hav = (a: P, b: P) => {
-  const R = 6371000, d = Math.PI / 180
-  const dlat = (b.lat - a.lat) * d, dlng = (b.lng - a.lng) * d
-  const s = Math.sin(dlat / 2) ** 2 + Math.cos(a.lat * d) * Math.cos(b.lat * d) * Math.sin(dlng / 2) ** 2
-  return 2 * R * Math.asin(Math.sqrt(s))
-}
-const median = (arr: number[]) => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
-function isStationary(pts: P[]): boolean {
-  const center = { lat: median(pts.map((p) => p.lat)), lng: median(pts.map((p) => p.lng)) }
-  return median(pts.map((p) => hav(center, p))) < STATIONARY_R
-}
-function splitGaps(pts: P[]): P[][] {
-  const segs: P[][] = []; let cur: P[] = [pts[0]]
-  for (let i = 1; i < pts.length; i++) {
-    if (hav(pts[i - 1], pts[i]) > GAP_MAX) { segs.push(cur); cur = [pts[i]] } else cur.push(pts[i])
-  }
-  segs.push(cur); return segs
-}
-function thin(pts: P[]): P[] {
-  if (pts.length <= 2) return pts.slice()
-  const out = [pts[0]]
-  for (let i = 1; i < pts.length - 1; i++) if (hav(out[out.length - 1], pts[i]) >= MIN_SEP) out.push(pts[i])
-  out.push(pts[pts.length - 1]); return out
-}
-function cap(pts: P[]): P[] {
-  if (pts.length <= MAX_WP) return pts
-  const step = pts.length / MAX_WP, out: P[] = []
-  for (let i = 0; i < MAX_WP; i++) out.push(pts[Math.floor(i * step)])
-  out[out.length - 1] = pts[pts.length - 1]; return out
-}
-// Longitud de un rastro crudo (P[]) y de una geometría ruteada ([lat,lng][]).
-const segLenP = (s: P[]) => { let L = 0; for (let i = 1; i < s.length; i++) L += hav(s[i - 1], s[i]); return L }
-const pathLenLL = (g: number[][]) => { let L = 0; for (let i = 1; i < g.length; i++) L += hav({ lat: g[i - 1][0], lng: g[i - 1][1] }, { lat: g[i][0], lng: g[i][1] }); return L }
 async function routeSeg(wps: P[]): Promise<number[][] | null> {
   if (wps.length < 2) return null
   const cs = wps.map((p) => `${p.lng},${p.lat}`).join(';')
@@ -139,53 +113,93 @@ Deno.serve(async (req) => {
     const byUser: Record<string, P[]> = {}, lastTs: Record<string, string> = {}
     for (const p of pos || []) { if (!p.id_usuario) continue; (byUser[p.id_usuario] ||= []).push({ lat: p.lat, lng: p.lng, ts: p.ts }); lastTs[p.id_usuario] = p.ts }
 
+    /* 🩸 CACHE INCREMENTAL, POR TRAMO (30/07/2026). Antes la fila entera valía solo si
+     * `cached.puntos === pts.length`, o sea que DURANTE EL DÍA el cache no servía nunca: cada punto
+     * nuevo lo invalidaba y se recalculaba la jornada completa. Con el día en un solo segmento eso
+     * costaba 0 consultas a OSRM (todo caía en la guarda de DRIVE_LEN), así que no se notaba. Con
+     * el corte por modo pasaría a costar una decena de consultas cada 60 segundos, por persona, a
+     * un host de fair-use donado — la forma más rápida de que nos bloqueen.
+     *
+     * Ahora se guarda una lista de piezas `{f, g}`: `f` identifica el tramo (primer ts, último ts,
+     * cantidad de puntos) y `g` es su geometría. Un tramo ya cerrado no cambia nunca, así que se
+     * reusa tal cual; lo único que se recalcula es la cola del día, que es la que crece.
+     */
     const { data: cacheRows } = await admin.from('recorridos_snap')
       .select('id_usuario, geometria, puntos, algo').eq('id_empresa', idEmpresa).eq('fecha', fecha)
-    const cache: Record<string, { geometria: number[][][]; puntos: number; algo: number }> = {}
-    for (const r of cacheRows || []) cache[r.id_usuario] = { geometria: r.geometria, puntos: r.puntos, algo: r.algo }
+    const cache: Record<string, { piezas: { f: string; g: number[][] }[]; algo: number }> = {}
+    for (const r of cacheRows || []) {
+      const g = r.geometria
+      // Formato viejo (ALGO ≤ 6: array de geometrías sueltas, sin firma). El chequeo de `algo` ya
+      // lo descarta; esto es para no reventar si alguna fila quedara rezagada.
+      const nuevo = Array.isArray(g) && g.length && !Array.isArray(g[0]) && typeof g[0]?.f === 'string'
+      cache[r.id_usuario] = { piezas: nuevo ? g : [], algo: r.algo }
+    }
+
+    const AHORA = Date.now()
+    // Un tramo cuyo último punto es de hace menos de esto todavía está CRECIENDO: rutearlo es tirar
+    // la consulta, porque en el próximo refresco tendrá puntos nuevos y otra firma. Se dibuja crudo
+    // y se rutea cuando queda cerrado. Es lo que mantiene acotado el tráfico contra OSRM en vivo.
+    const COLA_VIVA_MS = 10 * 60000
+    let ruteos = 0
+    let truncados = 0
 
     const recorridos: { id_usuario: string; geometrias: number[][][] }[] = []
     for (const [id, pts] of Object.entries(byUser)) {
       if (pts.length < 2) continue
-      const cached = cache[id]
-      if (cached && cached.algo === ALGO && cached.puntos === pts.length && Array.isArray(cached.geometria) && cached.geometria.length) {
-        recorridos.push({ id_usuario: id, geometrias: cached.geometria }); continue
-      }
-      const segmentos: number[][][] = []; let osrmMiss = false
+      const previas = cache[id]?.algo === ALGO ? cache[id].piezas : []
+      const porFirma = new Map<string, number[][]>(previas.map((p) => [p.f, p.g] as [string, number[][]]))
+
+      const piezas: { f: string; g: number[][] }[] = []
+      let osrmMiss = false
       for (const seg of splitGaps(pts)) {
         if (seg.length < 2) continue
         if (isStationary(seg)) continue // quieto (jitter) → no rutear vueltas falsas
-        // Tramo MANEJADO (móvil en vehículo, típico entre localidades): el perfil PEATÓN de OSRM
-        // lo reencamina por calles equivocadas e "inventa" recorridos (medido 21/07/2026: un
-        // vendedor manejando entre pueblos → el snap dibujaba una calle que no recorrió; en crudo
-        // estaba fiel). Se detecta por longitud O velocidad y se dibuja el crudo adelgazado:
-        //  - LONGITUD (>4 km): entre localidades es siempre auto. Clave porque la velocidad MEDIA
-        //    no alcanza: si el móvil estuvo 1h+ parado en el medio (mismo segmento, sin corte),
-        //    el promedio del tramo se hunde y no lo marcaría — pero 35 km no se hacen a pie.
-        //  - VELOCIDAD (>12 km/h media): caza el auto en tramos cortos sin parada larga.
-        // El crudo nunca miente; el snap peatón sí, a esa velocidad/distancia.
-        const durS = (new Date(seg[seg.length - 1].ts!).getTime() - new Date(seg[0].ts!).getTime()) / 1000
-        const lenM = segLenP(seg)
-        if (lenM > DRIVE_LEN || (durS > 0 && lenM / durS > SPEED_MAX)) { segmentos.push(thin(seg).map((p) => [p.lat, p.lng])); continue }
-        const g = await routeSeg(cap(thin(seg)))
-        if (!g) { osrmMiss = true; segmentos.push(thin(seg).map((p) => [p.lat, p.lng])); continue }
-        // Guarda anti-detour: se acepta el ruteo si NO se alarga demasiado respecto del crudo
-        // (con 50 m de holgura). Si se alarga (calle equivocada), se dibuja el crudo adelgazado.
-        if (pathLenLL(g) <= MAX_DETOUR * segLenP(seg) + 50) segmentos.push(g)
-        else segmentos.push(thin(seg).map((p) => [p.lat, p.lng]))
+        for (const run of splitModo(seg)) {
+          if (run.pts.length < 2) continue
+          const f = firmaRun(run.pts)
+          const previo = porFirma.get(f)
+          if (previo) { piezas.push({ f, g: previo }); continue }
+
+          const crudo = thin(run.pts).map((p) => [p.lat, p.lng])
+          const lenM = segLenP(run.pts)
+          const finMs = ms(run.pts[run.pts.length - 1])
+          const creciendo = Number.isFinite(finMs) && AHORA - finMs < COLA_VIVA_MS
+
+          // Se dibuja CRUDO —sin consultar OSRM— cuando el ruteo peatón no puede ayudar o no
+          // conviene todavía:
+          //  - `run.auto`: se venía en vehículo. El perfil peatón a esa velocidad inventa calles
+          //    (medido 21/07/2026: un vendedor manejando entre pueblos, el snap dibujaba una calle
+          //    que no recorrió). El crudo nunca miente; el snap peatón sí.
+          //  - `lenM > DRIVE_LEN`: 4 km no se hacen a pie, sea cual sea la velocidad media (si
+          //    estuvo una hora parado en el medio, el promedio se hunde y no lo marcaría).
+          //  - `lenM < MIN_RUN_M`: 150 m no justifican una consulta a un host donado.
+          //  - `creciendo`: ver COLA_VIVA_MS.
+          //  - presupuesto agotado: ver MAX_RUTEOS.
+          if (run.auto || lenM > DRIVE_LEN || lenM < MIN_RUN_M || creciendo) { piezas.push({ f, g: crudo }); continue }
+          if (ruteos >= MAX_RUTEOS) { truncados++; piezas.push({ f, g: crudo }); continue }
+
+          ruteos++
+          const g = await routeSeg(cap(thin(run.pts)))
+          if (!g) { osrmMiss = true; piezas.push({ f, g: crudo }); continue }
+          // Guarda anti-detour: se acepta el ruteo si NO se alarga demasiado respecto del crudo
+          // (con 50 m de holgura). Si se alarga (calle equivocada), se dibuja el crudo adelgazado.
+          piezas.push({ f, g: pathLenLL(g) <= MAX_DETOUR * lenM + 50 ? g : crudo })
+        }
       }
-      recorridos.push({ id_usuario: id, geometrias: segmentos })
-      // Cachear salvo que OSRM haya FALLADO en algún segmento (así se reintenta cuando el host
-      // vuelva). Los segmentos rechazados por la guarda SÍ se cachean (son determinísticos). El
-      // cache se re-arma solo cuando cambia la cantidad de puntos del día.
-      if (segmentos.length === 0 || !osrmMiss) {
+
+      recorridos.push({ id_usuario: id, geometrias: piezas.map((p) => p.g) })
+      // Cachear salvo que OSRM haya FALLADO en algún tramo (así se reintenta cuando el host vuelva).
+      // Los rechazados por la guarda SÍ se cachean: son determinísticos.
+      if (piezas.length === 0 || !osrmMiss) {
         await admin.from('recorridos_snap').upsert({
-          id_empresa: idEmpresa, id_usuario: id, fecha, geometria: segmentos, algo: ALGO,
+          id_empresa: idEmpresa, id_usuario: id, fecha, geometria: piezas, algo: ALGO,
           puntos: pts.length, ultimo_ts: lastTs[id], updated_at: new Date().toISOString(),
         }, { onConflict: 'id_usuario,fecha' })
       }
     }
-    return json({ recorridos })
+    // `ruteos`/`truncados` viajan en la respuesta a propósito: un tope silencioso se lee como
+    // "salió todo bien" cuando en realidad quedaron tramos sin pegar a la calle.
+    return json({ recorridos, ruteos, truncados })
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500)
   }

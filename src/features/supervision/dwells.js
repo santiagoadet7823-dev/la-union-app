@@ -40,6 +40,10 @@ export const horarioDwell = (p) => `${fmtHora(p.desde)}–${fmtHora(p.hasta)}`
  * opcional: sin él (o sin match), cae al horario de siempre. Antes esto estaba bloqueado por
  * datos (1 de 2.001 clientes tenía coordenadas); ahora se va desbloqueando solo.
  *
+ * `extra` (30/07/2026) es el dato que PIERDE esa elección. Cuando hay comercio, el horario no se
+ * tira: viaja acá y el cartel lo muestra cuando se lo amplía tocándolo. Cerrado sigue siendo de
+ * dos renglones, que es lo que lo mantiene angosto sobre el mapa.
+ *
  * @param {Record<string,{rol?:string, points?:Array}>} byUser
  * @param {(rol?:string) => boolean} pasaFiltro filtro por chip (Vend./Rep.) de cada vista
  * @param {Array<{lat:number,lng:number,name?:string,nombre_comercio?:string}>} [clientes] cartera geolocalizada
@@ -65,11 +69,13 @@ export function calcularDwells(byUser, pasaFiltro, clientes) {
     .flatMap(([id, v]) => detectarParadas(v.points || [])
       .map((p) => {
         const comercio = comercioCercano(p.lat, p.lng, clientes)
+        const horario = horarioDwell(p)
         return {
           lat: p.lat,
           lng: p.lng,
           label: etiquetaDwell(p),
-          sub: comercio || horarioDwell(p),
+          sub: comercio || horario,
+          extra: comercio ? horario : null,
           color: colorPorId(id),
         }
       }))

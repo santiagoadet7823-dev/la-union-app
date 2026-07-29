@@ -130,6 +130,20 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     el borrado ocurriera, no si *correspondía*. Contá siempre `subidos + aislados == total`.
 22. **Síntoma diagnóstico**: si `estado_dispositivo` sube pero `posiciones` no, **no es la red ni la
     sesión** — las dos usan la misma. Mirá `cola_pendiente` y los logs de Postgres.
+22-bis. **🩸 EL RECORRIDO CRUDO MIENTE: pasarlo SIEMPRE por `limpiarTrazo` (`lib/geo.js`) antes de
+    dibujarlo o de medirlo.** El uploader nativo no filtra saltos imposibles (`tracker.js` sí, pero
+    ese camino ya no es el que está en la calle), así que en la base hay teleports. Medido el
+    29/07/2026: un vendedor con cuatro fixes que alternan entre dos lugares a **127 km**, con
+    precisiones de 21 y 29 m — el filtro de precisión no los puede cazar. Su día figuraba con
+    **524,8 km**; el real fueron **17,9**. En las supervisiones eso ya está resuelto en un solo
+    lugar (`features/supervision/trazos.js`); **cualquier pantalla nueva que dibuje o mida un
+    recorrido tiene que usar ese módulo, no `byUser` crudo.**
+22-ter. **`services/gpsConfig.js` es la ÚNICA fuente de los umbrales de GPS. No hardcodear
+    intervalos.** `uploaderNativo.js` tenía el intervalo escrito a mano en `15000` mientras
+    `gpsConfig` declaraba 10 s: la constante existía, se documentaba, y el uploader —el que corre
+    en la calle— la ignoraba, así que bajarla no hacía absolutamente nada. Los cinco umbrales
+    (`MIN_MOVE_M`, `NEAR_LIVE_MS`, `NEAR_LIVE_RAPIDO_MS`, `VEL_UMBRAL_MPS`, `VEL_HIST_MS`) viajan al
+    servicio nativo por SharedPreferences → **se afinan por OTA, sin APK nuevo.**
 
 ### Mapas y apilamiento
 
@@ -144,6 +158,18 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     resuelto en `SupervisionDesktop.jsx` con un `zIndex: 1200` y un comentario que explicaba
     exactamente por qué. Se lo bajó a `--z-chrome` sin leerlo y el bug volvió. Es el caso
     concreto de la regla 24.
+30. **Un overlay flotante sobre el mapa va con `pointerEvents:'none'` en su contenedor y `'auto'`
+    solo en las piezas que se tocan.** Un contenedor `position:absolute` con `left`/`right` fijos
+    ocupa TODO el ancho aunque su contenido mida 40 px, y se traga los toques del mapa en esa
+    franja: eso era el "abajo del mapa no se puede hacer click" de la PWA (30/07/2026,
+    `BurbujasEquipo`). Verificado con `document.elementFromPoint`, que es la única forma honesta de
+    probarlo.
+31. **Lo que las DOS supervisiones muestran igual va en un módulo compartido**, nunca copiado:
+    `features/supervision/dwells.js` (carteles de parada), `trazos.js` (limpieza + geometría) y
+    `components/` (burbujas, tarjeta del pin, estado del equipo). `SupervisionMovil` y
+    `SupervisionDesktop` no comparten una línea de código y **ya divergieron dos veces**: los
+    carteles existieron solo en Movil de 1.5.7 en adelante, y el arreglo de performance del 26/07
+    (`simplificarTrazo`) tardó dos días en llegar a Desktop porque era una copia.
 
 ### Navegación nativa
 
@@ -375,7 +401,17 @@ Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urge
 - 🔴 **`AdminView` es inalcanzable**: `AuthedApp` intercepta a los 6 roles antes de que
   `RoleRouter` llegue a su `return <AdminView/>`. Con él quedan muertos `RecorridosView`,
   `MapaOperativo` y `ReplayJornada` — y la pestaña "Catálogo" de `AdminView`, que además no tiene
-  gate de rol.
+  gate de rol. **Informe para decidir, revisado el 30/07/2026:**
+
+  | Pantalla | Qué hace | ¿Se puede hacer hoy sin ella? | Veredicto |
+  |---|---|---|---|
+  | `RecorridosView` (140 líneas) | Recorridos del día de todos los móviles, con color por persona y refresco incremental. Usa `useRecorridosDelDia` + `fetchSnapRecorridos`. | **Sí, entera.** Es un subconjunto de lo que ya muestra `SupervisionDesktop`, con los mismos hooks. | **Borrar** |
+  | `MapaOperativo` (145 líneas) | Cartera en el mapa + móviles en vivo + ficha de cliente + consola de eventos. Importa `DEPOSITO` de `data/demoGeo` (dato de demo). | **Casi.** La capa de clientes y los móviles ya están en las dos supervisiones. Lo único que no existe en ningún otro lado es la **consola de eventos**. | **Borrar**, y si la consola hace falta, rehacerla donde se use |
+  | `ReplayJornada` (226 líneas) | Reproduce la jornada de una persona como una película: play/pausa, scrub, 1×–8×, y exporta PNG (`services/report/rutaPng`). | **No.** No hay nada equivalente vivo. | **Rescatar**: es la única con valor propio |
+
+  Los datos de las tres están vivos (leen `posiciones` y la cartera), así que ninguna depende de
+  algo que ya no se llene: es una decisión de producto, no de datos. Rescatar `ReplayJornada`
+  significa colgarla del menú "Menú" (`GestionHost`), que es el único camino vivo.
 - 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
   pueden usar el mismo código de cliente.
 - 🟠 **`firmas_ins`** sigue siendo `to authenticated` sin alcance (el bucket de firmas de entrega).

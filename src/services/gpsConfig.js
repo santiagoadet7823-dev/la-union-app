@@ -3,7 +3,19 @@
  * y useEstadoDispositivo las duplicaba de forma inconsistente (ignoraba accuracy);
  * un único origen evita que los dos vuelvan a divergir.
  */
-export const MIN_MOVE_M = 12       // metros de desplazamiento mínimos para registrar un punto (menos jitter)
+// 🩸 ESTE es el umbral que gobierna la densidad del trazo CAMINANDO, no el intervalo de captura
+// (30/07/2026). Medido sobre el 29/07 de la empresa: en la banda de 1-5 km/h el intervalo mediano
+// entre puntos GUARDADOS era de 30 s exactos — o sea STATIONARY_KEEPALIVE_MS, el latido de cortesía.
+// El motivo: a 1 km/h se recorren 4 m en 15 s, no se llega a los 12 m, el fix se descarta y el
+// próximo punto que entra es el latido. Con una cuadra por minuto eso daba 2 puntos por cuadra, que
+// es justo el número con el que NO se puede saber si pasó por esa calle o por la paralela (hacen
+// falta 3). Bajado a 9 m: caminando a 1-1,4 m/s con captura de 10 s se guarda un punto cada 9-14 m.
+//
+// NO bajar de 9 m: ahí abajo se entra en el ruido del propio GPS y el que está parado empieza a
+// dejar racimos de jitter. Lo que hoy contiene ese ruido: el filtro de precisión (ACCURACY_MAX_M),
+// `simplificarTrazo` (RDP con épsilon 7 m, que colapsa los racimos al dibujar) y el detector de
+// paradas, que trabaja con medianas. Por debajo de 9 m esas tres defensas dejan de alcanzar.
+export const MIN_MOVE_M = 9        // metros de desplazamiento mínimos para registrar un punto
 export const KEEPALIVE_MS = 90000  // reenvío de cortesía aunque no se mueva (marcador "vivo")
 // Cadencia de CAPTURA "casi en vivo" (pedido del cliente 24/07/2026): el chip adquiere a esta cadencia
 // para que, EN MOVIMIENTO, el supervisor lo vea moverse en tiempo casi real. Gobierna PRESET_QUIETO.interval
@@ -25,7 +37,12 @@ export const STATIONARY_KEEPALIVE_MS = 30000  // 30 s
 // la lenta al frenar — más puntos en las curvas/avenidas sin gastar batería parado. Estos valores viajan
 // al nativo por uploaderNativo.configurar (SharedPreferences) → afinables por OTA sin recompilar el APK.
 export const NEAR_LIVE_RAPIDO_MS = 5000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
-export const VEL_UMBRAL_MPS = 4           // ~14 km/h: por encima de esto, activar la cadencia rápida
+// 30/07/2026: bajado de 4 m/s (14 km/h) a 3 (11 km/h). La banda de 5-14 km/h —moto lenta, auto en el
+// pueblo, alguien apurado— quedaba en cadencia lenta y es donde MÁS falta densidad: son calles de
+// ciudad, con paralelas a media cuadra, o sea justo donde un trazo pobre inventa por dónde pasó. En
+// ruta (≥40 km/h) el problema no existe aunque los puntos estén lejos: son caminos largos sin otra
+// calle con la que confundirse.
+export const VEL_UMBRAL_MPS = 3           // ~11 km/h: por encima de esto, activar la cadencia rápida
 export const VEL_HIST_MS = 20000          // sostener 20 s bajo el umbral antes de volver a la cadencia lenta (anti-flapping)
 export const ACCURACY_MAX_M = 30   // fixes menos precisos que esto se descartan (jitter de interior = causa #1 de "vueltas" falsas)
 export const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un salto imposible → glitch
