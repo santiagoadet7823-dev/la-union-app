@@ -18,6 +18,15 @@
 // Comparte el secreto FCM_SERVICE_ACCOUNT con push-heartbeat; el bloque getAccessToken es el mismo,
 // deliberadamente sin refactorizar a un módulo compartido: las Edge Functions se despliegan sueltas
 // y un import relativo entre carpetas de functions es una fuente de sorpresas en el deploy.
+//
+// 🩸 SI SE INVOCA CON `net.http_post` (pg_net), PASARLE `timeout_milliseconds`. El default de pg_net
+// es 5 s y esta función tarda más: primero canjea el JWT por un access_token de Google y después
+// hace un POST por teléfono, en serie. Con 7 equipos ya se pasa. El primer intento del 29/07/2026
+// murió con "Timeout of 5000 ms reached" y quedó sin saber si había mandado o no. Con 60000 devolvió
+// {"enviados":7,"fallidos":0}.
+//
+// Reintentar es seguro: el `tag` de la notificación hace que Android REEMPLACE la anterior en vez de
+// apilar otra, así que un doble disparo se ve como un solo cartel.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 

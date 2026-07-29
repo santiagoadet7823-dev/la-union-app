@@ -194,7 +194,17 @@ cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files
 # Release OTA (solo APK; requiere gh CLI logueado y Git Bash)
 bash scripts/ota-release.sh 1.5.26
 # luego, en Supabase:
-# update public.app_config set bundle_version='1.5.26', bundle_url='<url>', updated_at=now();
+# update public.app_config set bundle_version='1.5.26', bundle_url='<url>', latest_version='1.5.26', updated_at=now();
+
+# ÚLTIMO paso del release: avisarle a los teléfonos que hay versión nueva.
+# Va DESPUÉS de que el bundle y latest_version estén arriba — si no, tocan el cartel y no hay
+# nada que bajar. La versión la lee de app_config, no se pasa por parámetro.
+#   select net.http_post(
+#     url := 'https://<proyecto>.supabase.co/functions/v1/push-actualizacion',
+#     headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer <service_role>'),
+#     timeout_milliseconds := 60000   -- ⚠️ obligatorio: el default de pg_net (5 s) no alcanza
+#   );
+# La respuesta llega a net._http_response: {"enviados":N,"fallidos":0,"omitidos":M}.
 
 # Deploy PWA (solo web)
 git push origin main           # dispara .github/workflows/deploy.yml
