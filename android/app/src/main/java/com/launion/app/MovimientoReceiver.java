@@ -39,12 +39,17 @@ public class MovimientoReceiver extends BroadcastReceiver {
         if (resultado == null) return;
 
         for (ActivityTransitionEvent evento : resultado.getTransitionEvents()) {
+            String actividad = MovimientoPlugin.nombreActividad(evento.getActivityType());
+            String transicion = MovimientoPlugin.nombreTransicion(evento.getTransitionType());
             // Si el proceso fue revivido por este broadcast puede no haber instancia del
             // plugin todavía (WebView sin arrancar): MovimientoPlugin lo descarta solo.
-            MovimientoPlugin.entregarTransicion(
-                    MovimientoPlugin.nombreActividad(evento.getActivityType()),
-                    MovimientoPlugin.nombreTransicion(evento.getTransitionType())
-            );
+            MovimientoPlugin.entregarTransicion(actividad, transicion);
+            // 🩸 02/08/2026 — el uploader NATIVO también escucha. Hasta acá estas transiciones
+            // alimentaban solo al watcher JS, que en Doze está congelado; el servicio que de verdad
+            // está capturando en la calle no se enteraba de que la persona subió a un vehículo y
+            // tenía que esperar a MEDIR la velocidad con un fix (un ciclo entero de captura tarde,
+            // que en auto es más de media cuadra dibujada como recta). Solo sube la cadencia.
+            if ("entra".equals(transicion)) UploaderGpsService.avisarActividad(actividad);
         }
     }
 }

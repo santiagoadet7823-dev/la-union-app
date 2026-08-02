@@ -65,6 +65,11 @@ public class UploaderGpsService extends Service {
     static final String K_START = "startMin";  // minuto del día de inicio (7:30 = 450). -1 = sin ventana
     static final String K_END = "endMin";      // minuto del día de fin (18:00 = 1080)
     static final String K_DIAS = "dias";        // CSV ISO "1,2,3,4,5,6" (Lun-Sáb). vacío = todos
+    // JORNADA PARTIDA (1.8.0): varias ventanas, "inicio-fin-dias;inicio-fin-dias" con los minutos del
+    // día y los días ISO por coma. Ej: "480-720-1,2,3,4,5;960-1200-1,2,3,4,5" = 8-12 y 16-20 Lun-Vie.
+    // Semántica de UNIÓN: se rastrea si CUALQUIERA aplica, así el hueco del mediodía no se rastrea.
+    // Si está vacía se usan K_START/K_END/K_DIAS (una sola ventana, como siempre).
+    static final String K_VENTANAS = "ventanas";
     // Filtro por movimiento (26/07/2026): mismos valores que el pipeline JS (gpsConfig.MIN_MOVE_M /
     // STATIONARY_KEEPALIVE_MS), los pasa el JS en configurar() → ajustables por OTA sin recompilar.
     static final String K_MIN_MOVE = "minMoveM";     // metros mínimos de desplazamiento para GUARDAR un punto
@@ -88,6 +93,37 @@ public class UploaderGpsService extends Service {
     static final String K_RED_DESDE = "redDesde";   // epoch ms desde que está en ese estado
     static final String K_APAGADO = "apagadoTs";    // epoch ms del último ACTION_SHUTDOWN (best-effort)
     static final String K_ARRANQUE = "arranqueTs";  // epoch ms del último BOOT_COMPLETED
+
+    // 🩸 DUEÑO DE LA COLA (02/08/2026) — el bug de multi-cuenta.
+    //
+    // `ingest-posiciones` saca id_usuario Y id_empresa del TOKEN, no del punto: el cliente no puede
+    // falsear a quién, pero tampoco puede corregirlo. Y la cola no guardaba de quién era cada punto,
+    // así que puntos capturados por A que se subían con el token de B quedaban atribuidos a B —
+    // en `posiciones`, que no tiene policy de UPDATE ni de DELETE. Esas filas no se arreglan.
+    //
+    // Es la regla 19/20 de CLAUDE.md, ya resuelta en la cola JS (queue.js), aplicada a un lugar que
+    // nunca la recibió. Mismo criterio: el punto que no es de la sesión actual NO SE BORRA, va a
+    // cuarentena, y vuelve solo si esa cuenta reingresa en este teléfono.
+    static final String K_DUENO = "dueno";           // id_usuario del token vigente (quién captura hoy)
+    static final String K_CUARENTENA = "cuarentena";  // JSON array de puntos de OTRA cuenta (recuperables)
+
+    // Umbrales de descarte, ahora por prefs → afinables por OTA sin recompilar (regla 22-ter). Los
+    // defaults son EXACTAMENTE los valores hardcodeados de antes, así que desplegar esto no cambia
+    // nada por sí solo. ⚠️ `accuracyMaxM` está acá para poder SUBIRLO en un modelo con GPS malo;
+    // bajarlo vacía los recorridos (regla 18).
+    static final String K_ACCURACY_MAX = "accuracyMaxM";
+    static final String K_MAX_SPEED = "maxSpeedMps";
+    static final String K_MIN_JUMP = "minJumpM";
+    static final String K_MAX_SALTOS = "maxSaltosSeguidos";
+
+    // Telemetría de descartes: sin esto no se puede saber si los huecos del trazo los hace el filtro
+    // de movimiento o el sistema operativo estrangulando los fixes. Ver los contadores en memoria.
+    static final String K_TEL_FIXES = "telFixes";
+    static final String K_TEL_PRECISION = "telDescPrecision";
+    static final String K_TEL_SALTO = "telDescSalto";
+    static final String K_TEL_MOVIMIENTO = "telDescMovimiento";
+    static final String K_TEL_GUARDADOS = "telGuardados";
+    static final String K_TEL_ULTIMO_FIX = "telUltimoFixAt";
 
     private static final String CH_ID = "uploader_gps";
     private static final int NOTIF_ID = 5190;
@@ -113,6 +149,15 @@ public class UploaderGpsService extends Service {
     private static final float MIN_JUMP_M = 9f; // = gpsConfig.MIN_MOVE_M: por debajo, la velocidad no es fiable
     private static final int MAX_SALTOS_SEGUIDOS = 3; // ver el comentario del descarte, en el callback
 
+    /**
+     * Instancia viva del servicio, para que `MovimientoReceiver` pueda avisarle una transición de
+     * Activity Recognition sin pasar por un Intent. Mismo patrón que `MovimientoPlugin.entregarTransicion`
+     * y `AlarmWatchdogPlugin.despertar()`: un `startService()` desde un receiver en background puede
+     * tirar IllegalStateException en Android 8+, y acá el servicio o ya está vivo o no hay nada que
+     * ajustar. Se limpia en onDestroy para no dejar el Service colgado.
+     */
+    private static volatile UploaderGpsService instancia = null;
+
     private FusedLocationProviderClient fused;
     private LocationCallback callback;
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
@@ -134,6 +179,30 @@ public class UploaderGpsService extends Service {
     private int saltosSeguidos = 0; // descartes consecutivos por salto imposible (ver MAX_SALTOS_SEGUIDOS)
     private boolean modoRapido = false;
     private long ultimoRapidoAt = 0L;
+
+    /**
+     * 🩸 EL FIX RETENIDO (02/08/2026) — la "línea ciega" al retomar marcha.
+     *
+     * Estando quieto solo se guarda un punto de cortesía cada keepAlive (30 s). Cuando la persona
+     * arranca, el primer punto que se guarda es el primero que superó minMove — hasta un ciclo de
+     * captura después. La recta entre el punto de cortesía y ese punto CORTA LA ESQUINA: es el trazo
+     * que cruza la manzana que se ve en el mapa.
+     *
+     * Se retiene en memoria el último fix descartado por el filtro de movimiento y se encola JUSTO
+     * ANTES del primero que sí pasa. Cuesta un Location y agrega UN punto por reanudación, exactamente
+     * en el vértice donde hoy se pierde el giro.
+     */
+    private Location fixRetenido = null;
+
+    /**
+     * Telemetría de DESCARTES. La base solo guarda los puntos que sobrevivieron, así que desde SQL no
+     * se puede distinguir "el filtro de movimiento descartó" de "el SO no entregó fixes" — y son
+     * arreglos opuestos. Medido el 02/08/2026: solo el 26,6 % de los puntos consecutivos respeta la
+     * cadencia nominal, y el 44 % cae en la franja de 13-35 s. Sin estos contadores, afinar cualquier
+     * umbral es adivinar. Los sube el latido (useEstadoDispositivo).
+     */
+    private int cFixes = 0, cDescPrecision = 0, cDescSalto = 0, cDescMovimiento = 0, cGuardados = 0;
+    private long ultimoFixAt = 0L;
 
     // Último texto pintado en la notificación. Sin esto, `nm.notify` correría en cada fix (cada 5-15 s)
     // para redibujar exactamente el mismo cartel.
@@ -158,9 +227,40 @@ public class UploaderGpsService extends Service {
 
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 
+    /**
+     * 🩸 CADENCIA POR MOVIMIENTO, NO POR VELOCIDAD MEDIDA (02/08/2026).
+     *
+     * `evaluarCadencia` sube a cadencia rápida recién cuando YA MIDIÓ un fix a ≥ velUmbral — y ese fix
+     * llega un ciclo entero después de arrancar. En auto eso es más de media cuadra dibujada como una
+     * recta, justo en el arranque, que es donde están las esquinas.
+     *
+     * El teléfono sabe que arrancó ANTES de poder medirlo: Activity Recognition lo resuelve en el
+     * coprocesador de movimiento y el permiso ya está declarado en el manifest desde siempre. Hasta
+     * ahora esas transiciones alimentaban solo al watcher JS; el uploader nativo —el que está en la
+     * calle— no las veía.
+     *
+     * Solo SUBE la cadencia. Bajarla la sigue decidiendo la velocidad real con su histéresis: si
+     * Activity Recognition se equivoca diciendo "quieto" mientras la persona anda, perder densidad
+     * sería un daño real, y de esos errores AR tiene.
+     */
+    static void avisarActividad(String actividad) {
+        UploaderGpsService s = instancia;
+        if (s == null || actividad == null) return;
+        if (!"vehiculo".equals(actividad) && !"bicicleta".equals(actividad)) return;
+        try {
+            SharedPreferences sp = s.prefs();
+            s.ultimoRapidoAt = System.currentTimeMillis();
+            if (!s.modoRapido) {
+                s.modoRapido = true;
+                s.pedirUpdates(sp.getInt(K_INTERVALO_RAPIDO, 5000));
+            }
+        } catch (Exception ignored) {}
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
+        instancia = this;
         fused = LocationServices.getFusedLocationProviderClient(this);
         crearCanal();
         try {
@@ -207,20 +307,30 @@ public class UploaderGpsService extends Service {
                 SharedPreferences sp = prefs();
                 float minMove = sp.getInt(K_MIN_MOVE, 9);         // metros; default = gpsConfig.MIN_MOVE_M (bajado de 12 el 30/07/2026)
                 long keepAlive = sp.getInt(K_KEEPALIVE, 30000);   // ms; default = STATIONARY_KEEPALIVE_MS (30 s)
+                // Umbrales de descarte: ahora por prefs (afinables por OTA, regla 22-ter) con los
+                // valores de siempre como default, así desplegar esto no cambia comportamiento.
+                // ⚠️ `accuracyMaxM` se expone para poder SUBIRLO si un modelo da fixes malos.
+                // BAJARLO vacía los recorridos (regla 18).
+                float accMax = sp.getFloat(K_ACCURACY_MAX, ACCURACY_MAX_M);
+                double velMax = sp.getFloat(K_MAX_SPEED, (float) MAX_SPEED_MPS);
+                float saltoMin = sp.getFloat(K_MIN_JUMP, MIN_JUMP_M);
+                int maxSaltos = sp.getInt(K_MAX_SALTOS, MAX_SALTOS_SEGUIDOS);
                 for (Location loc : result.getLocations()) {
+                    cFixes++;
+                    ultimoFixAt = System.currentTimeMillis();
                     // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
-                    if (loc.hasAccuracy() && loc.getAccuracy() > ACCURACY_MAX_M) continue;
+                    if (loc.hasAccuracy() && loc.getAccuracy() > accMax) { cDescPrecision++; continue; }
                     long now = System.currentTimeMillis();
                     // Salto imposible → glitch del chip. Se compara contra el último fix CRUDO bueno
                     // (no contra el último guardado): el filtro por movimiento descarta puntos a
                     // propósito y usar su referencia daría dt enormes que hacen pasar cualquier salto.
                     // Se descarta el fix ENTERO: no actualiza la referencia ni la cadencia, así que un
                     // punto malo no puede arrastrar al que le sigue.
-                    if (tieneFix && saltosSeguidos < MAX_SALTOS_SEGUIDOS) {
+                    if (tieneFix && saltosSeguidos < maxSaltos) {
                         long dtMs = loc.getTime() - lastFixTime;
                         if (dtMs > 0) {
                             double d = haversine(lastFixLat, lastFixLng, loc.getLatitude(), loc.getLongitude());
-                            if (d > MIN_JUMP_M && d / (dtMs / 1000.0) > MAX_SPEED_MPS) { saltosSeguidos++; continue; }
+                            if (d > saltoMin && d / (dtMs / 1000.0) > velMax) { saltosSeguidos++; cDescSalto++; continue; }
                         }
                     }
                     // Si se descartaron MAX_SALTOS_SEGUIDOS seguidos, el sospechoso es la REFERENCIA, no
@@ -241,12 +351,31 @@ public class UploaderGpsService extends Service {
                     // trazo en movimiento. La CAPTURA sigue a intervaloMs (marcador fluido moviéndose).
                     boolean movio = !tieneLast || haversine(lastLat, lastLng, loc.getLatitude(), loc.getLongitude()) >= minMove;
                     boolean vivo = tieneLast && (now - lastSentAt) >= keepAlive;
-                    if (!movio && !vivo) continue;
+                    if (!movio && !vivo) {
+                        // No se guarda, pero SE RETIENE: si el próximo fix sí se mueve, este es el
+                        // último lugar donde de verdad estuvo antes de arrancar. Ver `fixRetenido`.
+                        cDescMovimiento++;
+                        fixRetenido = loc;
+                        continue;
+                    }
+                    // 🩸 Cerrar la línea ciega: si veníamos de descartar por quietud, encolar primero
+                    // el último fix retenido. Sin esto, la recta va del punto de cortesía (de hasta 30 s
+                    // antes) hasta acá, y en ese tramo la persona ya arrancó y dobló — por eso el trazo
+                    // cruzaba la manzana en vez de seguir la calle.
+                    //
+                    // Solo cuando MOVIÓ: en un keepAlive estando quieto el retenido está en el mismo
+                    // lugar y sería un punto duplicado por nada.
+                    if (movio && fixRetenido != null) {
+                        encolar(fixRetenido);
+                        cGuardados++;
+                    }
+                    fixRetenido = null;
                     lastLat = loc.getLatitude();
                     lastLng = loc.getLongitude();
                     lastSentAt = now;
                     tieneLast = true;
                     encolar(loc);
+                    cGuardados++;
                 }
                 subir();
                 // El contador de "puntos en espera" tiene que moverse aunque no haya red para
@@ -323,6 +452,11 @@ public class UploaderGpsService extends Service {
             int bat = nivelBateria();                   // % de batería (nativo, no depende del WebView)
             if (bat >= 0) p.put("bateria", bat);
             p.put("client_uid", UUID.randomUUID().toString()); // client_uid es uuid en `posiciones`
+            // De quién es este punto. Se estampa al CAPTURAR, no al subir: al subir ya es tarde, el
+            // token puede ser de otra cuenta. Sin esto, cambiar de sesión con la cola llena manda los
+            // puntos de una persona a nombre de otra (ver el comentario de K_DUENO).
+            String dueno = sp.getString(K_DUENO, null);
+            if (dueno != null) p.put("dueno", dueno);
             cola.put(p);
             while (cola.length() > MAX_COLA) cola.remove(0); // descartar los más viejos si desbordó
             sp.edit().putString(K_COLA, cola.toString()).apply();
@@ -349,11 +483,100 @@ public class UploaderGpsService extends Service {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * 🩸 Saca de la cola todo punto que NO sea de la sesión actual y lo manda a CUARENTENA.
+     * Corre antes de cada subida, que es el único momento en que importa: es ahí donde un punto
+     * ajeno se convertiría en una fila falsa e incorregible en `posiciones`.
+     *
+     * NO BORRA NADA (regla 20: el bundle 1.5.26 borró 264 puntos reales por hacer exactamente eso).
+     * Los apartados vuelven solos con `reclamarCuarentena()` si esa cuenta reingresa en el teléfono.
+     *
+     * Los puntos SIN `dueno` son los que quedaron encolados por un APK anterior a 1.8.0, que no
+     * estampaba dueño. No se pueden atribuir a nadie con certeza, así que también van a cuarentena:
+     * son a lo sumo los que estaban sin subir en el instante de la actualización, quedan contados en
+     * `estado()` y son recuperables. Adivinar acá es exactamente el error que estamos arreglando.
+     *
+     * @return cuántos puntos se apartaron.
+     */
+    static synchronized int apartarAjenos(Context ctx, String dueno) {
+        // Sin dueño conocido NO se mueve nada. Si esto apartara con `dueno == null` mandaría la cola
+        // ENTERA a cuarentena de un usuario que está trabajando bien — el remedio sería peor que la
+        // enfermedad. Ante la duda sobre a quién pertenece un punto, no tocarlo.
+        if (dueno == null) return 0;
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            JSONArray cola = new JSONArray(sp.getString(K_COLA, "[]"));
+            if (cola.length() == 0) return 0;
+            JSONArray mios = new JSONArray();
+            JSONArray ajenos = new JSONArray();
+            for (int i = 0; i < cola.length(); i++) {
+                JSONObject p = cola.optJSONObject(i);
+                if (p == null) continue;
+                // `isNull` cubre ausente Y null de JSON: optString(name, null) sola devuelve "null"
+                // (el string) cuando el valor es un null de JSON, y ahí la comparación fallaría.
+                String d = p.isNull("dueno") ? null : p.optString("dueno", null);
+                if (dueno.equals(d)) mios.put(p); else ajenos.put(p);
+            }
+            if (ajenos.length() == 0) return 0;
+            JSONArray cuar = new JSONArray(sp.getString(K_CUARENTENA, "[]"));
+            for (int i = 0; i < ajenos.length(); i++) cuar.put(ajenos.get(i));
+            sp.edit()
+                .putString(K_COLA, mios.toString())
+                .putString(K_CUARENTENA, cuar.toString())
+                .apply();
+            return ajenos.length();
+        } catch (Exception ignored) { return 0; }
+    }
+
+    /**
+     * Cambio de cuenta en el mismo teléfono, en una sola operación idempotente: aparta lo que no es
+     * del dueño nuevo y le devuelve lo que sí es suyo de cuarentena. Se llama al configurar (login) y
+     * es seguro llamarla de más.
+     */
+    static void cambiarDueno(Context ctx, String nuevoDueno) {
+        apartarAjenos(ctx, nuevoDueno);
+        reclamarCuarentena(ctx, nuevoDueno);
+    }
+
+    /**
+     * Devuelve a la cola los puntos en cuarentena que SÍ son de este dueño. Es lo que hace que
+     * cambiar de cuenta y volver no pierda nada: los puntos esperan y se suben cuando vuelve su
+     * dueño. Espejo de `separarPorDueño()` en la cola JS.
+     */
+    static synchronized int reclamarCuarentena(Context ctx, String dueno) {
+        if (dueno == null) return 0;
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            JSONArray cuar = new JSONArray(sp.getString(K_CUARENTENA, "[]"));
+            if (cuar.length() == 0) return 0;
+            JSONArray vuelven = new JSONArray();
+            JSONArray quedan = new JSONArray();
+            for (int i = 0; i < cuar.length(); i++) {
+                JSONObject p = cuar.optJSONObject(i);
+                if (p == null) continue;
+                String d = p.isNull("dueno") ? null : p.optString("dueno", null);
+                if (dueno.equals(d)) vuelven.put(p); else quedan.put(p);
+            }
+            if (vuelven.length() == 0) return 0;
+            JSONArray cola = new JSONArray(sp.getString(K_COLA, "[]"));
+            for (int i = 0; i < vuelven.length(); i++) cola.put(vuelven.get(i));
+            sp.edit()
+                .putString(K_COLA, cola.toString())
+                .putString(K_CUARENTENA, quedan.toString())
+                .apply();
+            return vuelven.length();
+        } catch (Exception ignored) { return 0; }
+    }
+
     private void subirLote() throws Exception {
         SharedPreferences sp = prefs();
         String token = sp.getString(K_TOKEN, null);
         String url = sp.getString(K_URL, null);
         if (token == null || url == null) return;
+        // Antes de mandar nada: apartar lo que no sea de esta sesión. El token manda la identidad en
+        // el servidor, así que un punto ajeno acá se vuelve una fila falsa que después no se puede
+        // corregir ni borrar.
+        apartarAjenos(this, sp.getString(K_DUENO, null));
         JSONArray cola = leerCola();
         if (cola.length() == 0) return;
         int lote = Math.min(cola.length(), LOTE);
@@ -376,7 +599,18 @@ public class UploaderGpsService extends Service {
             int code = con.getResponseCode();
             if (code >= 200 && code < 300) {
                 quitarPrimeros(lote);
-                sp.edit().putLong(K_ULTIMA, System.currentTimeMillis()).apply();
+                // Los contadores viajan con esta misma escritura: cero writes extra. Entre subidas
+                // quedan levemente atrasados, y no importa — el latido los lee cada 2 min y las
+                // subidas pasan cada 5-10 s cuando hay red.
+                sp.edit()
+                    .putLong(K_ULTIMA, System.currentTimeMillis())
+                    .putInt(K_TEL_FIXES, cFixes)
+                    .putInt(K_TEL_PRECISION, cDescPrecision)
+                    .putInt(K_TEL_SALTO, cDescSalto)
+                    .putInt(K_TEL_MOVIMIENTO, cDescMovimiento)
+                    .putInt(K_TEL_GUARDADOS, cGuardados)
+                    .putLong(K_TEL_ULTIMO_FIX, ultimoFixAt)
+                    .apply();
                 // Subió: la red está bien. Si veníamos de 'sin-red'/'avion', esto es lo que cierra
                 // el período y deja el `red_desde` listo para que el latido lo suba.
                 anotarRed("ok");
@@ -516,15 +750,39 @@ public class UploaderGpsService extends Service {
      */
     private boolean dentroDeVentana() {
         SharedPreferences sp = prefs();
-        int start = sp.getInt(K_START, -1);
-        int end = sp.getInt(K_END, -1);
-        if (start < 0 || end < 0) return true; // sin ventana configurada → siempre
         java.util.Calendar c = java.util.Calendar.getInstance(); // zona horaria local del dispositivo
         int cur = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE);
         // Día ISO: Calendar.DAY_OF_WEEK es 1=Dom..7=Sáb → convertir a 1=Lun..7=Dom.
         int dow = c.get(java.util.Calendar.DAY_OF_WEEK); // 1=Dom
         int iso = dow == java.util.Calendar.SUNDAY ? 7 : dow - 1;
-        String dias = sp.getString(K_DIAS, "");
+
+        // Jornada partida (1.8.0): varias ventanas con semántica de UNIÓN. Si el JS no la mandó
+        // (APK nuevo + bundle viejo), se cae a la ventana única de siempre.
+        String ventanas = sp.getString(K_VENTANAS, "");
+        if (ventanas != null && !ventanas.isEmpty()) {
+            for (String v : ventanas.split(";")) {
+                // "inicio-fin-dias" — los días pueden venir vacíos (= todos) y llevan comas adentro,
+                // así que se parte en 3 como máximo.
+                String[] p = v.split("-", 3);
+                if (p.length < 2) continue;
+                try {
+                    int s = Integer.parseInt(p[0].trim());
+                    int e = Integer.parseInt(p[1].trim());
+                    if (s < 0 || e < 0) continue;
+                    if (aplicaVentana(s, e, p.length > 2 ? p[2] : "", cur, iso)) return true;
+                } catch (Exception ignored) {}
+            }
+            return false;
+        }
+
+        int start = sp.getInt(K_START, -1);
+        int end = sp.getInt(K_END, -1);
+        if (start < 0 || end < 0) return true; // sin ventana configurada → siempre
+        return aplicaVentana(start, end, sp.getString(K_DIAS, ""), cur, iso);
+    }
+
+    /** ¿El minuto `cur` del día ISO `iso` cae en la ventana [start, end] con esos días? */
+    private static boolean aplicaVentana(int start, int end, String dias, int cur, int iso) {
         if (dias != null && !dias.isEmpty()) {
             boolean hoy = false;
             for (String d : dias.split(",")) {
@@ -532,6 +790,7 @@ public class UploaderGpsService extends Service {
             }
             if (!hoy) return false;
         }
+        // start > end = ventana que cruza la medianoche ('22:00'–'06:00').
         return start <= end ? (cur >= start && cur <= end) : (cur >= start || cur <= end);
     }
 
@@ -585,6 +844,21 @@ public class UploaderGpsService extends Service {
             try { unregisterReceiver(apagadoRx); } catch (Exception ignored) {}
             apagadoRxRegistrado = false;
         }
+        // Volcar los contadores antes de morir: si el SO mata el servicio, esta es la única foto que
+        // queda de cuántos fixes llegaron y cuántos se descartaron, y es justo el caso que interesa
+        // diagnosticar. `commit()` y no `apply()`: apply() es asíncrono y acá se está terminando.
+        try {
+            prefs().edit()
+                .putInt(K_TEL_FIXES, cFixes)
+                .putInt(K_TEL_PRECISION, cDescPrecision)
+                .putInt(K_TEL_SALTO, cDescSalto)
+                .putInt(K_TEL_MOVIMIENTO, cDescMovimiento)
+                .putInt(K_TEL_GUARDADOS, cGuardados)
+                .putLong(K_TEL_ULTIMO_FIX, ultimoFixAt)
+                .commit();
+        } catch (Exception ignored) {}
+        // Soltar la referencia estática: sin esto queda un Service muerto retenido para siempre.
+        if (instancia == this) instancia = null;
         super.onDestroy();
     }
 }

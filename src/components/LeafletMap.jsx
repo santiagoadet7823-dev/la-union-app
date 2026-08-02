@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { obtenerRutaMulti, obtenerRutaOptimaTSP } from '../services/routing'
 import { CENTRO_DEFECTO } from '../services/maps'
 import { usableBasemaps, getBasemap, setBasemap, basemapById, onBasemapChange } from '../services/maps/basemap'
+import { crearAnimadorPines } from '../features/supervision/animarPin'
 
 /**
  * Mapa real con Leaflet + tiles CARTO (OSM) y ruteo por calles vía OSRM.
@@ -241,7 +242,10 @@ function firmaMarkers(ms) {
   for (const m of ms) {
     s += firmaPunto(m) + ':' + (m.label || '') + ':' + (m.color || '') + ':' + (m.labelColor || '') +
          ':' + (m.title || '') + ':' + (m.selected ? 1 : 0) + ':' + (m.bubble ? 1 : 0) +
-         ':' + (m.foto || '') + ':' + (m.ts || '') + '|'
+         // `id`: sin él, dos personas que intercambian posición en la lista dan la misma firma y el
+         // mapa no redibuja — con marcadores persistentes eso dejaría la burbuja en la persona
+         // equivocada, no solo un pin desactualizado.
+         ':' + (m.id || '') + ':' + (m.foto || '') + ':' + (m.ts || '') + '|'
   }
   return s
 }
@@ -251,7 +255,7 @@ function firmaMovers(ms) {
   let s = ''
   for (const m of ms) {
     s += firmaPunto(m) + ':' + (m.rol || '') + ':' + (m.color || '') + ':' + (m.iniciales || '') +
-         ':' + (m.nombre || '') + ':' + (m.foto || '') + ':' + (m.ts || '') + ':' + (m.selected ? 1 : 0) + '|'
+         ':' + (m.id || '') + ':' + (m.nombre || '') + ':' + (m.foto || '') + ':' + (m.ts || '') + ':' + (m.selected ? 1 : 0) + '|'
   }
   return s
 }
@@ -327,6 +331,9 @@ export default function LeafletMap({
   // `flyTo`/`panTo` disparan `movestart` y `zoomstart` por su cuenta, así que escuchar cualquiera
   // de esos dos haría que el seguimiento se apagara solo en el primer vuelo. Arrastrar, en cambio,
   // siempre lo hace un dedo.
+  // `{ id, lat, lng, ts }`. El `id` no es decorativo: con él, la cámara la lleva la animación del
+  // pin frame a frame en vez de panear por su cuenta (si no, cámara y pin llegan en momentos
+  // distintos y se ve un tironeo). Sin `id` sigue funcionando el paneo de siempre.
   seguir = null,
   onSeguirCancelado,
   liveColor = null,
@@ -379,6 +386,16 @@ export default function LeafletMap({
   mapClickRef.current = onMapClick
   const seguirFinRef = useRef(onSeguirCancelado)
   seguirFinRef.current = onSeguirCancelado
+  // Pines en vivo que PERSISTEN entre refrescos: id → { marker, firmaIcono, lat, lng, ts }.
+  // Es la condición para poder animarlos; ver el efecto de pines y features/supervision/animarPin.js.
+  const pinesLayerRef = useRef(null)
+  const pinesRef = useRef(new Map())
+  const animadorRef = useRef(null)
+  if (!animadorRef.current) animadorRef.current = crearAnimadorPines()
+  // A quién está siguiendo la cámara, por ref: el efecto de pines lo lee dentro del callback de
+  // animación y no puede depender de él (re-suscribiría en cada posición).
+  const seguirIdRef = useRef(null)
+  seguirIdRef.current = seguir?.id || null
 
   // Init único.
   useEffect(() => {
@@ -425,6 +442,9 @@ export default function LeafletMap({
     staticLayerRef.current = L.layerGroup().addTo(map)
     trailsLayerRef.current = L.layerGroup().addTo(map)
     moversLayerRef.current = L.layerGroup().addTo(map)
+    // Capa de PINES EN VIVO, separada de la de móviles porque sus marcadores NO se recrean: son
+    // los únicos que sobreviven entre refrescos para poder animarse (ver el efecto más abajo).
+    pinesLayerRef.current = L.layerGroup().addTo(map)
     // Los carteles de permanencia van a su propio pane ('luDwells', z 450), así que su lugar en
     // este orden no cambia nada: el grupo existe solo para poder vaciarlos por separado.
     dwellsLayerRef.current = L.layerGroup().addTo(map)
@@ -460,6 +480,10 @@ export default function LeafletMap({
       window.removeEventListener('resize', onResize)
       if (pendiente) cancelAnimationFrame(pendiente)
       if (ro) ro.disconnect()
+      // Cortar los rAF de los pines ANTES de destruir el mapa: si no, el siguiente frame llamaría
+      // setLatLng sobre marcadores de un mapa que ya no existe.
+      animadorRef.current?.cancelarTodo()
+      pinesRef.current.clear()
       map.remove()
       mapRef.current = null
     }
@@ -583,8 +607,10 @@ export default function LeafletMap({
     layer.clearLayers()
 
     markers.forEach((mk, i) => {
-      // Los marcadores de PERSONA (móviles en vivo) van como burbuja de perfil (opt-in con
-      // `bubble`); el resto (pines de cliente/paradas) sigue con el pin de gota de siempre.
+      // Las burbujas CON `id` las maneja el efecto de pines vivos (persisten y se animan). Acá
+      // quedan los pines de cliente/parada y cualquier burbuja sin identidad, que son estáticos y
+      // no ganan nada con sobrevivir al refresco.
+      if (mk.bubble && mk.id) return
       const icon = mk.bubble
         ? bubbleIcon({ foto: mk.foto, iniciales: mk.label, color: mk.color, nombre: mk.title, ts: mk.ts, selected: mk.selected })
         : pinIcon(mk.color, mk.label, mk.labelColor, mk.selected)
@@ -596,12 +622,101 @@ export default function LeafletMap({
     // Movers = personas en vivo (vendedor/repartidor) que el Admin sigue. Cada uno
     // con su color propio (mv.color) para diferenciarlos; si no viene, por rol.
     movers.forEach((mv) => {
+      if (mv.id) return // idem: los que tienen identidad viven en la capa de pines
       const color = mv.color || (mv.rol === 'repartidor'
         ? (theme === 'dark' ? '#FBBF24' : '#F59E0B')
         : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
       // Burbuja de perfil (Life360): foto o iniciales, ancla al punto, frescura por ts.
       const icon = bubbleIcon({ foto: mv.foto, iniciales: mv.iniciales, color, nombre: mv.nombre, ts: mv.ts, selected: mv.selected })
       L.marker([mv.lat, mv.lng], { icon }).addTo(layer)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kMarkers, kMovers, theme])
+
+  /* ---- Capa de PINES EN VIVO: los únicos marcadores que NO se recrean --------------------------
+   *
+   * 🩸 02/08/2026. La capa de arriba hace `clearLayers()` y vuelve a construir todos los marcadores
+   * con cada posición que llega por Realtime. Eso hacía imposible animar el seguimiento: el pin de
+   * antes se destruía y el nuevo nacía ya en el destino, así que la persona "saltaba" de A a B. No
+   * era un problema de duración de la animación — era que no había ningún objeto moviéndose.
+   *
+   * Acá cada persona tiene UN marcador que vive mientras esté en pantalla. Al llegar una posición
+   * nueva se le pide al animador que lo lleve hasta ahí, pegado a las calles (ver animarPin.js).
+   *
+   * El ícono se rehace SOLO si cambió algo que se ve. En particular NO depende del `ts` exacto —
+   * cambia con cada latido— sino del bucket de frescura que ya calcula `frescura()`: si dependiera
+   * del ts, el ícono se reconstruiría en cada posición y estaríamos otra vez recreando el DOM que
+   * este efecto existe para conservar.
+   */
+  useEffect(() => {
+    const layer = pinesLayerRef.current
+    const map = mapRef.current
+    if (!layer || !map) return
+
+    const vivos = []
+    ;(markers || []).forEach((mk, i) => {
+      if (mk.bubble && mk.id) vivos.push({ ...mk, iniciales: mk.label, nombre: mk.title, indice: i })
+    })
+    ;(movers || []).forEach((mv) => {
+      if (!mv.id) return
+      const color = mv.color || (mv.rol === 'repartidor'
+        ? (theme === 'dark' ? '#FBBF24' : '#F59E0B')
+        : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
+      vivos.push({ ...mv, color, indice: null })
+    })
+
+    const pines = pinesRef.current
+    const presentes = new Set()
+
+    vivos.forEach((v) => {
+      presentes.add(v.id)
+      const fr = frescura(v.ts)
+      const firma = [v.foto || '', v.iniciales || '', v.color || '', v.nombre || '', v.selected ? 1 : 0, fr.color, fr.dim ? 1 : 0].join('|')
+      let pin = pines.get(v.id)
+
+      if (!pin) {
+        const icon = bubbleIcon({ foto: v.foto, iniciales: v.iniciales, color: v.color, nombre: v.nombre, ts: v.ts, selected: v.selected })
+        const m = L.marker([v.lat, v.lng], { icon, title: v.nombre || '' })
+        m.addTo(layer)
+        pin = { marker: m, firma, indice: v.indice }
+        pines.set(v.id, pin)
+      } else {
+        if (pin.firma !== firma) {
+          pin.marker.setIcon(bubbleIcon({ foto: v.foto, iniciales: v.iniciales, color: v.color, nombre: v.nombre, ts: v.ts, selected: v.selected }))
+          pin.firma = firma
+        }
+        // La posición SÍ cambió → animar. `duracionMs` sale del tiempo real entre esta posición y
+        // la anterior: así el pin tarda en cruzar el tramo más o menos lo que tardó la persona, en
+        // vez de correr siempre a la misma velocidad inventada.
+        const actual = pin.marker.getLatLng()
+        if (actual.lat !== v.lat || actual.lng !== v.lng) {
+          const dt = pin.ts && v.ts ? v.ts - pin.ts : 0
+          animadorRef.current.mover(v.id, pin.marker, [v.lat, v.lng], {
+            duracionMs: dt > 0 ? dt : undefined,
+            // La cámara se mueve EN EL MISMO FRAME que el pin. Con `panTo` de Leaflet por fuera
+            // habría dos animaciones compitiendo (la suya y la nuestra) y se ve como un tironeo;
+            // acá la cámara no anima, simplemente está donde está el pin.
+            alFrame: seguirIdRef.current === v.id
+              ? (p) => { try { map.panTo(p, { animate: false }) } catch (_) {} }
+              : undefined,
+          })
+        }
+      }
+      pin.indice = v.indice
+      pin.ts = v.ts
+      // El click se re-cablea porque el índice dentro de `markers` puede cambiar entre refrescos
+      // aunque el marcador sea el mismo objeto.
+      pin.marker.off('click')
+      if (pin.indice != null) pin.marker.on('click', () => clickRef.current?.(pin.indice))
+    })
+
+    // Los que ya no están (cambió el filtro, el día o la empresa): sacar el marcador y cortar su
+    // animación, si no el rAF seguiría corriendo sobre un marcador huérfano.
+    Array.from(pines.keys()).forEach((id) => {
+      if (presentes.has(id)) return
+      animadorRef.current.cancelar(id)
+      try { layer.removeLayer(pines.get(id).marker) } catch (_) {}
+      pines.delete(id)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kMarkers, kMovers, theme])
@@ -737,8 +852,14 @@ export default function LeafletMap({
     if (!map || !seguir || seguir.lat == null || seguir.lng == null) return
     const destino = [seguir.lat, seguir.lng]
     const z = map.getZoom() || zoom
-    if (z < 16) map.flyTo(destino, 16, { duration: 0.6 })
-    else map.panTo(destino, { animate: true, duration: 0.6 })
+    if (z < 16) { map.flyTo(destino, 16, { duration: 0.6 }); return }
+    // 🩸 Ya acercada, la cámara la lleva la ANIMACIÓN del pin, frame a frame (`alFrame` en el efecto
+    // de pines vivos). Si además paneáramos acá, habría dos animaciones hacia el mismo destino con
+    // curvas y duraciones distintas: la cámara llegaría antes que el pin y se vería el tironeo que
+    // este rediseño vino a sacar. Solo se panea cuando NO hay un pin animando a esa persona —
+    // ubicaciones compartidas de otra empresa, o un `seguir` sin id.
+    if (seguir.id && pinesRef.current.has(seguir.id)) return
+    map.panTo(destino, { animate: true, duration: 0.6 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seguir && seguir.lat, seguir && seguir.lng])
 

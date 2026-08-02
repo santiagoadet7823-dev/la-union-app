@@ -46,3 +46,7 @@ export const VEL_UMBRAL_MPS = 3           // ~11 km/h: por encima de esto, activ
 export const VEL_HIST_MS = 20000          // sostener 20 s bajo el umbral antes de volver a la cadencia lenta (anti-flapping)
 export const ACCURACY_MAX_M = 30   // fixes menos precisos que esto se descartan (jitter de interior = causa #1 de "vueltas" falsas)
 export const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un salto imposible → glitch
+// Cuántos fixes seguidos se pueden descartar por "salto imposible" antes de sospechar de la REFERENCIA
+// en vez de los fixes nuevos. Pasa cuando el primer fix tras arrancar el servicio es el malo: sin este
+// tope, ese único punto podría descartar la jornada entera.
+export const MAX_SALTOS_SEGUIDOS = 3

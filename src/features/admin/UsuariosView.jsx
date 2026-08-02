@@ -8,6 +8,7 @@ import { Field, inputStyle } from '../../components/form'
 import { panel, FilaTabla, CabeceraTabla } from './ui'
 import { PALETA, colorPorId } from '../../lib/colors'
 import { invalidarPerfilesEquipo } from '../../hooks/usePerfilesEquipo'
+import { invalidarTrackCache } from '../../services/tracking'
 
 /**
  * Gestión de usuarios (RBAC). El admin ve a los usuarios de su empresa + los
@@ -53,11 +54,27 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
   const esTrackeado = ['vendedor', 'repartidor', 'encargado'].includes(rolEfectivo)
   const empresaEfectiva = ed.id_empresa || u.id_empresa
   const catsEmpresa = (categorias || []).filter((c) => !empresaEfectiva || !c.id_empresa || c.id_empresa === empresaEfectiva)
+  // VARIAS categorías por persona (1.8.0), con semántica de UNIÓN: se rastrea si cualquiera aplica.
+  // Es lo que permite una jornada partida (8-12 y 16-20) sin rastrear el hueco del mediodía. Ninguna
+  // marcada = horario global. Se dibuja con casillas y no con un <select multiple>: en un teléfono
+  // el multiple es prácticamente inoperable (hay que saber que se mantiene apretado para sumar).
+  const catsSel = ed.categorias ?? (u.categorias || [])
   const selCategoria = esTrackeado && catsEmpresa.length > 0 ? (
-    <select value={ed.id_categoria_rastreo ?? (u.id_categoria_rastreo || '')} onChange={(e) => setEdit(u.id, { id_categoria_rastreo: e.target.value })} style={{ ...selectStyle, marginTop: 4 }} className="lu-input" title="Horario de rastreo particular (vacío = horario global)">
-      <option value="">Horario global</option>
-      {catsEmpresa.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-    </select>
+    <div style={sx('margin-top:4px;display:flex;flex-direction:column;gap:3px')} title="Horarios de rastreo propios. Ninguno marcado = horario global.">
+      {catsEmpresa.map((c) => (
+        <label key={c.id} style={sx('display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer')}>
+          <input
+            type="checkbox"
+            checked={catsSel.includes(c.id)}
+            onChange={(e) => setEdit(u.id, {
+              categorias: e.target.checked ? [...catsSel, c.id] : catsSel.filter((x) => x !== c.id),
+            })}
+          />
+          {c.nombre}
+        </label>
+      ))}
+      {!catsSel.length && <span style={sx('font-size:10px;color:var(--muted);opacity:.8')}>Sin marcar: usa el horario global</span>}
+    </div>
   ) : null
   // Permisos EXTRA, además del rol. Se muestran solo para los roles que NO los tienen ya por su
   // rol (admin/encargado/superadmin editan catálogo de por sí): ofrecerle "puede editar catálogo"
@@ -345,7 +362,12 @@ export default function UsuariosView({ onToast }) {
       .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo, permisos')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
-    setUsuarios(data || [])
+    // Categorías asignadas a cada uno (tabla puente, 1.8.0). Se traen todas de una y se agrupan:
+    // una consulta por usuario sería N+1 en una pantalla que lista el plantel entero.
+    const { data: asig } = await supabase.from('perfiles_categorias_rastreo').select('id_usuario, id_categoria')
+    const porUsuario = {}
+    ;(asig || []).forEach((a) => { (porUsuario[a.id_usuario] ||= []).push(a.id_categoria) })
+    setUsuarios((data || []).map((u) => ({ ...u, categorias: porUsuario[u.id] || [] })))
     if (esSuper) {
       const { data: emps } = await supabase.from('empresas').select('id, nombre').order('nombre')
       setEmpresas(emps || [])
@@ -373,8 +395,10 @@ export default function UsuariosView({ onToast }) {
     if (!nuevoRol) { onToast?.('Elegí un rol antes de aprobar'); return }
     if (!nuevaEmpresa) { onToast?.('Falta asignar la empresa'); return }
     const nuevoNumero = ed.numero != null && ed.numero !== '' ? Number(ed.numero) : (u.numero ?? null)
-    // Categoría de rastreo (Feature D): '' → null (horario global). undefined en el buffer = sin cambio.
-    const nuevaCat = ed.id_categoria_rastreo !== undefined ? (ed.id_categoria_rastreo || null) : (u.id_categoria_rastreo ?? null)
+    // Categorías de rastreo. Desde 1.8.0 son VARIAS y viven en la tabla puente; `id_categoria_rastreo`
+    // se sigue escribiendo con la primera SOLO por compatibilidad con lecturas viejas que aún la miran.
+    const nuevasCats = ed.categorias ?? (u.categorias || [])
+    const nuevaCat = nuevasCats.length ? nuevasCats[0] : null
     // Permisos extra. Si el rol nuevo ya edita catálogo por sí mismo, se limpia el permiso: dejarlo
     // guardado sería una promesa muda para el día en que a esa persona la bajen a vendedor.
     const yaEdita = ['admin', 'encargado', 'superadmin'].includes(nuevoRol)
@@ -384,8 +408,22 @@ export default function UsuariosView({ onToast }) {
       .from('perfiles')
       .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero, id_categoria_rastreo: nuevaCat, permisos: nuevosPermisos })
       .eq('id', u.id)
+    if (error) { setSavingId(null); onToast?.('Error: ' + error.message); return }
+    // Sincronizar la tabla puente: borrar lo que se destildó, insertar lo que se marcó. Se hace
+    // DESPUÉS del update del perfil y solo si ese salió bien — si no, un fallo a mitad dejaría el rol
+    // sin cambiar pero los horarios sí.
+    const previas = u.categorias || []
+    const quitar = previas.filter((id) => !nuevasCats.includes(id))
+    const agregar = nuevasCats.filter((id) => !previas.includes(id))
+    if (quitar.length) {
+      await supabase.from('perfiles_categorias_rastreo').delete().eq('id_usuario', u.id).in('id_categoria', quitar)
+    }
+    if (agregar.length) {
+      await supabase.from('perfiles_categorias_rastreo').insert(agregar.map((id) => ({ id_usuario: u.id, id_categoria: id })))
+    }
+    // El teléfono cachea su ventana 4 min; sin esto, un cambio de horario tardaría en aplicarse.
+    invalidarTrackCache()
     setSavingId(null)
-    if (error) { onToast?.('Error: ' + error.message); return }
     onToast?.(`${u.nombre || u.email} habilitado como ${nuevoRol}`)
     cargar()
   }

@@ -1,9 +1,8 @@
 import { registerPlugin } from '@capacitor/core'
 import { isNative } from './platform'
 import { supabase } from './supabase'
-import { getTrackConfig } from './tracking'
 import { setUploaderNativo } from './geolocation/tracker'
-import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS } from './gpsConfig'
+import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS, ACCURACY_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS } from './gpsConfig'
 
 /**
  * Bridge al uploader GPS NATIVO (Opción B, 24/07/2026). El servicio nativo (UploaderGpsService) captura
@@ -51,7 +50,7 @@ function aMinutos(hhmm) {
  * que está en la calle) la ignoraba: bajar NEAR_LIVE_MS no hacía absolutamente nada. Los dos únicos
  * llamadores no pasan la opción, así que el default ES el valor real de producción.
  */
-export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIVE_MS } = {}) {
+export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIVE_MS, userId = null } = {}) {
   if (!isNative() || !INGEST_URL) return
   try {
     if (!tokenCache) {
@@ -59,18 +58,45 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       if (error || !token) return // sin token no se puede autenticar el POST nativo
       tokenCache = token
     }
+    // Dueño de los puntos de esta sesión. Se lee de la sesión viva y no del parámetro cuando este no
+    // viene, para que NUNCA pueda quedar desfasado del token: los dos salen del mismo usuario.
+    let dueno = userId
+    if (!dueno) {
+      const { data } = await supabase.auth.getSession()
+      dueno = data?.session?.user?.id || null
+    }
     // Ventana horaria (misma config que el JS): el servicio nativo la chequea solo, sin depender del WebView.
-    const c = cfg || await getTrackConfig().catch(() => null)
-    const startMin = c ? aMinutos(c.start) : -1
-    const endMin = c ? aMinutos(c.end) : -1
-    const dias = c && Array.isArray(c.days) && c.days.length ? c.days.join(',') : ''
+    //
+    // 🩸 SIN fallback a `getTrackConfig()` sin userId (02/08/2026). Ese fallback devolvía el horario
+    // GLOBAL, y como esto se escribe en las prefs, el servicio nativo quedaba corriendo con la ventana
+    // general aunque la persona tuviera una categoría de rastreo propia: la categoría quedaba CAPADA
+    // por el horario general. Pasaba en cada arranque en frío, porque el llamador todavía no tenía la
+    // config cargada. Si no hay config del usuario, NO se empuja ventana — se espera a tenerla.
+    const c = cfg
+    if (!c) return
+    const startMin = aMinutos(c.start)
+    const endMin = aMinutos(c.end)
+    const dias = Array.isArray(c.days) && c.days.length ? c.days.join(',') : ''
+    // Jornada partida (1.8.0): todas las ventanas en una sola cadena `inicio-fin-dias;inicio-fin-dias`,
+    // con los días separados por coma. El nativo la parsea y aplica la UNIÓN. Se manda además de
+    // startMin/endMin/dias, que quedan como la primera ventana: un APK viejo ignora esta clave y
+    // sigue funcionando con una sola ventana en vez de romperse.
+    const vs = Array.isArray(c.ventanas) && c.ventanas.length ? c.ventanas : [c]
+    const ventanas = vs
+      .map((v) => `${aMinutos(v.start)}-${aMinutos(v.end)}-${Array.isArray(v.days) && v.days.length ? v.days.join(',') : ''}`)
+      .join(';')
     await UploaderGps.configurar({
-      token: tokenCache, url: INGEST_URL, intervaloMs,
-      startMin, endMin, dias,
+      token: tokenCache, url: INGEST_URL, intervaloMs, dueno,
+      startMin, endMin, dias, ventanas,
       minMoveM: MIN_MOVE_M, keepAliveMs: STATIONARY_KEEPALIVE_MS,
       // Cadencia adaptativa por velocidad: el nativo captura más seguido en movimiento rápido (auto) para
       // que el trazo siga la calle, y vuelve a la lenta al frenar. Afinables por OTA (SharedPreferences).
       intervaloRapidoMs: NEAR_LIVE_RAPIDO_MS, velUmbralMps: VEL_UMBRAL_MPS, velHistMs: VEL_HIST_MS,
+      // Umbrales de descarte (1.8.0): estaban hardcodeados en el Java y ahora viajan también por
+      // prefs, así que se afinan por OTA. ⚠️ ACCURACY_MAX_M se puede SUBIR si un modelo entrega
+      // fixes malos; bajarlo vacía los recorridos (regla 18).
+      accuracyMaxM: ACCURACY_MAX_M, maxSpeedMps: MAX_SPEED_MPS,
+      minJumpM: MIN_MOVE_M, maxSaltosSeguidos: MAX_SALTOS_SEGUIDOS,
     })
     await UploaderGps.iniciar()
     iniciado = true
@@ -78,13 +104,45 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
   } catch (_) { /* no romper el rastreo JS si el nativo falla */ }
 }
 
-/** Detiene el servicio nativo y devuelve la subida al JS (fuera de horario / logout). */
+/**
+ * Detiene el servicio nativo y devuelve la subida al JS (fuera de horario).
+ *
+ * 🩸 SIN el guard `!iniciado` (02/08/2026). Lo tenía, y era la mitad del bug de multi-cuenta:
+ * `iniciado` es una variable de MÓDULO, así que vale `false` en cada arranque en frío del WebView.
+ * Pero el servicio nativo sobrevive a ese arranque —lo levantan BootReceiver y AlarmReceiver sin
+ * pasar por el JS—, así que en el caso que importa (la app se reabrió y ahora hay otro rol logueado)
+ * detener() se rendía sin hacer nada y el servicio seguía subiendo con el token viejo.
+ * `stopService()` es idempotente: llamarlo de más no cuesta nada, y el guard costaba el bug.
+ */
 export async function detenerUploaderNativo() {
-  if (!isNative() || !iniciado) return
+  if (!isNative()) return
   setUploaderNativo(false) // el JS vuelve a ser el que sube
   try { await UploaderGps.detener() } catch (_) { /* best-effort */ }
   iniciado = false
   tokenCache = null // que un re-login en el mismo teléfono re-mintee (no arrastrar el token de otra cuenta)
+}
+
+/**
+ * 🩸 Cierre de sesión: detiene el servicio Y LE SACA EL TOKEN.
+ *
+ * Detenerlo no alcanza. Para el uploader nativo el token ES la identidad, y quedaba guardado en las
+ * prefs del teléfono después de cerrar sesión; con él, `BootReceiver` y `AlarmReceiver` (cada 30 min)
+ * volvían a levantar el servicio —los dos arrancan con solo ver un token— y el teléfono seguía
+ * subiendo posiciones a nombre de la cuenta anterior. Como `ingest-posiciones` saca id_usuario e
+ * id_empresa DEL TOKEN, esas filas quedaban atribuidas a alguien que no estaba ahí, en una tabla que
+ * no tiene policy de UPDATE ni de DELETE: incorregibles.
+ *
+ * La cola NO se toca (regla 20): los puntos sin subir siguen siendo de su dueño y esperan.
+ */
+export async function cerrarSesionUploader() {
+  if (!isNative()) return
+  setUploaderNativo(false)
+  // No se intenta un último flush acá a propósito: arrancar un foreground service en pleno cierre de
+  // sesión, para que quizás suba, es peor que esperar. Los puntos pendientes quedan en la cola con su
+  // dueño estampado y se suben solos cuando esa cuenta vuelva a entrar en este teléfono.
+  try { await UploaderGps.cerrarSesion() } catch (_) { /* best-effort */ }
+  iniciado = false
+  tokenCache = null
 }
 
 /**

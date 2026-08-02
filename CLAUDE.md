@@ -148,6 +148,16 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     **524,8 km**; el real fueron **17,9**. En las supervisiones eso ya está resuelto en un solo
     lugar (`features/supervision/trazos.js`); **cualquier pantalla nueva que dibuje o mida un
     recorrido tiene que usar ese módulo, no `byUser` crudo.**
+19-bis. 🩸 **La cola NATIVA también tiene dueño, y el token ES la identidad.** `ingest-posiciones`
+    saca `id_usuario` **e `id_empresa`** del token de dispositivo, no del punto: si el servicio
+    nativo queda corriendo con el token de la cuenta anterior, los puntos se escriben a nombre de
+    alguien que no estaba ahí, en una tabla sin policy de UPDATE ni de DELETE. **Incorregible.**
+    Tres piezas lo sostienen y ninguna es opcional: `signOut()` llama a `cerrarSesionUploader()`
+    (que **borra `K_TOKEN`** — sin eso `BootReceiver` y `AlarmReceiver` resucitan el servicio cada
+    30 min con solo ver un token), `detenerUploaderNativo()` **no** puede tener un guard por
+    variable de módulo (vale `false` en cada arranque en frío del WebView, justo cuando el servicio
+    sobrevivió), y cada punto se estampa con su dueño **al capturar**, no al subir. Los ajenos van a
+    **cuarentena nativa**, nunca se borran (regla 20).
 22-ter. **`services/gpsConfig.js` es la ÚNICA fuente de los umbrales de GPS. No hardcodear
     intervalos.** `uploaderNativo.js` tenía el intervalo escrito a mano en `15000` mientras
     `gpsConfig` declaraba 10 s: la constante existía, se documentaba, y el uploader —el que corre
@@ -197,6 +207,17 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     `alertas-equipo/index.ts`: sería el mismo criterio en dos lugares, y el que se olvide de
     actualizar gana. La DETECCIÓN vive en SQL (`vigilancia_equipo`) a propósito — así se verifica
     con un `select` contra la base viva, sin desplegar nada ni esperar un cron.
+35. **`requestAnimationFrame` NO dispara con el documento oculto.** Medido el 02/08/2026: cero
+    frames en 500 ms con `visibilityState: 'hidden'` (`setInterval` sí corre, así que el síntoma es
+    "todo funciona menos la animación"). Toda animación por rAF que deje algo a medio camino
+    necesita una red de contención en `visibilitychange`: cambiar de pestaña a mitad de un tramo
+    dejaba el pin del mapa **congelado en una posición por la que la persona ya pasó**, y eso es
+    peor que no animar, porque el error es indistinguible de un dato real. Ver `animarPin.js`.
+36. **La ventana de rastreo está implementada TRES veces y nada las sincroniza**: `dentroDeHorario()`
+    (`services/tracking.js`), `dentroDeVentana()` (`UploaderGpsService.java`) y `en_ventana`
+    (`vigilancia_equipo`, SQL). Tocar una sin las otras no rompe nada visible: hace que los avisos
+    al supervisor **mientan en silencio**. Desde 1.8.0 la semántica es de **unión** — varias
+    categorías por persona, se rastrea si cualquiera aplica (jornada partida).
 34. **Un token FCM muerto se BORRA.** Cuando FCM responde 404/`NotRegistered` o `INVALID_ARGUMENT`,
     hay que poner `estado_dispositivo.fcm_token = null`. Un token muerto no se cura solo:
     desperdicia un envío por aviso y —lo peor— deja `fallidos` clavado en un número > 0, que es
@@ -338,13 +359,13 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. Alineados en **1.6.0** (agosto 2026).
+Hay varios números que conviven. Alineados en **1.8.0** (agosto 2026).
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js:6](src/version.js#L6) | `1.6.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle:17](android/app/build.gradle#L17) | `1.6.0` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle:16](android/app/build.gradle#L16) | `20` | Entero incremental de Android |
+| `APP_VERSION` | [src/version.js:6](src/version.js#L6) | `1.8.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle:17](android/app/build.gradle#L17) | `1.8.0` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle:16](android/app/build.gradle#L16) | `26` | Entero incremental de Android |
 | `app_config.bundle_version` | Supabase | — | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.0.0` / `null` | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Inerte** hasta setear `apk_url`. Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 

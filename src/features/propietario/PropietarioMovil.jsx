@@ -208,7 +208,9 @@ export default function PropietarioMovil() {
   const moversArr = useMemo(() => Object.values(movers), [movers])
 
   const mapMarkers = useMemo(() => (esHoy ? moversArr.map((mv) => ({
-    lat: mv.lat, lng: mv.lng, label: initials(nombres[mv.id] || mv.rol),
+    // `id`: es lo que le permite al mapa conservar el marcador entre refrescos y animarlo en vez de
+    // recrearlo en el destino (LeafletMap, capa de pines vivos).
+    id: mv.id, lat: mv.lat, lng: mv.lng, label: initials(nombres[mv.id] || mv.rol),
     color: colorPorId(mv.id), labelColor: '#fff', title: nombres[mv.id] || mv.rol,
     bubble: true, foto: fotos[mv.id], ts: mv.ts,
   })) : []), [esHoy, moversArr, nombres, fotos])
@@ -245,7 +247,7 @@ export default function PropietarioMovil() {
   const seguirData = useMemo(() => {
     if (!seguirId) return null
     const mv = movers[seguirId]
-    return mv ? { lat: mv.lat, lng: mv.lng, ts: mv.ts } : null
+    return mv ? { id: seguirId, lat: mv.lat, lng: mv.lng, ts: mv.ts } : null
   }, [seguirId, movers])
 
   // Snap-to-road (toggle "Calles"). Solo se pide cuando el mapa está abierto: el dueño abre esta

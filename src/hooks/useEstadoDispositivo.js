@@ -32,7 +32,11 @@ const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_ver
   // Diagnóstico de red del servicio nativo. `red_desde`/`arranque_ts`/`apagado_ts` NO entran en la
   // comparación aunque se suban: son marcas de tiempo que acompañan a `red`, y meterlas acá haría
   // que un cambio de milisegundos disparara un upsert cada 2 minutos.
-  'red']
+  'red',
+  // Telemetría de captura: solo entran los que responden una pregunta de ESTADO. Los contadores
+  // (`fix_total`, `fix_guardados`, …) suben con el latido pero NO comparan: crecen en cada fix y
+  // dispararían un upsert cada 2 minutos, que es justo lo que esta lista existe para evitar.
+  'fix_dueno', 'cuarentena_nativa']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -127,13 +131,31 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
         arranque_ts: nat.arranqueTs ? new Date(nat.arranqueTs).toISOString() : null,
         apagado_ts: nat.apagadoTs ? new Date(nat.apagadoTs).toISOString() : null,
       } : null
+      // Telemetría de CAPTURA (1.8.0). La tabla `posiciones` solo guarda los puntos que sobrevivieron
+      // a los filtros, así que desde SQL era imposible distinguir "el filtro de movimiento descartó"
+      // de "el sistema operativo no entregó fixes" — y son arreglos opuestos. Con estos contadores la
+      // pregunta se responde con un select en vez de adivinando. Ver UploaderGpsService.
+      //
+      // `fix_dueno` es la otra mitad: dice a nombre de quién está capturando el teléfono. Si no
+      // coincide con `id_usuario`, hay un desfase de sesión y hay que verlo acá, no descubrirlo por
+      // un recorrido raro en el mapa de otra persona.
+      const diagCaptura = nat && typeof nat.fixes === 'number' ? {
+        fix_total: nat.fixes,
+        fix_guardados: nat.guardados,
+        fix_desc_precision: nat.descPrecision,
+        fix_desc_salto: nat.descSalto,
+        fix_desc_movimiento: nat.descMovimiento,
+        fix_ultimo_ts: nat.ultimoFixAt ? new Date(nat.ultimoFixAt).toISOString() : null,
+        fix_dueno: nat.dueno || null,
+        cuarentena_nativa: typeof nat.cuarentena === 'number' ? nat.cuarentena : null,
+      } : null
       // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
       // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
       // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
       // fcm_token: para que el backend (watchdog) sepa a qué teléfono mandar el push. Puede ser
       // null hasta que FCM registre el dispositivo; se sube en cuanto aparece.
-      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...diagRed, ...s }
+      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...diagRed, ...diagCaptura, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {

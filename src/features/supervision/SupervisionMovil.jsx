@@ -249,7 +249,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const seguirData = useMemo(() => {
     if (!seguirId) return null
     const m = movers[seguirId]
-    return m ? { lat: m.lat, lng: m.lng, ts: m.ts } : null
+    return m ? { id: seguirId, lat: m.lat, lng: m.lng, ts: m.ts } : null
   }, [seguirId, movers])
 
   const alternarSeguir = useCallback(() => {
@@ -299,7 +299,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // Memoizado: sin esto el array salía nuevo en cada render del padre (cambio de filtro, de
   // sección, de modo inmersivo) y le llegaba distinto a LeafletMap aunque nada hubiera cambiado.
   const mapMarkers = useMemo(() => (esHoy ? moversFil.map((m) => ({
-    lat: m.lat, lng: m.lng, label: initials(nombres[m.id] || m.rol),
+    id: m.id, lat: m.lat, lng: m.lng, label: initials(nombres[m.id] || m.rol),
     color: colorPorId(m.id), labelColor: '#fff', title: nombres[m.id] || m.rol,
     // Burbuja de perfil (Life360): foto del perfil o iniciales, con frescura por ts.
     bubble: true, foto: fotos[m.id], ts: m.ts,

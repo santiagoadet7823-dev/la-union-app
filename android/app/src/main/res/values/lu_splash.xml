@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Color de arranque de la app. Es el MISMO que `SplashScreen.backgroundColor` en
+         capacitor.config.ts y que el theme-color de index.html: los tres tienen que coincidir o se
+         ve un salto de color entre la pantalla del sistema, el splash de Capacitor y el primer
+         render de React. Hasta 1.7.0 el PNG del splash tenía fondo BLANCO mientras la config decía
+         #0C0C0C, así que cada apertura en frío arrancaba con un flash blanco. -->
+    <color name="lu_splash_fondo">#0C0C0C</color>
+</resources>

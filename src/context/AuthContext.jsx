@@ -6,6 +6,7 @@ import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
 import { persistence } from '../services/persistence'
 import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil, actualizarMiPerfil as actualizarMiPerfilSvc } from '../services/data/perfiles'
+import { cerrarSesionUploader } from '../services/uploaderNativo'
 
 // Espejo de la sesión para el auto-login OFFLINE. El access token dura 1 h y, al reabrir la app
 // sin internet pasada esa hora, getSession() intenta refrescar contra la red, falla y devuelve
@@ -309,6 +310,12 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
+    // 🩸 PRIMERO: soltar el uploader NATIVO (02/08/2026). Va antes que nada porque necesita la
+    // sesión viva, y porque si algo de lo de abajo falla el teléfono no puede quedar rastreando a
+    // nombre de esta cuenta. Hasta 1.7.0 el signOut no lo tocaba: el token quedaba en las prefs y
+    // AlarmReceiver volvía a levantar el servicio cada 30 min, así que el teléfono seguía subiendo
+    // posiciones de esta persona mientras había OTRA logueada. Ver services/uploaderNativo.js.
+    try { await cerrarSesionUploader() } catch (_) { /* nunca bloquear el logout */ }
     // En nativo, cerrar también la sesión de Google borra la cuenta cacheada (así
     // el próximo ingreso deja elegir otra cuenta). OJO: el plugin no inicializa el
     // cliente solo; si no se llamó signIn en esta sesión, signOut() crashea (cliente

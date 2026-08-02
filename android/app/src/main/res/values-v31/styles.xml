@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android 12+ (API 31) dibuja SU PROPIA pantalla de arranque y el `android:background` del tema
+      ya no manda: el sistema muestra el ícono de la app centrado sobre un color, con su animación
+      de entrada y salida. Sin declarar estos atributos, el sistema elige el color por su cuenta
+      (normalmente el `windowBackground`, que acá es el PNG estirado) y el arranque se ve distinto
+      —y peor— que en los teléfonos viejos.
+
+      Va en values-v31 y no en values: `windowSplashScreenBackground` y `windowSplashScreenAnimatedIcon`
+      existen desde API 31, y declararlos en el values general los marca como no resueltos en las
+      versiones anteriores. Los teléfonos con Android 11 o menos siguen usando el tema de
+      values/styles.xml con el PNG, que para eso se regeneró con la marca de DisT-At.
+    -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:windowSplashScreenBackground">@color/lu_splash_fondo</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

@@ -33,20 +33,49 @@ async function cfgGlobal(force = false) {
   return gCache
 }
 
-// Override por usuario: lee su categoría de rastreo (si tiene una activa). null → sin override.
+/**
+ * Override por usuario: sus categorías de rastreo activas. null → sin override (horario global).
+ *
+ * Desde 1.8.0 pueden ser VARIAS (tabla puente `perfiles_categorias_rastreo`), con semántica de
+ * UNIÓN: se rastrea si CUALQUIERA aplica. Eso es lo que habilita la jornada partida — 8-12 y 16-20,
+ * sin rastreo entre medio —, que con una sola ventana obligaba a elegir entre rastrear el almuerzo
+ * o perder la tarde.
+ *
+ * FORMA DEL RESULTADO: se mantiene `{enabled, start, end, days}` de la PRIMERA ventana, además de
+ * `ventanas: [...]` con todas. Es a propósito: media docena de consumidores (el uploader nativo, el
+ * cálculo del próximo borde, updateNotify) leen `start`/`end` directo, y cambiarles la forma de
+ * golpe habría sido tocar todo el pipeline de GPS por una feature de horarios. Los que entienden
+ * `ventanas` usan la unión; los que no, siguen viendo una ventana válida.
+ */
 async function cfgOverride(userId) {
   if (!hasSupabase || !userId) return null
   const { data } = await supabase
-    .from('perfiles')
+    .from('perfiles_categorias_rastreo')
     .select('categorias_rastreo(dias, hora_inicio, hora_fin, activo)')
-    .eq('id', userId).maybeSingle()
-  const cat = data?.categorias_rastreo
-  if (!cat || cat.activo === false) return null
-  return {
-    enabled: true,
+    .eq('id_usuario', userId)
+  const cats = (data || [])
+    .map((f) => f.categorias_rastreo)
+    .filter((c) => c && c.activo !== false)
+  if (!cats.length) return null
+  const ventanas = cats.map((cat) => ({
     start: cat.hora_inicio || '07:30',
     end: cat.hora_fin || '22:00',
+    // `days` vacío = TODOS los días (no hereda los del global). Ojo: el espejo SQL hacía lo
+    // contrario y esa divergencia se corrigió junto con esto — ver db/27.
     days: Array.isArray(cat.dias) && cat.dias.length ? cat.dias : null,
+  }))
+  // Orden estable por hora de inicio: así `start`/`end` (la ventana de compatibilidad) es siempre
+  // la primera del día y no la que devolvió la base por casualidad.
+  ventanas.sort((a, b) => String(a.start).localeCompare(String(b.start)))
+  return {
+    // Una categoría activa IGNORA el `track_enabled` global a propósito (comportamiento de siempre,
+    // documentado en db/26 §: si al superadmin se le apaga el rastreo general, quien tiene horario
+    // propio lo conserva).
+    enabled: true,
+    start: ventanas[0].start,
+    end: ventanas[0].end,
+    days: ventanas[0].days,
+    ventanas,
   }
 }
 
@@ -69,21 +98,38 @@ export async function getTrackConfig(userId = null, force = false) {
 
 export function invalidarTrackCache() { gCache = null; uCache.clear() }
 
-/** ¿La hora (y el día) actuales caen dentro de la ventana de rastreo? */
+/** 'HH:MM' → minuto del día. */
+export function aMinutosDelDia(hhmm, porDefecto = 0) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''))
+  if (!m) return porDefecto
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+/** ¿`ahora` cae dentro de UNA ventana `{start, end, days}`? */
+function enVentana(v, ahora) {
+  // Día de la semana en HORA LOCAL (regla 23: nunca UTC — el día también cambia con el offset −3).
+  // getDay(): 0=Dom … 6=Sáb → ISO 1=Lun … 7=Dom. Si hay lista de días y hoy no está, no se rastrea.
+  if (v.days && v.days.length) {
+    const iso = ahora.getDay() === 0 ? 7 : ahora.getDay()
+    if (!v.days.includes(iso)) return false
+  }
+  const cur = ahora.getHours() * 60 + ahora.getMinutes()
+  const start = aMinutosDelDia(v.start, 0)
+  const end = aMinutosDelDia(v.end, 23 * 60 + 59)
+  // start > end = ventana que cruza la medianoche ('22:00'–'06:00').
+  return start <= end ? cur >= start && cur <= end : cur >= start || cur <= end
+}
+
+/**
+ * ¿La hora (y el día) actuales caen dentro de la ventana de rastreo?
+ *
+ * Con varias ventanas (categorías múltiples) la semántica es de UNIÓN: alcanza con que UNA aplique.
+ * Es lo que permite una jornada partida sin rastrear el hueco del mediodía.
+ */
 export function dentroDeHorario(cfg) {
   if (!cfg) return true
   if (cfg.enabled === false) return false
   const now = new Date()
-  // Día de la semana en HORA LOCAL (regla 23: nunca UTC — el día también cambia con el offset −3).
-  // getDay(): 0=Dom … 6=Sáb → ISO 1=Lun … 7=Dom. Si hay lista de días y hoy no está, no se rastrea.
-  if (cfg.days && cfg.days.length) {
-    const iso = now.getDay() === 0 ? 7 : now.getDay()
-    if (!cfg.days.includes(iso)) return false
-  }
-  const cur = now.getHours() * 60 + now.getMinutes()
-  const [sh, sm] = String(cfg.start || '00:00').split(':').map(Number)
-  const [eh, em] = String(cfg.end || '23:59').split(':').map(Number)
-  const start = sh * 60 + sm
-  const end = eh * 60 + em
-  return start <= end ? cur >= start && cur <= end : cur >= start || cur <= end
+  const ventanas = cfg.ventanas && cfg.ventanas.length ? cfg.ventanas : [cfg]
+  return ventanas.some((v) => enVentana(v, now))
 }
