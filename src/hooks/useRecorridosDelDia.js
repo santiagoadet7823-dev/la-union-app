@@ -21,7 +21,8 @@ const CACHE_KEY = 'lu-recorridos-cache'
  * la reapertura pinta al instante y la red solo trae lo nuevo.
  *
  * @param {string} fecha 'YYYY-MM-DD'
- * @param {string} idEmpresa
+ * @param {string} idEmpresa uuid de la empresa, o `'*'` para TODAS (selector de scope del
+ *   superadmin, ver context/TenantContext.jsx). Falsy = todavía no se sabe → no consulta.
  * @param {boolean} [conRol] si true, selecciona también `rol` por punto (lo usa
  *   SupervisionMovil para filtrar los chips Vend./Rep.); si no, el llamador debe
  *   resolver el rol por su cuenta (p.ej. con usePerfilesEquipo).
@@ -67,9 +68,13 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
       let q = supabase.from('posiciones')
         .select(cols, vuelta === 0 ? { count: 'exact' } : undefined)
-        .eq('id_empresa', idEmpresa).lte('ts', hasta)
+        .lte('ts', hasta)
         .order('ts', { ascending: true }).order('id', { ascending: true })
         .range(offset, offset + PAGE - 1)
+      // '*' = TODAS las empresas (selector de scope del superadmin). Sin el `.eq()`, RLS decide:
+      // para un superadmin `posiciones_sel` no filtra por tenant, para cualquier otro sí. O sea
+      // que el peor caso de un '*' mal puesto es ver lo mismo de siempre, no una fuga.
+      if (idEmpresa !== '*') q = q.eq('id_empresa', idEmpresa)
       q = incremental && lastTsRef.current ? q.gt('ts', lastTsRef.current) : q.gte('ts', desde)
       // El error se MIRA. Antes esto era `const { data } = await q` y descartaba `error`:
       // cualquier falla (timeout, RLS, red) dejaba `data` en null, el hook hacía `return` y el
@@ -148,9 +153,11 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     // tiene más, hacemos una recarga COMPLETA (trae también los re-insertados con fecha vieja).
     // Es un count `head:true` (sin filas): barato aunque corra cada 60 s.
     if (incremental) {
-      const { count: totalDia } = await supabase.from('posiciones')
+      let qc = supabase.from('posiciones')
         .select('id', { count: 'exact', head: true })
-        .eq('id_empresa', idEmpresa).gte('ts', desde).lte('ts', hasta)
+        .gte('ts', desde).lte('ts', hasta)
+      if (idEmpresa !== '*') qc = qc.eq('id_empresa', idEmpresa)
+      const { count: totalDia } = await qc
       if (typeof totalDia === 'number' && totalDia > cargadosRef.current) load(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -97,6 +97,16 @@ public class UploaderGpsPlugin extends Plugin {
         } catch (Exception e) {
             ret.put("cola", -1);
         }
+        // Diagnóstico de red (1.7.0+): POR QUÉ el teléfono se quedó callado. Lo sube el latido
+        // (useEstadoDispositivo) y termina en el `motivo` del aviso al supervisor.
+        //
+        // Se lee, no se calcula: el estado lo escribe el servicio en el momento en que falla el
+        // POST. Calcularlo acá diría cómo está la red AHORA —cuando la app está abierta y por lo
+        // tanto casi seguro con red— y no cómo estuvo durante el hueco, que es lo que interesa.
+        ret.put("red", sp.getString(UploaderGpsService.K_RED, null));
+        ret.put("redDesde", sp.getLong(UploaderGpsService.K_RED_DESDE, 0));
+        ret.put("arranqueTs", sp.getLong(UploaderGpsService.K_ARRANQUE, 0));
+        ret.put("apagadoTs", sp.getLong(UploaderGpsService.K_APAGADO, 0));
         call.resolve(ret);
     }
 }

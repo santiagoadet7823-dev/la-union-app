@@ -1,15 +1,27 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
+import { useTenant } from '../../context/TenantContext'
 import { useTheme } from '../../context/ThemeContext'
+import { useCatalog } from '../../context/CatalogContext'
 import Overlay from '../../components/Overlay'
 import LeafletMap from '../../components/LeafletMap'
 import Logo from '../../components/Logo'
 import HaceSegundos from '../../components/HaceSegundos'
+import AlertasEquipo from '../../components/AlertasEquipo'
 import MiCuenta from '../perfil/MiCuenta'
 import useMetricasActividad from '../../hooks/useMetricasActividad'
 import useDiagnosticoEquipo, { DIAG_RECIENTE_MS } from '../../hooks/useDiagnosticoEquipo'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
+import useEmpresaBase from '../../hooks/useEmpresaBase'
+import useAlertasEquipo from '../../hooks/useAlertasEquipo'
+import { construirLeaflet, construirTrails, limpiarPorUsuario } from '../supervision/trazos'
+import { calcularDwells } from '../supervision/dwells'
+import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
+import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
+import BtnInmersivo from '../../components/BtnInmersivo'
+import { fetchSnapRecorridos } from '../../services/recorridos'
+import { apilarAtras } from '../../services/atras'
 import { sx } from '../../lib/sx'
 import { colorPorId } from '../../lib/colors'
 import { hoyStr, initials, fmtDuracion } from '../../lib/format'
@@ -49,20 +61,49 @@ const HORIZONTES = [
 
 export default function PropietarioMovil() {
   const { idEmpresa, perfil } = useAuth()
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   // El default depende de la hora: antes de las 11 "hoy" casi no tiene datos y un dueño que abre
   // a las 8:30 vería 4 km y sacaría una conclusión falsa sobre un día que recién empieza.
   const [horizonte, setHorizonte] = useState(() => horizonteInicial())
   const [personaSel, setPersonaSel] = useState(null)
   const [mapaAbierto, setMapaAbierto] = useState(false)
   const [cuentaAbierta, setCuentaAbierta] = useState(false)
+  // ---- Estado del MAPA a pantalla completa. Antes no existía ninguno de estos: el mapa se abría
+  // en un sheet de 60vh con cuatro props y sin un solo control.
+  const [snapped, setSnapped] = useState({})
+  const [snapOn, setSnapOn] = useState(false)
+  const [dwellOn, setDwellOn] = useState(true)
+  const [dwellSel, setDwellSel] = useState(null)
+  const [showClientes, setShowClientes] = useState(false)
+  const [foco, setFoco] = useState(null)      // { id, nonce } — persona enfocada
+  const [seguirId, setSeguirId] = useState(null)
+  const [fitDone, setFitDone] = useState(false)
+  const dateRef = useRef(null)
+
+  // Día que se está mirando EN EL MAPA. El resto de la pantalla sigue gobernado por `horizonte`
+  // (hoy/semana/mes), que es agregado; el mapa es de un día concreto y ahora se puede elegir cuál.
+  const [fechaMapa, setFechaMapa] = useState(hoyStr)
+  const esHoy = fechaMapa === hoyStr()
 
   const m = useMetricasActividad(horizonte, !!idEmpresa)
   const { filas: diag } = useDiagnosticoEquipo()
-  const { movers, nombres } = useEquipoEnVivo()
+  const { movers, nombres, fotos } = useEquipoEnVivo()
+  const { idEmpresaActiva } = useTenant()
+  const base = useEmpresaBase(idEmpresaActiva)
+  const avisos = useAlertasEquipo()
+  const { clientes: cartera } = useCatalog()
   // Trazos del día para el mapa y para el detalle de persona. Es la ÚNICA consulta que baja puntos
-  // crudos, y solo del día de hoy: los números salen todos de la RPC agregada.
-  const { byUser } = useRecorridosDelDia(hoyStr(), idEmpresa)
+  // crudos: los números salen todos de la RPC agregada.
+  const { byUser: byUserCrudo } = useRecorridosDelDia(fechaMapa, idEmpresaActiva, esHoy)
+
+  // 🩸 EL RECORRIDO CRUDO MIENTE — regla 22-bis (30/07/2026).
+  //
+  // Hasta hoy esta pantalla armaba sus `trails` directo desde `byUser` sin pasar por `trazos.js`:
+  // sin filtro de saltos imposibles, sin corte por huecos, sin conectores punteados y sin
+  // simplificar. O sea que el dueño —el único que mira esto para sacar conclusiones— era
+  // justamente el que veía los teleports. El 29/07/2026 un vendedor figuraba con 524,8 km porque
+  // cuatro fixes falsos lo mandaban 127 km al norte y lo traían; su día real fueron 17,9 km.
+  const byUser = useMemo(() => limpiarPorUsuario(byUserCrudo), [byUserCrudo])
 
   const ahora = Date.now()
 
@@ -89,6 +130,30 @@ export default function PropietarioMovil() {
         sin.push({ ...d, nombre: d.nombre || nombres[d.id] || 'Móvil', tieneDatos: false, km: 0, paradas: 0, minutos: 0, enCalle })
       }
     }
+
+    // 🩸 QUIEN TUVO ACTIVIDAD APARECE, tenga el rol que tenga (30/07/2026).
+    //
+    // `diag` sale de `usePerfilesEquipo`, que filtra a `rol in (vendedor, repartidor, encargado)`.
+    // Ese filtro está bien para el informe técnico —es el plantel que SE RASTREA— pero acá dejaba
+    // fuera a cualquier admin, superadmin o propietario que saliera a la calle con la app: sus km
+    // se contaban en el total, su trazo se dibujaba en el mapa, y en la lista "Equipo" no estaban.
+    // La pregunta que responde esta pantalla es "quién tuvo actividad hoy", no "quién figura en el
+    // plantel". `usePerfilesEquipo` NO se toca: lo comparte EstadoEquipo en las dos supervisiones.
+    const yaEsta = new Set([...act, ...sin].map((p) => p.id))
+    for (const [id, met] of Object.entries(m.porUsuario)) {
+      if (yaEsta.has(id) || !met || !met.puntos) continue
+      const mov = movers[id]
+      act.push({
+        id, nombre: nombres[id] || 'Móvil', rol: mov?.rol || null,
+        km: met.km, paradas: met.paradas, minutos: met.minutos,
+        ultimoTs: met.ultimoTs ? new Date(met.ultimoTs).getTime() : null,
+        enCalle: !!(mov && ahora - mov.ts < DIAG_RECIENTE_MS), tieneDatos: true,
+        // Sin fila en el plantel no hay diagnóstico de teléfono: se muestra la actividad y nada más.
+        // Es honesto — inventar un "todo OK" sería peor que dejarlo vacío.
+        fueraDelPlantel: true,
+      })
+    }
+
     act.sort((a, b) => b.km - a.km)
     return { activos: act, sinDatos: sin }
   }, [diag, m.porUsuario, movers, nombres, ahora])
@@ -126,12 +191,102 @@ export default function PropietarioMovil() {
   }, [activos])
   const desactualizado = ultimaSenal != null && ahora - ultimaSenal > DIAG_RECIENTE_MS
 
-  const trails = useMemo(
-    () => Object.entries(byUser)
-      .filter(([, v]) => (v.points?.length || 0) > 1)
-      .map(([id, v]) => ({ points: v.points, color: colorPorId(id) })),
-    [byUser]
+  // ---- Geometría del mapa. Sale ENTERA de features/supervision/trazos.js: es exactamente la
+  // misma que ven las dos supervisiones, así que no se puede volver a desincronizar (regla 31).
+  const SIN_FILTRO = useCallback(() => true, []) // el dueño no filtra por rol: ve a todo el equipo
+  const trails = useMemo(() => construirTrails(byUser, SIN_FILTRO), [byUser, SIN_FILTRO])
+  const leafletTrails = useMemo(
+    () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
+    [trails, snapped, snapOn, foco]
   )
+
+  // Burbujas de las personas en vivo: SIN ESTO el mapa dibuja polilíneas de color anónimas y no
+  // hay nada, en ninguna parte de la pantalla, que diga de quién es cada una. Ese era el "no se
+  // ven los usuarios que tuvieron actividad en el día".
+  // Array estable de móviles en vivo: lo consumen las burbujas y el índice de `onMarkerClick`,
+  // que tiene que apuntar a la MISMA lista que dibuja los pines.
+  const moversArr = useMemo(() => Object.values(movers), [movers])
+
+  const mapMarkers = useMemo(() => (esHoy ? moversArr.map((mv) => ({
+    lat: mv.lat, lng: mv.lng, label: initials(nombres[mv.id] || mv.rol),
+    color: colorPorId(mv.id), labelColor: '#fff', title: nombres[mv.id] || mv.rol,
+    bubble: true, foto: fotos[mv.id], ts: mv.ts,
+  })) : []), [esHoy, moversArr, nombres, fotos])
+
+  const clientMarkers = useMemo(
+    () => (cartera || []).filter((c) => c.lat != null && c.lng != null).map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name || c.nombre_comercio })),
+    [cartera]
+  )
+
+  const dwells = useMemo(
+    () => (dwellOn ? calcularDwells(byUser, SIN_FILTRO, cartera) : []),
+    [byUser, dwellOn, cartera, SIN_FILTRO]
+  )
+
+  const focusData = useMemo(() => {
+    if (!foco) return null
+    const pts = byUser[foco.id]?.points
+    if (pts && pts.length) return { points: pts, nonce: foco.nonce }
+    const mv = movers[foco.id]
+    if (mv) return { points: [{ lat: mv.lat, lng: mv.lng }], nonce: foco.nonce }
+    return { points: [], nonce: foco.nonce }
+  }, [foco, byUser, movers])
+
+  const objetivoSeguir = useMemo(() => {
+    const cand = foco?.id ? movers[foco.id] : null
+    if (cand) return { id: foco.id, lat: cand.lat, lng: cand.lng, ts: cand.ts }
+    let mejor = null
+    for (const [id, mv] of Object.entries(movers)) {
+      if (!mejor || (mv.ts || 0) > (mejor.ts || 0)) mejor = { id, lat: mv.lat, lng: mv.lng, ts: mv.ts }
+    }
+    return mejor
+  }, [foco, movers])
+
+  const seguirData = useMemo(() => {
+    if (!seguirId) return null
+    const mv = movers[seguirId]
+    return mv ? { lat: mv.lat, lng: mv.lng, ts: mv.ts } : null
+  }, [seguirId, movers])
+
+  // Snap-to-road (toggle "Calles"). Solo se pide cuando el mapa está abierto: el dueño abre esta
+  // pantalla muchas veces por día y el ruteo es un recurso donado (FOSSGIS).
+  useEffect(() => {
+    if (!mapaAbierto || !idEmpresaActiva) return
+    let vivo = true
+    fetchSnapRecorridos({
+      fecha: fechaMapa,
+      desde: new Date(fechaMapa + 'T00:00:00').toISOString(),
+      hasta: new Date(fechaMapa + 'T23:59:59').toISOString(),
+    }).then((s) => { if (vivo) setSnapped(s) }).catch(() => {})
+    return () => { vivo = false }
+  }, [mapaAbierto, idEmpresaActiva, fechaMapa])
+
+  // Encuadrar solo la primera vez que hay datos; después se preserva el zoom/pan del usuario.
+  useEffect(() => {
+    if (fitDone) return
+    if (Object.keys(byUser).length || Object.keys(movers).length) setFitDone(true)
+  }, [byUser, movers, fitDone])
+
+  useEffect(() => { setDwellSel(null) }, [fechaMapa, dwellOn])
+  useEffect(() => { if (!esHoy) setSeguirId(null) }, [esHoy])
+
+  const cambiarFechaMapa = useCallback((v) => {
+    setFechaMapa(v || hoyStr())
+    setFitDone(false)
+    setFoco(null)
+  }, [])
+
+  const abrirFechaMapa = useCallback(() => {
+    const el = dateRef.current
+    if (!el) return
+    try { if (typeof el.showPicker === 'function') { el.showPicker(); return } } catch { /* fallback */ }
+    try { el.focus({ preventScroll: true }); el.click() } catch { /* sin picker */ }
+  }, [])
+
+  const alternarSeguir = useCallback(() => {
+    if (seguirId) { setSeguirId(null); return }
+    if (objetivoSeguir) { setSeguirId(objetivoSeguir.id); setFoco({ id: objetivoSeguir.id, nonce: Date.now() }) }
+  }, [seguirId, objetivoSeguir])
 
   const personaSheet = personaSel
     ? activos.find((p) => p.id === personaSel) || sinDatos.find((p) => p.id === personaSel) || null
@@ -151,6 +306,19 @@ export default function PropietarioMovil() {
               <span style={{ ...sx('width:6px;height:6px;border-radius:var(--r-pill)'), background: desactualizado ? 'var(--warning)' : 'var(--success)' }} />
               {ultimaSenal ? <HaceSegundos ts={ultimaSenal} /> : 'sin señal'}
             </span>
+            {/* Avisos del equipo: quién dejó de reportar y quién lleva demasiado parado. Al dueño
+                le importa lo mismo que al encargado, y en la PWA esto es lo único que hay. */}
+            <AlertasEquipo
+              alertas={avisos.alertas}
+              sinVer={avisos.sinVer}
+              nombres={nombres}
+              onMarcarVista={avisos.marcarVista}
+              onEnfocar={(a) => {
+                if (fechaMapa !== hoyStr()) cambiarFechaMapa(hoyStr())
+                setFoco({ id: a.id_usuario, nonce: Date.now() })
+                setMapaAbierto(true)
+              }}
+            />
             {/* El diseño no previó acceso a la cuenta: sin esto el dueño se queda sin editar su
                 perfil, sin cambiar el tema y —sobre todo— sin poder cerrar sesión. */}
             <button
@@ -246,7 +414,7 @@ export default function PropietarioMovil() {
               onKeyDown={(e) => { if (e.key === 'Enter') setMapaAbierto(true) }}
               style={sx('margin-top:11px;position:relative;height:172px;border-radius:var(--r-card);overflow:hidden;border:1px solid var(--line);cursor:pointer;background:var(--map-bg)')}
             >
-              <LeafletMap theme={theme} trails={trails} height="100%" interactive={false} basemapControl={false} fit />
+              <LeafletMap theme={theme} trails={leafletTrails.length ? leafletTrails : null} height="100%" interactive={false} basemapControl={false} fit />
               <div style={sx('position:absolute;left:12px;top:12px;background:var(--glass-strong);border:.5px solid var(--glass-brd);border-radius:var(--r-sm);padding:5px 9px;font-family:var(--font-mono);font-size:var(--fs-xs);font-weight:600;color:var(--text);pointer-events:none')}>
                 {enCalleAhora} de {activos.length + sinDatos.length} en la calle
               </div>
@@ -285,7 +453,10 @@ export default function PropietarioMovil() {
         )}
       </div>
 
-      {/* ---- Capas ---- */}
+      {/* ---- Capas ----
+          `puntos` van LIMPIOS (byUser ya pasó por limpiarPorUsuario): si acá entrara el crudo, el
+          mini-mapa del detalle volvería a dibujar los teleports que el mapa grande ya no dibuja, y
+          las dos vistas de la misma persona se contradirían. */}
       <SheetPersona
         open={!!personaSel}
         persona={personaSheet}
@@ -293,16 +464,46 @@ export default function PropietarioMovil() {
         serieKm={m.serieKmPorUsuario}
         hasta={m.hasta}
         tema={theme}
+        clientes={cartera}
         onClose={() => setPersonaSel(null)}
       />
 
       {mapaAbierto && (
         <MapaCompleto
           theme={theme}
-          trails={trails}
-          enCalle={enCalleAhora}
-          totalEquipo={activos.length + sinDatos.length}
+          isDark={isDark}
           onClose={() => setMapaAbierto(false)}
+          base={base}
+          leafletTrails={leafletTrails}
+          trails={trails}
+          mapMarkers={mapMarkers}
+          moversArr={moversArr}
+          clientMarkers={clientMarkers}
+          showClientes={showClientes}
+          setShowClientes={setShowClientes}
+          dwells={dwells}
+          dwellOn={dwellOn}
+          setDwellOn={setDwellOn}
+          dwellSel={dwellSel}
+          setDwellSel={setDwellSel}
+          snapOn={snapOn}
+          setSnapOn={setSnapOn}
+          fitDone={fitDone}
+          focusData={focusData}
+          foco={foco}
+          onEnfocar={(id) => setFoco(id ? { id, nonce: Date.now() } : null)}
+          seguirData={seguirData}
+          objetivoSeguir={objetivoSeguir}
+          onSeguir={alternarSeguir}
+          soltarSeguir={() => setSeguirId(null)}
+          fechaMapa={fechaMapa}
+          esHoy={esHoy}
+          dateRef={dateRef}
+          onAbrirFecha={abrirFechaMapa}
+          onCambiarFecha={cambiarFechaMapa}
+          byUser={byUser}
+          nombres={nombres}
+          fotos={fotos}
         />
       )}
 
@@ -322,25 +523,90 @@ export default function PropietarioMovil() {
  * El estado "abierto" vive adentro para que el overlay pueda animar su salida: si el padre lo
  * desmontara de golpe, se iría sin transición (gotcha 1 de Overlay en CLAUDE.md §7).
  */
-function MapaCompleto({ theme, trails, enCalle, totalEquipo, onClose }) {
-  const [abierto, setAbierto] = useState(true)
+function MapaCompleto({ theme, onClose, ...p }) {
+  // El botón ATRÁS de Android cierra el mapa en vez de minimizar la app (reglas 26-27).
+  useEffect(() => apilarAtras(onClose), [onClose])
+
   return (
-    <Overlay open={abierto} onClose={onClose} variant="sheet" title="Recorridos del día" subtitle={`${enCalle} de ${totalEquipo} en la calle`}>
-      <div style={sx('height:60vh;min-height:320px;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--line)')}>
-        <LeafletMap theme={theme} trails={trails} height="100%" fit />
-      </div>
-      <div style={sx('margin-top:12px;padding:12px 14px;border-radius:var(--r-md);background:var(--surface2);border:1px solid var(--line);font-size:var(--fs-sm);color:var(--muted);line-height:1.55')}>
-        Acá sí se puede mover y hacer zoom. Es la única pantalla del rol donde el mapa se opera — en
-        el inicio se lee y nada más.
-      </div>
-      <button
-        onClick={() => setAbierto(false)}
-        className="lu-press"
-        style={sx('width:100%;min-height:48px;margin-top:12px;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--muted);font-size:var(--fs-md);font-weight:600;cursor:pointer')}
-      >
-        Cerrar
-      </button>
-    </Overlay>
+    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--map-bg)', isolation: 'isolate' }} className="lu-rise">
+      <LeafletMap
+        theme={theme}
+        height="100%"
+        radius={0}
+        center={p.base}
+        trails={p.leafletTrails.length ? p.leafletTrails : null}
+        markers={p.mapMarkers}
+        clients={p.showClientes ? p.clientMarkers : []}
+        dwells={p.dwells}
+        dwellSel={p.dwellSel}
+        onDwellClick={(i) => p.setDwellSel((s) => (s === i ? null : i))}
+        fit={!p.fitDone}
+        focus={p.focusData}
+        seguir={p.seguirData}
+        onSeguirCancelado={p.soltarSeguir}
+        // Reserva a la derecha el ancho del rail y abajo el de las burbujas, para que el encuadre
+        // no meta el recorrido debajo de los controles.
+        edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 96, left: 16 }}
+        onMarkerClick={(i) => { const mk = p.moversArr[i]; if (mk) p.onEnfocar(mk.id) }}
+      />
+
+      {/* Cerrar: mismo control y misma esquina que el "salir de pantalla completa" de las dos
+          supervisiones (BtnInmersivo), para que el gesto se aprenda una sola vez. */}
+      <BtnInmersivo
+        activo
+        onToggle={onClose}
+        style={{ position: 'absolute', right: 12, bottom: 'calc(14px + env(safe-area-inset-bottom,0px))', zIndex: 'var(--z-chrome)' }}
+      />
+
+      {/* Rail COMPACTO: fecha, calles, paradas, clientes y centrar/seguir. El dueño no filtra por
+          rol ni sincroniza a mano — esos controles no son de esta pantalla. */}
+      <RailMapa
+        compacto
+        style={{ position: 'absolute', right: 12, bottom: `calc(14px + ${RAIL_W + 8}px + env(safe-area-inset-bottom,0px))`, zIndex: 'var(--z-chrome)' }}
+        fecha={p.fechaMapa}
+        esHoy={p.esHoy}
+        isDark={p.isDark}
+        dateRef={p.dateRef}
+        onAbrirFecha={p.onAbrirFecha}
+        onCambiarFecha={p.onCambiarFecha}
+        hayTrazos={p.trails.length > 0}
+        snapOn={p.snapOn}
+        onSnap={() => p.setSnapOn((v) => !v)}
+        dwellOn={p.dwellOn}
+        onDwell={() => p.setDwellOn((v) => !v)}
+        showClientes={p.showClientes}
+        clientesCount={p.clientMarkers.length}
+        onClientes={() => p.setShowClientes((v) => !v)}
+        seguirActivo={!!p.seguirData}
+        puedeSeguir={!!p.objetivoSeguir}
+        nombreSeguido={p.objetivoSeguir ? (p.nombres[p.objetivoSeguir.id] || null) : null}
+        onSeguir={p.onSeguir}
+      />
+
+      {/* Burbujas del equipo: es el único acceso al enfoque por persona con el mapa a pantalla
+          completa, y lo que le pone nombre a cada trazo de color. */}
+      <BurbujasEquipo
+        movers={p.moversArr}
+        nombres={p.nombres}
+        fotos={p.fotos}
+        byUser={p.byUser}
+        focoId={p.foco?.id || null}
+        onSelect={(id) => (p.foco?.id === id ? p.onEnfocar(null) : p.onEnfocar(id))}
+        style={{ position: 'absolute', left: 12, right: 12 + RAIL_W + 12, bottom: 'calc(14px + env(safe-area-inset-bottom,0px))', zIndex: 'var(--z-chrome)' }}
+      />
+
+      {/* Cartel de estado vacío: distinguir "no hay datos ese día" de "el mapa se rompió". */}
+      {!p.mapMarkers.length && !p.trails.length && (
+        <div style={sx('position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:240px;text-align:center;background:var(--glass-strong);border:.5px solid var(--glass-brd);border-radius:var(--r-lg);padding:20px 18px;box-shadow:var(--shadow-lg)')}>
+          <div style={sx('font-family:var(--font-display);font-weight:600;font-size:var(--fs-md)')}>
+            {p.esHoy ? 'Nadie en la calle todavía' : 'Sin recorridos ese día'}
+          </div>
+          <div style={sx('font-size:var(--fs-xs);color:var(--muted);margin-top:4px;line-height:1.45')}>
+            {p.esHoy ? 'Cuando el equipo salga, sus recorridos aparecen acá en vivo.' : 'Probá con otro día o volvé a “Hoy”.'}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

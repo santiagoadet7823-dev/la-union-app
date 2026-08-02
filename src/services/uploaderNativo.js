@@ -87,7 +87,24 @@ export async function detenerUploaderNativo() {
   tokenCache = null // que un re-login en el mismo teléfono re-mintee (no arrastrar el token de otra cuenta)
 }
 
-/** Diagnóstico: { configurado, cola, ultimaOk } o null en web. */
+/**
+ * Diagnóstico del servicio nativo. En web devuelve null; en un APK viejo (<1.7.0) devuelve solo
+ * `{ configurado, cola, ultimaOk }` y los campos de red quedan undefined — de ahí que todo lo que
+ * lo consuma tenga que tolerar el null.
+ *
+ * Campos (APK 1.7.0+):
+ *   · configurado : hay token y URL guardados
+ *   · cola        : puntos capturados que todavía no se pudieron subir
+ *   · ultimaOk    : epoch ms del último POST 2xx
+ *   · red         : 'ok' | 'sin-red' | 'avion'  ← por qué no sube
+ *   · redDesde    : epoch ms desde que está en ese estado
+ *   · arranqueTs  : epoch ms del último BOOT_COMPLETED
+ *   · apagadoTs   : epoch ms del último ACTION_SHUTDOWN (best-effort: no caza la batería agotada)
+ *
+ * 🩸 El límite que hay que tener presente: esto solo se puede LEER y subir cuando el teléfono
+ * volvió a tener red. Sirve para EXPLICAR un silencio después, nunca para detectarlo mientras
+ * pasa — de eso se encarga `vigilancia_equipo` en el servidor.
+ */
 export async function estadoUploaderNativo() {
   if (!isNative()) return null
   try { return await UploaderGps.estado() } catch (_) { return null }

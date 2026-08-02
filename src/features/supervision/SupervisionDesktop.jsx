@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
+import { useTenant } from '../../context/TenantContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
@@ -13,11 +14,15 @@ import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
+import useAlertasEquipo from '../../hooks/useAlertasEquipo'
+import AlertasEquipo from '../../components/AlertasEquipo'
+import SelectorEmpresa from '../../components/SelectorEmpresa'
 import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
+import RailMapa from './components/RailMapa'
 import { APP_VERSION } from '../../version'
 
 /**
@@ -65,7 +70,11 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { isMobile, setMode } = useDevice()
   const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
-  const base = useEmpresaBase(idEmpresa) // dónde abre el mapa (depósito de la empresa)
+  // Incidentes abiertos del equipo (los abre el cron `alertas-equipo`, acá solo se leen).
+  const avisos = useAlertasEquipo()
+  // 🚨 SCOPE de LECTURA (regla 11). La escritura de GPS no pasa por esta pantalla.
+  const { idEmpresaActiva, puedeCambiarScope, empresasDisponibles, setEmpresaActiva, esOverride, nombreActiva } = useTenant()
+  const base = useEmpresaBase(idEmpresaActiva) // dónde abre el mapa (depósito de la empresa)
   const isProp = role === 'propietario'
 
   const [view, setView] = useState('mapa') // 'mapa' | 'dash' | <clave de gestión>
@@ -84,10 +93,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [fitDone, setFitDone] = useState(false)
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin sidebar ni topbar
   const [fecha, setFecha] = useState(hoyStr)
+  // SEGUIMIENTO: id de la persona a la que la cámara se queda pegada, o null. Es el segundo zoom
+  // (el primero, encuadrar TODO el recorrido, lo hace `foco` al tocar una burbuja).
+  const [seguirId, setSeguirId] = useState(null)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
   const [modalPerfil, setModalPerfil] = useState(false)
   const toastRef = useRef(null)
+  const dateRef = useRef(null) // <input type="date"> del rail compacto (modo inmersivo)
 
   // Ítems de gestión visibles para el rol (vacío para propietario → sin sección).
   const gestionItems = useMemo(() => (isProp ? [] : itemsDeGestion(role, permisos)), [role, isProp, permisos])
@@ -95,7 +108,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (misma lógica que la vista móvil). ----
-  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
 
   // 🩸 El recorrido se limpia UNA vez y de acá salen trazos, km y paradas — ver ./trazos.js. Sobre
   // los puntos crudos, el 29/07/2026 un vendedor figuraba con 524,8 km (cuatro fixes falsos lo
@@ -116,10 +129,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {
-    if (!idEmpresa) return
+    if (!idEmpresaActiva) return
     const s = await fetchSnapRecorridos({ fecha, desde: new Date(fecha + 'T00:00:00').toISOString(), hasta: new Date(fecha + 'T23:59:59').toISOString() })
     setSnapped(s)
-  }, [idEmpresa, fecha])
+  }, [idEmpresaActiva, fecha])
 
   useEffect(() => { cargarSnap() }, [cargarSnap])
   useEffect(() => { const iv = setInterval(cargarSnap, REFRESH_MS); return () => clearInterval(iv) }, [cargarSnap])
@@ -163,6 +176,15 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     setFoco({ id, nonce: Date.now() })
   }, [])
 
+  // Tocar un aviso de la campanita. Los incidentes son SIEMPRE de hoy, así que si se está mirando
+  // un día pasado hay que volver: si no, el foco encuadraría un recorrido que no es el del aviso.
+  const enfocarAviso = useCallback((a) => {
+    if (!a) return
+    setFecha((f) => (f === hoyStr() ? f : hoyStr()))
+    setFitDone(false)
+    enfocarUsuario(a.id_usuario)
+  }, [enfocarUsuario])
+
   const focusData = useMemo(() => {
     if (!foco) return null
     const pts = byUser[foco.id]?.points
@@ -176,6 +198,49 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     if (foco && focusData && focusData.points.length === 0) showToast('Sin recorrido de esa persona hoy')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foco && foco.nonce])
+
+  // A quién centrar/seguir: el enfocado, o el móvil con la señal más fresca (así el botón sirve
+  // aunque no haya nadie seleccionado). Espejo exacto de SupervisionMovil.
+  const objetivoSeguir = useMemo(() => {
+    const cand = foco?.id ? movers[foco.id] : null
+    if (cand) return { id: foco.id, lat: cand.lat, lng: cand.lng, ts: cand.ts }
+    let mejor = null
+    for (const [id, m] of Object.entries(movers)) {
+      if (!pasaFiltro(m.rol)) continue
+      if (!mejor || (m.ts || 0) > (mejor.ts || 0)) mejor = { id, lat: m.lat, lng: m.lng, ts: m.ts }
+    }
+    return mejor
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foco, movers, filter])
+
+  // Sale de `movers` (no del objetivo memoizado) para que cada posición nueva reenganche la cámara.
+  const seguirData = useMemo(() => {
+    if (!seguirId) return null
+    const m = movers[seguirId]
+    return m ? { lat: m.lat, lng: m.lng, ts: m.ts } : null
+  }, [seguirId, movers])
+
+  const alternarSeguir = useCallback(() => {
+    if (seguirId) { setSeguirId(null); return }
+    if (!objetivoSeguir) { showToast('Nadie está reportando ubicación ahora'); return }
+    setSeguirId(objetivoSeguir.id)
+    setPinId(objetivoSeguir.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seguirId, objetivoSeguir])
+
+  // En un día pasado no hay nada "en vivo" a lo que pegarse.
+  useEffect(() => { if (!esHoy) setSeguirId(null) }, [esHoy])
+
+  // El rail compacto del modo inmersivo comparte estos dos con la barra de chips.
+  const cambiarFecha = useCallback((v) => {
+    setFecha(v || hoyStr()); setFitDone(false); setPinId(null)
+  }, [])
+  const abrirFecha = useCallback(() => {
+    const el = dateRef.current
+    if (!el) return
+    try { if (typeof el.showPicker === 'function') { el.showPicker(); return } } catch { /* fallback */ }
+    try { el.focus({ preventScroll: true }); el.click() } catch { /* sin picker: queda el de la barra */ }
+  }, [])
 
   // Trazos (>=2 puntos) filtrados por chip. Compartido con Movil en ./trazos.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -417,11 +482,13 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     <Chip on={filter === 'v'} dim={filter && filter !== 'v'} color="var(--info)" dotRadius={99} count={vendCount} label="Vendedores" onClick={() => { setFilter((f) => f === 'v' ? null : 'v'); setPinId(null) }} />
                     <Chip on={filter === 'r'} dim={filter && filter !== 'r'} color="var(--warning)" dotRadius={4} count={repCount} label="Repartidores" onClick={() => { setFilter((f) => f === 'r' ? null : 'r'); setPinId(null) }} />
                     <div style={{ flex: 1, minWidth: 8 }} />
+                    {/* Empresa que se mira (solo superadmin con más de una). No cambia identidad. */}
+                    <SelectorEmpresa />
                     {/* Selector de fecha */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : '#fff' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></svg>
-                      <input type="date" value={fecha} max={hoyStr()} onChange={(e) => { setFecha(e.target.value || hoyStr()); setFitDone(false); setPinId(null) }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
-                      {!esHoy && <span onClick={() => { setFecha(hoyStr()); setFitDone(false); setPinId(null) }} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
+                      <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
+                      {!esHoy && <span onClick={() => cambiarFecha(hoyStr())} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
                     </div>
                     {/* Toggle "Calles" */}
                     {trails.length > 0 && (
@@ -442,6 +509,30 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
                       <span style={{ fontSize: 12, fontWeight: 600 }}>Clientes{showClientes && clientMarkers.length ? ` · ${clientMarkers.length}` : ''}</span>
                     </div>
+                    {/* Centrar y SEGUIR la última posición. Es el segundo zoom: tocar una burbuja
+                        encuadra todo el recorrido; esto va a donde está ahora y se queda pegado.
+                        Arrastrar el mapa lo suelta (LeafletMap escucha `dragstart`). */}
+                    <div
+                      onClick={alternarSeguir}
+                      title={seguirId
+                        ? `Siguiendo a ${nombres[seguirId] || 'el móvil'} · tocá para soltar`
+                        : (objetivoSeguir ? `Centrar en la última posición${objetivoSeguir && nombres[objetivoSeguir.id] ? ' de ' + nombres[objetivoSeguir.id] : ''} y seguirla` : 'Nadie está reportando ahora')}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: seguirId ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${seguirId ? 'transparent' : 'var(--line)'}`, color: seguirId ? '#fff' : (objetivoSeguir ? 'var(--muted)' : 'var(--faint)') }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M12 2v3.2M12 18.8V22M22 12h-3.2M5.2 12H2" /><circle cx="12" cy="12" r="8" /></svg>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>{seguirId ? 'Siguiendo' : 'Centrar'}</span>
+                    </div>
+                    {/* Campanita de avisos del equipo. En esta pantalla NO es un complemento del
+                        push: es el único canal. Una PWA de escritorio no recibe FCM, así que sin
+                        esto el admin que trabaja en la PC no se entera de nada. */}
+                    <AlertasEquipo
+                      alertas={avisos.alertas}
+                      sinVer={avisos.sinVer}
+                      nombres={nombres}
+                      onMarcarVista={avisos.marcarVista}
+                      onEnfocar={enfocarAviso}
+                      style={{ width: 36, height: 36, borderRadius: 10 }}
+                    />
                     {/* Sync */}
                     <div onClick={doSync} title="Actualizar ubicaciones" style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
                       <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg></div>
@@ -476,7 +567,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       clients={showClientes ? clientMarkers : []}
                       fit={!fitDone}
                       focus={focusData}
-                      edgePadding={{ top: 28, right: 28, bottom: 28, left: 28 }}
+                      seguir={seguirData}
+                      onSeguirCancelado={() => setSeguirId(null)}
+                      edgePadding={{ top: 28, right: inmersivo ? 28 + 44 + 16 : 28, bottom: 28, left: 28 }}
                       onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}
                     />
                     {/* 🩸 ABAJO a la derecha, no arriba (28/07/2026). Estaba en `top:16` y ahí
@@ -486,6 +579,35 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         el comentario de BtnInmersivo.jsx: un solo control, un solo lugar. */}
                     {inmersivo && (
                       <BtnInmersivo activo onToggle={() => setInmersivo(false)} style={{ position: 'absolute', right: 16, bottom: 16, zIndex: 'var(--z-chrome)' }} />
+                    )}
+
+                    {/* 🩸 En pantalla completa la barra de chips de arriba desaparece, así que sin
+                        esto también acá se perdían clientes, paradas, calles y la fecha justo al
+                        maximizar el mapa (mismo bug que en SupervisionMovil, 30/07/2026). El rail
+                        compacto trae solo los controles de LECTURA. */}
+                    {inmersivo && (
+                      <RailMapa
+                        compacto
+                        style={{ position: 'absolute', right: 16, bottom: 16 + 44 + 10, zIndex: 'var(--z-chrome)' }}
+                        fecha={fecha}
+                        esHoy={esHoy}
+                        isDark={isDark}
+                        dateRef={dateRef}
+                        onAbrirFecha={abrirFecha}
+                        onCambiarFecha={cambiarFecha}
+                        hayTrazos={trails.length > 0}
+                        snapOn={snapOn}
+                        onSnap={() => setSnapOn((v) => !v)}
+                        dwellOn={dwellOn}
+                        onDwell={() => setDwellOn((v) => !v)}
+                        showClientes={showClientes}
+                        clientesCount={clientMarkers.length}
+                        onClientes={() => setShowClientes((v) => !v)}
+                        seguirActivo={!!seguirId}
+                        puedeSeguir={!!objetivoSeguir}
+                        nombreSeguido={objetivoSeguir ? (nombres[objetivoSeguir.id] || null) : null}
+                        onSeguir={alternarSeguir}
+                      />
                     )}
 
                     {/* Burbujas del equipo: en inmersivo se oculta la barra de filtros y las

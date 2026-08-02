@@ -76,9 +76,19 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
    rompe `upsert(onConflict:'client_uid')` con error **42P10** y **se cae todo el GPS en silencio**
    ([db/04_posiciones_idempotencia.sql:17-20](db/04_posiciones_idempotencia.sql#L17)). Costó dos
    rebuilds del APK persiguiendo un bug que estaba en la base.
-7. **`revoke execute ... from public`, nunca `from anon, authenticated`.** Postgres concede EXECUTE a
-   PUBLIC por defecto; anon y authenticated lo heredan. Revocar de anon/authenticated es un **NO-OP**
+7. **`revoke execute ... from public`, nunca *solo* `from anon, authenticated`.** Postgres concede
+   EXECUTE a PUBLIC por defecto; anon y authenticated lo heredan. Revocar **solo** de
+   anon/authenticated es un **NO-OP**
    ([db/06_seguridad_fixes.sql:46-59](db/06_seguridad_fixes.sql#L46)).
+7-bis. 🩸 **Pero en una función NUEVA hay que revocar de los TRES.** Supabase tiene un
+   `ALTER DEFAULT PRIVILEGES` que le da EXECUTE **explícito** a `anon` y `authenticated` sobre cada
+   función creada en `public`, y un grant explícito **no** se va con un revoke a PUBLIC. Medido el
+   30/07/2026: después del `revoke ... from public`, `vigilancia_equipo` (SECURITY DEFINER, cruza
+   empresas) seguía con `anon=X | authenticated=X` — **cualquier vendedor logueado podía leer el
+   plantel completo de todos los tenants**, con nombres, roles y coordenadas. Receta:
+   `revoke from public` + `revoke from anon` + `revoke from authenticated` + `grant to service_role`,
+   y después **verificar el ACL real** con `select proacl from pg_proc`. Ver
+   [db/26_alertas_equipo.sql](db/26_alertas_equipo.sql) §7.
 8. **NUNCA revocar EXECUTE de `mi_empresa` / `mi_rol` / `es_admin` / `es_superadmin`.** Las políticas
    RLS los invocan como el rol que consulta: revocarlos rompe **todas** las lecturas protegidas. El
    linter de Supabase los marca igual — ignorarlo, la exposición es nula.
@@ -170,6 +180,28 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     `SupervisionDesktop` no comparten una línea de código y **ya divergieron dos veces**: los
     carteles existieron solo en Movil de 1.5.7 en adelante, y el arreglo de performance del 26/07
     (`simplificarTrazo`) tardó dos días en llegar a Desktop porque era una copia.
+
+32. 🩸 **El scope de empresa (`useTenant().idEmpresaActiva`) lo consumen SOLO las rutas de
+    LECTURA.** `AuthContext.idEmpresa` es la identidad y no cambia nunca. Siguen con `useAuth()`, y
+    están marcados NO TOCAR: `GpsContext.jsx`, `GpsGate.jsx`, `usePublishPosition.js`,
+    `geolocation/tracker.js`, `useEstadoDispositivo.js`, `vendedor/useJornada.js`, los inserts de
+    `CatalogContext.jsx`, `admin/UsuariosView.jsx` y las rutas de Storage `${idEmpresa}/…`. Si el
+    scope llegara a la escritura de GPS, un superadmin mirando otra empresa escribiría **sus
+    propias posiciones dentro de los datos de ese cliente** — y `posiciones` no tiene policy de
+    UPDATE ni de DELETE (verificado en base viva), así que esa fila no se puede corregir ni borrar.
+    Es irreversible. El centinela de "todas las empresas" es el string `'*'`, no `null`: media
+    docena de hooks hacen `if (!idEmpresa) return` para decir "todavía no cargó".
+33. **Los avisos del equipo se dedupean con el ÍNDICE, no con lógica en la función.**
+    `alertas_equipo_abierta_uidx (id_usuario, tipo) where resuelta_ts is null` es lo que permite
+    que el cron corra cada 10 min sin mandar 6 push por hora. No agregar un "ya avisé" dentro de
+    `alertas-equipo/index.ts`: sería el mismo criterio en dos lugares, y el que se olvide de
+    actualizar gana. La DETECCIÓN vive en SQL (`vigilancia_equipo`) a propósito — así se verifica
+    con un `select` contra la base viva, sin desplegar nada ni esperar un cron.
+34. **Un token FCM muerto se BORRA.** Cuando FCM responde 404/`NotRegistered` o `INVALID_ARGUMENT`,
+    hay que poner `estado_dispositivo.fcm_token = null`. Un token muerto no se cura solo:
+    desperdicia un envío por aviso y —lo peor— deja `fallidos` clavado en un número > 0, que es
+    justo lo que hace que nadie note una falla real. Un fallo de RED **no** cuenta como token
+    muerto. Ver `supabase/functions/alertas-equipo/fcm.ts`.
 
 ### Navegación nativa
 

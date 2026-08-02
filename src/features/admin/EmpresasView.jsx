@@ -26,6 +26,10 @@ export default function EmpresasView({ onToast }) {
   // Ventana horaria de rastreo (global). `days` = ISO 1=Lun … 7=Dom; null/[] = todos los días.
   const [track, setTrack] = useState({ enabled: true, start: '07:30', end: '22:00', days: null })
   const [savingTrack, setSavingTrack] = useState(false)
+  // Umbrales de los avisos al supervisor. Van al lado del horario porque SOLO tienen sentido dentro
+  // de él: la ventana de rastreo es la que define qué es un silencio y qué es "terminó de trabajar".
+  const [alertas, setAlertas] = useState({ activas: true, silencio: 30, quieto: 120 })
+  const [savingAlertas, setSavingAlertas] = useState(false)
   // Edición manual de la coordenada base (depósito) por empresa: id -> { lat, lng } como strings.
   const [baseEdit, setBaseEdit] = useState({})
   const [savingBase, setSavingBase] = useState(null) // id de la empresa que se está guardando
@@ -39,13 +43,21 @@ export default function EmpresasView({ onToast }) {
   }, [])
 
   useEffect(() => {
-    supabase.from('app_config').select('track_enabled, track_start, track_end, track_days').maybeSingle()
+    supabase.from('app_config')
+      .select('track_enabled, track_start, track_end, track_days, alertas_activas, alerta_silencio_min, alerta_quieto_min')
+      .maybeSingle()
       .then(({ data }) => {
-        if (data) setTrack({
+        if (!data) return
+        setTrack({
           enabled: data.track_enabled ?? true,
           start: data.track_start || '07:30',
           end: data.track_end || '22:00',
           days: Array.isArray(data.track_days) && data.track_days.length ? data.track_days : null,
+        })
+        setAlertas({
+          activas: data.alertas_activas ?? true,
+          silencio: data.alerta_silencio_min ?? 30,
+          quieto: data.alerta_quieto_min ?? 120,
         })
       })
   }, [])
@@ -60,6 +72,26 @@ export default function EmpresasView({ onToast }) {
     setSavingTrack(false)
     invalidarTrackCache()
     onToast?.(error ? 'Error: ' + error.message : 'Horario de rastreo guardado')
+  }
+
+  async function guardarAlertas() {
+    setSavingAlertas(true)
+    // Los mínimos no son decorativos: por debajo de 10 min de silencio el aviso se dispararía con
+    // cualquier bache de cobertura, y el cron corre cada 10 minutos igual. Por debajo de 15 min de
+    // permanencia, cualquier almuerzo sería un incidente.
+    const silencio = Math.max(10, Number(alertas.silencio) || 30)
+    const quieto = Math.max(15, Number(alertas.quieto) || 120)
+    const { error } = await supabase.from('app_config')
+      .update({
+        alertas_activas: alertas.activas,
+        alerta_silencio_min: silencio,
+        alerta_quieto_min: quieto,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', true)
+    setAlertas((a) => ({ ...a, silencio, quieto }))
+    setSavingAlertas(false)
+    onToast?.(error ? 'Error: ' + error.message : 'Avisos guardados')
   }
 
   const cargar = useCallback(async () => {
@@ -208,6 +240,55 @@ export default function EmpresasView({ onToast }) {
           </div>
           <button disabled={savingTrack} onClick={guardarTrack} style={sx('padding:10px 18px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             {savingTrack ? 'Guardando…' : 'Guardar horario'}
+          </button>
+        </div>
+      </div>
+
+      {/* Avisos al supervisor. Van pegados al horario porque dependen de él: fuera de la ventana de
+          rastreo NO se avisa nada, y eso es a propósito — un vendedor que no reporta a las 21:00 no
+          es un problema, es que terminó de trabajar. */}
+      <div style={panel}>
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Avisos al supervisor</div>
+        <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>
+          Se revisa cada 10 minutos y solo <strong>dentro del horario de rastreo</strong> de cada
+          persona. El aviso llega como notificación a los encargados, admins y propietarios que
+          tengan la app instalada, y queda en la campanita de Supervisión (que es la única forma de
+          verlo desde la PC: una web no recibe notificaciones push).
+        </div>
+        <div style={sx('font-size:12px;color:var(--muted);margin:-10px 0 14px;display:flex;gap:6px;align-items:flex-start')}>
+          <span aria-hidden="true">🔔</span>
+          <span>
+            Un mismo problema avisa <strong>una sola vez</strong>, y una segunda cuando se resuelve.
+            La persona del aviso nunca lo recibe.
+          </span>
+        </div>
+        <div style={sx('display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end')}>
+          <label style={sx('display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>
+            <input type="checkbox" checked={alertas.activas} onChange={(e) => setAlertas((a) => ({ ...a, activas: e.target.checked }))} style={{ width: 18, height: 18, accentColor: '#0ABAB5' }} />
+            Avisos activos
+          </label>
+          <div>
+            <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Sin reportar (min)</div>
+            <input
+              type="number" min="10" max="240" step="5" inputMode="numeric"
+              value={alertas.silencio}
+              onChange={(e) => setAlertas((a) => ({ ...a, silencio: e.target.value }))}
+              disabled={!alertas.activas}
+              className="lu-input" style={{ ...inpTime, width: 92 }}
+            />
+          </div>
+          <div>
+            <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>En el mismo lugar (min)</div>
+            <input
+              type="number" min="15" max="600" step="15" inputMode="numeric"
+              value={alertas.quieto}
+              onChange={(e) => setAlertas((a) => ({ ...a, quieto: e.target.value }))}
+              disabled={!alertas.activas}
+              className="lu-input" style={{ ...inpTime, width: 92 }}
+            />
+          </div>
+          <button disabled={savingAlertas} onClick={guardarAlertas} style={sx('padding:10px 18px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
+            {savingAlertas ? 'Guardando…' : 'Guardar avisos'}
           </button>
         </div>
       </div>

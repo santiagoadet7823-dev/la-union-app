@@ -8,6 +8,7 @@ import { ACCURACY_MAX_M } from '../services/gpsConfig'
 import { pendingCount, pendientesCuarentena } from '../services/sync/queue'
 import { getHeartbeat } from '../services/geolocation/tracker'
 import { getFcmTokenSync } from '../services/push'
+import { estadoUploaderNativo } from '../services/uploaderNativo'
 
 /**
  * Latido de "salud" del dispositivo móvil. Cada tanto (y en transiciones) sube una
@@ -27,7 +28,11 @@ const FORZAR_MS = 600000  // ...pero al menos cada 10 min sí o sí (ver abajo)
 // Campos de ESTADO que deciden si vale la pena subir el latido. `ts`/`updated_at`
 // quedan afuera a propósito: cambian siempre y anularían la comparación.
 const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_version', 'instalado_ts',
-  'cola_pendiente', 'cuarentena_pendiente', 'gps_error', 'fcm_token']
+  'cola_pendiente', 'cuarentena_pendiente', 'gps_error', 'fcm_token',
+  // Diagnóstico de red del servicio nativo. `red_desde`/`arranque_ts`/`apagado_ts` NO entran en la
+  // comparación aunque se suban: son marcas de tiempo que acompañan a `red`, y meterlas acá haría
+  // que un cambio de milisegundos disparara un upsert cada 2 minutos.
+  'red']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -112,13 +117,23 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       const s = snapRef.current()
       const cola = await pendingCount().catch(() => null) // diagnóstico: puntos en cola sin subir
       const cuar = await pendientesCuarentena().catch(() => null) // puntos aislados (ver queue.js)
+      // Por qué el teléfono estuvo callado: sin internet, en modo avión, o se reinició. Lo sabe el
+      // servicio NATIVO (el WebView congelado en Doze no puede observar nada, y `navigator.onLine`
+      // miente — regla 12). En web y en APKs <1.7.0 esto viene null y no se sube nada.
+      const nat = await estadoUploaderNativo().catch(() => null)
+      const diagRed = nat && nat.red ? {
+        red: nat.red,
+        red_desde: nat.redDesde ? new Date(nat.redDesde).toISOString() : null,
+        arranque_ts: nat.arranqueTs ? new Date(nat.arranqueTs).toISOString() : null,
+        apagado_ts: nat.apagadoTs ? new Date(nat.apagadoTs).toISOString() : null,
+      } : null
       // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
       // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
       // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
       // fcm_token: para que el backend (watchdog) sepa a qué teléfono mandar el push. Puede ser
       // null hasta que FCM registre el dispositivo; se sube en cuanto aparece.
-      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...s }
+      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...diagRed, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {

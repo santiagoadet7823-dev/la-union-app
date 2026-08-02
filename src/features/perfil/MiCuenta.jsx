@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
 import { APP_VERSION } from '../../version'
 import MiPerfilModal from './MiPerfilModal'
+import CompartirUbicacion from '../../components/CompartirUbicacion'
 
 /**
  * Sección "Mi cuenta" reutilizable: las MISMAS acciones que el menú de cuenta del admin
@@ -69,6 +70,15 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
           </div>
         </>
       )}
+
+      <div style={sx('height:0.5px;background:var(--line)')} />
+
+      {/* Compartir la propia ubicación con otra empresa. Va acá y no en un menú de gestión porque
+          es una decisión sobre MIS datos, no sobre los del equipo: la toma cada uno sobre sí mismo
+          y la puede cortar en el mismo lugar donde la prendió. */}
+      <div style={sx('padding:12px 0')}>
+        <CompartirUbicacion />
+      </div>
 
       <div style={sx('height:0.5px;background:var(--line)')} />
 

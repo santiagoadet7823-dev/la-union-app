@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useTenant, TODAS } from '../context/TenantContext'
 import { supabase } from '../services/supabase'
 import { hydrateColores } from '../lib/colors'
 
@@ -21,10 +21,12 @@ const TTL = 60000        // los roles/nombres cambian poco; 1 min alcanza
 function fetchPerfilesEquipo(idEmpresa, force) {
   const hit = cache.get(idEmpresa)
   if (!force && hit && Date.now() - hit.at < TTL) return hit.promesa
-  const promesa = supabase.from('perfiles').select('id, nombre, rol, color_trazo')
-    .eq('id_empresa', idEmpresa)
+  let q = supabase.from('perfiles').select('id, nombre, rol, color_trazo')
     .in('rol', ['vendedor', 'repartidor', 'encargado']).eq('activo', true)
-    .then(({ data }) => { hydrateColores(data); return data || [] }) // hidrata los overrides de color
+  // `'*'` = TODAS (scope del superadmin). La clave del Map sigue siendo el scope, así que "todas"
+  // tiene su propia entrada y no se pisa con la de ninguna empresa concreta.
+  if (idEmpresa !== TODAS) q = q.eq('id_empresa', idEmpresa)
+  const promesa = q.then(({ data }) => { hydrateColores(data); return data || [] }) // hidrata los overrides de color
   cache.set(idEmpresa, { promesa, at: Date.now() })
   return promesa
 }
@@ -33,7 +35,8 @@ function fetchPerfilesEquipo(idEmpresa, force) {
 export function invalidarPerfilesEquipo() { cache.clear() }
 
 export default function usePerfilesEquipo() {
-  const { idEmpresa } = useAuth()
+  // Ruta de LECTURA pura → scope, no identidad (regla 11).
+  const { idEmpresaActiva: idEmpresa } = useTenant()
   const [users, setUsers] = useState([])
   useEffect(() => {
     if (!idEmpresa) { setUsers([]); return }

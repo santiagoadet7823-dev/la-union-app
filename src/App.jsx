@@ -1,5 +1,6 @@
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { TenantProvider } from './context/TenantContext'
 import { CatalogProvider } from './context/CatalogContext'
 import { GpsProvider } from './context/GpsContext'
 import { DeviceProvider } from './context/DeviceContext'
@@ -220,12 +221,19 @@ function Gate() {
   if (!perfil && (perfilLoading || perfilError)) return <CargandoPerfil error={perfilError} onRetry={refetchPerfil} />
   if (!aprobado) return <PendienteView />
 
+  // 🚨 TenantProvider va ENTRE Auth y Catalog (PLAN_SAAS §3.2), y ese lugar no es casual: tiene
+  // que ver el perfil (para saber si es superadmin) y quedar por ENCIMA de todo lo que lee datos
+  // de empresa. Lo que NO puede pasar es que el scope llegue a la escritura de GPS: `GpsProvider`
+  // sigue leyendo `useAuth()`, no `useTenant()` — regla 11, y el comentario de TenantContext.jsx
+  // explica por qué romper eso es irreversible.
   return (
-    <CatalogProvider>
-      <GpsProvider>
-        <AuthedApp />
-      </GpsProvider>
-    </CatalogProvider>
+    <TenantProvider>
+      <CatalogProvider>
+        <GpsProvider>
+          <AuthedApp />
+        </GpsProvider>
+      </CatalogProvider>
+    </TenantProvider>
   )
 }
 

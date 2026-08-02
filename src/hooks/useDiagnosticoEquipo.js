@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useTenant, TODAS } from '../context/TenantContext'
 import { supabase } from '../services/supabase'
 import { hoyStr } from '../lib/format'
 import { cmpVer } from '../lib/version'
@@ -53,10 +53,9 @@ function haceTexto(iso) {
  *   que encapsula su propio intervalo en el nodo de texto en vez de re-renderizar la pantalla entera.
  */
 export default function useDiagnosticoEquipo({ tick: conTick = false } = {}) {
-  // Ruta de LECTURA pura: cuando exista el TenantContext de PLAN_SAAS.md §3.2,
-  // esto pasa a `useTenant().idEmpresaActiva`. Las rutas de escritura de GPS
-  // siguen con useAuth() — regla 11 de CLAUDE.md.
-  const { idEmpresa } = useAuth()
+  // Ruta de LECTURA pura → scope del TenantContext (PLAN_SAAS §3.2, implementado el 30/07/2026).
+  // Las rutas de escritura de GPS siguen con useAuth() — regla 11 de CLAUDE.md.
+  const { idEmpresaActiva: idEmpresa } = useTenant()
   const users = usePerfilesEquipo()
   const [estados, setEstados] = useState({})
   const [latestOta, setLatestOta] = useState(null) // app_config.latest_version, para marcar OTA atrasada
@@ -64,9 +63,10 @@ export default function useDiagnosticoEquipo({ tick: conTick = false } = {}) {
 
   const cargarEstados = useCallback(async () => {
     if (!idEmpresa) return
-    const { data: e } = await supabase.from('estado_dispositivo')
-      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok, cola_pendiente, cuarentena_pendiente, app_version, apk_version, instalado_ts')
-      .eq('id_empresa', idEmpresa)
+    let q = supabase.from('estado_dispositivo')
+      .select('id_usuario, ts, gps_ok, gps_desde, permiso, bg_ok, cola_pendiente, cuarentena_pendiente, app_version, apk_version, instalado_ts, red, red_desde, arranque_ts')
+    if (idEmpresa !== TODAS) q = q.eq('id_empresa', idEmpresa)
+    const { data: e } = await q
     if (e) { const m = {}; e.forEach((r) => { m[r.id_usuario] = r }); setEstados(m) }
   }, [idEmpresa])
 

@@ -29,11 +29,16 @@ import { supabase, hasSupabase } from '../supabase'
  */
 export function suscribirPosiciones(handler, idEmpresa) {
   if (!hasSupabase || !idEmpresa) return () => {}
+  // `'*'` = TODAS las empresas (scope del superadmin, ver context/TenantContext.jsx). Ahí el canal
+  // va SIN `filter` y el corte lo hace RLS: al superadmin le llega todo —que es lo que pidió— y a
+  // cualquier otro rol le sigue llegando solo lo suyo. El nombre del canal igual se distingue,
+  // porque Supabase reusa canales por nombre y uno filtrado no puede compartirse con uno abierto.
+  const todas = idEmpresa === '*'
   const ch = supabase
     .channel('rt-posiciones-' + idEmpresa)
     .on('postgres_changes', {
       event: 'INSERT', schema: 'public', table: 'posiciones',
-      filter: 'id_empresa=eq.' + idEmpresa,
+      ...(todas ? {} : { filter: 'id_empresa=eq.' + idEmpresa }),
     }, (payload) => {
       if (payload?.new) handler(payload.new)
     })

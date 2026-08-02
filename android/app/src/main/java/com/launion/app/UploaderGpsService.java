@@ -3,16 +3,23 @@ package com.launion.app;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.Settings;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -69,6 +76,18 @@ public class UploaderGpsService extends Service {
     static final String K_INTERVALO_RAPIDO = "intervaloRapidoMs"; // cadencia de captura en movimiento rápido
     static final String K_VEL_UMBRAL = "velUmbralMps";            // m/s por encima del cual se activa la cadencia rápida
     static final String K_VEL_HIST = "velHistMs";                 // ms sostenidos bajo el umbral antes de volver a lento
+    // 🩸 DIAGNÓSTICO DE RED (30/07/2026). Por qué el teléfono se quedó callado: sin internet, en
+    // modo avión, o se reinició. Lo tiene que saber el NATIVO — el WebView congelado en Doze no
+    // puede observar nada, y `navigator.onLine` miente en este WebView (regla 12).
+    //
+    // El límite honesto, que hay que tener presente antes de confiar en esto: el teléfono solo
+    // puede CONTAR que estuvo sin red cuando VUELVE a tener red. Sirve para explicar un silencio
+    // después, nunca para detectarlo mientras pasa. De eso se ocupa `vigilancia_equipo` en el
+    // servidor, que ve la ausencia de datos en tiempo real. Las dos mitades son necesarias.
+    static final String K_RED = "red";              // 'ok' | 'sin-red' | 'avion'
+    static final String K_RED_DESDE = "redDesde";   // epoch ms desde que está en ese estado
+    static final String K_APAGADO = "apagadoTs";    // epoch ms del último ACTION_SHUTDOWN (best-effort)
+    static final String K_ARRANQUE = "arranqueTs";  // epoch ms del último BOOT_COMPLETED
 
     private static final String CH_ID = "uploader_gps";
     private static final int NOTIF_ID = 5190;
@@ -116,6 +135,27 @@ public class UploaderGpsService extends Service {
     private boolean modoRapido = false;
     private long ultimoRapidoAt = 0L;
 
+    // Último texto pintado en la notificación. Sin esto, `nm.notify` correría en cada fix (cada 5-15 s)
+    // para redibujar exactamente el mismo cartel.
+    private String ultimoTextoNotif = null;
+
+    /**
+     * Apagado del teléfono. Va DINÁMICO, no en el manifest: `ACTION_SHUTDOWN` no está en la lista de
+     * excepciones de broadcast implícito de Android 8+, así que un receiver declarado no lo recibiría.
+     * Registrado desde el servicio sí llega, porque el proceso está vivo.
+     *
+     * Es BEST-EFFORT y hay que decirlo: caza el apagado por menú, NO la batería agotada ni un corte
+     * de energía. Cuando no lo caza, el hueco igual se explica por el `arranque_ts` del BootReceiver.
+     */
+    private final BroadcastReceiver apagadoRx = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            // `commit()` y no `apply()`: el sistema se está apagando y apply() es asíncrono — puede
+            // no llegar a escribir nunca, que es justo el caso que estamos tratando de registrar.
+            try { prefs().edit().putLong(K_APAGADO, System.currentTimeMillis()).commit(); } catch (Exception ignored) {}
+        }
+    };
+    private boolean apagadoRxRegistrado = false;
+
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
@@ -123,7 +163,18 @@ public class UploaderGpsService extends Service {
         super.onCreate();
         fused = LocationServices.getFusedLocationProviderClient(this);
         crearCanal();
+        try {
+            IntentFilter f = new IntentFilter(Intent.ACTION_SHUTDOWN);
+            f.addAction("android.intent.action.QUICKBOOT_POWEROFF"); // variante de algunos OEM
+            if (Build.VERSION.SDK_INT >= 34) {
+                registerReceiver(apagadoRx, f, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(apagadoRx, f);
+            }
+            apagadoRxRegistrado = true;
+        } catch (Exception ignored) { /* sin esto el servicio funciona igual, solo pierde el motivo */ }
     }
+
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -198,6 +249,10 @@ public class UploaderGpsService extends Service {
                     encolar(loc);
                 }
                 subir();
+                // El contador de "puntos en espera" tiene que moverse aunque no haya red para
+                // subirlos — es justo entonces cuando importa. `actualizarNotif` sale solo si el
+                // texto cambió, así que llamarlo en cada fix es barato.
+                actualizarNotif();
             }
         };
         modoRapido = false; // cada arranque parte en cadencia lenta; los primeros fixes la re-evalúan
@@ -322,11 +377,26 @@ public class UploaderGpsService extends Service {
             if (code >= 200 && code < 300) {
                 quitarPrimeros(lote);
                 sp.edit().putLong(K_ULTIMA, System.currentTimeMillis()).apply();
+                // Subió: la red está bien. Si veníamos de 'sin-red'/'avion', esto es lo que cierra
+                // el período y deja el `red_desde` listo para que el latido lo suba.
+                anotarRed("ok");
                 actualizarNotif();
                 // Si quedaban más que el lote (venía de estar offline), seguir vaciando.
                 if (leerCola().length() > 0) subirLote();
+            } else {
+                // Respondió pero mal (5xx, 401…): hay red, el problema es del otro lado. No se
+                // marca 'sin-red' — sería mentirle al supervisor sobre la causa.
+                anotarRed("ok");
+                actualizarNotif();
             }
-            // Si falló (sin red / 5xx), NO se borra la cola: se reintenta en la próxima captura.
+            // Si falló, NO se borra la cola: se reintenta en la próxima captura.
+        } catch (Exception e) {
+            // Acá es donde de verdad se entera el teléfono de que no tiene red: la conexión ni
+            // siquiera se pudo abrir. Hasta 1.6.x esta rama era completamente muda — el servicio
+            // seguía diciendo "Enviando ubicación en vivo" con la cola creciendo.
+            anotarRed(estadoRed());
+            actualizarNotif();
+            throw e;
         } finally {
             con.disconnect();
         }
@@ -352,12 +422,91 @@ public class UploaderGpsService extends Service {
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            // Hasta 1.6.x tocar esta notificación no hacía absolutamente nada. Es la pieza de la app
+            // que el vendedor tiene delante todo el día: tiene que abrirla.
+            .setContentIntent(intentApp())
             .build();
     }
 
+    /**
+     * ⚠️ `FLAG_IMMUTABLE` acá es lo CORRECTO y no hay que "arreglarlo" a MUTABLE. La regla 16 de
+     * CLAUDE.md exige `FLAG_MUTABLE` en el PendingIntent de `MovimientoPlugin`, pero ese es otro
+     * caso: aquel necesita que el sistema le escriba los extras del reconocimiento de actividad.
+     * Este solo abre una Activity, y en Android 12+ un PendingIntent sin flag de mutabilidad
+     * explícito directamente revienta.
+     */
+    private PendingIntent intentApp() {
+        Intent i = new Intent(this, MainActivity.class);
+        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivity(this, 5191, i, flags);
+    }
+
+    /**
+     * Estado de la red AHORA: 'avion' | 'sin-red' | 'ok'.
+     *
+     * Ante la duda devuelve 'ok'. Es deliberado: un falso "sin internet" en la notificación del
+     * vendedor y en el motivo del aviso al supervisor es peor que no decir nada, porque manda a
+     * revisar un problema que no existe.
+     */
+    private String estadoRed() {
+        try {
+            // Modo avión: la única de las tres causas que el sistema expone directamente.
+            if (Settings.Global.getInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) != 0) {
+                return "avion";
+            }
+        } catch (Exception ignored) {}
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return "ok";
+            if (Build.VERSION.SDK_INT >= 23) {
+                Network n = cm.getActiveNetwork();
+                if (n == null) return "sin-red";
+                NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+                if (caps == null) return "sin-red";
+                return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ? "ok" : "sin-red";
+            }
+        } catch (Exception ignored) {}
+        return "ok";
+    }
+
+    /** Guarda el estado de red y, si CAMBIÓ, desde cuándo. */
+    private void anotarRed(String estado) {
+        SharedPreferences sp = prefs();
+        if (estado.equals(sp.getString(K_RED, null))) return;
+        sp.edit().putString(K_RED, estado).putLong(K_RED_DESDE, System.currentTimeMillis()).apply();
+    }
+
+    private int largoCola() {
+        try { return new JSONArray(prefs().getString(K_COLA, "[]")).length(); } catch (Exception e) { return 0; }
+    }
+
+    /**
+     * El texto de la notificación persistente. Hasta 1.6.x decía "Enviando ubicación en vivo" para
+     * SIEMPRE, incluso con 300 puntos atascados y el teléfono sin datos desde hacía dos horas.
+     *
+     * El canal `uploader_gps` es IMPORTANCE_LOW: no suena ni vibra. Es la notificación silenciosa
+     * que hace que el vendedor se entere solo de que se quedó sin señal, sin que nadie lo llame.
+     */
+    private String textoEstado() {
+        String red = prefs().getString(K_RED, "ok");
+        int cola = largoCola();
+        if ("avion".equals(red)) return cola > 0 ? "Modo avión · " + cola + " puntos guardados" : "Modo avión · sin enviar";
+        if ("sin-red".equals(red)) return cola > 0 ? "Sin internet · " + cola + " puntos guardados" : "Sin internet";
+        if (cola > 0) return cola + " puntos en espera";
+        return "Enviando ubicación en vivo";
+    }
+
+    /** Repinta la notificación SOLO si el texto cambió (si no, correría en cada fix). */
     private void actualizarNotif() {
+        String t = textoEstado();
+        if (t.equals(ultimoTextoNotif)) return;
+        ultimoTextoNotif = t;
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null) nm.notify(NOTIF_ID, construirNotificacion("Enviando ubicación en vivo"));
+        if (nm != null) {
+            try { nm.notify(NOTIF_ID, construirNotificacion(t)); } catch (Exception ignored) {}
+        }
     }
 
     /**
@@ -431,6 +580,10 @@ public class UploaderGpsService extends Service {
         if (callback != null) {
             try { fused.removeLocationUpdates(callback); } catch (Exception ignored) {}
             callback = null;
+        }
+        if (apagadoRxRegistrado) {
+            try { unregisterReceiver(apagadoRx); } catch (Exception ignored) {}
+            apagadoRxRegistrado = false;
         }
         super.onDestroy();
     }

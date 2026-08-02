@@ -39,6 +39,17 @@ public class BootReceiver extends BroadcastReceiver {
             // Android 12+ puede bloquear iniciar un foreground service desde el arranque en algunos OEM.
             try {
                 SharedPreferences sp = context.getSharedPreferences(UploaderGpsService.PREFS, Context.MODE_PRIVATE);
+                // 🩸 Marca de ARRANQUE (30/07/2026). Es lo que permite explicarle después al supervisor
+                // un hueco en el recorrido: "el teléfono se reinició a las 14:32". Se anota SIEMPRE,
+                // aunque el servicio no se pueda levantar — el dato del arranque vale igual, y de hecho
+                // vale más justo cuando el rastreo no se retomó solo.
+                //
+                // Es la mitad confiable del par: `apagado_ts` (ACTION_SHUTDOWN, en el servicio) es
+                // best-effort y no caza la batería agotada; este broadcast sí llega siempre.
+                if (Intent.ACTION_BOOT_COMPLETED.equals(action)
+                        || "android.intent.action.QUICKBOOT_POWERON".equals(action)) {
+                    sp.edit().putLong(UploaderGpsService.K_ARRANQUE, System.currentTimeMillis()).apply();
+                }
                 if (sp.getString(UploaderGpsService.K_TOKEN, null) != null) {
                     Intent svc = new Intent(context, UploaderGpsService.class);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

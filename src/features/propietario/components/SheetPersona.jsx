@@ -6,6 +6,7 @@ import { colorPorId } from '../../../lib/colors'
 import { initials, fmtHora, fmtDuracion } from '../../../lib/format'
 import { serieParaBarras } from '../../../lib/comparar'
 import { detectarParadas } from '../../../services/geolocation/dwell'
+import { comercioCercano } from '../../supervision/dwells'
 
 /**
  * Detalle de una persona. Tiene DOS variantes y la segunda es la importante.
@@ -23,7 +24,7 @@ import { detectarParadas } from '../../../services/geolocation/dwell'
 // vería "8 paradas" arriba y 11 renglones en la lista de abajo, y la pantalla se contradiría.
 const PARADA_MIN_MS = 300000
 
-export default function SheetPersona({ open, persona, puntos, serieKm, hasta, tema, onClose }) {
+export default function SheetPersona({ open, persona, puntos, serieKm, hasta, tema, clientes, onClose }) {
   // Gotcha documentado de Overlay: el sheet sigue montado durante la animación de salida, pero
   // `persona` se vuelve null en el mismo frame en que el padre limpia su estado. Se retiene el
   // último valor para que el cuerpo no reviente mientras se va. Mismo patrón que `mdView`.
@@ -166,8 +167,13 @@ export default function SheetPersona({ open, persona, puntos, serieKm, hasta, te
                 {paradas.map((d, i) => (
                   <div key={i} style={sx('display:flex;align-items:center;gap:10px;padding:10px 13px;border-top:1px solid var(--line)')}>
                     <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);flex:none')}>{fmtHora(d.desde)}</span>
+                    {/* 🩸 El NOMBRE del comercio, no las coordenadas (30/07/2026). Antes decía
+                        "-24.7891, -65.4102", que para el dueño no es información: es un número que
+                        no puede usar para nada. `comercioCercano` (dwells.js) ya sabía resolverlo y
+                        esta pantalla no lo estaba usando. Si no hay comercio a menos de 60 m se
+                        cae a las coordenadas, que al menos ubican. */}
                     <span style={sx('flex:1;min-width:0;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
-                      {d.lat.toFixed(4)}, {d.lng.toFixed(4)}
+                      {comercioCercano(d.lat, d.lng, clientes) || `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}`}
                     </span>
                     <span style={sx('font-family:var(--font-mono);font-size:var(--fs-sm);font-weight:600;flex:none')}>{fmtDuracion(d.duracionMs)}</span>
                   </div>

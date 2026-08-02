@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
+import { useTenant } from '../../context/TenantContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId } from '../../lib/colors'
 import { glassBlur } from '../../lib/glass'
@@ -14,6 +15,9 @@ import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
+import useAlertasEquipo from '../../hooks/useAlertasEquipo'
+import AlertasEquipo from '../../components/AlertasEquipo'
+import SelectorEmpresa from '../../components/SelectorEmpresa'
 import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
@@ -21,6 +25,7 @@ import Overlay from '../../components/Overlay'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
+import RailMapa, { RAIL_W } from './components/RailMapa'
 import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
 import { App as CapApp } from '@capacitor/app'
@@ -68,7 +73,6 @@ const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).j
 // constantes para que el layout siga siendo coherente si cambia el alto del header/nav.
 const NAV_H = 56    // alto de la bottom-nav (sin safe-area)
 const HEADER_H = 56 // alto del header glass (sin safe-area)
-const RAIL_W = 44   // lado de los botones del rail vertical (área táctil mínima)
 const PIN_ZOOM_KEY = 'lu-pin-zoom' // tamaño elegido para la tarjeta del pin (1 | 1.5)
 const safeTop = (px) => `calc(${px}px + env(safe-area-inset-top))`
 const safeBottom = (px) => `calc(${px}px + env(safe-area-inset-bottom))`
@@ -84,7 +88,12 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const { theme, isDark, toggleTheme } = useTheme()
   const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
-  const base = useEmpresaBase(idEmpresa) // dónde abre el mapa (depósito de la empresa)
+  // 🚨 SCOPE de LECTURA (regla 11): todo lo que CONSULTA usa `idEmpresaActiva`; la escritura de
+  // GPS sigue clavada a `useAuth().idEmpresa` en GpsContext, que esta pantalla no toca.
+  const { idEmpresaActiva, puedeCambiarScope, empresasDisponibles, setEmpresaActiva, esOverride, nombreActiva } = useTenant()
+  const base = useEmpresaBase(idEmpresaActiva) // dónde abre el mapa (depósito de la empresa)
+  // Incidentes abiertos del equipo (los abre el cron `alertas-equipo`, acá solo se leen).
+  const avisos = useAlertasEquipo()
   const [section, setSection] = useState('mapa') // 'mapa' | 'dash'
   const [filter, setFilter] = useState(null)     // null | 'v' | 'r'
   const [pinId, setPinId] = useState(null)
@@ -111,6 +120,12 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [modalPerfil, setModalPerfil] = useState(false)
   const [datePop, setDatePop] = useState(false)  // fallback: popover con el <input date> inline
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin chrome
+  // SEGUIMIENTO: id de la persona a la que la cámara se queda pegada, o null.
+  //
+  // Es el SEGUNDO zoom del mapa, distinto del que ya había: tocar una burbuja encuadra TODO el
+  // recorrido del día (`foco`), esto va a donde la persona está AHORA y se mueve con ella. Se
+  // suelta tocando el botón de nuevo o arrastrando el mapa (LeafletMap escucha `dragstart`).
+  const [seguirId, setSeguirId] = useState(null)
   // Escala de la tarjeta del pin: 1 (como siempre) o 1,5. Se PERSISTE porque no es una
   // preferencia del momento: el que necesita el tamaño grande lo necesita todos los días.
   // Leer 14,5 px a un brazo de distancia, con sol de frente y el teléfono en una mano, no se
@@ -127,7 +142,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (trazos por persona). Auto-refresh incremental solo si es hoy. ----
-  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresa, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
 
   // 🩸 EL RECORRIDO SE LIMPIA UNA SOLA VEZ Y DE ACÁ SALE TODO (30/07/2026): trazos, km, paradas y
   // el resumen del pin. Si alguna de esas cuatro leyera `byUserCrudo`, contaría un recorrido que
@@ -157,10 +172,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {
-    if (!idEmpresa) return
+    if (!idEmpresaActiva) return
     const s = await fetchSnapRecorridos({ fecha, desde: new Date(fecha + 'T00:00:00').toISOString(), hasta: new Date(fecha + 'T23:59:59').toISOString() })
     setSnapped(s)
-  }, [idEmpresa, fecha])
+  }, [idEmpresaActiva, fecha])
 
   useEffect(() => { cargarSnap() }, [cargarSnap])
   useEffect(() => { const iv = setInterval(cargarSnap, REFRESH_MS); return () => clearInterval(iv) }, [cargarSnap])
@@ -212,6 +227,41 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     if (mv) return { points: [{ lat: mv.lat, lng: mv.lng }], nonce: foco.nonce }
     return { points: [], nonce: foco.nonce }
   }, [foco, byUser, movers])
+
+  // A quién centrar/seguir: el enfocado si hay uno, si no el móvil con la señal MÁS FRESCA.
+  //
+  // El fallback importa: sin nadie seleccionado el botón igual tiene que hacer algo útil, y "el que
+  // acaba de reportar" es lo más cerca de "lo que está pasando ahora" que se puede elegir solo.
+  const objetivoSeguir = useMemo(() => {
+    const cand = foco?.id ? movers[foco.id] : null
+    if (cand) return { id: foco.id, lat: cand.lat, lng: cand.lng, ts: cand.ts }
+    let mejor = null
+    for (const [id, m] of Object.entries(movers)) {
+      if (!pasaFiltro(m.rol)) continue
+      if (!mejor || (m.ts || 0) > (mejor.ts || 0)) mejor = { id, lat: m.lat, lng: m.lng, ts: m.ts }
+    }
+    return mejor
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foco, movers, filter])
+
+  // Coordenada que consume LeafletMap. Sale de `movers` y no del objetivo memoizado para que cada
+  // posición nueva reenganche la cámara: eso es lo que da la sensación de "en vivo".
+  const seguirData = useMemo(() => {
+    if (!seguirId) return null
+    const m = movers[seguirId]
+    return m ? { lat: m.lat, lng: m.lng, ts: m.ts } : null
+  }, [seguirId, movers])
+
+  const alternarSeguir = useCallback(() => {
+    if (seguirId) { setSeguirId(null); return }
+    if (!objetivoSeguir) { showToast('Nadie está reportando ubicación ahora'); return }
+    setSeguirId(objetivoSeguir.id)
+    setPinId(objetivoSeguir.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seguirId, objetivoSeguir])
+
+  // Cambiar de día suelta el seguimiento: en un día pasado no hay nada "en vivo" a lo que pegarse.
+  useEffect(() => { if (!esHoy) setSeguirId(null) }, [esHoy])
 
   // Aviso si la persona enfocada no tiene nada que mostrar hoy (ni recorrido ni señal viva).
   useEffect(() => {
@@ -330,6 +380,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
   const cambiarFecha = (v) => { setFecha(v || hoyStr()); setFitDone(false); setPinId(null); setDatePop(false) }
 
+  // Tocar un aviso de la campanita → ver a esa persona en el mapa.
+  //
+  // Los incidentes son SIEMPRE de hoy (la ventana de rastreo se cierra a la noche), así que si se
+  // está mirando un día pasado hay que volver: enfocar sobre otra fecha mostraría un recorrido que
+  // no es el del aviso, y sería peor que no hacer nada.
+  const enfocarAviso = (a) => {
+    if (!a) return
+    if (fecha !== hoyStr()) cambiarFecha(hoyStr())
+    enfocarUsuario(a.id_usuario)
+  }
+
   function doSync() {
     if (syncing) return
     setSyncing(true)
@@ -380,6 +441,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
           fit={!fitDone}
           focus={focusData}
+          seguir={seguirData}
+          onSeguirCancelado={() => setSeguirId(null)}
           edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 24, left: 16 }}
           onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); setPlusOpen(false); setAcctOpen(false) } }}
         />
@@ -412,10 +475,29 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             <div style={{ fontSize: 9.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 1 }}>
               <span style={{ width: 5, height: 5, borderRadius: 99, background: mqttOn ? 'var(--success)' : 'var(--faint)', animation: mqttOn ? 'lu-blink 2s infinite' : 'none' }} />{roleLabel} · en vivo
             </div>
+            {/* Mirando OTRA empresa: el aviso va en el header y no escondido en un menú, porque de
+                otro modo es facilísimo sacar conclusiones sobre el equipo equivocado. */}
+            {esOverride && (
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.04em', color: 'var(--warning)', fontFamily: 'var(--font-mono)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
+                {nombreActiva || 'otra empresa'}
+              </div>
+            )}
           </div>
-          <div onClick={() => { setAcctOpen((v) => !v); setPlusOpen(false); setPinId(null) }} style={{ width: 34, height: 34, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12.5, position: 'relative' }}>
-            {initials(nombre)}
-            <span style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--glass-bg)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Campanita de avisos: quién dejó de reportar y quién lleva demasiado parado. El push
+                ya se lo mandó `alertas-equipo`, pero esto es el registro — y en la PWA de escritorio
+                es lo ÚNICO que hay, porque una web no recibe FCM. */}
+            <AlertasEquipo
+              alertas={avisos.alertas}
+              sinVer={avisos.sinVer}
+              nombres={nombres}
+              onMarcarVista={avisos.marcarVista}
+              onEnfocar={enfocarAviso}
+            />
+            <div onClick={() => { setAcctOpen((v) => !v); setPlusOpen(false); setPinId(null) }} style={{ width: 34, height: 34, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12.5, position: 'relative' }}>
+              {initials(nombre)}
+              <span style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--glass-bg)' }} />
+            </div>
           </div>
         </div>
       </div>
@@ -435,6 +517,14 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
               </div>
             </div>
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
+            {/* Selector de empresa (solo superadmin con más de una). Va en el menú de cuenta y no
+                en el rail: es una decisión de sesión, no un control del mapa que se toque seguido. */}
+            {puedeCambiarScope && (
+              <div style={{ padding: '10px 12px 4px' }}>
+                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Estás mirando</div>
+                <SelectorEmpresa style={{ width: '100%' }} />
+              </div>
+            )}
             <div style={{ padding: 6 }}>
               {onIrAJornada && (
                 <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
@@ -480,81 +570,43 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       )}
 
       {/* ===== RAIL DE CONTROLES (vertical, abajo a la derecha) =====
-          Antes era una franja horizontal que metía ~460px de controles en los ~365px útiles
-          de un Android de 393px: los chips scrolleaban en horizontal sin ninguna affordance
-          ("botones amontonados"). Ahora cada control es un botón de 44×44 apilado hacia
-          arriba desde la bottom-nav; el rail crece agregando ítems, no comprimiéndolos. */}
-      {!inmersivo && (
-      <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 14), zIndex: 'var(--z-chrome)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* Pantalla completa: va arriba de todo el rail porque es el control que ELIMINA al
-            resto — leerlo primero explica de dónde salen (y a dónde vuelven) los demás. */}
-        <BtnInmersivo activo={false} onToggle={entrarInmersivo} />
+          El markup vive en ./components/RailMapa (regla 31: lo comparten esta pantalla, su modo
+          inmersivo y el mapa del propietario).
 
-        {/* Vendedores */}
-        <RailBtn
-          on={filter === 'v'} dim={!!filter && filter !== 'v'} color="var(--info)"
-          badge={vendCount} title={`Vendedores (${vendCount})`}
-          onClick={() => { setFilter((f) => f === 'v' ? null : 'v'); setPinId(null) }}
-        >
-          <span style={{ width: 12, height: 12, borderRadius: 99, background: filter === 'v' ? '#fff' : 'var(--info)' }} />
-        </RailBtn>
-
-        {/* Repartidores */}
-        <RailBtn
-          on={filter === 'r'} dim={!!filter && filter !== 'r'} color="var(--warning)"
-          badge={repCount} title={`Repartidores (${repCount})`}
-          onClick={() => { setFilter((f) => f === 'r' ? null : 'r'); setPinId(null) }}
-        >
-          <span style={{ width: 12, height: 12, borderRadius: 4, background: filter === 'r' ? '#fff' : 'var(--warning)' }} />
-        </RailBtn>
-
-        {/* Fecha: abre el picker nativo. En un día pasado se ven los recorridos históricos
-            (sin móviles en vivo) y el botón queda en --primary. */}
-        <RailBtn on={!esHoy} color="var(--primary)" onClick={abrirFecha} title={esHoy ? 'Viendo hoy · en vivo' : `Viendo ${fecha} · histórico`}>
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></svg>
-          {/* Oculto por opacidad (NO display:none): showPicker()/click() necesitan un input vivo. */}
-          <input
-            ref={dateRef} type="date" value={fecha} max={hoyStr()} tabIndex={-1} aria-hidden="true"
-            onChange={(e) => cambiarFecha(e.target.value)}
-            style={{ position: 'absolute', bottom: 0, right: 0, width: 1, height: 1, opacity: 0, pointerEvents: 'none', border: 'none', padding: 0, colorScheme: isDark ? 'dark' : 'light' }}
-          />
-        </RailBtn>
-
-        {/* Volver a hoy: solo aparece cuando se está mirando un día pasado. */}
-        {!esHoy && (
-          <RailBtn color="var(--primary)" onClick={() => cambiarFecha(hoyStr())} title="Volver a hoy · en vivo">
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.02em' }}>Hoy</span>
-          </RailBtn>
-        )}
-
-        {/* Pegar el trazo a las calles (solo tiene sentido si hay recorridos dibujados). */}
-        {trails.length > 0 && (
-          <RailBtn on={snapOn} color="var(--primary)" onClick={() => setSnapOn((v) => !v)} title="Por defecto se muestra el rastro real (GPS). Activá para pegar el trazo a las calles.">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h6M9 6a3 3 0 1 0-6 0c0 2 3 5 3 5M9 6c0 2-3 5-3 5m9-5a3 3 0 1 1 6 0c0 2-3 5-3 5m-3-5c0 2 3 5 3 5M6 18h12" /></svg>
-          </RailBtn>
-        )}
-
-        {/* Carteles de permanencia ("permaneció 5 min acá"). Encendidos por defecto; con muchos
-            recorridos cargados ensucian el mapa, así que se pueden apagar. */}
-        {trails.length > 0 && (
-          <RailBtn on={dwellOn} color="var(--primary)" onClick={() => setDwellOn((v) => !v)} title={dwellOn ? 'Ocultar paradas (permanencia)' : 'Mostrar paradas (permanencia)'}>
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 1.9" /></svg>
-          </RailBtn>
-        )}
-
-        {/* Clientes geolocalizados (capa de contexto). Independiente de los recorridos. */}
-        <RailBtn on={showClientes} color="var(--primary)" badge={showClientes && clientMarkers.length ? clientMarkers.length : undefined} onClick={() => setShowClientes((v) => !v)} title={showClientes ? 'Ocultar clientes' : 'Mostrar clientes geolocalizados'}>
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
-        </RailBtn>
-
-        {/* Sincronizar ubicaciones */}
-        <RailBtn on={syncing} color="var(--primary)" onClick={doSync} title="Actualizar ubicaciones">
-          <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}>
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg>
-          </div>
-        </RailBtn>
-      </div>
-      )}
+          🩸 EN INMERSIVO YA NO DESAPARECE (30/07/2026). Antes todo el rail estaba envuelto en
+          `{!inmersivo && …}`, así que al abrir el mapa a pantalla completa se iban los botones de
+          clientes, paradas, calles y el selector de fecha — justo cuando el mapa es lo único que
+          se está mirando. Ahora pasa a modo `compacto`: quedan los controles de LECTURA y se van
+          los de operación (filtros por rol, sincronizar). */}
+      <RailMapa
+        compacto={inmersivo}
+        style={{ position: 'absolute', right: 12, bottom: safeBottom(inmersivo ? 14 + RAIL_W + 8 : NAV_H + 14), zIndex: 'var(--z-chrome)' }}
+        filter={filter}
+        vendCount={vendCount}
+        repCount={repCount}
+        onFiltro={(f) => { setFilter(f); setPinId(null) }}
+        fecha={fecha}
+        esHoy={esHoy}
+        isDark={isDark}
+        dateRef={dateRef}
+        onAbrirFecha={abrirFecha}
+        onCambiarFecha={cambiarFecha}
+        hayTrazos={trails.length > 0}
+        snapOn={snapOn}
+        onSnap={() => setSnapOn((v) => !v)}
+        dwellOn={dwellOn}
+        onDwell={() => setDwellOn((v) => !v)}
+        showClientes={showClientes}
+        clientesCount={clientMarkers.length}
+        onClientes={() => setShowClientes((v) => !v)}
+        seguirActivo={!!seguirId}
+        puedeSeguir={!!objetivoSeguir}
+        nombreSeguido={objetivoSeguir ? (nombres[objetivoSeguir.id] || null) : null}
+        onSeguir={alternarSeguir}
+        syncing={syncing}
+        onSync={doSync}
+        onInmersivo={entrarInmersivo}
+      />
 
       {/* En inmersivo queda ESTE botón y nada más. Se posiciona contra el borde real de la
           pantalla (ya no hay bottom-nav que lo empuje) respetando la safe-area. */}
@@ -785,34 +837,6 @@ function themeBtn(active) {
  *   - dim   → hay otro filtro activo: se apaga a --faint.
  *   - badge → conteo (0 no se muestra) en una píldora chica sobre el botón.
  */
-function RailBtn({ on, dim, color, badge, title, onClick, children }) {
-  return (
-    <div
-      onClick={onClick} title={title} role="button" aria-pressed={!!on}
-      className="lu-press"
-      style={{
-        position: 'relative', width: RAIL_W, height: RAIL_W, flex: 'none', boxSizing: 'border-box',
-        borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', cursor: 'pointer',
-        background: on ? color : 'var(--glass-bg)',
-        border: `0.5px solid ${on ? 'transparent' : 'var(--glass-brd)'}`,
-        color: on ? '#fff' : (dim ? 'var(--faint)' : 'var(--text)'),
-        opacity: dim && !on ? 0.72 : 1,
-        // El cambio de filtro conmutaba background/border/color/opacity de golpe.
-        // 160 ms los lleva juntos; el scale(.97) da el acuse de toque.
-        // ⚠️ `transform` va SÍ o SÍ en esta lista: el estilo inline pisa entero al
-        // `transition` de .lu-press, así que sin él el scale saltaría sin animar.
-        transition: 'transform 160ms cubic-bezier(.23,1,.32,1), background 160ms cubic-bezier(.23,1,.32,1), border-color 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1), opacity 160ms cubic-bezier(.23,1,.32,1)',
-        boxShadow: 'var(--shadow-lg)', ...glass,
-      }}
-    >
-      {children}
-      {badge > 0 && (
-        <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', boxSizing: 'border-box', borderRadius: 99, background: on ? 'var(--surface)' : color, color: on ? color : '#fff', border: '1.5px solid var(--surface)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{badge}</span>
-      )}
-    </div>
-  )
-}
-
 function NavBtn({ active, label, onClick, children }) {
   return (
     <div onClick={onClick} className="lu-press" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '5px 0', cursor: 'pointer', color: active ? 'var(--primary)' : 'var(--muted)', transition: 'transform 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1)' }}>

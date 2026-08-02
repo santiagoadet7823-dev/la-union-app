@@ -51,7 +51,13 @@ export const horarioDwell = (p) => `${fmtHora(p.desde)}–${fmtHora(p.hasta)}`
  */
 const MATCH_RADIO_M = 60 // un poco más que el radio de parada (40 m) para tolerar el jitter del centro
 
-function comercioCercano(lat, lng, clientes) {
+/**
+ * Nombre del comercio geolocalizado más cercano a menos de MATCH_RADIO_M, o null.
+ *
+ * Exportada desde el 30/07/2026: la lista de paradas del dueño (`SheetPersona`) mostraba las
+ * coordenadas crudas teniendo esto acá al lado. Un dueño no puede hacer nada con "-24.7891".
+ */
+export function comercioCercano(lat, lng, clientes) {
   if (!clientes || !clientes.length) return null
   let mejor = null
   let mejorD = MATCH_RADIO_M

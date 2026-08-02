@@ -12,7 +12,10 @@ export default function useEmpresaBase(idEmpresa) {
   const [base, setBase] = useState(CENTRO_DEFECTO)
 
   useEffect(() => {
-    if (!idEmpresa) { setBase(CENTRO_DEFECTO); return }
+    // Con scope "todas" ('*') no hay una base: cada empresa tiene la suya. Se abre en el centro
+    // por defecto y el encuadre lo mandan los recorridos, que es lo correcto — elegir el depósito
+    // de una de las empresas sería arbitrario.
+    if (!idEmpresa || idEmpresa === '*') { setBase(CENTRO_DEFECTO); return }
     let alive = true
     supabase.from('empresas').select('base_lat, base_lng').eq('id', idEmpresa).maybeSingle()
       .then(({ data }) => {

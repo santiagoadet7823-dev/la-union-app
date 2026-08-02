@@ -317,6 +317,18 @@ export default function LeafletMap({
   // mismo usuario dos veces. Es independiente del encuadre automático (fit/fitDone): no lo
   // pisa ni lo desactiva. Ver el efecto de más abajo.
   focus = null,
+  // SEGUIMIENTO de la persona monitoreada: { lat, lng, ts } o null. Mientras esté, la cámara se
+  // reengancha con CADA posición nueva — la sensación de "en vivo" tipo Google Maps.
+  //
+  // No se puede usar `followLive` para esto: aquel sigue a `live`, que es la posición PROPIA del
+  // que mira (Admin observando su propio teléfono), no la de un monitoreado.
+  //
+  // 🔑 `dragstart` es el ÚNICO evento que sirve para desengancharlo, y por eso está solo ese:
+  // `flyTo`/`panTo` disparan `movestart` y `zoomstart` por su cuenta, así que escuchar cualquiera
+  // de esos dos haría que el seguimiento se apagara solo en el primer vuelo. Arrastrar, en cambio,
+  // siempre lo hace un dedo.
+  seguir = null,
+  onSeguirCancelado,
   liveColor = null,
   onMarkerClick,
   onMapClick,
@@ -365,6 +377,8 @@ export default function LeafletMap({
   dwellClickRef.current = onDwellClick
   const mapClickRef = useRef(onMapClick)
   mapClickRef.current = onMapClick
+  const seguirFinRef = useRef(onSeguirCancelado)
+  seguirFinRef.current = onSeguirCancelado
 
   // Init único.
   useEffect(() => {
@@ -415,6 +429,10 @@ export default function LeafletMap({
     // este orden no cambia nada: el grupo existe solo para poder vaciarlos por separado.
     dwellsLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
+    // Arrastrar el mapa desengancha el seguimiento. Va acá (una sola vez, en el init) y no en el
+    // efecto de `seguir`: el handler es estable porque lee el callback de un ref, y re-suscribirlo
+    // en cada posición nueva sería registrar y quitar un listener cada 5 segundos.
+    map.on('dragstart', () => seguirFinRef.current?.())
     setTimeout(() => map.invalidateSize(), 60)
     // Reajustar el mapa al rotar / cambiar tamaño (alturas en vh).
     const onResize = () => map.invalidateSize()
@@ -635,6 +653,10 @@ export default function LeafletMap({
       map.setView([live.lat, live.lng], Math.max(map.getZoom() || zoom, 16))
       return
     }
+    // Con seguimiento activo la cámara la manda el efecto de `seguir`. Sin esta guarda, cada
+    // posición nueva cambiaría `kMovers` y el encuadre automático pelearía contra el seguimiento
+    // en el mismo frame: se vería como un tironeo entre el zoom cerrado y el general.
+    if (seguir) return
     if (!fit) return
 
     let bounds = null
@@ -674,7 +696,7 @@ export default function LeafletMap({
       map.fitBounds(bounds, { paddingTopLeft: [edgePadding.left, edgePadding.top], paddingBottomRight: [edgePadding.right, edgePadding.bottom] })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kStatic, kTrails, kMarkers, kMovers, fit, followLive])
+  }, [kStatic, kTrails, kMarkers, kMovers, fit, followLive, !!seguir])
 
   // Enfoque puntual al recorrido de una persona (click en la lista de equipo). Efecto
   // aparte del redibujo/encuadre: se dispara SOLO cuando cambia `focus.nonce` (un timestamp
@@ -702,6 +724,23 @@ export default function LeafletMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus && focus.nonce])
+
+  // SEGUIMIENTO en vivo de la persona monitoreada. Efecto propio y con dependencia en las
+  // COORDENADAS (no en el objeto): así se reengancha exactamente una vez por posición nueva.
+  //
+  // La diferencia entre `flyTo` y `panTo` es lo que separa "seguir" de "saltar": la primera vez
+  // hay que acercar la cámara (flyTo con zoom), pero de ahí en adelante el zoom ya es el bueno y
+  // solo hay que desplazarse. Volver a hacer flyTo en cada fix daría un rebote de zoom cada pocos
+  // segundos, que es exactamente lo que NO hace Google Maps.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !seguir || seguir.lat == null || seguir.lng == null) return
+    const destino = [seguir.lat, seguir.lng]
+    const z = map.getZoom() || zoom
+    if (z < 16) map.flyTo(destino, 16, { duration: 0.6 })
+    else map.panTo(destino, { animate: true, duration: 0.6 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seguir && seguir.lat, seguir && seguir.lng])
 
   // Capa de clientes (contexto). Efecto SEPARADO del redibujo de overlays: `clients` llega
   // memoizado desde la vista, así que su referencia es estable entre ticks y este efecto no se
