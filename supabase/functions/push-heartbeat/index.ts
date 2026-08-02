@@ -82,8 +82,16 @@ Deno.serve(async () => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    // Móviles con token cuyo último latido fue hace menos de 12 h (evita spamear tokens muertos).
-    const desde = new Date(Date.now() - 12 * 3600 * 1000).toISOString()
+    // Móviles con token cuyo último latido fue hace menos de 7 DÍAS.
+    //
+    // Era 12 h, con el motivo "evita spamear tokens muertos". Pero esa ventana tenía dos problemas
+    // que se vieron el 30/07/2026: (1) el teléfono al que MÁS conviene despertar es justamente el
+    // que hace rato no reporta —es para lo que existe un watchdog—, y quedaba afuera; (2) un token
+    // muerto de hace 3 días nunca entraba, así que la limpieza de abajo no lo alcanzaba nunca y se
+    // quedaba envenenando el contador de `fallidos` para siempre.
+    //
+    // El costo de ampliar es nulo: el mensaje es data-only y silencioso, no le suena a nadie.
+    const desde = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
     const { data: filas, error } = await supabase
       .from('estado_dispositivo')
       .select('id_usuario, fcm_token, ts')
@@ -94,6 +102,16 @@ Deno.serve(async () => {
     const token = await getAccessToken(sa)
     const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`
     let ok = 0, fail = 0
+    // 🩸 LIMPIEZA DE TOKENS MUERTOS (30/07/2026). Un token queda inservible cuando se desinstala la
+    // app o Firebase lo rota, y NO se cura solo: se queda en `estado_dispositivo` para siempre,
+    // desperdicia un envío en cada corrida y —lo peor— deja `fallidos` clavado en un número > 0,
+    // que es exactamente lo que hace que nadie note una falla de verdad. Se detectó porque
+    // `push-actualizacion` de 1.7.0 devolvió 7 enviados y 1 fallido con 404 NotRegistered.
+    //
+    // Esta función es la que corresponde para limpiarlos, y no las otras dos: es la única que corre
+    // en CRON contra TODOS los teléfonos con token, así que ve a cada uno cada 30 minutos. El token
+    // se vuelve a llenar solo la próxima vez que ese teléfono abre la app y se registra en FCM.
+    const muertos: string[] = []
     for (const f of filas || []) {
       // Mensaje de DATOS silencioso: sin `notification`, alta prioridad → despierta la app sin
       // molestar al usuario con un cartel.
@@ -109,10 +127,19 @@ Deno.serve(async () => {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(msg),
       })
-      if (r.ok) ok++
-      else fail++
+      if (r.ok) { ok++; continue }
+      fail++
+      // Solo se borra ante un rechazo EXPLÍCITO del token. Un 5xx o un corte de red no cuentan:
+      // ahí el token está bien y lo que falló fue el intento.
+      const cuerpo = await r.text().catch(() => '')
+      if (r.status === 404 || /NotRegistered|UNREGISTERED|INVALID_ARGUMENT/.test(cuerpo)) {
+        muertos.push(f.id_usuario)
+      }
     }
-    return new Response(JSON.stringify({ enviados: ok, fallidos: fail, total: (filas || []).length }), {
+    if (muertos.length) {
+      await supabase.from('estado_dispositivo').update({ fcm_token: null }).in('id_usuario', muertos)
+    }
+    return new Response(JSON.stringify({ enviados: ok, fallidos: fail, tokens_muertos: muertos.length, total: (filas || []).length }), {
       headers: { 'Content-Type': 'application/json' },
     })
   } catch (e) {
