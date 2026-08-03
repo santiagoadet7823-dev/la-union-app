@@ -130,6 +130,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // recorrido del día (`foco`), esto va a donde la persona está AHORA y se mueve con ella. Se
   // suelta tocando el botón de nuevo o arrastrando el mapa (LeafletMap escucha `dragstart`).
   const [seguirId, setSeguirId] = useState(null)
+  // Sello del ÚLTIMO enganche pedido a mano (ver `alternarSeguir`). Viaja en `seguir.nonce`.
+  const [seguirNonce, setSeguirNonce] = useState(0)
   // Escala de la tarjeta del pin: 1 (como siempre) o 1,5. Se PERSISTE porque no es una
   // preferencia del momento: el que necesita el tamaño grande lo necesita todos los días.
   // Leer 14,5 px a un brazo de distancia, con sol de frente y el teléfono en una mano, no se
@@ -260,13 +262,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const seguirData = useMemo(() => {
     if (!seguirId) return null
     const m = movers[seguirId]
-    return m ? { id: seguirId, lat: m.lat, lng: m.lng, ts: m.ts } : null
-  }, [seguirId, movers])
+    return m ? { id: seguirId, lat: m.lat, lng: m.lng, ts: m.ts, nonce: seguirNonce } : null
+  }, [seguirId, seguirNonce, movers])
 
   const alternarSeguir = useCallback(() => {
     if (seguirId) { setSeguirId(null); return }
     if (!objetivoSeguir) { showToast('Nadie está reportando ubicación ahora'); return }
     setSeguirId(objetivoSeguir.id)
+    // 🩸 El sello del enganche. Sin esto, apretar el botón no cambia ninguna coordenada y el efecto
+    // de cámara de LeafletMap no llega a correr: con la persona quieta, "Centrar" no hacía nada
+    // (reportado el 03/08/2026 como "hago zoom, toco centrar y el seguimiento ya no funciona").
+    setSeguirNonce(Date.now())
     setPinId(objetivoSeguir.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seguirId, objetivoSeguir])

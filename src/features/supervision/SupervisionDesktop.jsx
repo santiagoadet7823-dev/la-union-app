@@ -96,6 +96,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // SEGUIMIENTO: id de la persona a la que la cámara se queda pegada, o null. Es el segundo zoom
   // (el primero, encuadrar TODO el recorrido, lo hace `foco` al tocar una burbuja).
   const [seguirId, setSeguirId] = useState(null)
+  // Sello del ÚLTIMO enganche pedido a mano (ver `alternarSeguir`). Viaja en `seguir.nonce`.
+  const [seguirNonce, setSeguirNonce] = useState(0)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
   const [modalPerfil, setModalPerfil] = useState(false)
@@ -220,13 +222,16 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const seguirData = useMemo(() => {
     if (!seguirId) return null
     const m = movers[seguirId]
-    return m ? { id: seguirId, lat: m.lat, lng: m.lng, ts: m.ts } : null
-  }, [seguirId, movers])
+    return m ? { id: seguirId, lat: m.lat, lng: m.lng, ts: m.ts, nonce: seguirNonce } : null
+  }, [seguirId, seguirNonce, movers])
 
   const alternarSeguir = useCallback(() => {
     if (seguirId) { setSeguirId(null); return }
     if (!objetivoSeguir) { showToast('Nadie está reportando ubicación ahora'); return }
     setSeguirId(objetivoSeguir.id)
+    // 🩸 El sello del enganche: sin esto, con la persona quieta el botón no movía la cámara. Ver el
+    // comentario del efecto de seguimiento en LeafletMap.
+    setSeguirNonce(Date.now())
     setPinId(objetivoSeguir.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seguirId, objetivoSeguir])

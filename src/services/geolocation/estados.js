@@ -51,8 +51,9 @@ import { NEAR_LIVE_MS } from '../gpsConfig'
  *
  * CAMBIO 24/07/2026 (pedido "casi en vivo"): antes se estiraba a 90 s estando quieto (18× menos
  * adquisiciones, ahorro de batería). Ahora el cliente pide ver al vendedor moverse en tiempo casi
- * real AUNQUE esté detenido en un cliente, así que el intervalo quieto baja a NEAR_LIVE_MS (5 s
- * desde el 03/08/2026, antes 10), alineado con el gate de tracker.js. Costo consciente: se pierde
+ * real AUNQUE esté detenido en un cliente, así que el intervalo quieto baja a NEAR_LIVE_MS (10 s;
+ * el 03/08/2026 se probó en 5 y se volvió — ver el 🩸 de gpsConfig), alineado con el gate de
+ * tracker.js. Costo consciente: se pierde
  * el ahorro de batería del reposo (el chip adquiere a esa cadencia todo el día). Si la autonomía no
  * alcanza, el número a subir es NEAR_LIVE_MS y nada más (regla 22-ter).
  * OJO: updateWatcher NO hace merge (regla 13), por eso se parte de OPCIONES_GPS_MOVIMIENTO entero.

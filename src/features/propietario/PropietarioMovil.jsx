@@ -77,6 +77,8 @@ export default function PropietarioMovil() {
   const [showClientes, setShowClientes] = useState(false)
   const [foco, setFoco] = useState(null)      // { id, nonce } — persona enfocada
   const [seguirId, setSeguirId] = useState(null)
+  // Sello del ÚLTIMO enganche pedido a mano (ver `alternarSeguir`). Viaja en `seguir.nonce`.
+  const [seguirNonce, setSeguirNonce] = useState(0)
   const [fitDone, setFitDone] = useState(false)
   const dateRef = useRef(null)
 
@@ -247,8 +249,8 @@ export default function PropietarioMovil() {
   const seguirData = useMemo(() => {
     if (!seguirId) return null
     const mv = movers[seguirId]
-    return mv ? { id: seguirId, lat: mv.lat, lng: mv.lng, ts: mv.ts } : null
-  }, [seguirId, movers])
+    return mv ? { id: seguirId, lat: mv.lat, lng: mv.lng, ts: mv.ts, nonce: seguirNonce } : null
+  }, [seguirId, seguirNonce, movers])
 
   // Snap-to-road (toggle "Calles"). Solo se pide cuando el mapa está abierto: el dueño abre esta
   // pantalla muchas veces por día y el ruteo es un recurso donado (FOSSGIS).
@@ -287,7 +289,9 @@ export default function PropietarioMovil() {
 
   const alternarSeguir = useCallback(() => {
     if (seguirId) { setSeguirId(null); return }
-    if (objetivoSeguir) { setSeguirId(objetivoSeguir.id); setFoco({ id: objetivoSeguir.id, nonce: Date.now() }) }
+    // 🩸 El `setSeguirNonce` no es redundante con el nonce del foco: sin él, con la persona quieta
+    // el efecto de cámara de LeafletMap no corre y el botón no hace nada (03/08/2026).
+    if (objetivoSeguir) { setSeguirId(objetivoSeguir.id); setSeguirNonce(Date.now()); setFoco({ id: objetivoSeguir.id, nonce: Date.now() }) }
   }, [seguirId, objetivoSeguir])
 
   // Enfocar a una persona (o `null` para soltar). Enfocar a OTRA suelta el seguimiento: si no, el

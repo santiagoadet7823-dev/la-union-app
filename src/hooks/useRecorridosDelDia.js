@@ -41,7 +41,12 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
 
   const load = useCallback(async (incremental) => {
     if (!idEmpresa) return
-    const cols = conRol ? 'id_usuario, rol, lat, lng, ts, bateria' : 'id_usuario, lat, lng, ts, bateria'
+    // `accuracy` desde 1.9.0: es lo que distingue un fix de GPS de uno TRIANGULADO por antenas/WiFi
+    // (los de más de ACCURACY_MAX_M), y `limpiarTrazo` los necesita para dibujarlos punteados y
+    // dejarlos fuera de los km. Sin esta columna el trazo aproximado se dibujaría como si fuera GPS.
+    const cols = conRol
+      ? 'id_usuario, rol, lat, lng, ts, bateria, accuracy'
+      : 'id_usuario, lat, lng, ts, bateria, accuracy'
     const desde = new Date(fecha + 'T00:00:00').toISOString()
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
     if (!incremental) setLoading(true)

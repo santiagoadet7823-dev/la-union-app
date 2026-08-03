@@ -59,6 +59,16 @@ public class UploaderGpsPlugin extends Plugin {
         double maxSpeedMps = call.getDouble("maxSpeedMps", 45.0);
         double minJumpM = call.getDouble("minJumpM", 9.0);
         int maxSaltosSeguidos = call.getInt("maxSaltosSeguidos", 3);
+        // 1.9.0 — guardado por distancia según el modo, carril de triangulación y anti-churn. Los
+        // defaults son los que valían antes de que existieran, así que un APK nuevo con un bundle
+        // viejo se comporta igual que hoy. Ver los comentarios de UploaderGpsService.
+        int minMoveUrbanoM = call.getInt("minMoveUrbanoM", 15);
+        int minMoveRutaM = call.getInt("minMoveRutaM", 100);
+        double velRutaMps = call.getDouble("velRutaMps", 11.0);
+        int intervaloQuietoMs = call.getInt("intervaloQuietoMs", 30000);
+        double accuracyRedMaxM = call.getDouble("accuracyRedMaxM", 150.0);
+        int silencioMs = call.getInt("silencioMs", 90000);
+        int repedidoMinMs = call.getInt("repedidoMinMs", 60000);
         // Dueño de los puntos que capture esta sesión (id_usuario). Es lo que impide que la cola de
         // una cuenta se suba con el token de otra: ver K_DUENO en UploaderGpsService.
         String dueno = call.getString("dueno");
@@ -85,6 +95,13 @@ public class UploaderGpsPlugin extends Plugin {
             .putFloat(UploaderGpsService.K_MAX_SPEED, (float) maxSpeedMps)
             .putFloat(UploaderGpsService.K_MIN_JUMP, (float) minJumpM)
             .putInt(UploaderGpsService.K_MAX_SALTOS, maxSaltosSeguidos)
+            .putInt(UploaderGpsService.K_MIN_MOVE_URBANO, minMoveUrbanoM)
+            .putInt(UploaderGpsService.K_MIN_MOVE_RUTA, minMoveRutaM)
+            .putFloat(UploaderGpsService.K_VEL_RUTA, (float) velRutaMps)
+            .putInt(UploaderGpsService.K_INTERVALO_QUIETO, intervaloQuietoMs)
+            .putFloat(UploaderGpsService.K_ACCURACY_RED_MAX, (float) accuracyRedMaxM)
+            .putInt(UploaderGpsService.K_SILENCIO_MS, silencioMs)
+            .putInt(UploaderGpsService.K_REPEDIDO_MIN_MS, repedidoMinMs)
             .apply();
         call.resolve();
     }
@@ -173,6 +190,15 @@ public class UploaderGpsPlugin extends Plugin {
         ret.put("descMovimiento", sp.getInt(UploaderGpsService.K_TEL_MOVIMIENTO, 0));
         ret.put("guardados", sp.getInt(UploaderGpsService.K_TEL_GUARDADOS, 0));
         ret.put("ultimoFixAt", sp.getLong(UploaderGpsService.K_TEL_ULTIMO_FIX, 0));
+        // 1.9.0 — los cuatro que faltaban para poder distinguir "el SO no entrega" de "nos peleamos
+        // con la cadencia". `intervalo` es lo que se le está PIDIENDO al proveedor: contra la
+        // cadencia real (que sale de la base) dice si el pedido se está respetando. `repedidos`
+        // delata el churn de requests. `silencioMax` es el hueco más largo del día — el número que
+        // dice si el WakeLock sirvió. `fixesRed` cuenta lo que aportó la triangulación.
+        ret.put("intervalo", sp.getLong(UploaderGpsService.K_TEL_INTERVALO, 0));
+        ret.put("repedidos", sp.getInt(UploaderGpsService.K_TEL_REPEDIDOS, 0));
+        ret.put("silencioMax", sp.getLong(UploaderGpsService.K_TEL_SILENCIO_MAX, 0));
+        ret.put("fixesRed", sp.getInt(UploaderGpsService.K_TEL_RED, 0));
         call.resolve(ret);
     }
 }

@@ -222,6 +222,41 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     verdadero para siempre. El destino vive en `pinesRef` (`lat`/`lng`) y `ts` avanza SOLO cuando el
     destino cambió — si avanzara con los latidos de cortesía, el `dt` del próximo tramo se mediría
     desde algo que no movió el pin. Ver `LeafletMap.jsx`.
+39. 🩸 **El snap no rutea evidencia que no tiene: se mide el TIEMPO del salto, no la distancia.**
+    (ALGO 9, 03/08/2026.) Con "Calles" prendido, el trazo dibujado medía **×1,63 · ×1,48 · ×1,75**
+    el crudo del mismo día en los tres vendedores: entre el 48 % y el 75 % del recorrido lo estaba
+    inventando OSRM, y eso era el "zigzag" que reportó el cliente. El motor era el correcto (regla
+    38); lo que fallaba era la ENTRADA — el teléfono se callaba de a 1-5 minutos y `/route` entre
+    dos puntos así no reconstruye nada, elige el camino más corto y teje por calles por las que
+    nadie pasó. **La primera versión de la guarda miraba la separación mediana en METROS y no habría
+    atajado ni un caso**: la mediana de ese día es 7,8 m, porque los racimos de cuando está parado la
+    hunden. En ruta 130 m entre puntos se hacen en 5 s y OSRM da ×1,003; en el pueblo 200 m tardan
+    100 s, y ahí no hay nada que reconstruir. Calibración medida sobre los cuatro teléfonos del día
+    (80,6 % · 23,3 % · 9,0 % · 0,4 % del largo a ciegas): el umbral de 35 % deja pasar a los tres
+    que andan bien y frena al que está fallando. Y **el anti-detour ×2,5 no rechazaba NADA** — una
+    guarda que nunca actúa no es una guarda. Ver `fraccionCiega` en `segmentar.ts`.
+40. **Un punto TRIANGULADO no se dibuja ni se cuenta como GPS.** (1.9.0.) Desde el APK 1.9.0, con el
+    GPS callado más de 90 s el teléfono pide ubicación por antenas y WiFi. Esos puntos entran a
+    `posiciones` con `accuracy` de 20 a 150 m, y **la precisión ES la marca** (hasta 1.8.1 no existía
+    un solo punto con accuracy > `ACCURACY_MAX_M`, así que no hizo falta columna nueva). Valen para
+    "por acá anduvo" y para nada más: van punteados, **fuera de los km, fuera del snap y fuera de la
+    burbuja en vivo** (`ultimas_posiciones` los filtra, `db/28`). Cambiar un hueco honesto por una
+    línea llena inventada es el mismo error que cometía el snap.
+41. **El enganche de la cámara es un EVENTO, no una coordenada.** (03/08/2026.) "Hago zoom, toco
+    centrar y el seguimiento ya no funciona": el efecto de `seguir` en `LeafletMap` dependía solo de
+    `[lat, lng]`, y apretar el botón no cambia la posición de nadie — así que **no corría nunca**. Y
+    si corría, delegaba la cámara a la animación del pin, que solo existe cuando el pin se mueve: con
+    la persona parada el botón no hacía absolutamente nada. Va un `nonce` sellado al apretar (mismo
+    patrón que `focus.nonce`) y en el enganche SIEMPRE encuadra con `flyTo`.
+42. 🩸 **Un foreground service de ubicación TOMA UN WAKELOCK PARCIAL, y no re-pide updates a cada
+    rato.** (1.9.0.) `WAKE_LOCK` estaba declarado en el manifest desde el primer día y **no se usaba
+    en ninguna parte**: el tipo `location` exime de los límites de background pero NO impide que el
+    SO suspenda la CPU en Doze, y ahí la callback de FusedLocation no corre. Medido: silencios de
+    **7 minutos estando parado**, con precisión de 2,8 m y los contadores de descarte en cero. Y cada
+    `requestLocationUpdates` **reemplaza el request y reinicia la agenda de entrega**: hasta 1.8.1 se
+    re-pedía aunque el intervalo fuera el mismo, y con AR confundiendo "a pie" con "bicicleta" eso
+    pasaba cada 20-30 s. Pedir más seguido no es recibir más seguido — el teléfono que corrió el
+    5 s / 2 s pasó de 0,9 % a **24 %** de huecos de más de un minuto.
 38. **El snap elige el MOTOR por modo, y el modo lo decide `splitModo`.** (ALGO 8, 03/08/2026.)
     Peatón → `routed-foot`; vehículo → `routed-car`. Medido con el mismo rastro real: en un tramo de
     ruta el perfil auto da ×1,003 del crudo y el peatón ×57; en un tramo a pie el peatón da ×1,48 y

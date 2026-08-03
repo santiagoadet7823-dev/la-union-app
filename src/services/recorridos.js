@@ -35,7 +35,14 @@ export async function fetchSnapRecorridos({ fecha, desde, hasta }) {
     // persona más.
     Object.defineProperty(out, '_meta', {
       enumerable: false,
-      value: { ruteos: data.ruteos, truncados: data.truncados, autos: data.autos, pies: data.pies, crudos: data.crudos },
+      // `km` (ALGO 9) es el par crudo/pegado en METROS por id_usuario, y es LA medida de si el snap
+      // está reconstruyendo o inventando: el 03/08/2026 el trazo dibujado medía ×1,63 el crudo y en
+      // el mapa se veía "más pegado a la calle". Un día 100 % crudo da ~×0,86 (se dibuja el rastro
+      // adelgazado), así que lo que hay que mirar es que no se despegue HACIA ARRIBA de ~×1,2.
+      value: {
+        ruteos: data.ruteos, truncados: data.truncados, autos: data.autos, pies: data.pies,
+        crudos: data.crudos, triangulados: data.triangulados, km: data.km,
+      },
     })
     return out
   } catch (_) {

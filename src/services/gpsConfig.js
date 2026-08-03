@@ -36,7 +36,24 @@ export const KEEPALIVE_MS = 90000  // reenvío de cortesía aunque no se mueva (
 // El volumen no se dispara porque el techo de densidad lo pone MIN_MOVE_M (9 m), no esta constante:
 // parado sigue mandando el keepalive de 30 s y caminando se sigue guardando cada 9-13 m. Lo que sí
 // cuesta es batería (más adquisiciones por minuto); cuánto, hay que medirlo en un teléfono real.
-export const NEAR_LIVE_MS = 5000   // 5 s
+//
+// 🩸 Y VUELTA A 10 s EL 03/08/2026, el día siguiente. El razonamiento de arriba sobre los saltos
+// cortos sigue siendo correcto; lo que estaba mal era suponer que pedir más seguido significa
+// recibir más seguido. Medido sobre el ÚNICO teléfono que llegó a correr 1.8.1 (Gabriel Tevez,
+// mismo aparato, misma persona):
+//   27/07 (1.6.x): 907 puntos/día, 0,9 % de huecos > 60 s
+//   29/07 (1.6.x): 1056 puntos/día, 0,5 %
+//   03/08 (1.8.1): 175 puntos en 158 min, **24,0 %** — y 3,7 de sus 5,1 km adentro de esos huecos
+// Los otros dos teléfonos, con 1.8.0, ese mismo día estaban perfectos (0,2 % y 3,8 %). O sea que el
+// 5 s / 2 s no está probado en ningún lado y el único que lo corrió se degradó 25×.
+//
+// La causa más probable es el CHURN de `requestLocationUpdates` (cada llamada reinicia la agenda de
+// entrega del proveedor, y con 2 s el modo rápido entraba y salía todo el tiempo). Eso se arregla en
+// nativo en 1.9.0 (anti-churn + WakeLock + telemetría de cadencia pedida vs entregada), pero hasta
+// tener esa medición los números vuelven a los que se sabe que funcionan. La densidad ahora la
+// gobierna la distancia por modo, que es más barata en batería y más fiel al trazo que apretar el
+// temporizador.
+export const NEAR_LIVE_MS = 10000  // 10 s
 // Reenvío estando QUIETO. Antes el gate de "quieto" usaba NEAR_LIVE_MS (10 s): un vendedor parado en un
 // cliente emitía 6 puntos/min redundantes → inundaba `posiciones`, saturaba Realtime y trababa el mapa
 // (medido 26/07/2026). El marcador sigue "vivo" y se corta el volumen de quieto.
@@ -57,7 +74,10 @@ export const STATIONARY_KEEPALIVE_MS = 30000  // 30 s
 // puntos. A 2 s son ~11 m, que es la densidad con la que la esquina se dobla en vez de cortarse.
 // En ruta (81 km/h de promedio medido) pasa de 132 m a ~45 m: sigue sin ser fiel, pero ahí no hay
 // calles paralelas con las que confundirse — eso lo resuelve el snap, no más puntos.
-export const NEAR_LIVE_RAPIDO_MS = 2000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
+// 03/08/2026: vuelve a 5 s por el mismo motivo que NEAR_LIVE_MS (ver el 🩸 de arriba). Los 2 s son
+// el sospechoso número uno del churn: con ese destino, el modo rápido entraba y salía cada 20-30 s
+// y cada entrada reemplazaba el LocationRequest.
+export const NEAR_LIVE_RAPIDO_MS = 5000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
 // 30/07/2026: bajado de 4 m/s (14 km/h) a 3 (11 km/h). La banda de 5-14 km/h —moto lenta, auto en el
 // pueblo, alguien apurado— quedaba en cadencia lenta y es donde MÁS falta densidad: son calles de
 // ciudad, con paralelas a media cuadra, o sea justo donde un trazo pobre inventa por dónde pasó. En
@@ -71,3 +91,42 @@ export const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido 
 // en vez de los fixes nuevos. Pasa cuando el primer fix tras arrancar el servicio es el malo: sin este
 // tope, ese único punto podría descartar la jornada entera.
 export const MAX_SALTOS_SEGUIDOS = 3
+
+// ── 1.9.0 · Guardar por DISTANCIA según el modo ──────────────────────────────────────────────────
+// El pedido del cliente (03/08/2026): "pasar de temporizador a distancia, cada 10 metros una
+// ubicación, y si detecta que es ruta por donde va viajando que sea cada 50 o 100 metros para
+// minimizar carga en base de datos".
+//
+// Se implementa en el filtro de GUARDADO del servicio nativo, no en el LocationRequest:
+// `setMinUpdateDistanceMeters` haría que el SO ENTREGUE menos fixes, que es lo contrario de lo que
+// hace falta (el problema medido es que llegan pocos, no que sobren).
+//
+// ⚠️ La banda urbana NO va a 50 m, y la diferencia importa: es donde vive el problema que motivó
+// toda esta tanda. Son calles con paralelas a media cuadra, y a 50 m entre puntos el trazo dibuja
+// la diagonal que cruza la manzana. Medido: a 5 s de captura en esa banda ya quedaban 27,8 m entre
+// puntos y no alcanzaba. Los 100 m van donde el cliente los pidió y donde no cuestan nada — en
+// ruta, arriba de 40 km/h, donde no hay calle paralela con la que confundirse.
+//
+// Dimensión real del "problema" de carga, para no exagerarlo: `posiciones` tiene 25.368 filas y
+// 14 MB en total, con 3.171 filas/día. Esto entra porque es lo correcto para el trazo en ruta.
+export const MIN_MOVE_URBANO_M = 15   // 11-40 km/h: denso, es donde se confunden las calles
+export const MIN_MOVE_RUTA_M = 100    // > 40 km/h: sin paralelas, se puede ralear sin perder nada
+export const VEL_RUTA_MPS = 11        // ~40 km/h: desde acá se considera "ruta"
+
+// Cadencia con "quieto" CONFIRMADO por el acelerómetro (Activity Recognition). Es de donde sale la
+// batería que cuesta la captura densa; el riesgo es acotado porque parado no hay trazo que perder y
+// el marcador lo mantiene vivo STATIONARY_KEEPALIVE_MS. Se deshace con el primer fix que se mueva.
+export const NEAR_LIVE_QUIETO_MS = 30000
+
+// ── 1.9.0 · Triangulación por red durante un silencio ────────────────────────────────────────────
+// Si el GPS no entrega nada por más de SILENCIO_MS, el teléfono pide ubicación por antenas y WiFi
+// para no dejar el hueco vacío. Esos puntos valen para "por acá anduvo" y para nada más: entran con
+// su propio techo y el front los dibuja PUNTEADOS, fuera de los km y fuera del snap. La marca es la
+// precisión misma — hasta hoy no existe en `posiciones` un solo punto con accuracy > ACCURACY_MAX_M.
+export const ACCURACY_RED_MAX_M = 150
+export const SILENCIO_MS = 90000
+
+// Piso entre dos cambios de cadencia (anti-churn). Cada `requestLocationUpdates` reemplaza el
+// request y reinicia la agenda de entrega del proveedor: cambiar de cadencia cada 20-30 s equivale a
+// no recibir nada, y es el sospechoso principal de lo que le pasó a 1.8.1.
+export const REPEDIDO_MIN_MS = 60000

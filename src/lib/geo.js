@@ -12,7 +12,7 @@
 // invierte la dependencia de verdad. Se importa a propósito en vez de copiar los números: el filtro de
 // saltos imposibles de acá tiene que usar EL MISMO umbral que el de captura (tracker.js:143). Dos
 // umbrales que se llaman igual y valen distinto es cómo se producen los bugs que nadie encuentra.
-import { MAX_SPEED_MPS, MIN_MOVE_M } from '../services/gpsConfig'
+import { ACCURACY_MAX_M, MAX_SPEED_MPS, MIN_MOVE_M } from '../services/gpsConfig'
 
 const R = 6371000 // radio terrestre en metros
 
@@ -149,25 +149,56 @@ const MAX_DESCARTES_SEGUIDOS = 3
  * donde hubo un hueco. NO decima ni simplifica (de eso se encarga `simplificarTrazo`) y no muta la
  * entrada: el detector de paradas necesita la densidad completa y sigue recibiéndola.
  *
- * @param {Array<{lat:number,lng:number,ts?:number|string}>} points ordenados por ts ASC
- * @returns {{ segmentos: Array<Array<object>>, puntos: Array<object>, descartados: number }}
+ * 🩸 PUNTOS TRIANGULADOS (1.9.0, 03/08/2026). Desde esta versión el teléfono, cuando el GPS se
+ * calla más de 90 s, pide ubicación por antenas y WiFi para no dejar el hueco vacío. Esos puntos
+ * llegan con `accuracy` de 20 a 150 m, y la precisión ES la marca: hasta 1.8.1 no existía en
+ * `posiciones` un solo punto con accuracy > ACCURACY_MAX_M, porque el uploader los descartaba.
+ *
+ * Valen para decir "por acá anduvo" y para NADA más, así que salen por una tercera lista:
+ *   · NO entran a `puntos` → no suman kilómetros (el número de km sigue saliendo solo del GPS);
+ *   · NO entran a `segmentos` → no se dibujan como línea llena ni van al snap;
+ *   · sí forman `aproximados`, que se dibujan PUNTEADOS y arrancan/terminan en el punto de GPS que
+ *     los rodea, así el tramo aproximado queda cosido al recorrido en vez de flotando.
+ * Cambiar un hueco por una línea llena inventada sería el mismo error que el snap cometía.
+ *
+ * @param {Array<{lat:number,lng:number,ts?:number|string,accuracy?:number}>} points ordenados por ts ASC
+ * @returns {{ segmentos: Array<Array<object>>, puntos: Array<object>, aproximados: Array<Array<object>>, descartados: number }}
  *   `segmentos` para dibujar (una polilínea cada uno); `puntos` es todo lo bueno concatenado, que
- *   es lo que necesitan km y paradas.
+ *   es lo que necesitan km y paradas; `aproximados` son los tramos triangulados.
  */
 export function limpiarTrazo(points) {
-  if (!points || points.length === 0) return { segmentos: [], puntos: [], descartados: 0 }
+  if (!points || points.length === 0) return { segmentos: [], puntos: [], aproximados: [], descartados: 0 }
 
   const segmentos = []
   const puntos = []
+  const aproximados = []
+  let aprox = []          // tramo triangulado en curso (arranca en el último punto de GPS bueno)
   let actual = []
   let ult = null          // último punto ACEPTADO (no el anterior del array: si no, un outlier arrastra al que le sigue)
   let ultMs = NaN
   let descartados = 0
   let seguidos = 0
 
+  const cerrarAprox = (siguiente) => {
+    if (!aprox.length) return
+    // Se cose al punto de GPS que sigue: sin eso el tramo punteado termina en el aire.
+    if (siguiente) aprox.push(siguiente)
+    if (aprox.length >= 2) aproximados.push(aprox)
+    aprox = []
+  }
+
   for (const p of points) {
     if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lng))) continue
     const ms = msDe(p.ts)
+
+    // Triangulado: va al carril aproximado y no toca NADA de lo demás (ni la referencia de saltos,
+    // ni los km, ni los segmentos). Ver el 🩸 de arriba.
+    if (Number(p.accuracy) > ACCURACY_MAX_M) {
+      if (!aprox.length && ult) aprox.push(ult)
+      aprox.push(p)
+      continue
+    }
+    cerrarAprox(p)
 
     if (ult) {
       const d = metros(ult, p)
@@ -199,8 +230,11 @@ export function limpiarTrazo(points) {
     puntos.push(p)
   }
   if (actual.length) segmentos.push(actual)
+  // Un tramo triangulado que quedó abierto al final del día no tiene con qué coserse adelante: se
+  // cierra igual, que es más honesto que descartarlo (es la última pista de dónde estuvo).
+  cerrarAprox(null)
 
   // Un segmento de un solo punto no se puede dibujar (Leaflet necesita 2) pero SÍ cuenta para km y
   // paradas, por eso se filtra solo acá y no de `puntos`.
-  return { segmentos: segmentos.filter((s) => s.length >= 2), puntos, descartados }
+  return { segmentos: segmentos.filter((s) => s.length >= 2), puntos, aproximados, descartados }
 }

@@ -331,9 +331,12 @@ export default function LeafletMap({
   // `flyTo`/`panTo` disparan `movestart` y `zoomstart` por su cuenta, así que escuchar cualquiera
   // de esos dos haría que el seguimiento se apagara solo en el primer vuelo. Arrastrar, en cambio,
   // siempre lo hace un dedo.
-  // `{ id, lat, lng, ts }`. El `id` no es decorativo: con él, la cámara la lleva la animación del
-  // pin frame a frame en vez de panear por su cuenta (si no, cámara y pin llegan en momentos
+  // `{ id, lat, lng, ts, nonce }`. El `id` no es decorativo: con él, la cámara la lleva la animación
+  // del pin frame a frame en vez de panear por su cuenta (si no, cámara y pin llegan en momentos
   // distintos y se ve un tironeo). Sin `id` sigue funcionando el paneo de siempre.
+  // El `nonce` se sella cada vez que el usuario APRIETA el botón de seguir, y es lo que distingue
+  // "me pidieron enganchar" de "llegó otra posición del mismo". Sin él, volver a apretar el botón
+  // no hace nada cuando la persona está quieta — ver el 🩸 del efecto de seguimiento.
   seguir = null,
   onSeguirCancelado,
   liveColor = null,
@@ -870,12 +873,31 @@ export default function LeafletMap({
   // hay que acercar la cámara (flyTo con zoom), pero de ahí en adelante el zoom ya es el bueno y
   // solo hay que desplazarse. Volver a hacer flyTo en cada fix daría un rebote de zoom cada pocos
   // segundos, que es exactamente lo que NO hace Google Maps.
+  //
+  // 🩸 EL ENGANCHE ES UN EVENTO, NO UNA COORDENADA (03/08/2026). Reportado así: "al hacer zoom con
+  // el mapa abierto y volver a darle al botón de centrar, el seguimiento ya no funciona". Y no
+  // funcionaba nunca, no "a veces": apretar el botón pone `seguirId`, pero **no cambia la posición
+  // de la persona**, así que con las coordenadas como única dependencia este efecto NI SIQUIERA
+  // CORRÍA. Y si corría —porque justo llegó un punto— se iba por la guarda de abajo, que le delega
+  // la cámara a la animación del pin: una animación que solo existe cuando el pin se MUEVE. Con la
+  // persona parada en un cliente, el botón no hacía absolutamente nada.
+  //
+  // Por eso ahora depende también del `nonce` que sella el botón al apretarlo (mismo patrón que
+  // `focus.nonce`, que ya resuelve esto mismo para poder enfocar dos veces a la misma persona) y
+  // del `id`. Y en el enganche SIEMPRE encuadra, con `flyTo` y acercando: es la única acción que el
+  // usuario pidió explícitamente, así que es la única que no puede quedar supeditada a que llegue
+  // un dato.
+  const engancheRef = useRef(null)
   useEffect(() => {
     const map = mapRef.current
     if (!map || !seguir || seguir.lat == null || seguir.lng == null) return
     const destino = [seguir.lat, seguir.lng]
+    // ¿Es un enganche nuevo (botón) o una posición más de alguien a quien ya seguíamos?
+    const enganche = `${seguir.id || ''}|${seguir.nonce || ''}`
+    const recienEnganchado = engancheRef.current !== enganche
+    engancheRef.current = enganche
     const z = map.getZoom() || zoom
-    if (z < 16) { map.flyTo(destino, 16, { duration: 0.6 }); return }
+    if (recienEnganchado || z < 16) { map.flyTo(destino, Math.max(z, 16), { duration: 0.6 }); return }
     // 🩸 Ya acercada, la cámara la lleva la ANIMACIÓN del pin, frame a frame (`alFrame` en el efecto
     // de pines vivos). Si además paneáramos acá, habría dos animaciones hacia el mismo destino con
     // curvas y duraciones distintas: la cámara llegaría antes que el pin y se vería el tironeo que
@@ -884,7 +906,7 @@ export default function LeafletMap({
     if (seguir.id && pinesRef.current.has(seguir.id)) return
     map.panTo(destino, { animate: true, duration: 0.6 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seguir && seguir.lat, seguir && seguir.lng])
+  }, [seguir && seguir.lat, seguir && seguir.lng, seguir && seguir.id, seguir && seguir.nonce])
 
   // Capa de clientes (contexto). Efecto SEPARADO del redibujo de overlays: `clients` llega
   // memoizado desde la vista, así que su referencia es estable entre ticks y este efecto no se

@@ -28,7 +28,9 @@ export function limpiarPorUsuario(byUserCrudo) {
   const out = {}
   for (const [id, v] of Object.entries(byUserCrudo || {})) {
     const r = limpiarTrazo(v.points || [])
-    out[id] = { rol: v.rol, points: r.puntos, segmentos: r.segmentos, descartados: r.descartados }
+    // `aproximados` (1.9.0) son los tramos triangulados por antenas/WiFi. Van aparte de `points` a
+    // propósito: no suman km ni cuentan para paradas. Ver el 🩸 de `limpiarTrazo`.
+    out[id] = { rol: v.rol, points: r.puntos, segmentos: r.segmentos, aproximados: r.aproximados, descartados: r.descartados }
   }
   return out
 }
@@ -48,7 +50,7 @@ export function construirTrails(byUser, pasaFiltro) {
     .map(([id, v]) => {
       let km = 0
       for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
-      return { id, points: v.points, segmentos: v.segmentos, color: colorPorId(id), km: km / 1000 }
+      return { id, points: v.points, segmentos: v.segmentos, aproximados: v.aproximados || [], color: colorPorId(id), km: km / 1000 }
     })
 }
 
@@ -77,6 +79,13 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
       ? segs.map((s) => ({ points: s }))
       : (t.segmentos || []).map((s) => ({ points: simplificarTrazo(s) }))
     const piezas = base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
+    // 🩸 TRAMOS APROXIMADOS (1.9.0): lo que el teléfono triangula por antenas y WiFi cuando el GPS
+    // se calla. Van SIEMPRE punteados y finos, también con el snap prendido — porque no son un
+    // trazo peor, son otra cosa: "por acá anduvo, con ±80 m". Dibujarlos como línea llena sería
+    // cambiar un hueco honesto por una precisión que no tenemos.
+    for (const a of t.aproximados || []) {
+      if (a.length >= 2) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.6, dashArray: '2 6', points: a })
+    }
     // Los conectores solo tienen sentido sobre el crudo: la rama snap trae los segmentos que
     // decidió OSRM, que no se corresponden con los huecos de captura.
     if (!segs || !segs.length) {

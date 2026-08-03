@@ -81,6 +81,44 @@ public class UploaderGpsService extends Service {
     static final String K_INTERVALO_RAPIDO = "intervaloRapidoMs"; // cadencia de captura en movimiento rápido
     static final String K_VEL_UMBRAL = "velUmbralMps";            // m/s por encima del cual se activa la cadencia rápida
     static final String K_VEL_HIST = "velHistMs";                 // ms sostenidos bajo el umbral antes de volver a lento
+
+    /* 🩸 GUARDAR POR DISTANCIA, SEGÚN EL MODO (1.9.0, 03/08/2026) — el pedido del cliente:
+     * "pasar de temporizador a distancia, cada 10 metros una ubicación, y si detecta que va por ruta
+     * cada 50 o 100 metros para minimizar carga en base de datos".
+     *
+     * Va acá, en el filtro de GUARDADO, y no en el LocationRequest: `setMinUpdateDistanceMeters`
+     * hace que el SO ENTREGUE menos fixes, o sea justo lo contrario de lo que hace falta — el
+     * problema medido es que llegan pocos, no que sobren.
+     *
+     * ⚠️ Los tres números NO son 10/50/100 y la diferencia importa. En la banda urbana (11-40 km/h)
+     * está el problema que motivó toda esta tanda: son calles con paralelas a media cuadra, y ahí
+     * un punto cada 50 m dibuja una diagonal que cruza la manzana. Medido el 03/08/2026: a 5 s de
+     * captura en esa banda ya quedaban 27,8 m entre puntos y NO alcanzaba. Así que urbano queda
+     * DENSO (15 m). Los 100 m van donde el cliente los pidió y donde no cuestan nada: en ruta, a
+     * más de 40 km/h, donde no hay calle paralela con la que confundirse — ahí la fidelidad la
+     * arregla el snap, no más puntos.
+     *
+     * Volumen real hoy, para dimensionar: `posiciones` tiene 25.368 filas y 14 MB en total, con
+     * 3.171 filas/día. La carga de base NO es un problema; esto entra porque es lo correcto para el
+     * trazo en ruta, no porque la base esté sufriendo. */
+    static final String K_MIN_MOVE_URBANO = "minMoveUrbanoM"; // 11-40 km/h: denso, es donde se confunden las calles
+    static final String K_MIN_MOVE_RUTA = "minMoveRutaM";     // > 40 km/h: no hay paralelas, se puede ralear
+    static final String K_VEL_RUTA = "velRutaMps";            // m/s desde el cual se considera "ruta"
+
+    /* 🩸 TRIANGULACIÓN POR RED, SOLO DURANTE UN SILENCIO (1.9.0, 03/08/2026).
+     *
+     * Cuando el GPS deja de entregar, el teléfono igual sigue viendo antenas y WiFi. Esos fixes
+     * valen para decir "por acá anduvo" y para NADA más: en el pueblo dan 20-80 m y en el campo
+     * pueden dar cientos. Por eso van por un carril aparte, con su propio techo, y el front los
+     * dibuja PUNTEADOS, fuera de los km y fuera del snap (la precisión misma es la marca: hasta hoy
+     * no existía en `posiciones` un solo punto con accuracy > 30).
+     *
+     * Se piden recién tras `silencioMs` sin un fix de GPS y se cortan apenas vuelve uno: nunca
+     * compiten con el GPS, lo reemplazan mientras no hay. */
+    static final String K_ACCURACY_RED_MAX = "accuracyRedMaxM"; // techo propio del carril de red
+    static final String K_SILENCIO_MS = "silencioMs";           // sin fix de GPS por más de esto → red + GPS crudo
+    static final String K_REPEDIDO_MIN_MS = "repedidoMinMs";    // piso entre dos cambios de cadencia (anti-churn)
+    static final String K_INTERVALO_QUIETO = "intervaloQuietoMs"; // cadencia con "quieto" CONFIRMADO por el acelerómetro
     // 🩸 DIAGNÓSTICO DE RED (30/07/2026). Por qué el teléfono se quedó callado: sin internet, en
     // modo avión, o se reinició. Lo tiene que saber el NATIVO — el WebView congelado en Doze no
     // puede observar nada, y `navigator.onLine` miente en este WebView (regla 12).
@@ -124,6 +162,16 @@ public class UploaderGpsService extends Service {
     static final String K_TEL_MOVIMIENTO = "telDescMovimiento";
     static final String K_TEL_GUARDADOS = "telGuardados";
     static final String K_TEL_ULTIMO_FIX = "telUltimoFixAt";
+    /* Los contadores de 1.8.0 dicen qué pasó con los fixes que LLEGARON. No dicen cuántos tendrían
+     * que haber llegado, y esa era justo la pregunta del 03/08/2026: el teléfono de un vendedor pasó
+     * de 0,9 % a 24 % de huecos de más de un minuto, con la precisión perfecta y los filtros sin
+     * descartar nada. Sin estos cuatro no se puede distinguir "el SO no entrega" de "nos peleamos
+     * nosotros mismos con la cadencia". */
+    static final String K_TEL_INTERVALO = "telIntervaloVigente"; // qué cadencia se le está pidiendo AL PROVEEDOR
+    static final String K_TEL_REPEDIDOS = "telRepedidos";        // cuántas veces se reemplazó el LocationRequest
+    static final String K_TEL_SILENCIO_MAX = "telSilencioMaxMs"; // el hueco más largo sin un fix, del día
+    static final String K_TEL_RED = "telFixesRed";               // fixes aceptados por el carril de triangulación
+    static final String K_TEL_DIA = "telDia";                    // yyyymmdd de los contadores (se reinician por DÍA)
 
     private static final String CH_ID = "uploader_gps";
     private static final int NOTIF_ID = 5190;
@@ -180,6 +228,36 @@ public class UploaderGpsService extends Service {
     private boolean modoRapido = false;
     private long ultimoRapidoAt = 0L;
 
+    /* 🩸 ANTI-CHURN DE LA CADENCIA (1.9.0, 03/08/2026).
+     *
+     * `pedirUpdates` llama a `requestLocationUpdates` de nuevo, y CADA llamada reemplaza el request
+     * y reinicia la agenda de entrega del proveedor. Hasta 1.8.1 se llamaba desde dos lados que
+     * pueden alternar solos —`evaluarCadencia` (por velocidad) y `avisarActividad` (Activity
+     * Recognition)— y encima se re-pedía aunque el intervalo resultante fuera EL MISMO. Caminando,
+     * AR confunde "a pie" con "bicicleta" seguido: el request se reemplazaba cada 20-30 s y el
+     * proveedor no llegaba nunca a entregar a la cadencia pedida.
+     *
+     * Ahora hay una cadencia DESEADA y una VIGENTE. Se aplica solo si cambian de verdad y si pasó
+     * el piso de permanencia; si no, queda pendiente y se reintenta en el próximo fix. Y se cuenta
+     * cuántas veces se re-pidió: sin ese número, este bug es invisible desde acá.
+     */
+    private long intervaloDeseado = 0L;
+    private long intervaloVigente = 0L;
+    private long ultimoRepedidoAt = 0L;
+
+    /* Modo de movimiento, que gobierna el minMove (ver K_MIN_MOVE_URBANO). Sale de la velocidad
+     * medida y de Activity Recognition, con la misma asimetría de siempre: subir densidad es
+     * inmediato, bajarla exige confirmación. */
+    private static final int MODO_PIE = 0, MODO_URBANO = 1, MODO_RUTA = 2;
+    private int modoMovimiento = MODO_PIE;
+
+    /* Carril de triangulación por red: activo SOLO durante un silencio del GPS. */
+    private boolean pidiendoRed = false;
+    private android.location.LocationListener redListener = null;
+
+    /** WakeLock parcial: ver `tomarWakeLock`. */
+    private android.os.PowerManager.WakeLock wakeLock = null;
+
     /**
      * 🩸 EL FIX RETENIDO (02/08/2026) — la "línea ciega" al retomar marcha.
      *
@@ -203,6 +281,11 @@ public class UploaderGpsService extends Service {
      */
     private int cFixes = 0, cDescPrecision = 0, cDescSalto = 0, cDescMovimiento = 0, cGuardados = 0;
     private long ultimoFixAt = 0L;
+    // 1.9.0: ver K_TEL_REPEDIDOS. `cRepedidos` es el que delata la pelea con la cadencia;
+    // `silencioMax` es el hueco más largo del día, que es la forma de saber si el WakeLock sirvió.
+    private int cRepedidos = 0, cFixesRed = 0;
+    private long silencioMax = 0L;
+    private int diaContadores = 0; // yyyymmdd: los contadores se reinician por DÍA, no por arranque
 
     // Último texto pintado en la notificación. Sin esto, `nm.notify` correría en cada fix (cada 5-15 s)
     // para redibujar exactamente el mismo cartel.
@@ -239,22 +322,76 @@ public class UploaderGpsService extends Service {
      * ahora esas transiciones alimentaban solo al watcher JS; el uploader nativo —el que está en la
      * calle— no las veía.
      *
-     * Solo SUBE la cadencia. Bajarla la sigue decidiendo la velocidad real con su histéresis: si
-     * Activity Recognition se equivoca diciendo "quieto" mientras la persona anda, perder densidad
-     * sería un daño real, y de esos errores AR tiene.
+     * 1.9.0: ahora también BAJA, pero solo en el caso inequívoco y solo desde el acelerómetro —
+     * "quieto" confirmado. Es de donde sale la batería que cuesta la captura densa, y el riesgo es
+     * acotado: parado, perder densidad no pierde trazo (el marcador lo mantiene vivo el keepalive).
+     * Todo lo demás sigue bajando por velocidad medida con su histéresis: si AR se equivoca diciendo
+     * "quieto" mientras la persona anda, perder densidad sería un daño real, y de esos errores AR
+     * tiene. Por eso el "quieto" se deshace con el PRIMER fix que se mueva, sin esperar a AR.
      */
     static void avisarActividad(String actividad) {
         UploaderGpsService s = instancia;
         if (s == null || actividad == null) return;
-        if (!"vehiculo".equals(actividad) && !"bicicleta".equals(actividad)) return;
         try {
             SharedPreferences sp = s.prefs();
-            s.ultimoRapidoAt = System.currentTimeMillis();
-            if (!s.modoRapido) {
-                s.modoRapido = true;
-                s.pedirUpdates(sp.getInt(K_INTERVALO_RAPIDO, 5000));
+            if ("vehiculo".equals(actividad) || "bicicleta".equals(actividad)) {
+                s.ultimoRapidoAt = System.currentTimeMillis();
+                if (s.modoMovimiento < MODO_URBANO) s.modoMovimiento = MODO_URBANO;
+                if (!s.modoRapido) {
+                    s.modoRapido = true;
+                    s.quiereCadencia(sp.getInt(K_INTERVALO_RAPIDO, 5000));
+                }
+                return;
+            }
+            if ("caminando".equals(actividad)) {
+                // Fija el perfil peatón sin esperar a que la velocidad medida lo deduzca (que llega
+                // un ciclo tarde, que es medio cuadra dibujada como recta).
+                s.modoMovimiento = MODO_PIE;
+                if (s.modoRapido) { s.modoRapido = false; s.quiereCadencia(sp.getLong(K_INTERVALO, 10000L)); }
+                return;
+            }
+            if ("quieto".equals(actividad)) {
+                s.modoMovimiento = MODO_PIE;
+                s.modoRapido = false;
+                s.quiereCadencia(sp.getInt(K_INTERVALO_QUIETO, 30000));
             }
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * 🩸 EL WAKELOCK QUE NUNCA SE TOMÓ (1.9.0, 03/08/2026).
+     *
+     * `android.permission.WAKE_LOCK` está declarado en el manifest desde el primer día y NO SE USABA
+     * EN NINGUNA PARTE. Un foreground service de tipo `location` está exento de los límites de
+     * ubicación en background, pero eso NO impide que el sistema suspenda la CPU en Doze: cuando el
+     * teléfono se duerme, la callback de FusedLocation simplemente no corre.
+     *
+     * Es la explicación más directa de lo que se midió el 03/08/2026 en el teléfono de un vendedor:
+     * silencios de hasta 7 minutos ESTANDO PARADO, con precisión de 2,8 m y los contadores de
+     * descarte en cero. El chip andaba perfecto; no llegaba ni el latido de cortesía de 30 s.
+     *
+     * ⚠️ Es un CANDIDATO, no una certeza — por eso en la misma versión entra la telemetría de
+     * `silencioMax`: si con el WakeLock tomado siguen apareciendo silencios de minutos, la causa es
+     * otra (OEM) y el arreglo pasa a ser el carril de red y el fallback de proveedor.
+     *
+     * Sin timeout a propósito: el ciclo de vida lo da el servicio, que ya se apaga solo fuera de la
+     * ventana horaria (`detenerServicio`). Un WakeLock con timeout se soltaría en medio de la
+     * jornada, que es justo cuando hace falta.
+     */
+    private void tomarWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) return;
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return;
+            wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "launion:uploader-gps");
+            wakeLock.setReferenceCounted(false);
+            wakeLock.acquire();
+        } catch (Exception ignored) { /* sin WakeLock el servicio sigue funcionando, solo peor en Doze */ }
+    }
+
+    private void soltarWakeLock() {
+        try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Exception ignored) {}
+        wakeLock = null;
     }
 
     @Override
@@ -262,6 +399,7 @@ public class UploaderGpsService extends Service {
         super.onCreate();
         instancia = this;
         fused = LocationServices.getFusedLocationProviderClient(this);
+        tomarWakeLock();
         crearCanal();
         try {
             IntentFilter f = new IntentFilter(Intent.ACTION_SHUTDOWN);
@@ -279,9 +417,78 @@ public class UploaderGpsService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         arrancarForeground();
+        tomarWakeLock();   // idempotente: onStartCommand puede volver a entrar (AlarmReceiver, boot)
         arrancarUpdates();
+        reiniciarContadoresSiCambioElDia();
+        latidoH.removeCallbacks(latido);
+        latidoH.postDelayed(latido, LATIDO_MS);
         // START_STICKY: si el SO mata el servicio, que lo reintente cuando pueda.
         return START_STICKY;
+    }
+
+    /**
+     * 🩸 EL LATIDO DEL SERVICIO (1.9.0). Sin esto NO SE PUEDE DETECTAR UN SILENCIO: el callback de
+     * ubicación solo corre cuando llega un fix, o sea que la ausencia de fixes es justo el evento
+     * que el servicio no podía observar. Cada `LATIDO_MS` mira si el GPS se calló y, si se calló,
+     * enciende el carril de red; de paso reintenta un cambio de cadencia pendiente y empuja la cola.
+     *
+     * Corre en el Handler del main looper y apoyado en el WakeLock parcial: sin el WakeLock, en Doze
+     * este latido tampoco correría, que es exactamente el problema que vino a medir.
+     */
+    private static final long LATIDO_MS = 30000;
+    private final android.os.Handler latidoH = new android.os.Handler(Looper.getMainLooper());
+    private final Runnable latido = new Runnable() {
+        @Override public void run() {
+            try {
+                if (!dentroDeVentana()) { detenerServicio(); return; }
+                reiniciarContadoresSiCambioElDia();
+                long now = System.currentTimeMillis();
+                long silencioMs = prefs().getInt(K_SILENCIO_MS, 90000);
+                if (ultimoFixAt > 0 && now - ultimoFixAt > silencioMs) {
+                    if (now - ultimoFixAt > silencioMax) silencioMax = now - ultimoFixAt;
+                    encenderCarrilRed();
+                }
+                aplicarCadencia();
+                subir();
+                actualizarNotif();
+            } catch (Exception ignored) {
+            } finally {
+                latidoH.postDelayed(this, LATIDO_MS);
+            }
+        }
+    };
+
+    /**
+     * Los contadores se reinician por DÍA y no por arranque del servicio. Hasta 1.8.1 vivían solo en
+     * memoria, así que el SO matando el servicio —que es JUSTO el evento que hay que contar— los
+     * ponía en cero y borraba la evidencia.
+     */
+    private void reiniciarContadoresSiCambioElDia() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int hoy = c.get(java.util.Calendar.YEAR) * 10000 + (c.get(java.util.Calendar.MONTH) + 1) * 100 + c.get(java.util.Calendar.DAY_OF_MONTH);
+        SharedPreferences sp = prefs();
+        if (diaContadores == 0) diaContadores = sp.getInt(K_TEL_DIA, 0);
+        if (diaContadores == hoy) return;
+        // Día nuevo: arrancar de cero y dejarlo escrito, para que un reinicio del servicio a media
+        // jornada retome estos contadores en vez de empezar de nuevo.
+        diaContadores = hoy;
+        cFixes = 0; cDescPrecision = 0; cDescSalto = 0; cDescMovimiento = 0; cGuardados = 0;
+        cRepedidos = 0; cFixesRed = 0; silencioMax = 0;
+        volcarTelemetria(sp.edit()).putInt(K_TEL_DIA, hoy).apply();
+    }
+
+    /** Los contadores, en una sola escritura. Se comparte entre el volcado periódico y onDestroy. */
+    private SharedPreferences.Editor volcarTelemetria(SharedPreferences.Editor e) {
+        return e.putInt(K_TEL_FIXES, cFixes)
+            .putInt(K_TEL_PRECISION, cDescPrecision)
+            .putInt(K_TEL_SALTO, cDescSalto)
+            .putInt(K_TEL_MOVIMIENTO, cDescMovimiento)
+            .putInt(K_TEL_GUARDADOS, cGuardados)
+            .putLong(K_TEL_ULTIMO_FIX, ultimoFixAt)
+            .putLong(K_TEL_INTERVALO, intervaloVigente)
+            .putInt(K_TEL_REPEDIDOS, cRepedidos)
+            .putLong(K_TEL_SILENCIO_MAX, silencioMax)
+            .putInt(K_TEL_RED, cFixesRed);
     }
 
     private void arrancarForeground() {
@@ -294,6 +501,100 @@ public class UploaderGpsService extends Service {
         }
     }
 
+    /**
+     * TODO fix que entra a la app pasa por acá, venga de FusedLocation o del carril de red. Estaba
+     * escrito adentro del callback de Fused hasta 1.8.1; se extrajo al agregar el segundo carril,
+     * porque tener dos copias del filtrado sería garantizar que diverjan (es literalmente lo que ya
+     * pasó entre el camino JS y el nativo: el filtro de salto imposible existía solo en uno).
+     *
+     * @param deRed true si viene de NETWORK/GPS_PROVIDER durante un silencio: se le aplica el techo
+     *              de precisión propio y NO toca el modo de movimiento (un fix de ±80 m daría una
+     *              velocidad inventada).
+     */
+    private synchronized void procesarFix(Location loc, boolean deRed) {
+        if (loc == null) return;
+        if (!dentroDeVentana()) { detenerServicio(); return; }
+        SharedPreferences sp = prefs();
+        long keepAlive = sp.getInt(K_KEEPALIVE, 30000);   // ms; default = STATIONARY_KEEPALIVE_MS (30 s)
+        // Umbrales de descarte: por prefs (afinables por OTA, regla 22-ter) con los valores de
+        // siempre como default. ⚠️ `accuracyMaxM` se expone para poder SUBIRLO si un modelo da fixes
+        // malos. BAJARLO vacía los recorridos (regla 18).
+        float accMax = deRed
+            ? sp.getFloat(K_ACCURACY_RED_MAX, 150f)   // el carril de red tiene su propio techo
+            : sp.getFloat(K_ACCURACY_MAX, ACCURACY_MAX_M);
+        double velMax = sp.getFloat(K_MAX_SPEED, (float) MAX_SPEED_MPS);
+        float saltoMin = sp.getFloat(K_MIN_JUMP, MIN_JUMP_M);
+        int maxSaltos = sp.getInt(K_MAX_SALTOS, MAX_SALTOS_SEGUIDOS);
+
+        long now = System.currentTimeMillis();
+        cFixes++;
+        // El silencio más largo del día: es lo que dice si el WakeLock sirvió (ver `tomarWakeLock`).
+        if (ultimoFixAt > 0 && now - ultimoFixAt > silencioMax) silencioMax = now - ultimoFixAt;
+        // 🩸 `ultimoFixAt` solo lo mueve el GPS. Si lo moviera el carril de red, el silencio se
+        // "curaría" solo con puntos triangulados y no volveríamos a mirar el problema de fondo.
+        if (!deRed) { ultimoFixAt = now; apagarCarrilRed(); }
+        if (deRed) cFixesRed++;
+
+        // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
+        if (loc.hasAccuracy() && loc.getAccuracy() > accMax) { cDescPrecision++; return; }
+        // Salto imposible → glitch del chip. Se compara contra el último fix CRUDO bueno (no contra
+        // el último guardado): el filtro por movimiento descarta puntos a propósito y usar su
+        // referencia daría dt enormes que hacen pasar cualquier salto. Se descarta el fix ENTERO: no
+        // actualiza la referencia ni la cadencia, así que un punto malo no arrastra al que le sigue.
+        if (tieneFix && saltosSeguidos < maxSaltos) {
+            long dtMs = loc.getTime() - lastFixTime;
+            if (dtMs > 0) {
+                double d = haversine(lastFixLat, lastFixLng, loc.getLatitude(), loc.getLongitude());
+                if (d > saltoMin && d / (dtMs / 1000.0) > velMax) { saltosSeguidos++; cDescSalto++; return; }
+            }
+        }
+        // Si se descartaron MAX_SALTOS_SEGUIDOS seguidos, el sospechoso es la REFERENCIA, no los
+        // fixes nuevos (pasa cuando el primer fix tras arrancar el servicio es el malo). Se acepta el
+        // siguiente y se vuelve a empezar: mejor un tramo raro que perder la jornada entera.
+        saltosSeguidos = 0;
+        // Cadencia adaptativa por velocidad: se mide sobre TODOS los fixes crudos (antes del filtro
+        // por movimiento, que decide qué se GUARDA). Si va rápido, sube la cadencia de captura para
+        // que el trazo no cruce manzanas; al frenar, vuelve a la lenta. Los de red no votan: su
+        // error de ±80 m daría velocidades inventadas.
+        if (!deRed) evaluarCadencia(velocidadMps(loc), now, sp);
+        lastFixLat = loc.getLatitude();
+        lastFixLng = loc.getLongitude();
+        lastFixTime = loc.getTime();
+        tieneFix = true;
+        // Filtro por movimiento (espejo de tracker.js): guardar solo si se movió, o cada keepAlive
+        // estando quieto. Recorta el volumen de un vendedor parado sin perder el trazo en
+        // movimiento. Cuánto hay que moverse depende del MODO desde 1.9.0(ver K_MIN_MOVE_URBANO);
+        // los fixes de red usan el umbral de a pie, que es el más permisivo: están para tapar un
+        // hueco, no para ahorrar filas.
+        float minMove = deRed ? sp.getInt(K_MIN_MOVE, 9) : minMoveDelModo(sp);
+        boolean movio = !tieneLast || haversine(lastLat, lastLng, loc.getLatitude(), loc.getLongitude()) >= minMove;
+        boolean vivo = tieneLast && (now - lastSentAt) >= keepAlive;
+        if (!movio && !vivo) {
+            // No se guarda, pero SE RETIENE: si el próximo fix sí se mueve, este es el último lugar
+            // donde de verdad estuvo antes de arrancar. Ver `fixRetenido`.
+            cDescMovimiento++;
+            fixRetenido = loc;
+            return;
+        }
+        // 🩸 Cerrar la línea ciega: si veníamos de descartar por quietud, encolar primero el último
+        // fix retenido. Sin esto, la recta va del punto de cortesía (de hasta 30 s antes) hasta acá,
+        // y en ese tramo la persona ya arrancó y dobló — por eso el trazo cruzaba la manzana.
+        //
+        // Solo cuando MOVIÓ: en un keepAlive estando quieto el retenido está en el mismo lugar y
+        // sería un punto duplicado por nada.
+        if (movio && fixRetenido != null) {
+            encolar(fixRetenido);
+            cGuardados++;
+        }
+        fixRetenido = null;
+        lastLat = loc.getLatitude();
+        lastLng = loc.getLongitude();
+        lastSentAt = now;
+        tieneLast = true;
+        encolar(loc);
+        cGuardados++;
+    }
+
     private void arrancarUpdates() {
         if (callback != null) return;
         callback = new LocationCallback() {
@@ -304,79 +605,11 @@ public class UploaderGpsService extends Service {
                 // Vuelve a arrancar cuando el vendedor abre la app a la mañana (o por boot). La ventana
                 // la pasa el JS en configurar().
                 if (!dentroDeVentana()) { detenerServicio(); return; }
-                SharedPreferences sp = prefs();
-                float minMove = sp.getInt(K_MIN_MOVE, 9);         // metros; default = gpsConfig.MIN_MOVE_M (bajado de 12 el 30/07/2026)
-                long keepAlive = sp.getInt(K_KEEPALIVE, 30000);   // ms; default = STATIONARY_KEEPALIVE_MS (30 s)
-                // Umbrales de descarte: ahora por prefs (afinables por OTA, regla 22-ter) con los
-                // valores de siempre como default, así desplegar esto no cambia comportamiento.
-                // ⚠️ `accuracyMaxM` se expone para poder SUBIRLO si un modelo da fixes malos.
-                // BAJARLO vacía los recorridos (regla 18).
-                float accMax = sp.getFloat(K_ACCURACY_MAX, ACCURACY_MAX_M);
-                double velMax = sp.getFloat(K_MAX_SPEED, (float) MAX_SPEED_MPS);
-                float saltoMin = sp.getFloat(K_MIN_JUMP, MIN_JUMP_M);
-                int maxSaltos = sp.getInt(K_MAX_SALTOS, MAX_SALTOS_SEGUIDOS);
-                for (Location loc : result.getLocations()) {
-                    cFixes++;
-                    ultimoFixAt = System.currentTimeMillis();
-                    // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
-                    if (loc.hasAccuracy() && loc.getAccuracy() > accMax) { cDescPrecision++; continue; }
-                    long now = System.currentTimeMillis();
-                    // Salto imposible → glitch del chip. Se compara contra el último fix CRUDO bueno
-                    // (no contra el último guardado): el filtro por movimiento descarta puntos a
-                    // propósito y usar su referencia daría dt enormes que hacen pasar cualquier salto.
-                    // Se descarta el fix ENTERO: no actualiza la referencia ni la cadencia, así que un
-                    // punto malo no puede arrastrar al que le sigue.
-                    if (tieneFix && saltosSeguidos < maxSaltos) {
-                        long dtMs = loc.getTime() - lastFixTime;
-                        if (dtMs > 0) {
-                            double d = haversine(lastFixLat, lastFixLng, loc.getLatitude(), loc.getLongitude());
-                            if (d > saltoMin && d / (dtMs / 1000.0) > velMax) { saltosSeguidos++; cDescSalto++; continue; }
-                        }
-                    }
-                    // Si se descartaron MAX_SALTOS_SEGUIDOS seguidos, el sospechoso es la REFERENCIA, no
-                    // los fixes nuevos (pasa cuando el primer fix tras arrancar el servicio es el malo).
-                    // Se acepta el siguiente y se vuelve a empezar: mejor un tramo raro que perder la
-                    // jornada entera creyéndole a un solo punto.
-                    saltosSeguidos = 0;
-                    // Cadencia adaptativa por velocidad: se mide sobre TODOS los fixes crudos (antes del
-                    // filtro por movimiento, que decide qué se GUARDA). Si va rápido, sube la cadencia de
-                    // captura para que el trazo no cruce manzanas; al frenar, vuelve a la lenta.
-                    evaluarCadencia(velocidadMps(loc), now, sp);
-                    lastFixLat = loc.getLatitude();
-                    lastFixLng = loc.getLongitude();
-                    lastFixTime = loc.getTime();
-                    tieneFix = true;
-                    // Filtro por movimiento (espejo de tracker.js): guardar solo si se movió, o cada
-                    // keepAlive estando quieto. Recorta el volumen de un vendedor parado sin perder el
-                    // trazo en movimiento. La CAPTURA sigue a intervaloMs (marcador fluido moviéndose).
-                    boolean movio = !tieneLast || haversine(lastLat, lastLng, loc.getLatitude(), loc.getLongitude()) >= minMove;
-                    boolean vivo = tieneLast && (now - lastSentAt) >= keepAlive;
-                    if (!movio && !vivo) {
-                        // No se guarda, pero SE RETIENE: si el próximo fix sí se mueve, este es el
-                        // último lugar donde de verdad estuvo antes de arrancar. Ver `fixRetenido`.
-                        cDescMovimiento++;
-                        fixRetenido = loc;
-                        continue;
-                    }
-                    // 🩸 Cerrar la línea ciega: si veníamos de descartar por quietud, encolar primero
-                    // el último fix retenido. Sin esto, la recta va del punto de cortesía (de hasta 30 s
-                    // antes) hasta acá, y en ese tramo la persona ya arrancó y dobló — por eso el trazo
-                    // cruzaba la manzana en vez de seguir la calle.
-                    //
-                    // Solo cuando MOVIÓ: en un keepAlive estando quieto el retenido está en el mismo
-                    // lugar y sería un punto duplicado por nada.
-                    if (movio && fixRetenido != null) {
-                        encolar(fixRetenido);
-                        cGuardados++;
-                    }
-                    fixRetenido = null;
-                    lastLat = loc.getLatitude();
-                    lastLng = loc.getLongitude();
-                    lastSentAt = now;
-                    tieneLast = true;
-                    encolar(loc);
-                    cGuardados++;
-                }
+                reiniciarContadoresSiCambioElDia();
+                for (Location loc : result.getLocations()) procesarFix(loc, false);
+                // Un cambio de cadencia que quedó pendiente por el piso de permanencia se reintenta
+                // acá: si no, quedaría anotado como "deseado" para siempre sin aplicarse nunca.
+                aplicarCadencia();
                 subir();
                 // El contador de "puntos en espera" tiene que moverse aunque no haya red para
                 // subirlos — es justo entonces cuando importa. `actualizarNotif` sale solo si el
@@ -385,7 +618,34 @@ public class UploaderGpsService extends Service {
             }
         };
         modoRapido = false; // cada arranque parte en cadencia lenta; los primeros fixes la re-evalúan
-        pedirUpdates(prefs().getLong(K_INTERVALO, 10000L));
+        modoMovimiento = MODO_PIE;
+        intervaloVigente = 0L;
+        quiereCadencia(prefs().getLong(K_INTERVALO, 10000L));
+    }
+
+    /**
+     * Deja anotada la cadencia que se QUIERE y trata de aplicarla. Todo el que quiera cambiar la
+     * cadencia pasa por acá, nunca por `pedirUpdates` directo: es lo que hace posible el anti-churn.
+     */
+    private void quiereCadencia(long ms) {
+        intervaloDeseado = ms;
+        aplicarCadencia();
+    }
+
+    /**
+     * 🩸 Aplica la cadencia deseada SOLO si de verdad cambia y si pasó el piso de permanencia. Si no,
+     * queda pendiente y se reintenta en el próximo fix (por eso se llama una vez por lote en el
+     * callback). Ver el comentario de `intervaloDeseado`: re-pedir updates reinicia la agenda de
+     * entrega del proveedor, así que hacerlo cada 20-30 s equivale a no recibir nada.
+     */
+    private void aplicarCadencia() {
+        if (callback == null || intervaloDeseado <= 0) return;
+        if (intervaloDeseado == intervaloVigente) return;
+        long now = System.currentTimeMillis();
+        long piso = prefs().getInt(K_REPEDIDO_MIN_MS, 60000);
+        // `intervaloVigente == 0` es el primer pedido del arranque: ese no espera a nadie.
+        if (intervaloVigente != 0 && now - ultimoRepedidoAt < piso) return;
+        pedirUpdates(intervaloDeseado);
     }
 
     /**
@@ -393,14 +653,22 @@ public class UploaderGpsService extends Service {
      * cadencia en caliente es seguro con el foreground service ya vivo: NO hay el hueco break-before-make
      * que mata el FGS (ese riesgo es levantar el servicio desde background, no re-pedir updates). Volver a
      * llamar requestLocationUpdates con el mismo callback reemplaza el LocationRequest anterior.
+     *
+     * ⚠️ NO llamar desde afuera: entrar por `quiereCadencia`, que es la que respeta el anti-churn.
      */
     private void pedirUpdates(long intervalo) {
         if (callback == null) return;
         LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalo)
             .setMinUpdateIntervalMillis(intervalo)
+            // Sin lotes: que el proveedor entregue cada fix cuando lo tiene, en vez de juntarlos y
+            // soltarlos de a montones (que en el mapa se ve como saltos y silencios alternados).
+            .setMaxUpdateDelayMillis(0)
             .build();
         try {
             fused.requestLocationUpdates(req, callback, Looper.getMainLooper());
+            intervaloVigente = intervalo;
+            ultimoRepedidoAt = System.currentTimeMillis();
+            cRepedidos++;
         } catch (SecurityException e) {
             // Sin permiso de ubicación no hay nada que capturar; el servicio queda vivo por si se concede.
         }
@@ -432,12 +700,78 @@ public class UploaderGpsService extends Service {
             ultimoRapidoAt = now;
             if (!modoRapido) {
                 modoRapido = true;
-                pedirUpdates(sp.getInt(K_INTERVALO_RAPIDO, 5000));
+                quiereCadencia(sp.getInt(K_INTERVALO_RAPIDO, 5000));
             }
         } else if (modoRapido && (now - ultimoRapidoAt) >= histMs) {
             modoRapido = false;
-            pedirUpdates(sp.getLong(K_INTERVALO, 10000L));
+            quiereCadencia(sp.getLong(K_INTERVALO, 10000L));
         }
+        // Modo de MOVIMIENTO, que gobierna cuánto hay que moverse para GUARDAR un punto. Sube al
+        // instante y baja con la misma histéresis que la cadencia: ante la duda, más denso.
+        double velRuta = sp.getFloat(K_VEL_RUTA, 11.0f);
+        int nuevo = v >= velRuta ? MODO_RUTA : (v >= umbral ? MODO_URBANO : MODO_PIE);
+        if (nuevo > modoMovimiento) modoMovimiento = nuevo;
+        else if (nuevo < modoMovimiento && (now - ultimoRapidoAt) >= histMs) modoMovimiento = nuevo;
+    }
+
+    /**
+     * 🩸 EL CARRIL DE TRIANGULACIÓN (1.9.0). Se enciende cuando el GPS lleva `silencioMs` sin
+     * entregar nada, y se apaga con el primer fix bueno que vuelva. Mientras está encendido pide
+     * ubicación a los DOS proveedores del `LocationManager` de plataforma:
+     *
+     *   · NETWORK_PROVIDER — la triangulación propiamente dicha (antenas + WiFi). Da 20-80 m en el
+     *     pueblo y cientos en el campo, así que entra por su propio techo (`accuracyRedMaxM`) y
+     *     queda marcado por su `accuracy` para que el front lo dibuje punteado y lo deje fuera de
+     *     los km y del snap.
+     *   · GPS_PROVIDER — el chip, pero pedido DIRECTO, sin pasar por Play Services. Es la red de
+     *     contención para el caso en que lo que está estrangulado sea el proveedor fusionado y no
+     *     el GPS: si por acá entran fixes mientras Fused calla, ya sabemos de quién es el problema.
+     *
+     * Los dos van al MISMO camino de filtrado que los de Fused (`procesarFix`), así que ni el filtro
+     * de salto imposible ni el de movimiento se saltean.
+     */
+    private void encenderCarrilRed() {
+        if (pidiendoRed) return;
+        try {
+            android.location.LocationManager lm =
+                (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return;
+            redListener = new android.location.LocationListener() {
+                @Override public void onLocationChanged(Location loc) { procesarFix(loc, true); }
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
+                @SuppressWarnings("deprecation")
+                @Override public void onStatusChanged(String p, int s, android.os.Bundle e) {}
+            };
+            long cada = Math.max(10000L, intervaloVigente);
+            if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                lm.requestLocationUpdates(android.location.LocationManager.NETWORK_PROVIDER, cada, 0f, redListener, Looper.getMainLooper());
+            }
+            if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, cada, 0f, redListener, Looper.getMainLooper());
+            }
+            pidiendoRed = true;
+        } catch (SecurityException e) {
+            // Sin permiso no hay carril de red; el servicio sigue igual que antes.
+        } catch (Exception ignored) {}
+    }
+
+    private void apagarCarrilRed() {
+        if (!pidiendoRed) return;
+        try {
+            android.location.LocationManager lm =
+                (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null && redListener != null) lm.removeUpdates(redListener);
+        } catch (Exception ignored) {}
+        redListener = null;
+        pidiendoRed = false;
+    }
+
+    /** Metros que hay que moverse para GUARDAR un punto, según el modo. Ver K_MIN_MOVE_URBANO. */
+    private float minMoveDelModo(SharedPreferences sp) {
+        if (modoMovimiento == MODO_RUTA) return sp.getInt(K_MIN_MOVE_RUTA, 100);
+        if (modoMovimiento == MODO_URBANO) return sp.getInt(K_MIN_MOVE_URBANO, 15);
+        return sp.getInt(K_MIN_MOVE, 9);
     }
 
     private synchronized void encolar(Location loc) {
@@ -602,15 +936,7 @@ public class UploaderGpsService extends Service {
                 // Los contadores viajan con esta misma escritura: cero writes extra. Entre subidas
                 // quedan levemente atrasados, y no importa — el latido los lee cada 2 min y las
                 // subidas pasan cada 5-10 s cuando hay red.
-                sp.edit()
-                    .putLong(K_ULTIMA, System.currentTimeMillis())
-                    .putInt(K_TEL_FIXES, cFixes)
-                    .putInt(K_TEL_PRECISION, cDescPrecision)
-                    .putInt(K_TEL_SALTO, cDescSalto)
-                    .putInt(K_TEL_MOVIMIENTO, cDescMovimiento)
-                    .putInt(K_TEL_GUARDADOS, cGuardados)
-                    .putLong(K_TEL_ULTIMO_FIX, ultimoFixAt)
-                    .apply();
+                volcarTelemetria(sp.edit().putLong(K_ULTIMA, System.currentTimeMillis())).apply();
                 // Subió: la red está bien. Si veníamos de 'sin-red'/'avion', esto es lo que cierra
                 // el período y deja el `red_desde` listo para que el latido lo suba.
                 anotarRed("ok");
@@ -827,6 +1153,11 @@ public class UploaderGpsService extends Service {
     private void detenerServicio() {
         try { if (callback != null) fused.removeLocationUpdates(callback); } catch (Exception ignored) {}
         callback = null;
+        latidoH.removeCallbacks(latido);
+        apagarCarrilRed();
+        // El WakeLock se suelta acá y no solo en onDestroy: fuera de la ventana horaria, dejar la
+        // CPU despierta toda la noche sería exactamente el drenaje que la ventana vino a evitar.
+        soltarWakeLock();
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(Service.STOP_FOREGROUND_REMOVE);
             else stopForeground(true);
@@ -848,15 +1179,11 @@ public class UploaderGpsService extends Service {
         // queda de cuántos fixes llegaron y cuántos se descartaron, y es justo el caso que interesa
         // diagnosticar. `commit()` y no `apply()`: apply() es asíncrono y acá se está terminando.
         try {
-            prefs().edit()
-                .putInt(K_TEL_FIXES, cFixes)
-                .putInt(K_TEL_PRECISION, cDescPrecision)
-                .putInt(K_TEL_SALTO, cDescSalto)
-                .putInt(K_TEL_MOVIMIENTO, cDescMovimiento)
-                .putInt(K_TEL_GUARDADOS, cGuardados)
-                .putLong(K_TEL_ULTIMO_FIX, ultimoFixAt)
-                .commit();
+            volcarTelemetria(prefs().edit()).putInt(K_TEL_DIA, diaContadores).commit();
         } catch (Exception ignored) {}
+        latidoH.removeCallbacks(latido);
+        apagarCarrilRed();
+        soltarWakeLock();
         // Soltar la referencia estática: sin esto queda un Service muerto retenido para siempre.
         if (instancia == this) instancia = null;
         super.onDestroy();

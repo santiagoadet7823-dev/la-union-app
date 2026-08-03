@@ -2,7 +2,12 @@ import { registerPlugin } from '@capacitor/core'
 import { isNative } from './platform'
 import { supabase } from './supabase'
 import { setUploaderNativo } from './geolocation/tracker'
-import { MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS, ACCURACY_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS } from './gpsConfig'
+import {
+  MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS,
+  ACCURACY_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS,
+  MIN_MOVE_URBANO_M, MIN_MOVE_RUTA_M, VEL_RUTA_MPS, NEAR_LIVE_QUIETO_MS,
+  ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS,
+} from './gpsConfig'
 
 /**
  * Bridge al uploader GPS NATIVO (Opción B, 24/07/2026). El servicio nativo (UploaderGpsService) captura
@@ -97,6 +102,13 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       // fixes malos; bajarlo vacía los recorridos (regla 18).
       accuracyMaxM: ACCURACY_MAX_M, maxSpeedMps: MAX_SPEED_MPS,
       minJumpM: MIN_MOVE_M, maxSaltosSeguidos: MAX_SALTOS_SEGUIDOS,
+      // 1.9.0 — guardado por DISTANCIA según el modo (el pedido del cliente), cadencia con "quieto"
+      // confirmado por el acelerómetro, carril de triangulación durante un silencio y piso
+      // anti-churn. Todos por prefs → se afinan por OTA sin recompilar el APK (regla 22-ter).
+      minMoveUrbanoM: MIN_MOVE_URBANO_M, minMoveRutaM: MIN_MOVE_RUTA_M, velRutaMps: VEL_RUTA_MPS,
+      intervaloQuietoMs: NEAR_LIVE_QUIETO_MS,
+      accuracyRedMaxM: ACCURACY_RED_MAX_M, silencioMs: SILENCIO_MS,
+      repedidoMinMs: REPEDIDO_MIN_MS,
     })
     await UploaderGps.iniciar()
     iniciado = true
