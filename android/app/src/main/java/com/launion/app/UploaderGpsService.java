@@ -737,7 +737,16 @@ public class UploaderGpsService extends Service {
                 (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
             if (lm == null) return;
             redListener = new android.location.LocationListener() {
-                @Override public void onLocationChanged(Location loc) { procesarFix(loc, true); }
+                @Override public void onLocationChanged(Location loc) {
+                    // 🩸 El carril pide a DOS proveedores, y no son lo mismo: un fix del GPS_PROVIDER
+                    // es un fix de GPS de verdad —tiene que contar como tal, apagar el carril y su
+                    // precisión se juzga con el techo normal— y solo el de NETWORK_PROVIDER es
+                    // triangulado. Marcarlos a los dos como "de red" dejaría el carril prendido para
+                    // siempre y mandaría fixes buenos a dibujarse punteados.
+                    boolean deRed = loc != null
+                        && !android.location.LocationManager.GPS_PROVIDER.equals(loc.getProvider());
+                    procesarFix(loc, deRed);
+                }
                 @Override public void onProviderEnabled(String p) {}
                 @Override public void onProviderDisabled(String p) {}
                 @SuppressWarnings("deprecation")
