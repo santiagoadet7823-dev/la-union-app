@@ -103,7 +103,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [snapped, setSnapped] = useState({})     // { id: [{lat,lng}] } pegado a calles
-  const [snapOn, setSnapOn] = useState(false)    // false = rastro crudo fiel (default); true = pegado a calles
+  // 🩸 PRENDIDO POR DEFECTO desde el 03/08/2026 (antes arrancaba en crudo). Con un motor por modo
+  // (ALGO 8) el snap ya cubre el día entero y no solo las caminatas, así que el trazo que se abre
+  // es el que sigue la calle. Apagarlo devuelve el rastro crudo en un toque, y sigue siendo el que
+  // hay que mirar para discutir un dato: el pegado es una reconstrucción plausible, no la medición.
+  const [snapOn, setSnapOn] = useState(true)
   const [dwellOn, setDwellOn] = useState(true)   // carteles de permanencia sobre el mapa (default: encendidos)
   // Cartel de parada AMPLIADO (índice dentro de `dwells`) o null. Uno a la vez, y NO se persiste
   // —a diferencia de `pinK`—: ampliar una parada es el gesto de "mirá ésta", no una preferencia
@@ -214,6 +218,13 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     setSection('mapa')
     setPinId(id)
     setFoco({ id, nonce: Date.now() })
+    // 🩸 Enfocar a OTRO suelta el seguimiento (03/08/2026). El foco hace un `flyToBounds` de 0,6 s
+    // sobre el recorrido de la persona nueva, pero el seguimiento mueve la cámara EN CADA FRAME
+    // desde adentro de la animación del pin (`alFrame` → `panTo`): el primer frame del que se venía
+    // siguiendo cancelaba el vuelo, así que tocar a alguien no llevaba el mapa a su recorrido.
+    // Pedir ver el recorrido de otro ES dejar de estar pegado al anterior; mismo criterio que
+    // arrastrar el mapa, que ya lo suelta (LeafletMap escucha `dragstart`).
+    setSeguirId((s) => (s && id && s !== id ? null : s))
   }, [])
 
   // Puntos a encuadrar para el usuario enfocado: su recorrido (byUser) o, si no tiene, su
@@ -443,7 +454,16 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           focus={focusData}
           seguir={seguirData}
           onSeguirCancelado={() => setSeguirId(null)}
-          edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 24, left: 16 }}
+          // Reserva para el chrome que flota encima. A la derecha, el rail MÁS media burbuja: el
+          // encuadre mide la COORDENADA y la burbuja de perfil mide 130 px de ancho, así que una
+          // persona encuadrada justo contra el borde quedaba con su burbuja metida abajo de los
+          // botones. Abajo, la columna de la tarjeta + las burbujas del equipo (§2).
+          edgePadding={{
+            top: 16,
+            right: RAIL_W + 24 + 65,
+            bottom: 24 + (pin ? (pinK > 1 ? 150 : 84) : 0) + (inmersivo ? 96 : 0),
+            left: 16,
+          }}
           onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); setPlusOpen(false); setAcctOpen(false) } }}
         />
 
@@ -618,21 +638,61 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         />
       )}
 
-      {/* ===== BURBUJAS DEL EQUIPO (solo en inmersivo) =====
-          Abajo a la IZQUIERDA: la derecha es del botón de salir. El `right` reserva ese ancho
-          (44 del botón + 12 de margen + 12 de aire) para que una fila larga scrollee en vez de
-          meterse abajo del botón. */}
-      {inmersivo && (
-        <BurbujasEquipo
-          movers={moversFil}
-          nombres={nombres}
-          fotos={fotos}
-          byUser={byUser}
-          focoId={foco?.id || null}
-          onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
-          style={{ position: 'absolute', left: 12, right: 12 + RAIL_W + 12, bottom: safeBottom(14), zIndex: 'var(--z-chrome)' }}
-        />
-      )}
+      {/* ===== CHROME DE ABAJO: UNA SOLA COLUMNA =====
+          🩸 03/08/2026. Antes eran DOS piezas absolutas independientes —la tarjeta del pin y las
+          burbujas del equipo— cada una adivinando las medidas de la otra y del rail. La tarjeta
+          había quedado con `right: 14` (todo el ancho) y `--z-popover`, que son las medidas de
+          cuando el rail DESAPARECÍA en pantalla completa; el 30/07 se lo hizo quedar y esto no se
+          actualizó. Resultado: a pantalla completa la tarjeta tapaba los dos botones de abajo del
+          rail —está 100 puntos de z por encima— y además se montaba sobre las burbujas.
+
+          Como columna, el ancho del rail queda reservado POR CONSTRUCCIÓN en los dos modos y nada
+          puede pisar a nada: son hermanas en un flujo, no capas superpuestas. No hay dos números
+          que se puedan desincronizar otra vez.
+
+          `pointerEvents:'none'` en el contenedor (regla 30): ocupa todo el ancho a esta altura y
+          sin esto se tragaría los toques del mapa donde no hay contenido. Cada hija se lo vuelve
+          a encender. */}
+      <div style={{
+        position: 'absolute', left: 14, right: RAIL_W + 24,
+        bottom: safeBottom(inmersivo ? 14 : NAV_H + 14),
+        zIndex: 'var(--z-chrome)', pointerEvents: 'none',
+        display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start',
+      }}>
+        {/* TARJETA DEL PIN — quién es el móvil que se acaba de tocar. En inmersivo se mantiene (es
+            información sobre lo que el usuario acaba de tocar, no un control). El contenido vive en
+            ./components/TarjetaPin; acá queda solo dónde va.
+
+            El `key` es el que hace la animación: al cambiar `pinK`, React remonta la tarjeta y
+            `lu-rise` se vuelve a ejecutar, o sea que "vuelve a entrar" con su nuevo tamaño. */}
+        {pin && (
+          <TarjetaPin
+            key={`pin-${pin.id}-${pinK}`}
+            pin={pin}
+            nombre={nombres[pin.id]}
+            bateria={pinBateria}
+            resumen={pinResumen}
+            k={pinK}
+            onToggle={togglePinK}
+            onClose={() => setPinId(null)}
+            style={{ alignSelf: 'stretch', pointerEvents: 'auto' }}
+          />
+        )}
+
+        {/* BURBUJAS DEL EQUIPO (solo en inmersivo): con el chrome escondido, es el único acceso al
+            enfoque por persona. */}
+        {inmersivo && (
+          <BurbujasEquipo
+            movers={moversFil}
+            nombres={nombres}
+            fotos={fotos}
+            byUser={byUser}
+            focoId={foco?.id || null}
+            onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
+            style={{ alignSelf: 'stretch' }}
+          />
+        )}
+      </div>
 
       {/* Fallback final del selector de fecha: WebView sin showPicker() ni click() programático
           → input inline visible para que el usuario lo toque él mismo. */}
@@ -648,28 +708,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             />
           </div>
         </div>
-      )}
-
-      {/* ===== TARJETA FLOTANTE DE PIN =====
-          En inmersivo SE MANTIENE (es información sobre lo que el usuario acaba de tocar, no un
-          control), pero baja: ya no hay bottom-nav ni rail que la empujen. El posicionamiento vive
-          acá y el contenido en ./components/TarjetaPin — la tarjeta era una IIFE de 70 líneas en el
-          medio de este archivo, y SupervisionDesktop todavía no tiene ninguna (deuda anotada).
-
-          El `key` es el que hace la animación: al cambiar `pinK`, React remonta la tarjeta y
-          `lu-rise` se vuelve a ejecutar, o sea que "vuelve a entrar" con su nuevo tamaño. */}
-      {pin && (
-        <TarjetaPin
-          key={`pin-${pin.id}-${pinK}`}
-          pin={pin}
-          nombre={nombres[pin.id]}
-          bateria={pinBateria}
-          resumen={pinResumen}
-          k={pinK}
-          onToggle={togglePinK}
-          onClose={() => setPinId(null)}
-          style={{ position: 'absolute', left: 14, right: inmersivo ? 14 : RAIL_W + 24, bottom: safeBottom(inmersivo ? NAV_H + 14 : NAV_H + 86), zIndex: 'var(--z-popover)' }}
-        />
       )}
 
       {/* ===== BOTTOM NAV ===== */}

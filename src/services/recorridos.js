@@ -27,6 +27,16 @@ export async function fetchSnapRecorridos({ fecha, desde, hasta }) {
         .filter((seg) => Array.isArray(seg) && seg.length >= 2)
         .map((seg) => seg.map(([lat, lng]) => ({ lat, lng })))
     }
+    // 🩸 El desglose viaja por una propiedad NO enumerable (03/08/2026). La función informa cuántos
+    // tramos pegó por matcheo, cuántos por ruteo y por qué quedaron crudos los demás — sin eso, un
+    // tope alcanzado se ve igual que "salió todo bien" y afinar un umbral es adivinar. Va acá y no
+    // en una segunda propiedad del objeto porque TODOS los consumidores recorren este mapa con
+    // `Object.entries` esperando id_usuario → segmentos, y una clave extra les entraría como una
+    // persona más.
+    Object.defineProperty(out, '_meta', {
+      enumerable: false,
+      value: { ruteos: data.ruteos, truncados: data.truncados, autos: data.autos, pies: data.pies, crudos: data.crudos },
+    })
     return out
   } catch (_) {
     return {}

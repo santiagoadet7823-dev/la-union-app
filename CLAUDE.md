@@ -213,6 +213,21 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     necesita una red de contención en `visibilitychange`: cambiar de pestaña a mitad de un tramo
     dejaba el pin del mapa **congelado en una posición por la que la persona ya pasó**, y eso es
     peor que no animar, porque el error es indistinguible de un dato real. Ver `animarPin.js`.
+37. **El pin animado se compara contra el ÚLTIMO DESTINO MANDADO, nunca contra `getLatLng()`.**
+    (03/08/2026.) `getLatLng()` a mitad de una animación devuelve el fotograma actual, y el efecto
+    de pines se dispara con el latido de CUALQUIERA del equipo (`kMarkers` lleva el `ts` de todos y
+    el `selected`): cada pin en vuelo se encontraba "fuera de lugar" y reiniciaba su tramo con 6 s
+    nuevos desde la mitad, así que no terminaba de llegar nunca. Peor con el tramo pegado a calles:
+    OSRM termina en el punto ENCAJADO a la calle, a metros del dato, así que la comparación daba
+    verdadero para siempre. El destino vive en `pinesRef` (`lat`/`lng`) y `ts` avanza SOLO cuando el
+    destino cambió — si avanzara con los latidos de cortesía, el `dt` del próximo tramo se mediría
+    desde algo que no movió el pin. Ver `LeafletMap.jsx`.
+38. **El snap elige el MOTOR por modo, y el modo lo decide `splitModo`.** (ALGO 8, 03/08/2026.)
+    Peatón → `routed-foot`; vehículo → `routed-car`. Medido con el mismo rastro real: en un tramo de
+    ruta el perfil auto da ×1,003 del crudo y el peatón ×57; en un tramo a pie el peatón da ×1,48 y
+    el auto ×4,5. La guarda anti-detour (×2,5) es la red por si el modo se equivocó, no el
+    mecanismo. `/match` sería mejor algoritmo pero el host público lo rechaza por tamaño (medido:
+    `TooBig` con 20 puntos) — habilitarlo requiere OSRM propio.
 36. **La ventana de rastreo está implementada TRES veces y nada las sincroniza**: `dentroDeHorario()`
     (`services/tracking.js`), `dentroDeVentana()` (`UploaderGpsService.java`) y `en_ventana`
     (`vigilancia_equipo`, SQL). Tocar una sin las otras no rompe nada visible: hace que los avisos

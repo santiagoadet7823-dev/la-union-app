@@ -45,6 +45,10 @@ const MIN_SNAP_M = 40
 // nota que es un salto. Mismo criterio que el conector punteado de trazos.js.
 const MAX_SNAP_M = 2500
 
+// Fracción del tramo pasada la cual YA NO se adopta el camino por calles que llega de OSRM: más
+// tarde, reubicar el pin sobre la calle es un salto lateral más grande que el error que corrige.
+const CAMBIO_MAX_T = 0.25
+
 const DUR_MIN_MS = 400
 // Tope de duración: si entre dos posiciones pasaron 3 minutos, animar 3 minutos dejaría el pin
 // arrastrándose eternamente y la cámara persiguiéndolo. Se recorre rápido y se espera ahí.
@@ -201,9 +205,19 @@ export function crearAnimadorPines() {
 
     caminoPorCalles(desde, destino).then((coords) => {
       if (estado.cancelado || !coords) return
-      // El progreso se conserva porque `t` es una fracción del recorrido, no un índice: cambiar la
-      // geometría a mitad de camino reubica el pin sobre la calle sin saltar hacia atrás.
-      puntos = coords
+      // 🩸 SOLO SI LLEGÓ TEMPRANO (03/08/2026). El progreso se conserva porque `t` es una fracción
+      // del recorrido y no un índice, así que el pin nunca retrocede — pero eso no evita que SALTE
+      // DE COSTADO: la mitad de la recta y la mitad del camino por calles pueden estar a media
+      // cuadra una de la otra. En un teléfono OSRM tarda 300-800 ms, o sea justo en el medio del
+      // tramo. Pasado este punto, el salto que corrige es más grande que el error que arregla:
+      // se sigue en recta y listo.
+      if ((performance.now() - t0) / dur > CAMBIO_MAX_T) return
+      // 🩸 Y se cosen los EXTREMOS. OSRM rutea entre las versiones *encajadas a la calle* de los dos
+      // puntos, así que su geometría empieza y termina a metros de donde dice el dato. Sin esta
+      // costura el pin quedaba parado en la calle y no en la coordenada que llegó — que es una
+      // mentira chica pero permanente, y encima la que hacía que el mapa creyera que el pin seguía
+      // desubicado en cada refresco (ver el 🩸 del efecto de pines en LeafletMap).
+      puntos = [desde, ...coords, destino]
       acum = acumuladas(puntos)
     })
 

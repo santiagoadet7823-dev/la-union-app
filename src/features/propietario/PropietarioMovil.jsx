@@ -71,7 +71,7 @@ export default function PropietarioMovil() {
   // ---- Estado del MAPA a pantalla completa. Antes no existía ninguno de estos: el mapa se abría
   // en un sheet de 60vh con cuatro props y sin un solo control.
   const [snapped, setSnapped] = useState({})
-  const [snapOn, setSnapOn] = useState(false)
+  const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [dwellOn, setDwellOn] = useState(true)
   const [dwellSel, setDwellSel] = useState(null)
   const [showClientes, setShowClientes] = useState(false)
@@ -290,6 +290,16 @@ export default function PropietarioMovil() {
     if (objetivoSeguir) { setSeguirId(objetivoSeguir.id); setFoco({ id: objetivoSeguir.id, nonce: Date.now() }) }
   }, [seguirId, objetivoSeguir])
 
+  // Enfocar a una persona (o `null` para soltar). Enfocar a OTRA suelta el seguimiento: si no, el
+  // paneo por frame de la animación del pin que se venía siguiendo cancela el vuelo hacia el
+  // recorrido pedido y el mapa nunca llega. Ver el 🩸 de SupervisionMovil.
+  const enfocarPersona = useCallback((id) => {
+    setFoco(id ? { id, nonce: Date.now() } : null)
+    // `id &&`: soltar el foco (tocar de nuevo la burbuja) NO suelta el seguimiento — lo que lo
+    // suelta es pedir el recorrido de OTRA persona, que es cuando las dos cámaras se pelean.
+    setSeguirId((s) => (s && id && s !== id ? null : s))
+  }, [])
+
   const personaSheet = personaSel
     ? activos.find((p) => p.id === personaSel) || sinDatos.find((p) => p.id === personaSel) || null
     : null
@@ -317,7 +327,7 @@ export default function PropietarioMovil() {
               onMarcarVista={avisos.marcarVista}
               onEnfocar={(a) => {
                 if (fechaMapa !== hoyStr()) cambiarFechaMapa(hoyStr())
-                setFoco({ id: a.id_usuario, nonce: Date.now() })
+                enfocarPersona(a.id_usuario)
                 setMapaAbierto(true)
               }}
             />
@@ -493,7 +503,7 @@ export default function PropietarioMovil() {
           fitDone={fitDone}
           focusData={focusData}
           foco={foco}
-          onEnfocar={(id) => setFoco(id ? { id, nonce: Date.now() } : null)}
+          onEnfocar={enfocarPersona}
           seguirData={seguirData}
           objetivoSeguir={objetivoSeguir}
           onSeguir={alternarSeguir}
@@ -548,7 +558,10 @@ function MapaCompleto({ theme, onClose, ...p }) {
         onSeguirCancelado={p.soltarSeguir}
         // Reserva a la derecha el ancho del rail y abajo el de las burbujas, para que el encuadre
         // no meta el recorrido debajo de los controles.
-        edgePadding={{ top: 16, right: RAIL_W + 24, bottom: 96, left: 16 }}
+        // El `right` lleva media burbuja de más (65): el encuadre mide la COORDENADA y la burbuja
+        // de perfil mide 130 px de ancho, así que una persona encuadrada contra el borde quedaba
+        // con su burbuja metida abajo del rail.
+        edgePadding={{ top: 16, right: RAIL_W + 24 + 65, bottom: 96, left: 16 }}
         onMarkerClick={(i) => { const mk = p.moversArr[i]; if (mk) p.onEnfocar(mk.id) }}
       />
 

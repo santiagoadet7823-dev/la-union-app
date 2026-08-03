@@ -17,7 +17,7 @@ export const GAP_MS = 240000     // 4 min sin un solo fix → corta también (mi
 export const STATIONARY_R = 40   // m: si la MEDIANA de distancia al centro es menor → estático (no rutear)
 export const MIN_SEP = 25        // m: descarta puntos más cercanos que esto al anterior (jitter)
 export const MAX_WP = 90         // waypoints máx por consulta /route
-export const SPEED_MAX = 3.3     // m/s (~12 km/h): más rápido que esto = vehículo (el perfil peatón inventa calles)
+export const SPEED_MAX = 3.3     // m/s (~12 km/h): más rápido que esto = vehículo → motor de auto
 
 export const hav = (a: P, b: P) => {
   const R = 6371000, d = Math.PI / 180
@@ -55,15 +55,15 @@ export function splitGaps(pts: P[]): P[][] {
  * 🩸 CORTE POR MODO — el arreglo que hace que el botón "Calles" exista de verdad (30/07/2026).
  *
  * Hasta hoy el día se cortaba SOLO por saltos de más de 1500 m, así que una jornada entera quedaba
- * como UN segmento; y como después se descarta el ruteo de cualquier segmento de más de DRIVE_LEN
- * (4 km), el día completo caía en esa guarda y se dibujaba crudo. Medido: la jornada del 29/07/2026
+ * como UN segmento; y como después se descarta el ruteo de cualquier segmento de más de 4 km, el
+ * día completo caía en esa guarda y se dibujaba crudo. Medido: la jornada del 29/07/2026
  * de un vendedor mide 73,5 km en un solo segmento. O sea que prender "Calles" no pegaba NADA a las
  * calles, en ningún día real, desde que existe el botón.
  *
  * La causa es que un día mezcla dos cosas distintas: caminar por el pueblo (que sí hay que rutear
- * con perfil peatón) y manejar entre localidades (que hay que dejar crudo, porque el perfil peatón
- * inventa calles a esa velocidad). Cortar por tiempo no las separa —el flujo de puntos es continuo—
- * así que hay que cortar por VELOCIDAD.
+ * con perfil peatón) y manejar entre localidades (que hay que rutear con perfil AUTO desde ALGO 8;
+ * antes se dejaba crudo porque el perfil peatón inventa calles a esa velocidad). Cortar por tiempo
+ * no las separa —el flujo de puntos es continuo— así que hay que cortar por VELOCIDAD.
  *
  * La clasificación se SUAVIZA con una ventana de 3 hops: un solo fix rápido en medio de una
  * caminata (o un semáforo en medio de un viaje) no puede partir el tramo en tres.

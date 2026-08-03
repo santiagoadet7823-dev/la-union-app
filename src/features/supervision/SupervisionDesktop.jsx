@@ -88,7 +88,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [snapped, setSnapped] = useState({}) // { id: [{lat,lng}] } pegado a calles
-  const [snapOn, setSnapOn] = useState(false) // false = rastro crudo fiel (default)
+  const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin sidebar ni topbar
@@ -174,6 +174,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     setView('mapa')
     setPinId(id)
     setFoco({ id, nonce: Date.now() })
+    // Enfocar a OTRO suelta el seguimiento: si no, el paneo por frame de la animación del pin que
+    // se venía siguiendo cancela el vuelo hacia el recorrido pedido. Ver SupervisionMovil.
+    setSeguirId((s) => (s && id && s !== id ? null : s))
   }, [])
 
   // Tocar un aviso de la campanita. Los incidentes son SIEMPRE de hoy, así que si se está mirando
@@ -569,7 +572,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       focus={focusData}
                       seguir={seguirData}
                       onSeguirCancelado={() => setSeguirId(null)}
-                      edgePadding={{ top: 28, right: inmersivo ? 28 + 44 + 16 : 28, bottom: 28, left: 28 }}
+                      // +65 a la derecha = media burbuja: el encuadre mide la COORDENADA y la
+                      // burbuja de perfil mide 130 px de ancho, así que una persona encuadrada
+                      // contra el borde quedaba con su burbuja abajo del rail.
+                      edgePadding={{ top: 28, right: (inmersivo ? 28 + 44 + 16 : 28) + 65, bottom: inmersivo ? 28 + 96 : 28, left: 28 }}
                       onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}
                     />
                     {/* 🩸 ABAJO a la derecha, no arriba (28/07/2026). Estaba en `top:16` y ahí

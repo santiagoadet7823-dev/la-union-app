@@ -28,7 +28,7 @@ export default function RecorridosView() {
   const { idEmpresa } = useAuth()
   const [fecha, setFecha] = useState(hoyStr)
   const [snapped, setSnapped] = useState({}) // { id_usuario: [{lat,lng}] } pegado a calles
-  const [snapOn, setSnapOn] = useState(false) // default OFF = rastro crudo (GPS real); ON = pegar a calles
+  const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [fitDone, setFitDone] = useState(false)
   const [, forceTick] = useState(0)
   const snapCallRef = useRef(0)

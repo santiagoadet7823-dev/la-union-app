@@ -386,8 +386,10 @@ export default function LeafletMap({
   mapClickRef.current = onMapClick
   const seguirFinRef = useRef(onSeguirCancelado)
   seguirFinRef.current = onSeguirCancelado
-  // Pines en vivo que PERSISTEN entre refrescos: id → { marker, firmaIcono, lat, lng, ts }.
+  // Pines en vivo que PERSISTEN entre refrescos: id → { marker, firma, indice, lat, lng, ts }.
   // Es la condición para poder animarlos; ver el efecto de pines y features/supervision/animarPin.js.
+  // `lat`/`lng` son el ÚLTIMO DESTINO MANDADO al animador, no dónde está dibujado el marcador: esa
+  // distinción es todo el arreglo del 03/08/2026, ver el 🩸 del efecto.
   const pinesLayerRef = useRef(null)
   const pinesRef = useRef(new Map())
   const animadorRef = useRef(null)
@@ -678,18 +680,32 @@ export default function LeafletMap({
         const icon = bubbleIcon({ foto: v.foto, iniciales: v.iniciales, color: v.color, nombre: v.nombre, ts: v.ts, selected: v.selected })
         const m = L.marker([v.lat, v.lng], { icon, title: v.nombre || '' })
         m.addTo(layer)
-        pin = { marker: m, firma, indice: v.indice }
+        pin = { marker: m, firma, indice: v.indice, lat: v.lat, lng: v.lng, ts: v.ts }
         pines.set(v.id, pin)
       } else {
         if (pin.firma !== firma) {
           pin.marker.setIcon(bubbleIcon({ foto: v.foto, iniciales: v.iniciales, color: v.color, nombre: v.nombre, ts: v.ts, selected: v.selected }))
           pin.firma = firma
         }
-        // La posición SÍ cambió → animar. `duracionMs` sale del tiempo real entre esta posición y
-        // la anterior: así el pin tarda en cruzar el tramo más o menos lo que tardó la persona, en
-        // vez de correr siempre a la misma velocidad inventada.
-        const actual = pin.marker.getLatLng()
-        if (actual.lat !== v.lat || actual.lng !== v.lng) {
+        /* 🩸 SE COMPARA CONTRA EL ÚLTIMO DESTINO MANDADO, NUNCA CONTRA `getLatLng()` (03/08/2026).
+         *
+         * Hasta hoy la condición era `pin.marker.getLatLng() !== v`, o sea la posición DIBUJADA. A
+         * mitad de una animación eso es el fotograma actual, no el destino — y este efecto no corre
+         * solo cuando esta persona se movió: `kMarkers` lleva el `ts` de TODOS y el `selected`, así
+         * que el latido de cualquiera del equipo (y tocar a alguien, que conmuta `selected` en dos
+         * marcadores) lo vuelve a disparar. Cada pin en vuelo se encontraba "fuera de lugar" y
+         * reiniciaba su tramo, además con `dt = 0` (porque `pin.ts` ya se había pisado abajo) → 6 s
+         * nuevos desde la mitad. Con el equipo entero reportando, el pin nunca terminaba de llegar.
+         *
+         * Y con el tramo pegado a calles no convergía nunca: la polilínea de OSRM termina en el
+         * punto ENCAJADO a la calle, a metros de la coordenada GPS, así que la comparación daba
+         * verdadero para siempre y el pin quedaba temblando entre la calle y el dato.
+         *
+         * `duracionMs` sale del tiempo real entre esta posición y la anterior: así el pin tarda en
+         * cruzar el tramo más o menos lo que tardó la persona, en vez de correr a una velocidad
+         * inventada.
+         */
+        if (pin.lat !== v.lat || pin.lng !== v.lng) {
           const dt = pin.ts && v.ts ? v.ts - pin.ts : 0
           animadorRef.current.mover(v.id, pin.marker, [v.lat, v.lng], {
             duracionMs: dt > 0 ? dt : undefined,
@@ -700,10 +716,17 @@ export default function LeafletMap({
               ? (p) => { try { map.panTo(p, { animate: false }) } catch (_) {} }
               : undefined,
           })
+          pin.lat = v.lat
+          pin.lng = v.lng
+          // 🩸 `ts` avanza SOLO cuando el destino cambió. Estando quieto el teléfono manda un punto
+          // de cortesía cada 30 s: si el reloj se adelantara con esos, el `dt` del próximo tramo
+          // real se mediría desde un latido que no movió nada y la duración saldría corta (el pin
+          // cruzaría la cuadra a las corridas). Medido desde el último MOVIMIENTO, es el tiempo que
+          // la persona tardó de verdad.
+          pin.ts = v.ts
         }
       }
       pin.indice = v.indice
-      pin.ts = v.ts
       // El click se re-cablea porque el índice dentro de `markers` puede cambiar entre refrescos
       // aunque el marcador sea el mismo objeto.
       pin.marker.off('click')

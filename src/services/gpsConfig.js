@@ -21,7 +21,22 @@ export const KEEPALIVE_MS = 90000  // reenvío de cortesía aunque no se mueva (
 // para que, EN MOVIMIENTO, el supervisor lo vea moverse en tiempo casi real. Gobierna PRESET_QUIETO.interval
 // (estados.js) y el intervaloMs del uploader nativo. OJO: captura ≠ guardado — cuánto se GUARDA lo decide
 // el filtro por movimiento (MIN_MOVE_M o STATIONARY_KEEPALIVE_MS), no esta constante.
-export const NEAR_LIVE_MS = 10000  // 10 s
+//
+// 🩸 BAJADA DE 10 s A 5 s (03/08/2026). Medido sobre un recorrido real de reparto (Emanuel Arias,
+// 03/08, 09:55-10:40, 90 tramos): precisión mediana 15,6 m y distancia mediana entre puntos 10,6 m
+// —o sea que caminando la densidad estaba BIEN—, pero **32 tramos de entre 20 y 200 m** (máximo
+// 171 m) y cadencia mediana de 15 s. Esos 32 tramos son los saltitos EN VEHÍCULO entre cliente y
+// cliente, y son exactamente las diagonales que cruzan la manzana en el mapa.
+//
+// La cadencia rápida no los cubre: pide superar VEL_UMBRAL_MPS de forma sostenida, y un salto de
+// 200 m a 25 km/h dura 29 segundos — se termina antes de que la detección reaccione y aplique el
+// intervalo nuevo. La adaptativa sirve para un viaje; para un salto de media cuadra llega tarde
+// SIEMPRE. Lo único que cubre el salto corto es la cadencia BASE.
+//
+// El volumen no se dispara porque el techo de densidad lo pone MIN_MOVE_M (9 m), no esta constante:
+// parado sigue mandando el keepalive de 30 s y caminando se sigue guardando cada 9-13 m. Lo que sí
+// cuesta es batería (más adquisiciones por minuto); cuánto, hay que medirlo en un teléfono real.
+export const NEAR_LIVE_MS = 5000   // 5 s
 // Reenvío estando QUIETO. Antes el gate de "quieto" usaba NEAR_LIVE_MS (10 s): un vendedor parado en un
 // cliente emitía 6 puntos/min redundantes → inundaba `posiciones`, saturaba Realtime y trababa el mapa
 // (medido 26/07/2026). El marcador sigue "vivo" y se corta el volumen de quieto.
@@ -36,7 +51,13 @@ export const STATIONARY_KEEPALIVE_MS = 30000  // 30 s
 // Solución: el servicio nativo sube la cadencia SOLO cuando detecta alta velocidad (getSpeed) y vuelve a
 // la lenta al frenar — más puntos en las curvas/avenidas sin gastar batería parado. Estos valores viajan
 // al nativo por uploaderNativo.configurar (SharedPreferences) → afinables por OTA sin recompilar el APK.
-export const NEAR_LIVE_RAPIDO_MS = 5000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
+// 03/08/2026: bajada de 5 s a 2 s. Medido el mismo día sobre otro tramo del recorrido: en la banda
+// de 11-29 km/h (calles del pueblo, que es donde el trazo tiene que distinguir una calle de su
+// paralela) la cadencia rápida SÍ estaba activa —5,0 s de mediana— y aun así quedaban 27,8 m entre
+// puntos. A 2 s son ~11 m, que es la densidad con la que la esquina se dobla en vez de cortarse.
+// En ruta (81 km/h de promedio medido) pasa de 132 m a ~45 m: sigue sin ser fiel, pero ahí no hay
+// calles paralelas con las que confundirse — eso lo resuelve el snap, no más puntos.
+export const NEAR_LIVE_RAPIDO_MS = 2000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
 // 30/07/2026: bajado de 4 m/s (14 km/h) a 3 (11 km/h). La banda de 5-14 km/h —moto lenta, auto en el
 // pueblo, alguien apurado— quedaba en cadencia lenta y es donde MÁS falta densidad: son calles de
 // ciudad, con paralelas a media cuadra, o sea justo donde un trazo pobre inventa por dónde pasó. En
