@@ -170,7 +170,21 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // Permiso de notificaciones: se lee en cada latido y no una sola vez, porque el usuario lo
       // puede apagar desde Ajustes con la app abierta — y ese es justo el caso que hay que ver.
       const notif = await permisoNotificaciones().catch(() => null)
-      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), notif_permiso: notif, ...diagRed, ...diagCaptura, ...s }
+      // 🩸 UN TOKEN NULL NO PISA AL QUE YA ESTÁ (04/08/2026). `fcm_token` viajaba SIEMPRE, así que
+      // un latido que corriera ANTES de que FCM registrara el dispositivo escribía null encima del
+      // token bueno — y el registro es asincrónico, igual que la hidratación desde persistencia, así
+      // que el PRIMER latido de cada arranque en frío llega con null casi seguro. Medido: el
+      // superadmin —la persona que reportó "no me llegan las notificaciones"— tenía token a las
+      // 20:16 y `fcm_token = null` a las 23:31, después de cambiar de cuenta en el mismo teléfono.
+      // Sin token no le llega NADA: ni los avisos del equipo ni el de actualización. Y se cura solo
+      // solo si esa misma sesión vuelve a latir; si la persona cambia de cuenta antes, queda
+      // inalcanzable hasta que vuelva a entrar.
+      //
+      // Omitirlo cuando no lo tenemos es lo correcto: el upsert deja la columna como estaba. "No sé
+      // el token" y "este teléfono no tiene token" son cosas distintas, y solo el backend puede
+      // afirmar la segunda (regla 34: se borra ante un rechazo EXPLÍCITO de FCM, no ante una duda).
+      const fcm = getFcmTokenSync()
+      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, notif_permiso: notif, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
