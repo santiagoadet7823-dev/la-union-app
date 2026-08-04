@@ -291,6 +291,36 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     a 24:00 daba **mañana** y Supervisión mostraba el mapa vacío todas las noches. Usar **`hoyStr()`**
     de [src/lib/format.js:45](src/lib/format.js#L45).
 
+43. **Si hace falta probar la app, se prueba — no se le pide al usuario que lo haga.** El emulador de
+    Android está instalado (§3); si no está corriendo, se levanta. Sirve para lo que se ve y se
+    toca: interfaz, botones, overlays, el trazo en el mapa, y **los canales de notificación**. Y si
+    la sesión de la **PWA** está cerrada, se abre el navegador y **se le pide al usuario que loguee
+    la cuenta de superadmin**: Claude no puede escribir credenciales en ningún campo, así que el
+    login lo hace la persona y desde ahí sigue la verificación.
+
+    **Techo honesto del emulador**: no tiene GPS real, ni Doze, ni los killers de los fabricantes.
+    **No sirve para probar nada de `UploaderGpsService`** — eso se verifica en la calle, con la
+    consulta de huecos contra la base, y no hay atajo. La imagen es `google_apis` y no `default`
+    justo porque sin Play Services no hay FCM, que es lo único que de verdad se puede probar acá.
+44. 🩸 **Un `channel_id` de notificación se manda SOLO a los teléfonos que ya tienen ese canal.**
+    (04/08/2026.) Hasta 1.9.0 la app **no declaraba ningún canal** y las tres funciones mandaban el
+    bloque `notification` **sin `channel_id`** — a propósito, porque el canal lo creaba
+    `AlarmWatchdogPlugin.notificar()` recién al notificar y apuntar a un canal inexistente en
+    Android 8+ hace que la notificación **no se muestre**. El razonamiento era correcto y la
+    solución no: sin canal por defecto, FCM cae en su canal de reserva ("Miscellaneous"), que no es
+    de importancia alta y que varios OEM silencian de fábrica. Eso explica **las dos mitades** del
+    "no me llegan las notificaciones y a los usuarios tampoco la de actualizar": los dos avisos
+    viajan por el mismo camino. Desde 1.10.0 los canales (`avisos` HIGH, `actualizaciones` DEFAULT)
+    se crean en `LaUnionApp.onCreate()` y el manifest declara `default_notification_channel_id`.
+    **Pero el parque es mixto**: mandarle `channel_id` a un teléfono en 1.9.0 lo dejaría MUDO, así
+    que se decide por teléfono mirando `estado_dispositivo.app_version`. Y ojo: **un canal es
+    inmutable una vez creado** — por eso el de los avisos es nuevo y no se reusó "actualizaciones".
+45. **Con la app ABIERTA, el cartel lo tiene que dibujar la app.** El plugin de Capacitor no postea
+    nada al recibir un push: reenvía el mensaje al JS y espera. Hasta 1.9.0 `push.js` solo miraba
+    `tipo === 'actualizacion'`, así que **mientras el supervisor tenía la app abierta mirando el
+    mapa —el caso más común— los avisos del equipo se perdían en silencio**, contados como
+    "enviados" en el servidor. Android entrega el push al sistema solo con la app en background.
+
 ### General
 
 24. **No borrar los comentarios largos con fechas y números de bug.** No son ruido: son la memoria del
@@ -337,6 +367,20 @@ bash scripts/ota-release.sh 1.5.26
 
 # Deploy PWA (solo web)
 git push origin main           # dispara .github/workflows/deploy.yml
+
+# ── Emulador de Android (regla 43) ────────────────────────────────────────────
+# Instalado el 04/08/2026: cmdline-tools + system-images;android-34;google_apis;x86_64 + AVD "launion".
+# ⚠️ google_apis y NO default: sin Play Services no hay FCM, que es lo único que sirve probar acá.
+"$LOCALAPPDATA/Android/Sdk/emulator/emulator.exe" -avd launion -no-snapshot -no-boot-anim
+# Esta máquina no tiene GPU utilizable por el emulador (Mesa/Vulkan lo cuelga) y le quedan 2 cores,
+# así que hay que forzar render por software — y el arranque tarda MUCHO (10+ min):
+#   ... -gpu swiftshader_indirect -feature -Vulkan          # con ventana
+#   ... -no-window -no-audio -gpu swiftshader_indirect      # headless, para adb/dumpsys
+# Si dice "Running multiple emulators with the same AVD", quedó un proceso colgado:
+#   powershell -Command "Get-Process qemu-system-x86_64* | Stop-Process -Force"
+adb devices                    # "offline" = todavía booteando; "device" = listo
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+adb shell dumpsys notification --noredact | grep -i channel   # en qué canal cayó un push
 ```
 
 **Notas:**

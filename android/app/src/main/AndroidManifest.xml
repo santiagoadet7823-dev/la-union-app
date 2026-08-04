@@ -29,12 +29,22 @@
      confirme "Instalar" y que "instalar apps desconocidas" esté habilitado para esta app. -->
 <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
+        android:name=".LaUnionApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+
+        <!-- 🩸 CANAL POR DEFECTO DE FCM (04/08/2026). Sin este meta-data, una notificación que llega
+             sin `channel_id` cae en el canal de reserva del SDK ("Miscellaneous"), que no es de
+             importancia alta y que varios OEM silencian de fábrica: el servidor decía "enviado" y en
+             el teléfono no aparecía nada. Apuntar acá es seguro porque el canal se crea en
+             `LaUnionApp.onCreate()`, o sea antes de que pueda llegar un push. Ver LaUnionApp.java. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="avisos" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"

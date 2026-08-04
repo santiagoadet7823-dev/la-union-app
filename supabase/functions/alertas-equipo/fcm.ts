@@ -57,10 +57,16 @@ export async function getAccessToken(sa: CuentaServicio): Promise<string> {
  * 1. **Con bloque `notification`**: así el cartel lo dibuja Android sin una sola línea de código de
  *    la app. Un `data`-only necesita el proceso vivo, y el caso que nos importa es justo el
  *    contrario (el supervisor tiene la app cerrada).
- * 2. **SIN `channel_id`**, igual que push-actualizacion. El canal "actualizaciones" lo crea el
- *    plugin nativo recién cuando notifica, así que puede no existir todavía — y apuntar a un canal
- *    inexistente en Android 8+ hace que la notificación **no se muestre**. Sin `channel_id` cae en
- *    el canal por defecto del SDK de FCM, que siempre existe.
+ * 2. 🩸 **`channel_id` SOLO a los teléfonos que lo tienen** (04/08/2026). Hasta 1.9.0 no se mandaba
+ *    nunca, y con razón: el canal "actualizaciones" lo creaba el plugin nativo recién CUANDO
+ *    notificaba, así que podía no existir, y apuntar a un canal inexistente en Android 8+ hace que
+ *    la notificación **no se muestre**. El costo de esa defensa era caer en el canal de reserva del
+ *    SDK ("Miscellaneous"), que no es de importancia alta y que varios OEM silencian de fábrica —
+ *    o sea, exactamente el "no me llegan las notificaciones" que reportó el cliente.
+ *    Desde el APK 1.10.0 el canal `avisos` se crea en `LaUnionApp.onCreate()`, así que apuntarle es
+ *    seguro. Pero **el parque es mixto**: mandarle `channel_id` a un teléfono en 1.9.0 lo dejaría
+ *    MUDO. Por eso el llamador decide por teléfono, mirando `estado_dispositivo.app_version`, y acá
+ *    el campo simplemente no viaja si no vino.
  *
  * El `tag` hace que un aviso REEMPLACE al anterior del mismo incidente en vez de apilarse: si el
  * cron vuelve a avisar por la misma persona, no queremos seis carteles.
@@ -72,14 +78,17 @@ export async function enviarPush(opts: {
   titulo: string
   cuerpo: string
   tag: string
+  canal?: string | null
   data?: Record<string, string>
 }): Promise<{ ok: boolean; error?: string; muerto?: boolean }> {
+  const notifAndroid: Record<string, string> = { tag: opts.tag }
+  if (opts.canal) notifAndroid.channel_id = opts.canal
   const msg = {
     message: {
       token: opts.token,
       notification: { title: opts.titulo, body: opts.cuerpo },
       data: { tipo: 'alerta', ...(opts.data || {}) },
-      android: { priority: 'HIGH', notification: { tag: opts.tag } },
+      android: { priority: 'HIGH', notification: notifAndroid },
     },
   }
   try {

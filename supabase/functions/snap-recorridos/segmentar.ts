@@ -17,7 +17,51 @@ export const GAP_MS = 240000     // 4 min sin un solo fix → corta también (mi
 export const STATIONARY_R = 40   // m: si la MEDIANA de distancia al centro es menor → estático (no rutear)
 export const MIN_SEP = 25        // m: descarta puntos más cercanos que esto al anterior (jitter)
 export const MAX_WP = 90         // waypoints máx por consulta /route
-export const SPEED_MAX = 3.3     // m/s (~12 km/h): más rápido que esto = vehículo → motor de auto
+
+/**
+ * 🩸 EL UMBRAL QUE ELIGE EL MOTOR, MEDIDO (ALGO 10, 04/08/2026). Estuvo en 3,3 m/s (~12 km/h) con la
+ * idea de "más rápido que esto no es a pie", y esa idea es correcta para clasificar personas y
+ * equivocada para elegir un motor de ruteo. Lo que hay que preguntarse no es "¿iba caminando?" sino
+ * **"¿qué motor reconstruye mejor esto?"**, y eso lo decide si las MANOS DE LAS CALLES importan.
+ *
+ * Medido sobre el recorrido real del 03/08/2026 en Prueba SaaS (2.577 m crudos, ~16 km/h de mediana
+ * por el pueblo, o sea moto/auto lento):
+ *   · perfil PEATÓN → 2.826 m (**×1,10**)   · perfil AUTO → 6.008 m (**×2,33**, lo rechaza el anti-detour)
+ * El perfil auto respeta contramanos y en una grilla de pueblo eso lo obliga a dar vueltas que nadie
+ * dio. El peatón las ignora, y por eso ajusta. En la RUTA pasa exactamente lo contrario (medido el
+ * 03/08 a ~98 km/h: auto ×1,003, peatón ×57), porque ahí el camino es uno solo y la mano manda.
+ *
+ * El cruce está entre esas dos velocidades, no en 12 km/h. **30 km/h** es la línea: por debajo se
+ * anda por una grilla donde cualquier calle sirve, por arriba se va por una ruta donde no.
+ */
+export const SPEED_MAX = 8.5     // m/s (~30 km/h): más rápido que esto → motor de auto
+
+/**
+ * 🩸 UN CAMBIO DE MODO TIENE QUE SOSTENERSE (ALGO 10, 04/08/2026).
+ *
+ * `splitModo` decidía el modo **hop por hop** y suavizaba con una mayoría de 3, y eso no alcanza: la
+ * velocidad de un hop se calcula sobre 5-15 s con fixes que traen 10-30 m de error, así que su ruido
+ * es del mismo orden que el umbral. Medido sobre el recorrido de Prueba SaaS del 03/08: la velocidad
+ * por hop tiene mediana 4,41 m/s y máximo 8,77 — el 79,8 % de los hops daban "vehículo" y el resto
+ * "a pie", alternando. Resultado: **un viaje continuo de 10 minutos quedó partido en 15 tramos** (los
+ * 15 están en `recorridos_snap`, se pueden contar), de 8 a 314 m cada uno salvo el último. Seis
+ * quedaron por debajo de `MIN_RUN_M` y ni se consultaron; el resto se mandó al motor de AUTO por una
+ * mayoría de hops ruidosos, y en una grilla de pueblo eso da ×2,33 → lo rechaza el anti-detour. O
+ * sea: **todo crudo**, que es exactamente el "no se pega a las calles y en partes pasa por encima de
+ * las cuadras" que reportó el cliente.
+ *
+ * Dos cambios, y hacen falta los dos:
+ *   1. la velocidad se mide sobre una VENTANA (distancia acumulada / tiempo acumulado, no promedio de
+ *      velocidades): con ±2 hops el máximo de ese mismo día baja de 8,77 a 6,20 m/s;
+ *   2. una isla de modo que recorra menos de `MODO_MIN_M` se absorbe en el modo vecino. Un semáforo
+ *      no convierte un auto en peatón, y un pico de ruido no puede partir nada.
+ *
+ * El criterio es la DISTANCIA y no el tiempo a propósito: lo que rompía era que quedaran tramos
+ * demasiado cortos para rutear, y "corto" acá se mide en metros. Un auto parado 90 s recorre 0 m y se
+ * absorbe, que es lo correcto.
+ */
+export const MODO_VENTANA = 2    // hops a cada lado (ventana de 5)
+export const MODO_MIN_M = 300    // m: una isla de modo más corta que esto se absorbe en la vecina
 
 /**
  * 🩸 PRECISIÓN QUE SEPARA UN FIX DE GPS DE UNO TRIANGULADO (ALGO 9, 03/08/2026).
@@ -201,8 +245,8 @@ export function splitGaps(pts: P[]): P[][] {
  * antes se dejaba crudo porque el perfil peatón inventa calles a esa velocidad). Cortar por tiempo
  * no las separa —el flujo de puntos es continuo— así que hay que cortar por VELOCIDAD.
  *
- * La clasificación se SUAVIZA con una ventana de 3 hops: un solo fix rápido en medio de una
- * caminata (o un semáforo en medio de un viaje) no puede partir el tramo en tres.
+ * La clasificación se decide sobre una VELOCIDAD DE VENTANA y después se consolida: ver
+ * `MODO_VENTANA` / `MODO_MIN_M` para por qué la versión hop-por-hop troceaba los recorridos.
  */
 export function splitModo(seg: P[]): { pts: P[]; auto: boolean }[] {
   // Con 2 puntos no hay ventana que suavizar, pero sí hay un hop: se clasifica igual. Sin esto un
@@ -212,26 +256,29 @@ export function splitModo(seg: P[]): { pts: P[]; auto: boolean }[] {
     const dt = (ms(seg[1]) - ms(seg[0])) / 1000
     return [{ pts: seg, auto: dt > 0 && hav(seg[0], seg[1]) / dt > SPEED_MAX }]
   }
-  // Un valor por HOP (seg.length - 1): ¿este tramo entre dos puntos fue a velocidad de vehículo?
-  const rapido: boolean[] = []
+  // Distancia y tiempo por HOP (seg.length - 1 valores).
+  const d: number[] = [], dt: number[] = []
   for (let i = 1; i < seg.length; i++) {
-    const dt = (ms(seg[i]) - ms(seg[i - 1])) / 1000
-    rapido.push(dt > 0 ? hav(seg[i - 1], seg[i]) / dt > SPEED_MAX : false)
+    d.push(hav(seg[i - 1], seg[i]))
+    dt.push((ms(seg[i]) - ms(seg[i - 1])) / 1000)
   }
-  // Mayoría en una ventana de 3 hops centrada.
-  const suave = rapido.map((_, i) => {
-    let n = 0, t = 0
-    for (let j = Math.max(0, i - 1); j <= Math.min(rapido.length - 1, i + 1); j++) { t++; if (rapido[j]) n++ }
-    return n * 2 > t
+  // Velocidad de VENTANA: distancia acumulada sobre tiempo acumulado, NO promedio de velocidades
+  // (un hop de dt chico dominaría el promedio siendo el que menos información tiene).
+  const auto = d.map((_, i) => {
+    let dd = 0, tt = 0
+    for (let j = Math.max(0, i - MODO_VENTANA); j <= Math.min(d.length - 1, i + MODO_VENTANA); j++) { dd += d[j]; tt += dt[j] }
+    return tt > 0 && dd / tt > SPEED_MAX
   })
+  consolidarModo(auto, d)
+
   const runs: { pts: P[]; auto: boolean }[] = []
   let cur: P[] = [seg[0]]
-  let modo = suave[0]
-  for (let i = 0; i < suave.length; i++) {
-    if (suave[i] !== modo) {
+  let modo = auto[0]
+  for (let i = 0; i < auto.length; i++) {
+    if (auto[i] !== modo) {
       runs.push({ pts: cur, auto: modo })
       cur = [seg[i]] // el punto de la bisagra pertenece a los DOS tramos: si no, quedan despegados
-      modo = suave[i]
+      modo = auto[i]
     }
     cur.push(seg[i + 1])
   }
@@ -243,6 +290,36 @@ export function splitModo(seg: P[]): { pts: P[]; auto: boolean }[] {
     else out.push(r)
   }
   return out
+}
+
+/**
+ * Absorbe las islas de modo demasiado cortas para significar algo. **Muta `auto` en el lugar** — es
+ * un helper de `splitModo` y no se exporta para otra cosa. Ver el 🩸 de `MODO_MIN_M`.
+ *
+ * Se repite hasta que no queda ninguna: absorber una isla puede unir a sus dos vecinas y crear una
+ * isla nueva más larga del otro lado, y esa también tiene que evaluarse.
+ */
+function consolidarModo(auto: boolean[], d: number[]): void {
+  for (let vueltas = 0; vueltas < auto.length; vueltas++) {
+    let toco = false
+    let i = 0
+    while (i < auto.length) {
+      let j = i
+      while (j + 1 < auto.length && auto[j + 1] === auto[i]) j++
+      // Si TODO el segmento es una sola isla no hay vecino al que absorberse: el modo es ese.
+      if (i === 0 && j === auto.length - 1) return
+      let m = 0
+      for (let k = i; k <= j; k++) m += d[k]
+      if (m < MODO_MIN_M) {
+        const vecino = i > 0 ? auto[i - 1] : auto[j + 1]
+        for (let k = i; k <= j; k++) auto[k] = vecino
+        toco = true
+        break
+      }
+      i = j + 1
+    }
+    if (!toco) return
+  }
 }
 
 /** Firma de un tramo, para cachearlo por separado. Ver el bloque de cache incremental de index.ts. */

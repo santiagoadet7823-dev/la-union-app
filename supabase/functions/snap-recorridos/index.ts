@@ -80,7 +80,7 @@ const json = (b: unknown, status = 200) =>
  */
 const OSRM_FOOT = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot'
 const OSRM_CAR = 'https://routing.openstreetmap.de/routed-car/route/v1/driving'
-const ALGO = 9           // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
+const ALGO = 10          // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
 const MIN_RUN_M = 80      // m: por debajo no vale una consulta a un host donado (era 150: una vuelta
                           // manzana de reparto entraba abajo de ese número y quedaba cruda)
 const MAX_RUTEOS = 40     // techo de consultas OSRM por invocación (ver el comentario de abajo)
@@ -95,8 +95,17 @@ const MAX_RUTEOS = 40     // techo de consultas OSRM por invocación (ver el com
  * el lugar correcto. Esta guarda es la red para cuando `splitModo` se equivocó de motor. */
 const MAX_DETOUR_PIE = 1.5
 const MAX_DETOUR_AUTO = 1.8
-const FOOT_LEN = 4000     // m: un tramo A PIE más largo que esto no es a pie → no rutear con perfil
-                          // peatón. NO aplica a los tramos en vehículo, que ahora tienen su motor.
+/* 🩸 LA GUARDA DE LARGO ERA UN PROXY, Y DEJÓ DE HACER FALTA (ALGO 10, 04/08/2026). Estaba en 4.000 m
+ * con el argumento "4 km no se hacen a pie, sea cual sea la velocidad media" — o sea, era una forma
+ * indirecta de cazar un VEHÍCULO mal clasificado como peatón, en la época en que la clasificación se
+ * decidía hop por hop y no se le podía creer. Ahora eso lo decide `SPEED_MAX` sobre una velocidad de
+ * ventana, y encima el perfil peatón es DELIBERADAMENTE el motor de los viajes lentos por el pueblo
+ * (medido: ×1,10 contra ×2,33 del auto). Con 4 km, un circuito de reparto de media mañana volvía a
+ * caer en `crudos.largoPeaton` justo después de haberlo arreglado.
+ *
+ * Lo único que este número tiene que seguir evitando es pedirle al motor peatón una ruta ENTRE
+ * LOCALIDADES, que es donde delira (medido ×57). A 30 km/h, 12 km son 24 minutos: para eso alcanza. */
+const FOOT_LEN = 12000    // m: arriba de esto no se le pide una ruta al motor peatón
 const UA = { 'User-Agent': 'la-union-app/1.0 (Distribuidora LA UNION)' }
 
 /**
@@ -253,10 +262,7 @@ Deno.serve(async (req) => {
 
           // Se dibuja CRUDO —sin consultar OSRM— cuando no se puede ayudar o no conviene todavía:
           //  - `lenM < MIN_RUN_M`: 80 m no justifican una consulta a un host donado.
-          //  - `!run.auto && lenM > FOOT_LEN`: 4 km no se hacen a pie, sea cual sea la velocidad
-          //    media (si estuvo una hora parado en el medio, el promedio se hunde y no lo marcaría
-          //    como vehículo). Con perfil peatón eso inventa calles. A los tramos EN VEHÍCULO este
-          //    límite ya no les aplica: tienen su propio motor.
+          //  - `!run.auto && lenM > FOOT_LEN`: ver el bloque de FOOT_LEN.
           //  - `creciendo`: ver COLA_VIVA_MS.
           //  - presupuesto agotado: ver MAX_RUTEOS.
           if (lenM < MIN_RUN_M) { usarCrudo('corto'); continue }

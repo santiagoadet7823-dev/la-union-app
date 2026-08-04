@@ -7,7 +7,7 @@ import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
 import { pendingCount, pendientesCuarentena } from '../services/sync/queue'
 import { getHeartbeat } from '../services/geolocation/tracker'
-import { getFcmTokenSync } from '../services/push'
+import { getFcmTokenSync, permisoNotificaciones } from '../services/push'
 import { estadoUploaderNativo } from '../services/uploaderNativo'
 
 /**
@@ -34,9 +34,11 @@ const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_ver
   // que un cambio de milisegundos disparara un upsert cada 2 minutos.
   'red',
   // Telemetría de captura: solo entran los que responden una pregunta de ESTADO. Los contadores
-  // (`fix_total`, `fix_guardados`, …) suben con el latido pero NO comparan: crecen en cada fix y
-  // dispararían un upsert cada 2 minutos, que es justo lo que esta lista existe para evitar.
-  'fix_dueno', 'cuarentena_nativa']
+  // (`fix_total`, `fix_guardados`, `gps_repedidos`, `gps_silencio_max_ms`, …) suben con el latido
+  // pero NO comparan: crecen en cada fix y dispararían un upsert cada 2 minutos, que es justo lo
+  // que esta lista existe para evitar. `gps_intervalo_ms` SÍ entra: es la cadencia PEDIDA, un
+  // estado que cambia pocas veces por jornada y cuyo cambio es exactamente lo que hay que ver.
+  'fix_dueno', 'cuarentena_nativa', 'gps_intervalo_ms', 'notif_permiso']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -148,6 +150,16 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
         fix_ultimo_ts: nat.ultimoFixAt ? new Date(nat.ultimoFixAt).toISOString() : null,
         fix_dueno: nat.dueno || null,
         cuarentena_nativa: typeof nat.cuarentena === 'number' ? nat.cuarentena : null,
+        // 🩸 Telemetría de 1.9.0 (db/29, 04/08/2026). El plugin la devolvía desde que se publicó
+        // 1.9.0 y acá se TIRABA: no había columnas, así que la pregunta que motivó toda esa versión
+        // —¿el WakeLock arregló los silencios, o hay que ir al carril de red?— no se podía responder
+        // con un select. `gps_silencio_max_ms` es la que decide; `gps_repedidos` mide el churn de
+        // requestLocationUpdates (en decenas está bien, en cientos no); `gps_intervalo_ms` es la
+        // cadencia PEDIDA, para contrastarla contra la ENTREGADA, que sale de `posiciones`.
+        gps_intervalo_ms: typeof nat.intervalo === 'number' ? nat.intervalo : null,
+        gps_repedidos: typeof nat.repedidos === 'number' ? nat.repedidos : null,
+        gps_silencio_max_ms: typeof nat.silencioMax === 'number' ? nat.silencioMax : null,
+        gps_fixes_red: typeof nat.fixesRed === 'number' ? nat.fixesRed : null,
       } : null
       // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
@@ -155,7 +167,10 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // clasifica por antigüedad del timestamp y sin latido el equipo parece caído.
       // fcm_token: para que el backend (watchdog) sepa a qué teléfono mandar el push. Puede ser
       // null hasta que FCM registre el dispositivo; se sube en cuanto aparece.
-      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), ...diagRed, ...diagCaptura, ...s }
+      // Permiso de notificaciones: se lee en cada latido y no una sola vez, porque el usuario lo
+      // puede apagar desde Ajustes con la app abierta — y ese es justo el caso que hay que ver.
+      const notif = await permisoNotificaciones().catch(() => null)
+      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, fcm_token: getFcmTokenSync(), notif_permiso: notif, ...diagRed, ...diagCaptura, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {

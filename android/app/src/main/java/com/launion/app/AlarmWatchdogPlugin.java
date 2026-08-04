@@ -2,7 +2,6 @@ package com.launion.app;
 
 import android.app.AlarmManager;
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -45,8 +44,7 @@ public class AlarmWatchdogPlugin extends Plugin {
     /** Código del PendingIntent. Constante: programar y cancelar tienen que hablar del mismo. */
     private static final int CODIGO = 4188;
 
-    /** Canal e id de la notificación de "actualización disponible". */
-    private static final String CANAL_ACT = "actualizaciones";
+    /** Id por defecto de la notificación de "actualización disponible". */
     private static final int NOTIF_ACT_ID = 4189;
 
     /**
@@ -103,25 +101,36 @@ public class AlarmWatchdogPlugin extends Plugin {
     }
 
     /**
-     * Postea una notificación de sistema que, al tocarla, abre la app (Feature: aviso de
-     * actualización con la app cerrada). Lo dispara el JS (services/updateNotify.js) al despertar por
-     * el watchdog SÓLO si hay versión nueva y estamos en horario de monitoreo. El permiso
-     * POST_NOTIFICATIONS ya se pide en el flujo de push (Android 13+); sin él, notify() es no-op.
+     * Postea una notificación de sistema que, al tocarla, abre la app.
+     *
+     * Dos usos, y por eso está parametrizada desde 1.10.0:
+     *  · aviso de ACTUALIZACIÓN con la app cerrada — lo dispara `services/updateNotify.js` al
+     *    despertar por el watchdog, solo si hay versión nueva y estamos en horario de monitoreo;
+     *  · 🩸 aviso del EQUIPO con la app ABIERTA — el plugin de Capacitor, al recibir un push, NO
+     *    postea nada: reenvía el mensaje al JS y espera que la app haga algo. Y hasta 1.9.0 la app no
+     *    hacía nada con `tipo === 'alerta'`. O sea que mientras el supervisor tenía la app abierta
+     *    mirando el mapa —el caso MÁS común— los avisos del equipo se perdían en silencio. Ahora
+     *    `services/push.js` los postea por acá. Ver el 🩸 de LaUnionApp.java.
+     *
+     * El canal ya NO se crea acá: lo crea `LaUnionApp.onCreate()` al arrancar la app, que es lo que
+     * permite que las Edge Functions manden `channel_id` sin riesgo. Igual se llama a `crearCanales`
+     * por las dudas: es idempotente y cuesta nada.
+     *
+     * El permiso POST_NOTIFICATIONS ya se pide en el flujo de push (Android 13+); sin él, notify()
+     * es no-op — y eso ahora se ve desde el servidor en `estado_dispositivo.notif_permiso` (db/29).
      */
     @PluginMethod
     public void notificar(PluginCall call) {
         String titulo = call.getString("titulo", "Actualización disponible");
         String cuerpo = call.getString("cuerpo", "Tocá para actualizar DisT-At.");
+        String canal = call.getString("canal", LaUnionApp.CANAL_ACTUALIZACIONES);
+        // Ids distintos = carteles distintos. Un `id` propio por tipo de aviso evita que el del
+        // equipo pise al de actualización (y al revés), que es lo que pasaría con uno solo.
+        int notifId = call.getInt("id", NOTIF_ACT_ID);
         Context ctx = getContext();
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) { call.resolve(); return; }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel canal = new NotificationChannel(
-                CANAL_ACT, "Actualizaciones", NotificationManager.IMPORTANCE_DEFAULT);
-            canal.setDescription("Aviso cuando hay una versión nueva de la app.");
-            nm.createNotificationChannel(canal);
-        }
+        LaUnionApp.crearCanales(ctx);
 
         // Tocar la notificación abre la app (singleTask): el UpdatePrompt/updater se encarga del resto.
         Intent abrir = new Intent(ctx, MainActivity.class);
@@ -131,15 +140,19 @@ public class AlarmWatchdogPlugin extends Plugin {
         PendingIntent pi = PendingIntent.getActivity(ctx, 4190, abrir, flags);
 
         Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            ? new Notification.Builder(ctx, CANAL_ACT)
+            ? new Notification.Builder(ctx, canal)
             : new Notification.Builder(ctx);
         b.setContentTitle(titulo)
          .setContentText(cuerpo)
+         // El cuerpo de un aviso del equipo enumera nombres y no entra en una línea. BigTextStyle es
+         // lo que hace que se pueda desplegar; en el bloque `notification` de FCM no se puede pedir,
+         // y es una de las razones por las que el aviso en primer plano lo postea la app.
+         .setStyle(new Notification.BigTextStyle().bigText(cuerpo))
          .setSmallIcon(ctx.getApplicationInfo().icon)
          .setAutoCancel(true)
          .setContentIntent(pi);
 
-        try { nm.notify(NOTIF_ACT_ID, b.build()); } catch (Exception e) { /* sin permiso: no-op */ }
+        try { nm.notify(notifId, b.build()); } catch (Exception e) { /* sin permiso: no-op */ }
         call.resolve();
     }
 
