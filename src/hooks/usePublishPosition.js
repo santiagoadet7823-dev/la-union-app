@@ -4,6 +4,8 @@ import { flushPosiciones, setUsuarioCola } from '../services/sync/queue'
 import { getTrackConfig, dentroDeHorario } from '../services/tracking'
 import { setIdentidad, setConfig, reset as resetTracker } from '../services/geolocation/tracker'
 import { iniciarUploaderNativo, detenerUploaderNativo } from '../services/uploaderNativo'
+import { reprogramarAlarm } from '../services/alarm'
+import { WATCHDOG_MIN, ARRANQUE_MARGEN_MS } from '../services/gpsConfig'
 import { isNative } from '../services/platform'
 
 /**
@@ -80,6 +82,13 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
       // reempuja la ventana (el nativo la relee de prefs) + relevanta el servicio si se auto-apagó. En
       // web/PWA es no-op. Fuera de horario no se toca acá: el efecto [enabled, enHorario] lo detiene.
       if (isNative() && dentro) iniciarUploaderNativo(cfg, { userId: id })
+      // 🩸 Y RECALCULAR LA ALARMA (05/08/2026). Desde 1.11.0 el nativo apunta el disparo al borde
+      // REAL de la ventana, que lee de las prefs que acaba de reescribir `iniciarUploaderNativo`.
+      // Sin este reempuje, un cambio de horario llegaba al servicio pero la alarma seguía armada
+      // sobre el horario VIEJO — y la alarma es lo único que despierta al teléfono con la app
+      // cerrada. Va FUERA del `if (dentro)`: el caso que más importa es justamente el de estar
+      // fuera de horario, esperando el arranque de mañana.
+      if (isNative()) reprogramarAlarm({ intervaloMin: WATCHDOG_MIN, horaInicio: 6, horaFin: 24, margenMs: ARRANQUE_MARGEN_MS })
       clearTimeout(boundaryTimer)
       const ms = msHastaProximoLimite(cfg)
       if (ms != null) boundaryTimer = setTimeout(() => { if (alive) aplicar(cfgRef.current) }, ms)

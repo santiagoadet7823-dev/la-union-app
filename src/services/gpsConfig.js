@@ -130,3 +130,19 @@ export const SILENCIO_MS = 90000
 // request y reinicia la agenda de entrega del proveedor: cambiar de cadencia cada 20-30 s equivale a
 // no recibir nada, y es el sospechoso principal de lo que le pasó a 1.8.1.
 export const REPEDIDO_MIN_MS = 60000
+
+// ── 1.11.0 · Arranque del rastreo al horario ─────────────────────────────────────────────────────
+// Cada cuánto pinguea el watchdog offline (AlarmManager). 15 min es el piso duro del plugin: por
+// debajo, Doze no lo respeta igual (rate-limit de allow-while-idle). Estaba hardcodeado en
+// GpsContext.jsx, que es exactamente el patrón que la regla 22-ter existe para evitar.
+export const WATCHDOG_MIN = 30
+
+// Cuánto ANTES del inicio de la ventana despertar al servicio.
+//
+// 🩸 El signo importa y depende de otra decisión. Adelantarse solo tiene sentido porque desde 1.11.0
+// el servicio PAUSA fuera de horario en vez de apagarse: despierta, calienta el chip y a las
+// 08:00:00 ya tiene fix. Con el comportamiento viejo (stopSelf) despertar a las 07:57 habría sido
+// contraproducente — el servicio se habría suicidado a los 30 s y el turno se gastaba igual, que es
+// literalmente el bug que se está arreglando. Si alguna vez se vuelve al apagado, esto tiene que
+// pasar a ser POSITIVO (inicio + 20 s).
+export const ARRANQUE_MARGEN_MS = 180000  // 3 min

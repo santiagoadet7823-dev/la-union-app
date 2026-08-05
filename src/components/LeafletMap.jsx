@@ -267,6 +267,13 @@ function firmaDwells(ds) {
   return s
 }
 
+function firmaInicios(is) {
+  if (!is || !is.length) return ''
+  let s = ''
+  for (const i of is) s += firmaPunto(i) + ':' + (i.hora || '') + ':' + (i.color || '') + '|'
+  return s
+}
+
 function depotIcon(theme) {
   const bg = theme === 'dark' ? '#ECF5F4' : '#0B2B2A'
   const fg = theme === 'dark' ? '#0B2B2A' : '#ECF5F4'
@@ -275,6 +282,32 @@ function depotIcon(theme) {
     html: `<div style="width:26px;height:26px;border-radius:8px;background:${bg};display:grid;place-items:center;box-shadow:0 1px 5px rgba(0,0,0,.35)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-8h6v8"/></svg></div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
+  })
+}
+
+/**
+ * Marcador de INICIO de jornada: "▶ 08:47" en el primer punto del día de la persona.
+ *
+ * 🩸 05/08/2026 — es la contracara visual del arranque tardío del rastreo (ver `construirInicios`
+ * en features/supervision/trazos.js). El dato ya estaba en el mapa —el trazo empieza donde empieza—
+ * pero sin hora y sin nada que lo distinga del resto de la línea.
+ *
+ * Es una VARIANTE de `dwellIcon`, no un uso de él: comparte la técnica (iconSize [0,0] + hijo
+ * centrado por transform, así el ancho lo fija el texto y no hay que adivinarlo) pero no la
+ * semántica. Un cartel de parada se toca para ampliarse; este es una ETIQUETA — `interactive:false`
+ * en el marcador — y no debe robarle el toque a nada.
+ *
+ * El triángulo va en un círculo blanco sobre el color de la persona: a diferencia del cartel de
+ * parada, este marcador tiene que leerse como "acá empieza" incluso cuando el trazo del mismo color
+ * le pasa por debajo.
+ */
+function inicioIcon({ hora, color }) {
+  const c = color || '#2DD4CE'
+  return L.divIcon({
+    className: 'lu-inicio',
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;background:${c};color:#fff;border:1.5px solid rgba(255,255,255,.9);border-radius:99px;padding:2px 7px 2px 3px;box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;line-height:1.35"><span style="display:grid;place-items:center;width:13px;height:13px;border-radius:50%;background:#fff;color:${c};font-size:7px;line-height:1;padding-left:1px">▶</span>${esc(hora || '')}</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
   })
 }
 
@@ -300,6 +333,10 @@ export default function LeafletMap({
   // se toca un cartel. Así la selección solo re-dibuja la capa.
   dwellSel = null,
   onDwellClick,
+  // Marcadores de ARRANQUE de jornada: [{lat,lng,hora,color}] — el primer punto del día de cada
+  // persona (features/supervision/trazos.js → construirInicios). Opcional: con [] o undefined el
+  // mapa se comporta exactamente igual que antes.
+  inicios = [],
   height = 460,
   followLive = false,
   fit = true, // si es false, no reencuadra (preserva el zoom/pan del usuario)
@@ -379,6 +416,7 @@ export default function LeafletMap({
   const staticLayerRef = useRef(null)
   const trailsLayerRef = useRef(null)
   const dwellsLayerRef = useRef(null)
+  const iniciosLayerRef = useRef(null)
   const moversLayerRef = useRef(null)
   const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
@@ -453,6 +491,11 @@ export default function LeafletMap({
     // Los carteles de permanencia van a su propio pane ('luDwells', z 450), así que su lugar en
     // este orden no cambia nada: el grupo existe solo para poder vaciarlos por separado.
     dwellsLayerRef.current = L.layerGroup().addTo(map)
+    // Los marcadores de arranque comparten el pane 'luDwells' (z 450) con los carteles de parada:
+    // el mismo lugar en el apilado es el correcto para los dos (sobre los trazos, bajo los pines en
+    // vivo) y no hace falta un pane nuevo. El layerGroup propio sí, para vaciarlos por separado —
+    // los inicios cambian con la fecha y los carteles con el toggle de paradas.
+    iniciosLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     // Arrastrar el mapa desengancha el seguimiento. Va acá (una sola vez, en el init) y no en el
     // efecto de `seguir`: el handler es estable porque lee el callback de un ref, y re-suscribirlo
@@ -531,6 +574,7 @@ export default function LeafletMap({
   const kMarkers = useMemo(() => firmaMarkers(markers), [markers])
   const kMovers = useMemo(() => firmaMovers(movers), [movers])
   const kDwells = useMemo(() => firmaDwells(dwells), [dwells])
+  const kInicios = useMemo(() => firmaInicios(inicios), [inicios])
 
   // ---- Capa ESTÁTICA: depósito, punto en vivo, círculo, rastro suelto y ruta por calles ----
   useEffect(() => {
@@ -780,6 +824,32 @@ export default function LeafletMap({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kDwells, dwellSel])
+
+  // ---- Capa de MARCADORES DE ARRANQUE ("▶ 08:47") ---------------------------------------------
+  // Efecto propio y no un agregado al de los carteles de parada: cambian por motivos distintos
+  // (estos con la fecha o el filtro; aquellos con el toggle de paradas y con la selección), y
+  // juntarlos haría que tocar un cartel redibujara también los inicios. Es exactamente el error
+  // que costó el 🩸 del 28/07/2026 con la capa única, en chico.
+  //
+  //  - `interactive:false`: es una etiqueta, no un objetivo. No le roba el toque ni al cartel de
+  //    parada que pueda quedar cerca ni a los pines en vivo (que además viven en markerPane, 600).
+  //  - NO entran al fitBounds, igual que los dwells: el arranque puede estar lejos del resto de la
+  //    jornada (justamente cuando alguien arrancó en su casa) y descuadraría el encuadre.
+  useEffect(() => {
+    const layer = iniciosLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    ;(inicios || []).forEach((i) => {
+      L.marker([i.lat, i.lng], {
+        icon: inicioIcon({ hora: i.hora, color: i.color }),
+        pane: 'luDwells',
+        interactive: false,
+        keyboard: false,
+        title: i.hora ? 'Inicio de jornada ' + i.hora : 'Inicio de jornada',
+      }).addTo(layer)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kInicios])
 
   // ---- ENCUADRE ------------------------------------------------------------------------------
   // El encuadre necesita ver TODAS las geometrías juntas, así que no puede vivir dentro de

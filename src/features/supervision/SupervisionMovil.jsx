@@ -7,7 +7,7 @@ import { colorPorId } from '../../lib/colors'
 import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import { apilarAtras } from '../../services/atras'
@@ -331,6 +331,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
     [trails, snapOn, snapped, foco]
   )
+  // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, compartido con Desktop). Sale de
+  // `trails`, así que ya viene filtrado por chip y con los puntos limpios. Barato (una entrada por
+  // persona), pero memoizado igual: el padre re-renderiza con cada posición que llega por Realtime.
+  const inicios = useMemo(() => construirInicios(trails), [trails])
   const pin = moversArr.find((m) => m.id === pinId) || null
 
   // % de batería del móvil seleccionado. El `pin` sale de `movers` (useEquipoEnVivo), cuyo
@@ -456,6 +460,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           dwells={dwells}
           dwellSel={dwellSel}
           onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
+          inicios={inicios}
           fit={!fitDone}
           focus={focusData}
           seguir={seguirData}

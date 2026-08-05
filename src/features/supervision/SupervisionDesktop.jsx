@@ -8,7 +8,7 @@ import { colorPorId } from '../../lib/colors'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
@@ -289,6 +289,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
     [trails, snapOn, snapped, foco]
   )
+  // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, el MISMO que usa Movil). El
+  // `useMemo` es obligatorio por el tick de "hace Xs", que re-renderiza esto una vez por segundo.
+  const inicios = useMemo(() => construirInicios(trails), [trails])
 
   function doSync() {
     if (syncing) return
@@ -571,6 +574,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       dwells={dwells}
                       dwellSel={dwellSel}
                       onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
+                      inicios={inicios}
                       markers={mapMarkers}
                       clients={showClientes ? clientMarkers : []}
                       fit={!fitDone}

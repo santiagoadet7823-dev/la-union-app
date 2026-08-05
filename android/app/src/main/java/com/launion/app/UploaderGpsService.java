@@ -173,6 +173,35 @@ public class UploaderGpsService extends Service {
     static final String K_TEL_RED = "telFixesRed";               // fixes aceptados por el carril de triangulación
     static final String K_TEL_DIA = "telDia";                    // yyyymmdd de los contadores (se reinician por DÍA)
 
+    /* 🩸 DIAGNÓSTICO DEL ARRANQUE (05/08/2026) — para que el fallo silencioso deje de serlo.
+     *
+     * El bug reportado ("le asigno las 8 y a veces no inicia") tenía tres causas candidatas y
+     * NINGUNA dejaba rastro, así que desde la base eran indistinguibles entre sí: la alarma no
+     * dispara, la alarma dispara pero Android bloquea el arranque del foreground service, o el
+     * receiver directamente no corre. Peor: el rechazo del FGS se tragaba en un `catch (Exception
+     * ignored)`, o sea que el caso más grave era el único completamente invisible.
+     *
+     * Estos cuatro contadores viajan en el latido a `estado_dispositivo` (db/30) y responden la
+     * pregunta con un select, sin esperar a mañana ni tener el teléfono en la mano. */
+    static final String K_ALARMA_TS = "alarmaTs";          // epoch ms del último disparo de AlarmReceiver
+    static final String K_ALARMA_PROX = "alarmaProx";      // epoch ms del próximo disparo programado
+    static final String K_ALARMA_EXACTA = "alarmaExacta";  // la próxima se programó como EXACTA
+    static final String K_FGS_BLOQ = "fgsBloqueado";       // veces que Android rechazó arrancar el FGS
+    static final String K_FGS_BLOQ_TS = "fgsBloqueadoTs";  // epoch ms del último rechazo
+
+    /* 🩸 CONFIG DEL WATCHDOG, PERSISTIDA (05/08/2026). Vivía en tres `static` de
+     * AlarmWatchdogPlugin, o sea SOLO EN MEMORIA. Cuando la alarma revivía el proceso en frío —que
+     * es justo el caso que importa, la mañana con la app cerrada— la clase se cargaba con los
+     * defaults (30 / 0 / 24 = "sin ventana") y `programarProxima` reprogramaba con ESOS valores,
+     * ignorando lo que el JS había configurado. Resultado: pings toda la madrugada (batería, y peor
+     * bucket de App Standby, que difiere todavía más la alarma de la mañana).
+     *
+     * El margen sale de `gpsConfig.js` como los otros umbrales (regla 22-ter): se afina por OTA. */
+    static final String K_WD_INTERVALO = "wdIntervaloMin"; // cada cuánto pinguea el watchdog
+    static final String K_WD_HORA_INI = "wdHoraInicio";    // ventana GRUESA del watchdog (hora 0..23)
+    static final String K_WD_HORA_FIN = "wdHoraFin";       // ventana GRUESA del watchdog (hora 1..24)
+    static final String K_WD_MARGEN = "wdMargenMs";        // cuánto ANTES del borde despertar
+
     private static final String CH_ID = "uploader_gps";
     private static final int NOTIF_ID = 5190;
     private static final int MAX_COLA = 5000;   // tope de seguridad si nunca hay red (no crecer infinito)
@@ -307,6 +336,9 @@ public class UploaderGpsService extends Service {
         }
     };
     private boolean apagadoRxRegistrado = false;
+    /* Fuera de ventana pero VIVO: sin GPS, sin WakeLock y con la notificación cambiada. Es el estado
+     * que reemplazó al `stopSelf()` de siempre — ver el bloque de `pausar()`. */
+    private boolean enPausa = false;
 
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 
@@ -416,7 +448,21 @@ public class UploaderGpsService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        arrancarForeground();
+        // Si Android rechaza el foreground, no seguir: pedir GPS sin estar en foreground es
+        // exactamente lo que el SO acaba de prohibir, y el WakeLock quedaría tomado para nada.
+        if (!arrancarForeground()) return START_NOT_STICKY;
+        // 🩸 ARRANCA EN PAUSA SI ESTÁ FUERA DE HORARIO (05/08/2026). Antes se prendía el GPS y el
+        // WakeLock igual, y recién a los 30 s el latido descubría que eran las 07:52 y apagaba todo.
+        // Ese medio minuto de GPS a ciegas se pagaba en cada despertar del watchdog, toda la noche.
+        if (!dentroDeVentana()) {
+            // `pausar()` y no `enPausa = true` a mano: onStartCommand puede re-entrar con el servicio
+            // YA capturando (AlarmReceiver, boot), y ahí hay updates y WakeLock que soltar de verdad.
+            if (enPausa) actualizarNotif(); else pausar();
+            latidoH.removeCallbacks(latido);
+            latidoH.postDelayed(latido, LATIDO_PAUSA_MS);
+            return START_STICKY;
+        }
+        reanudar(); // no-op si no venía en pausa
         tomarWakeLock();   // idempotente: onStartCommand puede volver a entrar (AlarmReceiver, boot)
         arrancarUpdates();
         reiniciarContadoresSiCambioElDia();
@@ -436,11 +482,28 @@ public class UploaderGpsService extends Service {
      * este latido tampoco correría, que es exactamente el problema que vino a medir.
      */
     private static final long LATIDO_MS = 30000;
+    /* En pausa el latido se espacia: no hay nada que medir y la única razón de seguir latiendo es
+     * cruzar el borde de la ventana. Es el CAMINO FELIZ del arranque —cuando el teléfono está
+     * despierto, reanuda en menos de 5 min— pero no es garantía: un Handler no corre en Doze sin
+     * WakeLock, y justamente en pausa lo soltamos. El respaldo a prueba de Doze es la alarma exacta
+     * que deja armada `pausar()`. Los dos caminos son necesarios: el Handler es preciso y frágil, la
+     * alarma es robusta y gruesa. */
+    private static final long LATIDO_PAUSA_MS = 300000;
     private final android.os.Handler latidoH = new android.os.Handler(Looper.getMainLooper());
     private final Runnable latido = new Runnable() {
         @Override public void run() {
+            long proxima = LATIDO_MS;
             try {
-                if (!dentroDeVentana()) { detenerServicio(); return; }
+                // 🩸 Fuera de ventana se PAUSA, no se apaga (05/08/2026). Ver el bloque de `pausar()`.
+                if (!dentroDeVentana()) {
+                    pausar();
+                    // Repintar por si el horario cambió mientras dormía: el cartel dice "hasta las
+                    // 08:00" y esa hora sale de las prefs, que el JS puede haber reescrito.
+                    actualizarNotif();
+                    proxima = LATIDO_PAUSA_MS;
+                    return;
+                }
+                reanudar(); // no-op si ya estaba corriendo
                 reiniciarContadoresSiCambioElDia();
                 long now = System.currentTimeMillis();
                 long silencioMs = prefs().getInt(K_SILENCIO_MS, 90000);
@@ -453,7 +516,7 @@ public class UploaderGpsService extends Service {
                 actualizarNotif();
             } catch (Exception ignored) {
             } finally {
-                latidoH.postDelayed(this, LATIDO_MS);
+                latidoH.postDelayed(this, proxima);
             }
         }
     };
@@ -491,14 +554,53 @@ public class UploaderGpsService extends Service {
             .putInt(K_TEL_RED, cFixesRed);
     }
 
-    private void arrancarForeground() {
-        Notification n = construirNotificacion("Enviando ubicación…");
-        // API 34+ exige declarar el tipo de foreground service en el arranque además del manifest.
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-        } else {
-            startForeground(NOTIF_ID, n);
+    /**
+     * 🩸 ENVUELTO EN try/catch DESDE 1.11.0 (05/08/2026), y no es defensa de más.
+     *
+     * En Android 12+ `startForeground` puede tirar `ForegroundServiceStartNotAllowedException` si el
+     * servicio se está iniciando desde background sin exención. Acá NO lo cazaba nadie: una excepción
+     * no capturada dentro de `onStartCommand` **tira abajo el proceso**, en background y sin dejar un
+     * log que alguien vaya a mirar. O sea que había DOS lugares distintos donde el arranque de la
+     * mañana podía morir en silencio (el otro es `AlarmReceiver.arrancarUploaderSiConfigurado`), y
+     * este era el peor de los dos porque se llevaba puesta la app entera.
+     *
+     * Ahora el rechazo se CUENTA (viaja en el latido, db/30) y el servicio se retira ordenado.
+     *
+     * @return true si quedó en foreground. false = Android lo rechazó y no hay nada que hacer hasta
+     *         el próximo intento; el que llama tiene que abortar.
+     */
+    private boolean arrancarForeground() {
+        Notification n = construirNotificacion(enPausa ? textoEstado() : "Enviando ubicación…");
+        try {
+            // API 34+ exige declarar el tipo de foreground service en el arranque además del manifest.
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            } else {
+                startForeground(NOTIF_ID, n);
+            }
+            return true;
+        } catch (Exception e) {
+            anotarFgsBloqueado(this);
+            try { stopSelf(); } catch (Exception ignored) {}
+            return false;
         }
+    }
+
+    /**
+     * Deja constancia de que Android rechazó arrancar el foreground service.
+     *
+     * `commit()` y no `apply()` a propósito: se llama justo cuando el proceso puede estar por morir
+     * (es el caso que estamos midiendo), y `apply()` es asíncrono — se perdería justo el dato que
+     * explica la falla. Es el mismo criterio del volcado de telemetría en `onDestroy`.
+     */
+    static void anotarFgsBloqueado(Context ctx) {
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            sp.edit()
+                .putInt(K_FGS_BLOQ, sp.getInt(K_FGS_BLOQ, 0) + 1)
+                .putLong(K_FGS_BLOQ_TS, System.currentTimeMillis())
+                .commit();
+        } catch (Exception ignored) {}
     }
 
     /**
@@ -513,7 +615,7 @@ public class UploaderGpsService extends Service {
      */
     private synchronized void procesarFix(Location loc, boolean deRed) {
         if (loc == null) return;
-        if (!dentroDeVentana()) { detenerServicio(); return; }
+        if (!dentroDeVentana()) { pausar(); return; }
         SharedPreferences sp = prefs();
         long keepAlive = sp.getInt(K_KEEPALIVE, 30000);   // ms; default = STATIONARY_KEEPALIVE_MS (30 s)
         // Umbrales de descarte: por prefs (afinables por OTA, regla 22-ter) con los valores de
@@ -600,11 +702,14 @@ public class UploaderGpsService extends Service {
         callback = new LocationCallback() {
             @Override public void onLocationResult(@Nullable LocationResult result) {
                 if (result == null) return;
-                // Fuera de la ventana (7-18 Lun-Sáb): el servicio se APAGA solo. Si no, con el teléfono
-                // bloqueado a las 18:00 el JS no puede llamar detener() y el GPS drenaría toda la noche.
-                // Vuelve a arrancar cuando el vendedor abre la app a la mañana (o por boot). La ventana
-                // la pasa el JS en configurar().
-                if (!dentroDeVentana()) { detenerServicio(); return; }
+                // Fuera de la ventana: el servicio se PAUSA solo (corta GPS y WakeLock). Si no, con el
+                // teléfono bloqueado a las 18:00 el JS no puede llamar detener() y el GPS drenaría toda
+                // la noche. La ventana la pasa el JS en configurar().
+                //
+                // Hasta 1.10.0 acá se apagaba (`stopSelf`) y "volvía a arrancar cuando el vendedor abre
+                // la app a la mañana" — que es literalmente el bug que reportó el cliente: dependía de
+                // que alguien abriera la app. Ahora se reanuda solo. Ver el bloque de `pausar()`.
+                if (!dentroDeVentana()) { pausar(); return; }
                 reiniciarContadoresSiCambioElDia();
                 for (Location loc : result.getLocations()) procesarFix(loc, false);
                 // Un cambio de cadencia que quedó pendiente por el piso de permanencia se reintenta
@@ -1059,6 +1164,14 @@ public class UploaderGpsService extends Service {
      * que hace que el vendedor se entere solo de que se quedó sin señal, sin que nadie lo llame.
      */
     private String textoEstado() {
+        // 🩸 En PAUSA el cartel dice hasta cuándo (05/08/2026). Es la contraparte visible de que el
+        // servicio ya no se apaga fuera de horario: si va a quedar una notificación toda la noche,
+        // tiene que explicarse sola. "En pausa hasta las 08:00" también es mejor postura frente a la
+        // ley 25.326 que una app que aparece y desaparece sin decir nada (ver legal/).
+        if (enPausa) {
+            String h = VentanaRastreo.hhmm(VentanaRastreo.proximoInicio(prefs(), System.currentTimeMillis()));
+            return h.isEmpty() ? "En pausa · fuera de horario" : "En pausa hasta las " + h;
+        }
         String red = prefs().getString(K_RED, "ok");
         int cola = largoCola();
         if ("avion".equals(red)) return cola > 0 ? "Modo avión · " + cola + " puntos guardados" : "Modo avión · sin enviar";
@@ -1080,53 +1193,16 @@ public class UploaderGpsService extends Service {
 
     /**
      * ¿Ahora cae dentro de la ventana de rastreo? Misma lógica que dentroDeHorario() del JS pero en
-     * nativo, para que el servicio no dependa del WebView. Hora y día en LOCAL (no UTC). start=-1 = sin
-     * ventana (todo el día/semana).
+     * nativo, para que el servicio no dependa del WebView. Hora y día en LOCAL (no UTC).
+     *
+     * El parser se mudó a `VentanaRastreo` (05/08/2026) SIN cambiarle una sola regla: la semántica de
+     * unión, los días ISO, los extremos inclusivos y el cruce de medianoche siguen siendo idénticos, y
+     * los comentarios que los explicaban viajaron con el código (regla 24). Se extrajo porque hacía
+     * falta calcular el PRÓXIMO INICIO de ventana —para programar la alarma del arranque— y eso tenía
+     * que salir de esta misma definición y no de una copia (regla 36).
      */
     private boolean dentroDeVentana() {
-        SharedPreferences sp = prefs();
-        java.util.Calendar c = java.util.Calendar.getInstance(); // zona horaria local del dispositivo
-        int cur = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE);
-        // Día ISO: Calendar.DAY_OF_WEEK es 1=Dom..7=Sáb → convertir a 1=Lun..7=Dom.
-        int dow = c.get(java.util.Calendar.DAY_OF_WEEK); // 1=Dom
-        int iso = dow == java.util.Calendar.SUNDAY ? 7 : dow - 1;
-
-        // Jornada partida (1.8.0): varias ventanas con semántica de UNIÓN. Si el JS no la mandó
-        // (APK nuevo + bundle viejo), se cae a la ventana única de siempre.
-        String ventanas = sp.getString(K_VENTANAS, "");
-        if (ventanas != null && !ventanas.isEmpty()) {
-            for (String v : ventanas.split(";")) {
-                // "inicio-fin-dias" — los días pueden venir vacíos (= todos) y llevan comas adentro,
-                // así que se parte en 3 como máximo.
-                String[] p = v.split("-", 3);
-                if (p.length < 2) continue;
-                try {
-                    int s = Integer.parseInt(p[0].trim());
-                    int e = Integer.parseInt(p[1].trim());
-                    if (s < 0 || e < 0) continue;
-                    if (aplicaVentana(s, e, p.length > 2 ? p[2] : "", cur, iso)) return true;
-                } catch (Exception ignored) {}
-            }
-            return false;
-        }
-
-        int start = sp.getInt(K_START, -1);
-        int end = sp.getInt(K_END, -1);
-        if (start < 0 || end < 0) return true; // sin ventana configurada → siempre
-        return aplicaVentana(start, end, sp.getString(K_DIAS, ""), cur, iso);
-    }
-
-    /** ¿El minuto `cur` del día ISO `iso` cae en la ventana [start, end] con esos días? */
-    private static boolean aplicaVentana(int start, int end, String dias, int cur, int iso) {
-        if (dias != null && !dias.isEmpty()) {
-            boolean hoy = false;
-            for (String d : dias.split(",")) {
-                try { if (Integer.parseInt(d.trim()) == iso) { hoy = true; break; } } catch (Exception ignored) {}
-            }
-            if (!hoy) return false;
-        }
-        // start > end = ventana que cruza la medianoche ('22:00'–'06:00').
-        return start <= end ? (cur >= start && cur <= end) : (cur >= start || cur <= end);
+        return VentanaRastreo.dentro(prefs(), System.currentTimeMillis());
     }
 
     /** % de batería 0-100, o -1 si no se puede leer. Nativo (BatteryManager): no depende del WebView,
@@ -1158,21 +1234,66 @@ public class UploaderGpsService extends Service {
         return getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    /** Apaga el servicio por completo (fuera de ventana): corta el GPS y se saca de foreground. */
-    private void detenerServicio() {
+    /* ════════════════════════════════════════════════════════════════════════════════════════
+     * 🩸 FUERA DE HORARIO SE PAUSA, NO SE APAGA (05/08/2026) — el arreglo del arranque tardío.
+     *
+     * Hasta 1.10.0 esto era un solo `detenerServicio()` con `stopSelf()`, y ESO era la causa del
+     * bug reportado ("le asigno las 8 y a veces no inicia"). La cadena era:
+     *
+     *   1. el watchdog despierta a las 07:52 (pinguea cada 30 min, a ciegas del horario);
+     *   2. AlarmReceiver arranca el servicio sin mirar la ventana;
+     *   3. a los 30 s el latido ve que son las 07:52 y llama stopSelf();
+     *   4. la próxima alarma queda a las 08:22 → el rastreo arranca media hora tarde.
+     *
+     * Y en el caso peor ni siquiera arrancaba: Android 12+ prohíbe iniciar un foreground service
+     * desde background salvo exenciones, así que el paso 2 podía fallar TODO el día, en silencio,
+     * hasta que alguien abría la app. Medido sobre 29 días hábiles: mediana de 51 min de retraso.
+     *
+     * Pausar en vez de apagar elimina la clase entera de fallo: no hay que arrancar un servicio
+     * desde background si el servicio nunca se apagó. Y recupera START_STICKY como red real — hoy
+     * era decorativo, porque el SO no reinicia un servicio que se detuvo SOLO.
+     *
+     * El costo, asumido a conciencia: la notificación queda 24 h en vez de ~10. Por eso el texto
+     * dice hasta cuándo (ver textoEstado).
+     *
+     * ⚠️ ESTO NO TOCA EL CIERRE DE SESIÓN, y no puede llegar a tocarlo nunca. El apagado de verdad
+     * lo hace `stopService()` desde UploaderGpsPlugin (`detener()` / `cerrarSesion()`) y termina en
+     * `onDestroy`, que es un camino distinto de este. Para el uploader nativo el token ES la
+     * identidad: un servicio "pausado" con el token de la cuenta anterior sería exactamente el bug
+     * incorregible de la regla 19-bis — `posiciones` no tiene policy de UPDATE ni de DELETE, así que
+     * esas filas no se arreglan. Si alguna vez alguien hace que el logout pause en vez de detener,
+     * vuelve ese bug.
+     * ════════════════════════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * Fuera de ventana: corta el GPS y suelta la CPU, PERO sigue en foreground y sigue vivo.
+     * Idempotente: el latido la puede llamar de más sin costo.
+     */
+    private void pausar() {
+        if (enPausa) return;
+        enPausa = true;
         try { if (callback != null) fused.removeLocationUpdates(callback); } catch (Exception ignored) {}
         callback = null;
-        latidoH.removeCallbacks(latido);
         apagarCarrilRed();
         // El WakeLock se suelta acá y no solo en onDestroy: fuera de la ventana horaria, dejar la
         // CPU despierta toda la noche sería exactamente el drenaje que la ventana vino a evitar.
         soltarWakeLock();
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(Service.STOP_FOREGROUND_REMOVE);
-            else stopForeground(true);
-        } catch (Exception ignored) {}
-        stopSelf();
+        // Dejar armado el próximo arranque ANTES de quedarse quieto. Hasta 1.10.0 el servicio se
+        // apagaba a las 18:00 y no le avisaba a nadie: el despertar de la mañana siguiente dependía
+        // de lo que el receiver hubiera programado a ciegas.
+        try { AlarmWatchdogPlugin.programarProxima(this); } catch (Exception ignored) {}
+        actualizarNotif();
     }
+
+    /** Vuelve la ventana: retoma CPU, GPS y cadencia normal. Idempotente. */
+    private void reanudar() {
+        if (!enPausa) return;
+        enPausa = false;
+        tomarWakeLock();
+        arrancarUpdates();
+        actualizarNotif();
+    }
+
 
     @Override
     public void onDestroy() {

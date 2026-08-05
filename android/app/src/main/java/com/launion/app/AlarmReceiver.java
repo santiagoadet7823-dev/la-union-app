@@ -41,11 +41,17 @@ public class AlarmReceiver extends BroadcastReceiver {
             // El problema (reportado en cardixteam): la app no retomaba el rastreo hasta que alguien la
             // abría. `despertar()` solo pincha el JS, que con el proceso frío no existe → nunca re-armaba
             // la captura. Acá re-arrancamos el servicio NATIVO directamente (igual que BootReceiver), sin
-            // depender del WebView. El servicio se auto-apaga si está fuera de su ventana fina
-            // (dentroDeVentana), así que arrancarlo de más es inofensivo. La alarma usa
-            // setAndAllowWhileIdle: al dispararse, el SO da una ventana de gracia que permite iniciar el
-            // foreground service aun en Doze. Techo honesto: algunos OEM en Android 12+ pueden bloquear el
-            // FGS-de-ubicación desde background; ahí se retoma al abrir la app.
+            // depender del WebView.
+            //
+            // 🩸 05/08/2026 — LA PREMISA DE ESE COMENTARIO ERA FALSA. Decía: "el servicio se auto-apaga
+            // si está fuera de su ventana fina, así que arrancarlo de más es inofensivo". No lo era.
+            // Arrancarlo a las 07:52 lo hacía suicidarse a los 30 s Y CONSUMÍA EL TURNO: la próxima
+            // alarma quedaba a las 08:22, así que el rastreo empezaba media hora tarde. Medido sobre
+            // 29 días hábiles: mediana de 51 min de retraso en el primer punto del día.
+            //
+            // Ahora hay dos cambios: el servicio PAUSA en vez de apagarse (ver UploaderGpsService), y
+            // `programarProxima` apunta al borde REAL de la ventana en vez de a "+30 min" ciego.
+            anotarDisparo(context);
             arrancarUploaderSiConfigurado(context);
         } finally {
             // Re-armar SIEMPRE la próxima: la alarma es de un solo disparo en Android moderno.
@@ -55,22 +61,70 @@ public class AlarmReceiver extends BroadcastReceiver {
     }
 
     /**
+     * Deja constancia de que la alarma corrió. Sin esto, "la alarma no dispara" y "la alarma dispara
+     * pero Android bloquea el arranque" son indistinguibles desde la base — y el arreglo de cada una
+     * es completamente distinto (la primera es un OEM que mata el receiver; la segunda, la exención
+     * de batería). Viaja en el latido a `estado_dispositivo.alarma_ultima_ts` (db/30).
+     */
+    private static void anotarDisparo(Context context) {
+        try {
+            context.getSharedPreferences(UploaderGpsService.PREFS, Context.MODE_PRIVATE)
+                .edit().putLong(UploaderGpsService.K_ALARMA_TS, System.currentTimeMillis()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /**
      * Re-arranca el uploader GPS nativo si ya fue configurado alguna vez (el token/url persisten en
      * SharedPreferences). Mismo patrón que BootReceiver. Si el servicio ya corre, onStartCommand es
      * idempotente (no re-abre el watcher). Best-effort: no romper el disparo del watchdog.
      */
     private static void arrancarUploaderSiConfigurado(Context context) {
+        SharedPreferences sp;
         try {
-            SharedPreferences sp = context.getSharedPreferences(UploaderGpsService.PREFS, Context.MODE_PRIVATE);
-            if (sp.getString(UploaderGpsService.K_TOKEN, null) == null) return; // nunca se logueó acá
+            sp = context.getSharedPreferences(UploaderGpsService.PREFS, Context.MODE_PRIVATE);
+        } catch (Exception e) { return; }
+        if (sp.getString(UploaderGpsService.K_TOKEN, null) == null) return; // nunca se logueó acá
+
+        // 🩸 No arrancar si falta MUCHO para la ventana (05/08/2026). El servicio ahora pausa en vez
+        // de apagarse, así que un arranque fuera de hora no se suicida — pero sigue costando un
+        // `startForegroundService` contra el límite del SO y un proceso levantado para nada. Se
+        // permite dentro de la GRACIA para cubrir el despertar de pre-arranque (el que llega unos
+        // minutos antes del borde a propósito, para tener fix a las 08:00:00).
+        long ahora = System.currentTimeMillis();
+        if (!VentanaRastreo.dentro(sp, ahora)) {
+            long ini = VentanaRastreo.proximoInicio(sp, ahora);
+            if (ini > 0 && ini - ahora > GRACIA_MS) return;
+        }
+
+        try {
             Intent svc = new Intent(context, UploaderGpsService.class);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(svc);
             } else {
                 context.startService(svc);
             }
-        } catch (Exception ignored) {
-            // FGS-desde-background puede estar restringido en algún OEM: se retoma al abrir la app.
+        } catch (Exception e) {
+            // 🩸 EL FALLO QUE ERA INVISIBLE (05/08/2026). Esto era `catch (Exception ignored)`.
+            //
+            // En Android 12+ arrancar un foreground service desde background tira
+            // ForegroundServiceStartNotAllowedException salvo exenciones — y una alarma INEXACTA no
+            // es exención (una exacta sí, y estar exento de la optimización de batería también). O
+            // sea que el caso peor del bug ("no arrancó en TODO el día hasta que abrieron la app")
+            // era exactamente el que no dejaba ni una línea de rastro.
+            //
+            // Se cuenta aparte del resto de las excepciones: un fallo de arranque por política del SO
+            // y un error cualquiera piden arreglos distintos. Ver estado_dispositivo.fgs_bloqueado.
+            // Se compara el NOMBRE de la clase y no con `instanceof`: minSdk es 23 y
+            // ForegroundServiceStartNotAllowedException no existe hasta API 31. Un `instanceof`
+            // contra una clase ausente deja el método con fallo de verificación en ART — funciona
+            // casi siempre, pero "casi siempre" dentro del `catch` que existe para diagnosticar una
+            // falla rara es exactamente donde no se quiere apostar.
+            if ("ForegroundServiceStartNotAllowedException".equals(e.getClass().getSimpleName())) {
+                UploaderGpsService.anotarFgsBloqueado(context);
+            }
         }
     }
+
+    /** Cuánto antes del borde se acepta arrancar el servicio (cubre el despertar de pre-arranque). */
+    private static final long GRACIA_MS = 10 * 60_000L;
 }

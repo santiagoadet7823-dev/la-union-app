@@ -42,11 +42,37 @@ export async function initAlarm(onWake, opts = {}) {
       intervaloMin: opts.intervaloMin ?? 30,
       horaInicio: opts.horaInicio ?? 0,
       horaFin: opts.horaFin ?? 24,
+      margenMs: opts.margenMs,
     })
   } catch (_) {
     // APK viejo sin el plugin, o AlarmManager no utilizable: el push sigue como canal principal.
     iniciado = false
   }
+}
+
+/**
+ * REPROGRAMA la alarma con la config actual. Igual que `initAlarm` pero SIN el guard `iniciado`:
+ * no registra el callback de vuelta, solo vuelve a calcular el próximo disparo.
+ *
+ * 🩸 Existe por el bug del arranque tardío (05/08/2026). Desde 1.11.0 el nativo calcula el objetivo
+ * de la alarma a partir de la VENTANA de la persona (las prefs que escribe `configurar()`), no de
+ * "ahora + 30 min". Así que cuando el admin cambia un horario y el JS reempuja la ventana al
+ * servicio, hay que pedirle también que recalcule la alarma: si no, el teléfono sigue con el
+ * disparo armado sobre el horario VIEJO y arranca cuando ya no corresponde.
+ *
+ * En un APK viejo (sin el plugin, o con el `programar()` de 1.10.0) es inofensivo: reprograma con la
+ * lógica que ese APK tenga.
+ */
+export async function reprogramarAlarm(opts = {}) {
+  if (!isNative()) return
+  try {
+    await AlarmWatchdog.programar({
+      intervaloMin: opts.intervaloMin ?? 30,
+      horaInicio: opts.horaInicio ?? 0,
+      horaFin: opts.horaFin ?? 24,
+      margenMs: opts.margenMs,
+    })
+  } catch (_) { /* APK viejo sin el plugin: el push sigue como canal principal */ }
 }
 
 /** Cancela la alarma (por si alguna vez hace falta apagarla explícitamente). No-op en web. */

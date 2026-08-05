@@ -3,10 +3,17 @@
 Guía operativa del repo. **Leer completo antes de tocar nada.**
 
 Documentos complementarios:
-- [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) — arquitectura, deuda técnica y riesgos.
+- [HANDOFF.md](HANDOFF.md) — pendientes y deudas por prioridad, estado del login, términos, y el
+  **entorno completo** (toolchain, emulador, skills, MCPs, cuentas). Es el documento para retomar en
+  otra máquina o en una sesión nueva.
+- [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) — arquitectura, deuda técnica y riesgos (rev. 3,
+  04/08/2026, sobre 1.10.0).
+- [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) — qué es cada archivo de la carpeta, y qué es
+  esencial vs. archivable.
 - [DOCUMENTACION_FUNCIONAL.md](DOCUMENTACION_FUNCIONAL.md) — qué hace cada función y de qué rol es.
   **Empezar por acá** para saber qué está vivo, qué es demo y qué es código muerto.
 - [PLAN_SAAS.md](PLAN_SAAS.md) — migración planificada a `corporaciones → empresas`.
+- [legal/](legal/) — borradores de términos y condiciones y de política de privacidad.
 
 ---
 
@@ -109,8 +116,10 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 ### GPS y sincronización
 
 12. **No gatear las colas con `navigator.onLine`.** El WebView de la APK reporta offline estando
-    conectado y eso bloqueaba **todas** las subidas
-    ([queue.js:66-69](src/services/sync/queue.js#L66)).
+    conectado y eso bloqueaba **todas** las subidas. El comentario que lo explica está en
+    [`sync/queue.js`](src/services/sync/queue.js), dentro de `flushPosiciones` — buscar
+    `navigator.onLine`, no ir por número de línea (la referencia vieja, `:66-69`, hoy apunta al bloque
+    de desborde).
 13. **`updateWatcher` NO mergea opciones.** Pasar siempre el spread completo de
     `OPCIONES_GPS_MOVIMIENTO` ([geolocation/index.js:87-91](src/services/geolocation/index.js#L87)).
 14. **No convertir `tracker.js` en hook/componente React.** Es un módulo con estado a nivel de módulo
@@ -264,10 +273,30 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     mecanismo. `/match` sería mejor algoritmo pero el host público lo rechaza por tamaño (medido:
     `TooBig` con 20 puntos) — habilitarlo requiere OSRM propio.
 36. **La ventana de rastreo está implementada TRES veces y nada las sincroniza**: `dentroDeHorario()`
-    (`services/tracking.js`), `dentroDeVentana()` (`UploaderGpsService.java`) y `en_ventana`
+    (`services/tracking.js`), `VentanaRastreo.dentro()` (Java) y `en_ventana`
     (`vigilancia_equipo`, SQL). Tocar una sin las otras no rompe nada visible: hace que los avisos
     al supervisor **mientan en silencio**. Desde 1.8.0 la semántica es de **unión** — varias
     categorías por persona, se rastrea si cualquiera aplica (jornada partida).
+    En 1.11.0 el parser de Java salió de `UploaderGpsService` a **`VentanaRastreo.java`** sin cambiar
+    una sola regla, porque hacía falta calcular el **próximo inicio** de ventana (para la alarma del
+    arranque). **`proximoInicio()` es un BARRIDO minuto a minuto sobre la misma `dentro()`, no una
+    fórmula** — a propósito: una derivación analítica sería una CUARTA implementación con licencia
+    para divergir, y hay un caso que casi seguro traduciría mal (una ventana `22:00–06:00` con
+    `dias=[1]` está activa el lunes 22:00–23:59 **y** el lunes 00:00–06:00, porque el día se evalúa
+    en el instante mirado, no en el de apertura). Si alguna vez parece lento, la respuesta NO es
+    hacerlo analítico.
+46. 🩸 **Fuera de horario el servicio de GPS se PAUSA, no se apaga** (1.11.0). Hasta 1.10.0 hacía
+    `stopSelf()`, y eso era la causa del "le asigno las 8 y a veces no inicia": el watchdog despertaba
+    a las 07:52, arrancaba el servicio, el servicio se suicidaba a los 30 s y **el turno se quemaba**
+    — la próxima alarma quedaba a las 08:22. Medido sobre 29 días hábiles: **mediana de 51 min** de
+    retraso en el primer punto, 79 % de los días con más de 15. Y en el caso peor no arrancaba en
+    todo el día, porque Android 12+ prohíbe iniciar un foreground service desde background salvo
+    exenciones y la excepción se tragaba en un `catch` vacío. Pausar elimina la clase entera de fallo
+    (no hay que arrancar lo que nunca se apagó) y devuelve a `START_STICKY` su sentido: hasta ahora
+    era decorativo, porque el SO no reinicia un servicio que se detuvo **solo**.
+    ⚠️ **El cierre de sesión sigue siendo un apagado de verdad** (`stopService()` desde el plugin).
+    Si alguien lo convierte en pausa, vuelve el bug incorregible de la regla 19-bis: el token es la
+    identidad y `posiciones` no tiene policy de UPDATE ni de DELETE.
 34. **Un token FCM muerto se BORRA.** Cuando FCM responde 404/`NotRegistered` o `INVALID_ARGUMENT`,
     hay que poner `estado_dispositivo.fcm_token = null`. Un token muerto no se cura solo:
     desperdicia un envío por aviso y —lo peor— deja `fallidos` clavado en un número > 0, que es
@@ -453,15 +482,24 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. Alineados en **1.8.0** (agosto 2026).
+Hay varios números que conviven. Alineados en **1.11.0** (agosto 2026).
+
+> 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
+> cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
+> paso del release, no un "después lo arreglo":** va junto con el `UPDATE` de `app_config`.
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js:6](src/version.js#L6) | `1.8.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle:17](android/app/build.gradle#L17) | `1.8.0` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle:16](android/app/build.gradle#L16) | `26` | Entero incremental de Android |
-| `app_config.bundle_version` | Supabase | — | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | `1.0.0` / `null` | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Inerte** hasta setear `apk_url`. Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.11.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.11.0` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `29` | Entero incremental de Android |
+| `app_config.bundle_version` | Supabase | `1.10.0` ⚠️ **sin publicar** | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | `1.10.0` ⚠️ **sin publicar** | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+
+> ⚠️ **1.11.0 está en el código pero NO publicado.** Toca `.java` + manifest ⇒ APK nuevo obligatorio
+> (la OTA no alcanza). Al publicar hay que subir `bundle_version`, `latest_version`, `min_version` y
+> `apk_url` a `1.11.0` — sin `min_version` el auto-updater queda inerte y los 9 teléfonos se quedan
+> en 1.10.0, o sea sin el arreglo del arranque.
 
 **¿OTA o APK nuevo?**
 
@@ -525,7 +563,8 @@ Hay varios números que conviven. Alineados en **1.8.0** (agosto 2026).
 
 ## 8. Pendientes conocidos
 
-Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urgentes:
+Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle técnico, en
+[INFORME_AUDITORIA.md §8-9](INFORME_AUDITORIA.md). Los urgentes:
 
 - 🔴 **Backup del keystore** (`android/app/launion.keystore` + las contraseñas de `keystore.properties`)
   fuera de la máquina. **Punto único de falla.** Android exige que toda actualización esté firmada con
@@ -535,6 +574,12 @@ Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urge
   desinstalar+reinstalar en cada teléfono (se pierden datos locales: cola de posiciones, cuarentena,
   sesión). Respaldar YA: contraseñas en un gestor, el `.keystore` en 2 lugares privados (no repo público).
   Esto ahora también sostiene el auto-update del APK — ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md).
+
+  🩸 **Y ojo con una creencia falsa que circuló hasta el 04/08/2026:** `../.claude/keystore.md` **NO es
+  un respaldo de las credenciales**. Verificado: es el volcado de la sesión de `keytool` — la ayuda de
+  opciones y los campos del *distinguished name*—, y **las contraseñas no están ahí**, porque se
+  tipearon en un prompt que no las imprime. Hoy `android/keystore.properties` es la **única** copia de
+  `storePassword`, `keyPassword` y `keyAlias`, y está fuera de git, en un solo disco.
 - ✅ **`02_saas.sql` y `05_schema_real.sql`**: movidos a `db/historico/` el 29/07/2026, con un
   `LEER_ANTES_DE_TOCAR.md` al lado. Ya no están en el camino de un `psql -f` distraído.
 - ✅ **Versiones desfasadas** (§6): alineadas en 1.6.0 (versionName 1.6.0 / versionCode 20 / APP_VERSION 1.6.0).
@@ -560,12 +605,18 @@ Checklist completo en [INFORME_AUDITORIA.md §9](INFORME_AUDITORIA.md). Los urge
   algo que ya no se llene: es una decisión de producto, no de datos. Rescatar `ReplayJornada`
   significa colgarla del menú "Menú" (`GestionHost`), que es el único camino vivo.
 - 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
-  pueden usar el mismo código de cliente.
+  pueden usar el mismo código de cliente. **Con 2 empresas vivas en la base (04/08/2026) ya dejó de ser
+  hipotético.**
 - 🟠 **`firmas_ins`** sigue siendo `to authenticated` sin alcance (el bucket de firmas de entrega).
   Hoy no muerde —la tabla `pedidos` está vacía y nadie firma nada— pero cuando arranque el módulo
   de entregas hay que darle el mismo tratamiento que `db/25`.
-- 🟠 **9 columnas/objetos vivos sin versionar** en ningún `.sql` (`posiciones.bateria`,
-  `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, y las 5 ya listadas en `00_LEER_PRIMERO.md`).
+- 🔴 **Objetos vivos sin versionar en ningún `.sql`, y creciendo.** Confirmado contra la base viva el
+  04/08/2026: `posiciones.bateria`, `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, las 5 ya
+  listadas en `00_LEER_PRIMERO.md`, **y cuatro nuevas**: la tabla **`ingesta_tokens`**, la RPC
+  **`mi_token_ingesta`**, la tabla `ubicaciones_compartidas` y la RPC `ultimas_posiciones_compartidas`.
+  Las dos primeras son las que autentican al uploader nativo: **sin ellas una base recreada desde `db/`
+  no puede recibir una sola posición.** Peor: el encabezado de `ingest-posiciones` cita un
+  `db/16_ingesta_tokens.sql` **que no existe** (`db/16` es `visitas`).
 - 🟠 **Key de Stadia** hardcodeada en `src/services/maps/basemap.js:13` — mover a `VITE_STADIA_KEY` y
   rotar. **No es Google Maps**: Google Maps es código muerto y `GUIA_API_KEY_GOOGLE_MAPS.md` está
   obsoleta. Si la key de Stadia vence, la app **no se rompe**: se queda con OSM y se ocultan las capas
@@ -658,9 +709,15 @@ Están instaladas en **`.claude/skills/`** (versionadas: `.gitignore:34-36` igno
 
 ## 10. MCPs disponibles en este proyecto
 
-- **Supabase** — usarlo para consultar la base viva en vez de asumir desde los `.sql` (regla 5).
-  `list_tables`, `execute_sql`, `get_advisors`, `apply_migration`, `get_logs`.
-- **Notion, Gmail, Calendar, Canva, Netlify, Firebase** — conectados, sin uso actual en el proyecto.
+- **Supabase** — proyecto `lqhtxivednffpiicnbog` (`la-union-pwa`, región `sa-east-1`). Usarlo para
+  consultar la base viva en vez de asumir desde los `.sql` (regla 5). `list_tables`, `execute_sql`,
+  `get_advisors`, `apply_migration`, `get_logs`.
+- **Notion, Gmail, Calendar, Canva, Context7, Firebase** — conectados, sin uso actual en el proyecto.
 
 > Antes de responder cualquier pregunta sobre el estado del esquema, RLS, políticas o datos:
 > **consultar la base viva vía MCP**, no los archivos `db/`.
+
+> ⚠️ **Los conectores viajan con la cuenta de Claude, no con esta carpeta.** En una máquina nueva hay
+> que volver a autorizarlos. Las **skills** sí viajan solas: están versionadas en `.claude/skills/`
+> (§9). El inventario completo del entorno —toolchain, emulador, cuentas— está en
+> [HANDOFF.md §3](HANDOFF.md).

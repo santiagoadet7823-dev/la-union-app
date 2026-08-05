@@ -8,13 +8,15 @@
  * crudo entero durante dos días, hasta que alguien se dio cuenta el 28/07. Duplicar esto es
  * garantizar que vuelva a pasar, así que ahora hay una sola copia.
  *
- * Tres funciones, en el orden en que se usan:
+ * Cuatro funciones, en el orden en que se usan:
  *   limpiarPorUsuario  → saca los saltos imposibles y parte por huecos (lib/geo.limpiarTrazo)
  *   construirTrails    → uno por persona, con sus km, filtrado por el chip Vend./Rep.
+ *   construirInicios   → el marcador de arranque del día (a qué hora se prendió el GPS)
  *   construirLeaflet   → las polilíneas finales, con foco, snap y conectores de hueco
  */
 import { colorPorId } from '../../lib/colors'
 import { limpiarTrazo, simplificarTrazo } from '../../lib/geo'
+import { fmtHora } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 
 /**
@@ -52,6 +54,31 @@ export function construirTrails(byUser, pasaFiltro) {
       for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
       return { id, points: v.points, segmentos: v.segmentos, aproximados: v.aproximados || [], color: colorPorId(id), km: km / 1000 }
     })
+}
+
+/**
+ * Marcador de INICIO: el primer punto del día de cada persona, con la hora a la que se prendió
+ * el GPS.
+ *
+ * 🩸 05/08/2026 — nace de un problema de campo. Con el horario de rastreo en 08:00, el arranque
+ * llegaba tarde (medido sobre 29 días hábiles: mediana de 51 min, y el 79 % de los días con más de
+ * 15 min de retraso), y desde el mapa NO había forma de verlo: el primer punto ya estaba dibujado,
+ * pero indistinguible del resto del trazo. Poder leer "este arrancó 08:47" de un vistazo es lo que
+ * convierte un problema invisible en uno que se mira.
+ *
+ * Sale de `trails` y no de `byUser` a propósito, por dos motivos:
+ *   · hereda gratis el filtro del chip Vend./Rep. (mismo criterio que las polilíneas);
+ *   · y sobre todo, `trails` trae los puntos YA LIMPIOS (regla 22-bis). Sobre el crudo el primer
+ *     punto del día puede ser un teleport, y el marcador de arranque quedaría plantado a 127 km de
+ *     donde la persona arrancó de verdad — que es exactamente el bug del 29/07/2026, pero peor:
+ *     acá la mentira no sería un número raro, sería un ícono afirmando una hora y un lugar.
+ */
+export function construirInicios(trails) {
+  return (trails || []).flatMap((t) => {
+    const p = t.points?.[0]
+    if (!p) return []
+    return [{ id: t.id, lat: p.lat, lng: p.lng, ts: p.ts || null, color: t.color, hora: p.ts ? fmtHora(p.ts) : '' }]
+  })
 }
 
 /**

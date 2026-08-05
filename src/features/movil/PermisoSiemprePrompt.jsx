@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { isNative } from '../../services/platform'
 import { abrirAjustesUbicacion } from '../../services/geolocation'
@@ -6,45 +6,84 @@ import { estaExento, pedirExencion, abrirAutostart } from '../../services/batter
 import Overlay from '../../components/Overlay'
 
 /**
- * Aviso de un paso (una sola vez) para que el móvil active "Permitir siempre" la
- * ubicación. Android 11+ NO deja pedirlo por diálogo: solo se activa desde los
- * Ajustes del teléfono. Este aviso lo explica y lleva de un toque a esa pantalla.
+ * Aviso de un paso para que el móvil active "Permitir siempre" la ubicación y quite la
+ * restricción de batería. Android 11+ NO deja pedir "Permitir siempre" por diálogo: solo se
+ * activa desde los Ajustes del teléfono. Este aviso lo explica y lleva de un toque a esa pantalla.
  *
  * No bloquea: es un cartel encima de la app que se puede posponer. Solo en nativo.
- * Se muestra una vez (localStorage `lu-permiso-siempre-visto`).
+ *
+ * 🩸 05/08/2026 — ANTES SE MOSTRABA UNA SOLA VEZ EN LA VIDA, aunque la persona lo cerrara sin
+ * conceder absolutamente nada (`localStorage` guardaba el literal `'1'`). O sea que el único camino
+ * hacia la exención de batería se gastaba en un toque distraído, para siempre.
+ *
+ * Y esa exención no es un "estaría bueno": es la palanca de la que cuelga que el rastreo arranque
+ * al horario. Un teléfono exento queda fuera de la restricción de Android 12+ que bloquea arrancar
+ * un foreground service desde background —el motivo por el que el GPS a veces no arrancaba en TODO
+ * el día hasta que alguien abría la app— y, desde el APK 1.11.0, obtiene además la alarma exacta
+ * sin tener que entrar a "Alarmas y recordatorios".
+ *
+ * Ahora la clave guarda un TIMESTAMP y el aviso vuelve cada `REPETIR_MS`, pero SOLO a quien no
+ * está exento. Al que ya concedió no se le insiste nunca más.
+ *
+ * Compatibilidad con el valor viejo: `Number('1')` es 1 (epoch 1970), o sea "hace muchísimo" →
+ * todos los que ya lo vieron vuelven a ser elegibles, que es exactamente lo que se busca.
  */
 const VISTO_KEY = 'lu-permiso-siempre-visto'
+const REPETIR_MS = 7 * 24 * 60 * 60 * 1000
+
+function ultimoVisto() {
+  try { return Number(localStorage.getItem(VISTO_KEY)) || 0 } catch (_) { return 0 }
+}
 
 export default function PermisoSiemprePrompt() {
-  // Dos condiciones distintas, y mezclarlas rompía la animación de salida:
-  //   - `nuncaMostrar`: no corresponde el aviso (no es nativo, o ya se vio). No se
-  //     renderiza NADA, ni siquiera el Overlay.
-  //   - `abierto`: el usuario lo cerró. Acá sí hay que quedarse montado mientras
-  //     corre la animación de salida, así que NO se puede hacer `return null`.
-  const [nuncaMostrar] = useState(() => {
-    try { return !isNative() || localStorage.getItem(VISTO_KEY) === '1' } catch (_) { return !isNative() }
+  // Tres modos, y mezclarlos rompía la animación de salida:
+  //   - 'nunca'   : no corresponde el aviso (no es nativo, o se mostró hace poco). No se renderiza
+  //                 NADA, ni siquiera el Overlay.
+  //   - 'primera' : nunca se mostró → se abre YA, sin esperar el chequeo de batería. Es el
+  //                 comportamiento de siempre y no se toca: en un alta nueva el aviso también sirve
+  //                 para "Permitir siempre", que es independiente de la exención.
+  //   - 'repetir' : ya se mostró hace más de una semana → se abre SOLO si resulta NO exento.
+  //                 Insistirle a quien ya concedió sería ruido, y ruido es lo que hace que la gente
+  //                 aprenda a cerrar el cartel sin leerlo.
+  const [modo] = useState(() => {
+    if (!isNative()) return 'nunca'
+    const visto = ultimoVisto()
+    if (!visto) return 'primera'
+    return Date.now() - visto < REPETIR_MS ? 'nunca' : 'repetir'
   })
-  const [abierto, setAbierto] = useState(!nuncaMostrar)
+  const [abierto, setAbierto] = useState(modo === 'primera')
   const [abriendo, setAbriendo] = useState(false)
   const [exento, setExento] = useState(null) // null = aún no chequeado (no renderiza para evitar flash)
+  // El auto-abrir de 'repetir' ocurre UNA sola vez. Sin este guard, cerrar el cartel sin conceder
+  // nada lo haría reaparecer en el próximo `visibilitychange`: el chequeo seguiría dando `false` y
+  // volvería a abrirlo. Un aviso que no se puede cerrar es peor que uno que no aparece.
+  const autoAbiertoRef = useRef(false)
 
   // Estado de exención de batería: refresca al montar y al volver a foreground (el
   // usuario responde el diálogo del sistema en otra pantalla).
   useEffect(() => {
-    if (!abierto) return
+    if (modo === 'nunca') return
     let vivo = true
-    const chequear = () => estaExento().then((v) => { if (vivo) setExento(v) }).catch(() => {})
+    const chequear = () => estaExento().then((v) => {
+      if (!vivo) return
+      setExento(v)
+      if (modo === 'repetir' && v === false && !autoAbiertoRef.current) {
+        autoAbiertoRef.current = true
+        setAbierto(true)
+      }
+    }).catch(() => {})
     chequear()
     const onVis = () => { if (document.visibilityState === 'visible') chequear() }
     document.addEventListener('visibilitychange', onVis)
     return () => { vivo = false; document.removeEventListener('visibilitychange', onVis) }
-  }, [abierto])
+  }, [modo])
 
-  if (nuncaMostrar) return null
+  if (modo === 'nunca') return null
 
   const cerrar = () => setAbierto(false)
-  // El "ya lo vio" se persiste cuando el overlay terminó de irse, no antes.
-  const marcarVisto = () => { try { localStorage.setItem(VISTO_KEY, '1') } catch (_) {} }
+  // El "ya lo vio" se persiste cuando el overlay terminó de irse, no antes. Guarda el INSTANTE, que
+  // es lo que hace que el aviso pueda volver dentro de una semana si sigue sin estar exento.
+  const marcarVisto = () => { try { localStorage.setItem(VISTO_KEY, String(Date.now())) } catch (_) {} }
   const abrir = async () => {
     setAbriendo(true)
     await abrirAjustesUbicacion()

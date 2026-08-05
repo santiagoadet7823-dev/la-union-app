@@ -199,6 +199,15 @@ public class UploaderGpsPlugin extends Plugin {
         ret.put("repedidos", sp.getInt(UploaderGpsService.K_TEL_REPEDIDOS, 0));
         ret.put("silencioMax", sp.getLong(UploaderGpsService.K_TEL_SILENCIO_MAX, 0));
         ret.put("fixesRed", sp.getInt(UploaderGpsService.K_TEL_RED, 0));
+        // 1.11.0 — diagnóstico del ARRANQUE. Responde las tres preguntas que antes eran una sola
+        // ("a veces no inicia") y que pedían arreglos distintos: ¿la alarma corrió (`alarmaTs`)?
+        // ¿quedó armada para el horario y es EXACTA (`alarmaProx`/`alarmaExacta`)? ¿Android está
+        // rechazando el arranque del foreground service (`fgsBloqueado`)? Ver db/30.
+        ret.put("alarmaTs", sp.getLong(UploaderGpsService.K_ALARMA_TS, 0));
+        ret.put("alarmaProx", sp.getLong(UploaderGpsService.K_ALARMA_PROX, 0));
+        ret.put("alarmaExacta", sp.getBoolean(UploaderGpsService.K_ALARMA_EXACTA, false));
+        ret.put("fgsBloqueado", sp.getInt(UploaderGpsService.K_FGS_BLOQ, 0));
+        ret.put("fgsBloqueadoTs", sp.getLong(UploaderGpsService.K_FGS_BLOQ_TS, 0));
         call.resolve(ret);
     }
 }

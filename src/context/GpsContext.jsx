@@ -5,6 +5,7 @@ import { useEstadoDispositivo } from '../hooks/useEstadoDispositivo'
 import { initPush } from '../services/push'
 import { initAlarm } from '../services/alarm'
 import { chequearYNotificarUpdate } from '../services/updateNotify'
+import { WATCHDOG_MIN, ARRANQUE_MARGEN_MS } from '../services/gpsConfig'
 import { isNative } from '../services/platform'
 
 /**
@@ -65,7 +66,12 @@ export function GpsProvider({ children }) {
     //
     // La alarma es SOLO para los móviles: al supervisor no hay que despertarlo para que suba
     // nada, y una alarma cada 30 min en su teléfono sería batería gastada a cambio de nada.
-    if (esMovil) initAlarm(despertar, { intervaloMin: 30, horaInicio: 6, horaFin: 24 })
+    //
+    // 🩸 Desde 1.11.0 esta ventana 6–24 ya NO es la que decide el arranque: el nativo apunta el
+    // disparo al borde REAL de la persona (VentanaRastreo.proximoInicio, sobre las mismas prefs que
+    // usa el servicio para capturar). Queda como red para el teléfono que todavía no tiene ventana
+    // fina escrita — el primer login, antes del primer `configurar()`.
+    if (esMovil) initAlarm(despertar, { intervaloMin: WATCHDOG_MIN, horaInicio: 6, horaFin: 24, margenMs: ARRANQUE_MARGEN_MS })
   }, [esMovil, esSupervisor])
 
   return (

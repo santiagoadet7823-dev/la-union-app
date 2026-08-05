@@ -15,6 +15,20 @@
 <!-- Permite pedir la exención de optimización de batería (Doze): en muchos OEMs el
      foreground service se mata igual al bloquear salvo que la app quede "sin restricciones". -->
 <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+<!-- 🩸 Alarma EXACTA para el arranque del rastreo al horario (1.11.0, 05/08/2026).
+     Hasta 1.10.0 se evitaba a propósito: setAndAllowWhileIdle no pide permiso, y para un watchdog
+     de 30 min alcanzaba. Pero para despertar A LAS 08:00 no alcanza — el disparo se difiere en Doze
+     y en App Standby bucket "rare", que es justo el bucket de una app que nadie toca de noche.
+     Medido: mediana de 51 min de retraso en el primer punto del día.
+     Y hay un segundo motivo, menos obvio y más importante: una alarma EXACTA es una de las
+     exenciones que permiten iniciar un foreground service desde background en Android 12+. Una
+     inexacta NO lo es, y ese era el caso peor del bug (no arrancaba en todo el día).
+     SCHEDULE_EXACT_ALARM y NO use_exact_alarm: Google Play restringe USE_EXACT_ALARM a apps cuya
+     función principal es reloj/alarma/calendario, y cerraría la puerta a publicar (HANDOFF §6).
+     En Android 13+ este permiso lo concede el usuario... o se concede SOLO por estar exento de la
+     optimización de batería, que es lo que la app ya pide en PermisoSiemprePrompt: una sola palanca
+     arregla las dos mitades. Si no está, se cae a la alarma inexacta de siempre (nunca peor). -->
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 <!-- Activity Recognition: saber si el vendedor está quieto / caminando / en vehículo sale
      ~gratis (lo resuelve el coprocesador de movimiento) y permite no tener el GPS a 1 Hz
      máxima precisión toda la jornada. Permiso de RUNTIME desde API 29. -->

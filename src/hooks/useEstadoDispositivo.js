@@ -9,6 +9,8 @@ import { pendingCount, pendientesCuarentena } from '../services/sync/queue'
 import { getHeartbeat } from '../services/geolocation/tracker'
 import { getFcmTokenSync, permisoNotificaciones } from '../services/push'
 import { estadoUploaderNativo } from '../services/uploaderNativo'
+import { estaExento } from '../services/battery'
+import { isNative } from '../services/platform'
 
 /**
  * Latido de "salud" del dispositivo móvil. Cada tanto (y en transiciones) sube una
@@ -38,7 +40,20 @@ const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_ver
   // pero NO comparan: crecen en cada fix y dispararían un upsert cada 2 minutos, que es justo lo
   // que esta lista existe para evitar. `gps_intervalo_ms` SÍ entra: es la cadencia PEDIDA, un
   // estado que cambia pocas veces por jornada y cuyo cambio es exactamente lo que hay que ver.
-  'fix_dueno', 'cuarentena_nativa', 'gps_intervalo_ms', 'notif_permiso']
+  'fix_dueno', 'cuarentena_nativa', 'gps_intervalo_ms', 'notif_permiso',
+  // 🩸 `bateria_exenta` (05/08/2026). Es la palanca de la que cuelga que el rastreo arranque al
+  // horario: un teléfono exento de la optimización de batería queda fuera de la restricción de
+  // Android 12+ que bloquea arrancar un foreground service desde background — el motivo por el que
+  // el GPS a veces no arrancaba en todo el día hasta que alguien abría la app. Sin esta columna no
+  // se puede saber cuántos de los teléfonos del parque están exentos, y todo el diagnóstico del
+  // arranque tardío se hace a ciegas. Entra en la comparación porque es ESTADO y cambia pocas veces.
+  'bateria_exenta',
+  // Diagnóstico del arranque (1.11.0). Solo los dos que son ESTADO: `alarma_exacta` (¿el teléfono
+  // consiguió la alarma exacta?) y `fgs_bloqueado` (¿el SO está rechazando el arranque?). Los tres
+  // `_ts` se suben pero NO comparan — son marcas de tiempo que avanzan solas y dispararían un
+  // upsert cada 2 minutos, que es justo lo que esta lista existe para evitar (mismo criterio que
+  // `red_desde`). Y `alarma_proxima_ts` cambia en cada reprogramación, o sea siempre.
+  'alarma_exacta', 'fgs_bloqueado']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -161,6 +176,18 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
         gps_silencio_max_ms: typeof nat.silencioMax === 'number' ? nat.silencioMax : null,
         gps_fixes_red: typeof nat.fixesRed === 'number' ? nat.fixesRed : null,
       } : null
+      // 🩸 Diagnóstico del ARRANQUE (1.11.0, db/30). Las tres preguntas que "a veces no inicia"
+      // mezclaba en una, y que piden arreglos distintos: ¿la alarma corrió? ¿quedó armada para el
+      // horario y es exacta? ¿Android está rechazando el arranque del foreground service?
+      // En un APK <1.11.0 estos campos vienen undefined y no se sube nada (mismo criterio que
+      // `diagRed`: omitir es distinto de escribir null, ver el 🩸 de fcm_token).
+      const diagArranque = nat && typeof nat.fgsBloqueado === 'number' ? {
+        alarma_ultima_ts: nat.alarmaTs ? new Date(nat.alarmaTs).toISOString() : null,
+        alarma_proxima_ts: nat.alarmaProx ? new Date(nat.alarmaProx).toISOString() : null,
+        alarma_exacta: !!nat.alarmaExacta,
+        fgs_bloqueado: nat.fgsBloqueado,
+        fgs_bloqueado_ts: nat.fgsBloqueadoTs ? new Date(nat.fgsBloqueadoTs).toISOString() : null,
+      } : null
       // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
       // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
@@ -170,6 +197,11 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // Permiso de notificaciones: se lee en cada latido y no una sola vez, porque el usuario lo
       // puede apagar desde Ajustes con la app abierta — y ese es justo el caso que hay que ver.
       const notif = await permisoNotificaciones().catch(() => null)
+      // Exención de optimización de batería. Se lee en cada latido por el mismo motivo que el
+      // permiso de notificaciones: el usuario la puede conceder (o revocar) desde Ajustes en
+      // cualquier momento, y ese cambio es justo el evento que hay que ver. En web devuelve `true`
+      // (degrada suave, ver battery.js), así que se omite si no es nativo para no ensuciar el dato.
+      const exenta = isNative() ? await estaExento().catch(() => null) : null
       // 🩸 UN TOKEN NULL NO PISA AL QUE YA ESTÁ (04/08/2026). `fcm_token` viajaba SIEMPRE, así que
       // un latido que corriera ANTES de que FCM registrara el dispositivo escribía null encima del
       // token bueno — y el registro es asincrónico, igual que la hidratación desde persistencia, así
@@ -184,7 +216,32 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // el token" y "este teléfono no tiene token" son cosas distintas, y solo el backend puede
       // afirmar la segunda (regla 34: se borra ante un rechazo EXPLÍCITO de FCM, no ante una duda).
       const fcm = getFcmTokenSync()
-      const estado = { app_version: APP_VERSION, apk_version: apkRef.current, instalado_ts: instaladoRef.current, cola_pendiente: cola, cuarentena_pendiente: cuar, notif_permiso: notif, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...s }
+      // 🩸 LA PWA NO PISA LA IDENTIDAD DEL TELÉFONO (05/08/2026) — por qué al superadmin no le
+      // llegaba el aviso de actualizar.
+      //
+      // `estado_dispositivo` tiene UNA fila por USUARIO (`onConflict: 'id_usuario'`) pero describe un
+      // DISPOSITIVO. Quien usa la PWA en la PC y el APK en el teléfono tiene una sola fila que se
+      // pelean los dos, y gana el último que latió. Como la PWA se autoactualiza sola desde GitHub
+      // Pages, SIEMPRE reporta la versión más nueva: la fila del superadmin decía `app_version`
+      // 1.10.0 por la web, aunque su teléfono estuviera en otra.
+      //
+      // Y `push-actualizacion` solo le manda a los ATRASADOS (`esMayor(latest, app_version)`). Con la
+      // web tapando la versión real, el superadmin nunca entraba en esa lista: su `aviso_version`
+      // estaba en null mientras los otros 9 teléfonos tenían 1.10.0 — o sea que no es que el aviso
+      // se perdiera, es que NUNCA SE LE MANDÓ NI UNO.
+      //
+      // Estos cinco campos describen el APK, así que en web se OMITEN. Es el mismo criterio que ya
+      // estaba escrito para `fcm_token`: "no sé" y "no tiene" son cosas distintas, y omitir deja la
+      // columna como estaba en vez de borrarla. Un usuario que solo usa la PWA queda con
+      // `app_version` null y sin token, así que la función lo filtra igual (`fcm_token is not null`).
+      const identidad = isNative() ? {
+        app_version: APP_VERSION,
+        apk_version: apkRef.current,
+        instalado_ts: instaladoRef.current,
+        notif_permiso: notif,
+        bateria_exenta: exenta,
+      } : {}
+      const estado = { cola_pendiente: cola, cuarentena_pendiente: cuar, ...identidad, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...diagArranque, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
