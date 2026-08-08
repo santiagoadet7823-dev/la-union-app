@@ -33,16 +33,49 @@ export default function UpdatePrompt() {
     updateRef.current = registerSW({ onNeedRefresh() { setShow(true) } })
   }, [nativo])
 
-  // Nativo: primero confirmar el bundle actual (evita rollback de capgo), después decidir qué
-  // ofrecer. APK (reinstalación) tiene prioridad sobre la OTA; si no hay APK pendiente, OTA.
+  // Nativo: primero confirmar el bundle actual (evita rollback de capgo), después decidir qué hacer.
+  // APK (reinstalación) tiene prioridad sobre la OTA; si no hay APK pendiente, OTA.
+  //
+  // 🩸 08/08/2026 — LA OTA SE APLICA SOLA. Hasta hoy esto solo mostraba un cartel y esperaba un
+  // toque, y el resultado medido fue que el parque no se actualizaba: 1.12.0 salió por los tres
+  // canales, se enviaron 17 avisos sin fallas, y tres horas después los 9 teléfonos seguían en
+  // 1.11.0 — incluido el único que estaba online y había recibido la notificación. Un vendedor en
+  // la calle no abre la app para actualizarla, y con razón: no es su trabajo.
+  //
+  // Ahora el bundle se descarga apenas se detecta y queda ENCOLADO (`otaDownload` llama a `next()`),
+  // así se aplica solo en el próximo arranque. No se fuerza `reload()` acá a propósito: recargar el
+  // WebView mientras alguien está a mitad de un check-in le borra la pantalla, y la actualización
+  // no es tan urgente como para pagar eso.
+  //
+  // El cartel NO desaparece: queda para lo que sigue necesitando una persona — el diálogo del
+  // instalador de Android cuando no puede ser silencioso, el permiso de "instalar apps
+  // desconocidas", y cualquier error de descarga. Es decir, se muestra solo cuando hay algo que
+  // hacer, no para pedir permiso de hacer lo obvio.
   useEffect(() => {
     if (!nativo) return
     let cancel = false
     otaReady()
     apkCheck().then((apk) => {
       if (cancel) return
+      // El APK sí necesita a la persona (salvo instalación silenciosa, que decide Android): se
+      // ofrece como antes.
       if (apk) { apkRef.current = apk; setModo('apk'); setShow(true); return }
-      otaCheck().then((u) => { if (!cancel && u) { otaRef.current = u; setModo('ota'); setShow(true) } })
+      otaCheck().then(async (u) => {
+        if (cancel || !u) return
+        otaRef.current = u
+        setModo('ota')
+        try {
+          await otaDownload(u)
+          // Listo y encolado. No se muestra nada: la próxima vez que abran, ya está actualizada.
+          if (!cancel) setFase('listo')
+        } catch (e) {
+          // Sin red o descarga cortada: recién ahí se pide ayuda, con el botón de reintentar.
+          if (cancel) return
+          setFase('error')
+          setMsg('No se pudo descargar: ' + (e?.message || 'sin conexión'))
+          setShow(true)
+        }
+      })
     })
     return () => { cancel = true }
   }, [nativo])

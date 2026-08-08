@@ -11,7 +11,7 @@ const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
 export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
-  const { perfil, user, permisos } = useAuth()
+  const { perfil, permisos } = useAuth()
   const puedeCatalogo = !!onAbrirCatalogo && (permisos || []).includes('catalogo')
   const nombre = perfil?.nombre || 'Vendedor'
   const { clients, done, conPedido, montoHoy, meta, efect, nextId, startVisit, catLoading } = j
@@ -127,11 +127,17 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                 <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
               </div>
               <div style={sx('flex:none;display:flex;align-items:center;gap:6px')}>
-                {c.idVendedor === user?.id && (
-                  <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-                  </button>
-                )}
+                {/* 🩸 08/08/2026 — SIN GATE DE ASIGNACIÓN. Este botón es el ÚNICO camino por el que
+                    un vendedor ubica un comercio, y estaba condicionado a `c.idVendedor === user.id`.
+                    Medido ese día: de 1998 clientes, 3 tenían vendedor asignado. O sea que para el
+                    99,8 % de la cartera el lápiz no se dibujaba nunca y la geolocalización no podía
+                    avanzar — 1980 comercios sin coordenadas, y el camino para cargarlas cerrado.
+                    Decisión del encargado: cada vendedor es responsable de lo que toca. La RLS
+                    acompaña (`clientes_upd` acepta al rol vendedor dentro de su empresa); el alcance
+                    por EMPRESA sigue intacto, y BORRAR sigue sin estar permitido. */}
+                <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                </button>
                 {c.status === 'pendiente' ? (
                   <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 16px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
                 ) : (

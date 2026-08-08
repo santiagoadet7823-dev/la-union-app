@@ -4,22 +4,40 @@ import { getAppConfig } from './data/appConfig'
 import { getTrackConfig, dentroDeHorario } from './tracking'
 import { persistence } from './persistence'
 import { APP_VERSION } from '../version'
+import { otaCheck, otaDownload } from './ota'
+import { apkCheck, apkStartUpdate } from './apkUpdate'
 
 /**
- * Aviso de ACTUALIZACIÓN con la app cerrada (pedido del cliente, 1.6.x).
+ * Actualización AUTOMÁTICA con la app cerrada, y aviso de que ya está lista.
  *
  * Se apoya en el watchdog que YA despierta la app cada ~30 min (push FCM + AlarmManager local, ver
- * push.js / alarm.js). En cada despertar, si hay una versión nueva y estamos DENTRO del horario de
- * monitoreo del usuario, postea una notificación nativa ("tocá para actualizar"). Al tocarla se abre
- * la app y el UpdatePrompt/updater se encarga de instalar.
+ * push.js / alarm.js). En cada despertar, si hay versión nueva, la BAJA sola y recién entonces avisa
+ * "ya está actualizada, tocá para abrir".
+ *
+ * 🩸 08/08/2026 — ANTES ESTO SOLO AVISABA, Y ESO NO ALCANZA. La versión 1.12.0 se publicó en los
+ * tres canales, se mandaron 17 notificaciones sin una sola falla, y a las tres horas los 9 teléfonos
+ * seguían en 1.11.0 — incluido el único que estaba online y había recibido el aviso. El cartel pedía
+ * un toque que nadie daba: un vendedor en la calle no abre la app para actualizarla. Todo el aparato
+ * de despliegue funcionaba y aun así el parque no se movía.
+ *
+ * Ahora el despertar hace el trabajo:
+ *   · OTA (contenido web) → se descarga y queda ENCOLADA con `next()`. Se aplica sola en el próximo
+ *     arranque; no se fuerza un `reload()` acá, que le reiniciaría la pantalla a alguien que puede
+ *     estar en medio de un check-in.
+ *   · APK (cambio nativo) → se descarga y se instala. Es silencioso en Android 12+ SI la app es su
+ *     propio instalador de registro (ver ApkUpdaterPlugin); si no lo es, Android muestra su diálogo
+ *     y el usuario lo confirma cuando levante el teléfono. En el peor caso queda igual que antes.
+ *
+ * El APK va PRIMERO, igual que en UpdatePrompt: trae el contenido web nuevo adentro, así que
+ * bajar además la OTA sería descargar dos veces lo mismo.
  *
  * Límite honesto (idéntico al watchdog): despierta a la app viva-pero-dormida (Doze / kill suave);
- * NO revive un force-stop manual ni a los OEM que bloquean FCM. No hay forma de garantizar el aviso
- * con la app forzada a cerrar — ver memoria push-watchdog-fcm.
+ * NO revive un force-stop manual ni a los OEM que bloquean FCM. No hay forma de garantizar esto con
+ * la app forzada a cerrar — ver memoria push-watchdog-fcm.
  *
- * "Hay versión nueva" = app_config.latest_version distinto del APP_VERSION que corre. Tras actualizar
- * (OTA o APK), APP_VERSION pasa a ser el nuevo y deja de avisar. Se avisa UNA vez por versión (se
- * recuerda la última avisada) para no repetir en cada despertar.
+ * Se actúa UNA vez por versión (se recuerda la última) para no re-descargar en cada despertar. La
+ * marca se guarda SOLO si la descarga salió bien: si falla, el próximo despertar reintenta, que es
+ * justo lo que se quiere con un teléfono que entra y sale de cobertura.
  */
 const AlarmWatchdog = registerPlugin('AlarmWatchdog')
 const KEY_VER = 'lu-update-notif-ver'
@@ -36,13 +54,14 @@ function esMayor(nueva, actual) {
 }
 
 /**
- * Chequea y, si corresponde, notifica. Idempotente y barato: se llama en cada despertar del watchdog.
+ * Chequea, ACTUALIZA y notifica. Idempotente y barato: se llama en cada despertar del watchdog.
  * @param {string|null} userId para resolver el horario efectivo (categoría o global).
  */
 export async function chequearYNotificarUpdate(userId = null) {
   if (!isNative()) return
   try {
-    // Solo dentro del horario de monitoreo del usuario (no molestar de madrugada / fuera de jornada).
+    // Solo dentro del horario de monitoreo del usuario. Vale tanto para no notificar de madrugada
+    // como para no gastarle datos móviles a las 3 AM bajando un bundle.
     const cfg = await getTrackConfig(userId)
     if (!dentroDeHorario(cfg)) return
 
@@ -50,13 +69,36 @@ export async function chequearYNotificarUpdate(userId = null) {
     const latest = data?.latest_version
     if (!latest || !esMayor(latest, APP_VERSION)) return // no hay novedad
 
-    const yaAvisado = await persistence.get(KEY_VER, null)
-    if (yaAvisado === latest) return // ya avisamos esta versión
+    const yaHecho = await persistence.get(KEY_VER, null)
+    if (yaHecho === latest) return // esta versión ya se bajó en un despertar anterior
 
-    await AlarmWatchdog.notificar({
-      titulo: 'Actualización disponible',
-      cuerpo: `DisT-At ${latest} — tocá para actualizar.`,
-    })
-    await persistence.set(KEY_VER, latest)
+    // --- APK primero: un cambio nativo no lo puede cubrir la OTA, y el .apk ya trae el web nuevo.
+    const apk = await apkCheck()
+    if (apk) {
+      await apkStartUpdate(apk)
+      // No se marca `KEY_VER`: la instalación la termina el sistema y puede quedar a mitad de camino
+      // (por ejemplo esperando que el usuario confirme). Si se completó, en el próximo despertar
+      // `apkCheck` ya devuelve null y cae a la rama de abajo. Reintentar es más barato que no llegar.
+      await avisar(latest, 'Se está instalando la versión nueva. Tocá para abrir cuando termine.')
+      return
+    }
+
+    // --- OTA: se descarga y queda encolada para el próximo arranque.
+    const ota = await otaCheck()
+    if (ota) {
+      await otaDownload(ota)
+      await persistence.set(KEY_VER, latest)
+      await avisar(latest, 'Ya está lista. Tocá para abrir la app actualizada.')
+    }
   } catch (_) { /* best-effort: nunca romper el despertar del watchdog */ }
+}
+
+/** El cartel. Tocarlo abre la app (lo resuelve el PendingIntent del plugin). */
+async function avisar(version, cuerpo) {
+  try {
+    await AlarmWatchdog.notificar({
+      titulo: `DisT-At ${version} actualizada`,
+      cuerpo,
+    })
+  } catch (_) {}
 }

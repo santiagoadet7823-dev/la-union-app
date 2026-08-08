@@ -262,6 +262,25 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     "por acá anduvo" y para nada más: van punteados, **fuera de los km, fuera del snap y fuera de la
     burbuja en vivo** (`ultimas_posiciones` los filtra, `db/28`). Cambiar un hueco honesto por una
     línea llena inventada es el mismo error que cometía el snap.
+48. 🩸 **Avisar no es actualizar: la OTA se descarga SOLA.** (08/08/2026.) Hasta 1.12.0 el aparato de
+    despliegue estaba completo —tres canales, `app_config`, push— y aun así el parque no se movía:
+    1.12.0 salió, se enviaron **17 notificaciones sin una sola falla**, y tres horas después los
+    **9 teléfonos seguían en 1.11.0**, incluido el único que estaba online y había recibido el aviso.
+    El cartel pedía un toque que nadie da — un vendedor en la calle no abre la app para actualizarla,
+    y con razón: no es su trabajo. Desde 1.12.1 el despertar del watchdog (`updateNotify.js`) y el
+    arranque (`UpdatePrompt`) **descargan el bundle solos** y recién entonces avisan "ya está lista,
+    tocá para abrir".
+    **No se fuerza `reload()`**: `otaDownload` encola con `next()` y se aplica en el próximo arranque.
+    Recargar el WebView mientras alguien está a mitad de un check-in le borra la pantalla, y ninguna
+    actualización vale eso. El cartel sobrevive **solo para lo que sí necesita una persona**: el
+    diálogo del instalador de Android, el permiso de "instalar apps desconocidas" y los errores de
+    descarga.
+    ⚠️ **`autoUpdate` de Capgo sigue en `false` y así debe quedar** (`capacitor.config.ts`): ese flag
+    descarga desde el backend de Capgo, y este proyecto es self-hosted contra `app_config`.
+    ⚠️ **La red de contención es `notifyAppReady()`** (regla 2): si un bundle no llega a llamarlo,
+    Capgo revierte. Eso cubre un bundle que revienta al arrancar — **no** uno que arranca bien y
+    rompe algo adentro. Con la aplicación automática, ese caso llega a los 9 teléfonos sin que nadie
+    lo toque: verificar en el emulador antes de publicar dejó de ser opcional.
 47. 🩸 **Una capa de Leaflet que NO está agregada al mapa no puede responder `getBounds()`.**
     (08/08/2026.) El encuadre hacía `L.circle([lat,lng],{radius}).getBounds()` sobre un círculo
     suelto para meter el geocerco del cliente en el `fitBounds`. Un `Circle` guarda su radio en
