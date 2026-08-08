@@ -281,6 +281,16 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     Capgo revierte. Eso cubre un bundle que revienta al arrancar — **no** uno que arranca bien y
     rompe algo adentro. Con la aplicación automática, ese caso llega a los 9 teléfonos sin que nadie
     lo toque: verificar en el emulador antes de publicar dejó de ser opcional.
+    🩸 **Y todo lo que se descargue solo necesita un freno, medido en datos móviles del empleado.**
+    `apkCheck()` sigue devolviendo el mismo APK mientras la instalada esté bajo `min_version`, y esa
+    condición NO se levanta cuando termina la DESCARGA sino cuando termina la INSTALACIÓN — que en
+    los equipos que no son su propio instalador de registro espera al diálogo de Android, o sea que
+    puede tardar la jornada entera. Sin freno, cada despertar del watchdog volvía a bajar los
+    **21,7 MB** del `.apk`: ~20 despertares son **~430 MB por día y por teléfono**, en silencio.
+    `updateNotify.js` recuerda el último intento por versión (`APK_REINTENTO_MS`, 6 h) y distingue
+    los dos fracasos: si la descarga **tira**, no gastó datos y se reintenta enseguida; si **resuelve**
+    y la instalación queda pendiente, los datos ya se gastaron y reintentar no acelera nada.
+    **Antes de automatizar una descarga, calcular MB × despertares × teléfonos.**
 47. 🩸 **Una capa de Leaflet que NO está agregada al mapa no puede responder `getBounds()`.**
     (08/08/2026.) El encuadre hacía `L.circle([lat,lng],{radius}).getBounds()` sobre un círculo
     suelto para meter el geocerco del cliente en el `fitBounds`. Un `Circle` guarda su radio en
@@ -527,7 +537,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. Alineados en **1.12.0** (agosto 2026).
+Hay varios números que conviven. Alineados en **1.12.1** (agosto 2026).
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -535,16 +545,17 @@ Hay varios números que conviven. Alineados en **1.12.0** (agosto 2026).
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.12.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.12.0` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `30` | Entero incremental de Android |
-| `app_config.bundle_version` | Supabase | `1.10.0` ⚠️ **sin publicar** | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | `1.10.0` ⚠️ **sin publicar** | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.12.1` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.12.1` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `31` | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.12.1` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | `1.12.1` ✅ publicado | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
-> ⚠️ **1.12.0 está en el código pero NO publicado, y arrastra el 1.11.0 que tampoco se publicó.**
-> Toca `.java` + manifest ⇒ APK nuevo obligatorio (la OTA no alcanza). Al publicar hay que subir
-> `bundle_version`, `latest_version`, `min_version` y `apk_url` a `1.12.0` — sin `min_version` el
-> auto-updater queda inerte y los 9 teléfonos se quedan en 1.10.0, o sea sin el arreglo del arranque.
+> 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
+> el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la
+> OTA 1.12.1 sin un toque, porque lo que descarga solo viaja **dentro** de esa OTA. Un APK con el
+> bundle adentro es la única forma de romper ese círculo sin depender de que alguien abra la app.
+> **Corolario para el próximo cambio del updater: sale por APK, no por OTA.**
 >
 > 🩸 **Para que la actualización sea silenciosa hay que instalar con `-i`, no solo con `-r`.**
 > 1.12.0 trae `PackageInstaller` con `USER_ACTION_NOT_REQUIRED` (`ApkUpdaterPlugin`), pero Android

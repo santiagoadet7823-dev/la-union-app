@@ -38,9 +38,28 @@ import { apkCheck, apkStartUpdate } from './apkUpdate'
  * Se actúa UNA vez por versión (se recuerda la última) para no re-descargar en cada despertar. La
  * marca se guarda SOLO si la descarga salió bien: si falla, el próximo despertar reintenta, que es
  * justo lo que se quiere con un teléfono que entra y sale de cobertura.
+ *
+ * 🩸 EL APK NECESITA SU PROPIO FRENO, y es por datos móviles, no por versión. `apkCheck()` sigue
+ * devolviendo el mismo APK mientras la versión instalada esté por debajo de `min_version`, y esa
+ * condición NO se levanta cuando la descarga termina: se levanta cuando el sistema termina de
+ * INSTALAR. Entre una cosa y la otra puede pasar la jornada entera — el diálogo de Android espera a
+ * que la persona levante el teléfono, y en los equipos que no son su propio instalador de registro
+ * ese diálogo aparece siempre. Sin freno, cada despertar volvía a bajar los **21,7 MB** del .apk:
+ * ~20 despertares en la jornada son ~430 MB por día y por teléfono, de datos del empleado, en
+ * silencio. Por eso se recuerda el ÚLTIMO INTENTO por versión y se espera `APK_REINTENTO_MS`.
+ *
+ * El freno distingue los dos fracasos, que no son el mismo:
+ *   · La descarga TIRA error (sin cobertura, GitHub caído) → no bajó nada, no gastó datos: se
+ *     reintenta en el próximo despertar. Es justo el teléfono que entra y sale de cobertura.
+ *   · La descarga RESUELVE y la instalación queda pendiente → los datos ya se gastaron y el .apk ya
+ *     está en el disco. Reintentar antes de que la persona toque el diálogo no acelera nada.
  */
 const AlarmWatchdog = registerPlugin('AlarmWatchdog')
 const KEY_VER = 'lu-update-notif-ver'
+const KEY_APK = 'lu-update-apk-intento'
+// 6 h ⇒ como mucho 2 descargas por jornada (43 MB) en vez de ~20 (430 MB). Sigue habiendo un
+// reintento por turno para el equipo que se quedó a mitad de camino.
+const APK_REINTENTO_MS = 6 * 60 * 60 * 1000
 
 // Compara 'a.b.c' — devuelve true si `nueva` es estrictamente mayor que `actual`.
 function esMayor(nueva, actual) {
@@ -75,10 +94,14 @@ export async function chequearYNotificarUpdate(userId = null) {
     // --- APK primero: un cambio nativo no lo puede cubrir la OTA, y el .apk ya trae el web nuevo.
     const apk = await apkCheck()
     if (apk) {
-      await apkStartUpdate(apk)
       // No se marca `KEY_VER`: la instalación la termina el sistema y puede quedar a mitad de camino
       // (por ejemplo esperando que el usuario confirme). Si se completó, en el próximo despertar
-      // `apkCheck` ya devuelve null y cae a la rama de abajo. Reintentar es más barato que no llegar.
+      // `apkCheck` ya devuelve null y cae a la rama de abajo. Lo que sí se marca es el intento, para
+      // no re-descargar 21,7 MB cada media hora mientras ese diálogo espera (ver el encabezado).
+      if (!(await tocaReintentarApk(apk.version))) return
+      await apkStartUpdate(apk)
+      // Recién acá: si `descargarEInstalar` tiró, no se gastaron datos y conviene reintentar ya.
+      await persistence.set(KEY_APK, `${apk.version}|${Date.now()}`)
       await avisar(latest, 'Se está instalando la versión nueva. Tocá para abrir cuando termine.')
       return
     }
@@ -91,6 +114,25 @@ export async function chequearYNotificarUpdate(userId = null) {
       await avisar(latest, 'Ya está lista. Tocá para abrir la app actualizada.')
     }
   } catch (_) { /* best-effort: nunca romper el despertar del watchdog */ }
+}
+
+/**
+ * ¿Pasó `APK_REINTENTO_MS` desde el último intento para ESTA versión? Un `min_version` nuevo
+ * reintenta enseguida (la marca vieja no le aplica), que es lo que se quiere: si se publica un APK
+ * de urgencia no tiene que esperar 6 h.
+ */
+async function tocaReintentarApk(version) {
+  const marca = await persistence.get(KEY_APK, null)
+  if (!marca) return true
+  const [ver, ts] = String(marca).split('|')
+  if (ver !== String(version)) return true
+  const t = parseInt(ts, 10)
+  // Sin fecha usable se reintenta: perder una actualización es peor que una descarga de más.
+  if (!Number.isFinite(t)) return true
+  // Un reloj movido hacia atrás dejaría `Date.now() - t` negativo y congelaría los reintentos
+  // para siempre; se trata como marca inválida.
+  const dt = Date.now() - t
+  return dt < 0 || dt >= APK_REINTENTO_MS
 }
 
 /** El cartel. Tocarlo abre la app (lo resuelve el PendingIntent del plugin). */
