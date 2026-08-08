@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -15,7 +15,7 @@ import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
-import { construirLeaflet, construirTrails, limpiarPorUsuario } from '../supervision/trazos'
+import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario } from '../supervision/trazos'
 import { calcularDwells } from '../supervision/dwells'
 import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
@@ -32,6 +32,12 @@ import MiniKpi from './components/MiniKpi'
 import FilaEquipo from './components/FilaEquipo'
 import SinDatoBloque from './components/SinDatoBloque'
 import SheetPersona from './components/SheetPersona'
+import GestionHost from '../../components/GestionHost'
+
+// El informe del día, el MISMO que ven las supervisiones. Lazy: el dueño abre esta pantalla para
+// el pulso del período, y el informe detallado es un paso opcional que no tiene por qué estar en
+// el chunk inicial.
+const ReportesView = lazy(() => import('../reportes/ReportesView'))
 
 /**
  * Dashboard del DUEÑO (rol `propietario`). Entrega de diseño v1.3, sección 4d/4e.
@@ -67,6 +73,7 @@ export default function PropietarioMovil() {
   const [horizonte, setHorizonte] = useState(() => horizonteInicial())
   const [personaSel, setPersonaSel] = useState(null)
   const [mapaAbierto, setMapaAbierto] = useState(false)
+  const [reportesAbierto, setReportesAbierto] = useState(false)
   const [cuentaAbierta, setCuentaAbierta] = useState(false)
   // ---- Estado del MAPA a pantalla completa. Antes no existía ninguno de estos: el mapa se abría
   // en un sheet de 60vh con cuatro props y sin un solo control.
@@ -89,7 +96,7 @@ export default function PropietarioMovil() {
 
   const m = useMetricasActividad(horizonte, !!idEmpresa)
   const { filas: diag } = useDiagnosticoEquipo()
-  const { movers, nombres, fotos } = useEquipoEnVivo()
+  const { movers, nombres, fotos, roles, plantel } = useEquipoEnVivo()
   const { idEmpresaActiva } = useTenant()
   const base = useEmpresaBase(idEmpresaActiva)
   const avisos = useAlertasEquipo()
@@ -201,6 +208,12 @@ export default function PropietarioMovil() {
     () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
     [trails, snapped, snapOn, foco]
   )
+  // Hitos "▶ 08:47" y "■ 17:20". Las dos supervisiones ya los mostraban y acá faltaban: era una
+  // omisión y no una decisión, así que el dueño veía el mismo trazo sin saber a qué hora empezó ni
+  // cuándo dejó de reportar — que es justo lo que un dueño mira. ⚠️ El fin es el último punto
+  // RECIBIDO, no un cierre declarado (no existe botón de finalizar jornada).
+  const inicios = useMemo(() => construirInicios(trails), [trails])
+  const fines = useMemo(() => construirFines(trails), [trails])
 
   // Burbujas de las personas en vivo: SIN ESTO el mapa dibuja polilíneas de color anónimas y no
   // hay nada, en ninguna parte de la pantalla, que diga de quién es cada una. Ese era el "no se
@@ -458,6 +471,18 @@ export default function PropietarioMovil() {
 
             <SinDatoBloque personas={sinDatos} onAbrir={setPersonaSel} />
 
+            {/* El informe del día, completo. Va DESPUÉS de la lista de equipo y no arriba: el dueño
+                abre esta pantalla para el pulso del período, y el detalle hora por hora de un día
+                es el paso siguiente, no el primero. */}
+            <button
+              type="button"
+              className="lu-press"
+              onClick={() => setReportesAbierto(true)}
+              style={sx('margin-top:14px;width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);color:var(--text);font-size:var(--fs-sm);font-weight:600;cursor:pointer')}
+            >
+              Ver el informe de la jornada
+            </button>
+
             {/* La explicación de que no hay ventas va acá abajo, chica y al final. NO es un cartel
                 de "PRÓXIMAMENTE" ni una grilla de guiones: la pantalla de hoy está completa con lo
                 que hay, y el bloque de venta entrará arriba cuando existan pedidos. */}
@@ -484,6 +509,26 @@ export default function PropietarioMovil() {
         onClose={() => setPersonaSel(null)}
       />
 
+      {/* El dueño no tiene menú de gestión (`gestionItems` es [] para su rol), así que el informe
+          se abre con el MISMO contenedor full-screen que usan las supervisiones — header con
+          atrás, Escape y botón físico de Android incluidos. */}
+      {reportesAbierto && (
+        <GestionHost title="Informe de jornada" onClose={() => setReportesAbierto(false)}>
+          <Suspense fallback={<div style={sx('padding:32px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:13px')}>Cargando…</div>}>
+            <ReportesView
+              fecha={fechaMapa}
+              onFecha={setFechaMapa}
+              byUser={byUser}
+              nombres={nombres}
+              cartera={cartera}
+              plantelIds={plantel}
+              roles={roles}
+              onVerEnMapa={(id) => { setReportesAbierto(false); setMapaAbierto(true); enfocarPersona(id) }}
+            />
+          </Suspense>
+        </GestionHost>
+      )}
+
       {mapaAbierto && (
         <MapaCompleto
           theme={theme}
@@ -498,6 +543,8 @@ export default function PropietarioMovil() {
           showClientes={showClientes}
           setShowClientes={setShowClientes}
           dwells={dwells}
+          inicios={inicios}
+          fines={fines}
           dwellOn={dwellOn}
           setDwellOn={setDwellOn}
           dwellSel={dwellSel}
@@ -556,6 +603,11 @@ function MapaCompleto({ theme, onClose, ...p }) {
         dwells={p.dwells}
         dwellSel={p.dwellSel}
         onDwellClick={(i) => p.setDwellSel((s) => (s === i ? null : i))}
+        inicios={p.inicios}
+        fines={p.fines}
+        // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una persona
+        // recalcularía `calcularDwells` — ~410 ms por persona-día. Ver el 🩸 en LeafletMap.
+        focoId={p.foco?.id || null}
         fit={!p.fitDone}
         focus={p.focusData}
         seguir={p.seguirData}

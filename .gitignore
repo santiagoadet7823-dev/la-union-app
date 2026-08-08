@@ -52,3 +52,10 @@ icon-fuente*.png
 
 # Salida del parser graphify (artefacto regenerable de la auditoría)
 graphify-out/
+
+# 🔴 REPO PÚBLICO — inventario del parque y volcados de diagnóstico.
+# INVENTARIO_TELEFONOS.md mapea serial ↔ cuenta de Google ↔ IP de Tailscale de los 9 equipos, y
+# explica cómo conectarse por adb. Los diagnostico-*.txt son dumps de un teléfono real. Publicar
+# cualquiera de los dos es publicar el plano de la flota junto con el método de acceso.
+INVENTARIO_TELEFONOS.md
+/scripts/diagnostico-*.txt

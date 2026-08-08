@@ -7,7 +7,7 @@ import { colorPorId } from '../../lib/colors'
 import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import { apilarAtras } from '../../services/atras'
@@ -33,6 +33,7 @@ import { APP_VERSION } from '../../version'
 
 // Vistas de gestión migradas al botón "Menú" (antes vivían en el Panel de gestión / AdminView,
 // la vista de escritorio tipo PWA). Se cargan bajo demanda para no engordar el chunk del mapa.
+const ReportesView = lazy(() => import('../reportes/ReportesView'))
 const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
 const RevisarDuplicados = lazy(() => import('../admin/RevisarDuplicados'))
 const ZonasView = lazy(() => import('../admin/ZonasView'))
@@ -87,7 +88,7 @@ const glass = glassBlur // alias local: este archivo lo usa ~10 veces como `...g
 export default function SupervisionMovil({ role = 'encargado', onIrAJornada = null }) {
   const { theme, isDark, toggleTheme } = useTheme()
   const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
-  const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
+  const { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   // 🚨 SCOPE de LECTURA (regla 11): todo lo que CONSULTA usa `idEmpresaActiva`; la escritura de
   // GPS sigue clavada a `useAuth().idEmpresa` en GpsContext, que esta pantalla no toca.
   const { idEmpresaActiva, puedeCambiarScope, empresasDisponibles, setEmpresaActiva, esOverride, nombreActiva } = useTenant()
@@ -335,6 +336,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // `trails`, así que ya viene filtrado por chip y con los puntos limpios. Barato (una entrada por
   // persona), pero memoizado igual: el padre re-renderiza con cada posición que llega por Realtime.
   const inicios = useMemo(() => construirInicios(trails), [trails])
+  // Y su simétrico "■ 17:20" en el último punto del día. ⚠️ Último punto RECIBIDO, no fin declarado.
+  const fines = useMemo(() => construirFines(trails), [trails])
   const pin = moversArr.find((m) => m.id === pinId) || null
 
   // % de batería del móvil seleccionado. El `pin` sale de `movers` (useEquipoEnVivo), cuyo
@@ -461,6 +464,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           dwellSel={dwellSel}
           onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
           inicios={inicios}
+          fines={fines}
+          // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una persona
+          // recalcularía `calcularDwells` — ~410 ms por persona-día. Ver el 🩸 en LeafletMap.
+          focoId={foco?.id || null}
           fit={!fitDone}
           focus={focusData}
           seguir={seguirData}
@@ -808,6 +815,22 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {gestion && gestion !== 'invitar' && (
         <GestionHost title={GESTION_TITLES[gestion]} onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}>
           <Suspense fallback={<GestionCargando />}>
+            {/* El informe recibe `byUser` YA LIMPIO, el mismo objeto del que salen el trazo y los
+                carteles: es lo que garantiza que sus km sean dígito por dígito los del mapa. */}
+            {gestion === 'reportes' && (
+              <ReportesView
+                fecha={fecha}
+                onFecha={setFecha}
+                byUser={byUser}
+                nombres={nombres}
+                cartera={cartera}
+                pasaFiltro={pasaFiltro}
+                filter={filter}
+                plantelIds={plantel}
+                roles={roles}
+                onVerEnMapa={(id) => { setGestion(null); enfocarUsuario(id) }}
+              />
+            )}
             {gestion === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
               {gestion === 'duplicados' && <RevisarDuplicados onToast={showToast} />}
             {gestion === 'zonas' && <ZonasView onToast={showToast} />}

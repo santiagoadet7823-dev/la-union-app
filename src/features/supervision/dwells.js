@@ -73,7 +73,7 @@ export function calcularDwells(byUser, pasaFiltro, clientes) {
   return Object.entries(byUser)
     .filter(([, v]) => pasaFiltro(v.rol))
     .flatMap(([id, v]) => detectarParadas(v.points || [])
-      .map((p) => {
+      .map((p, i) => {
         const comercio = comercioCercano(p.lat, p.lng, clientes)
         const horario = horarioDwell(p)
         return {
@@ -83,6 +83,18 @@ export function calcularDwells(byUser, pasaFiltro, clientes) {
           sub: comercio || horario,
           extra: comercio ? horario : null,
           color: colorPorId(id),
+          // 08/08/2026 — el ORDEN dentro de la jornada de esta persona. `detectarParadas` ya
+          // devuelve cronológico, así que es el índice + 1 y no cuesta un cálculo.
+          //
+          // Numeración POR PERSONA y no global del día: con varios en el mapa los números se
+          // repiten, pero el color ya desambigua (igual que con los trazos), y una numeración
+          // global sería ilegible justo en el caso que importa — seguir el recorrido de UNO. Es
+          // también la que coincide con la tabla de paradas del reporte.
+          orden: i + 1,
+          // El `id` ya se tenía y se tiraba (solo sobrevivía disuelto en `colorPorId`). Hace falta
+          // para atenuar los carteles ajenos cuando hay alguien enfocado, y eso se decide al
+          // DIBUJAR: meter el foco acá obligaría a recalcular `detectarParadas` en cada toque.
+          id,
         }
       }))
 }

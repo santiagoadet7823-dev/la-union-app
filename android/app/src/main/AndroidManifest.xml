@@ -39,9 +39,19 @@
 <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION"
     android:maxSdkVersion="28" />
 <!-- Permite que la app lance el instalador del sistema con un .apk que ella misma descargó
-     (updater de APK nativo, ver ApkUpdaterPlugin.java). Android igual exige que el usuario
-     confirme "Instalar" y que "instalar apps desconocidas" esté habilitado para esta app. -->
+     (updater de APK nativo, ver ApkUpdaterPlugin.java). Es el camino de RESERVA: con él solo,
+     Android exige que el usuario confirme "Instalar". -->
 <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+<!-- 🩸 ACTUALIZACIÓN SIN TOQUES (08/08/2026). Android 12+ deja que una app se reinstale A SÍ MISMA
+     sin diálogo, vía PackageInstaller.setRequireUserAction(USER_ACTION_NOT_REQUIRED). Es un permiso
+     normal (no de runtime): no se pide, se declara.
+
+     ⚠️ NO alcanza con declararlo. El sistema solo concede el modo silencioso si la app es su PROPIO
+     instalador de registro (`getInstallSourceInfo().getInstallingPackageName()`), y los 9 teléfonos
+     del parque se instalaron por `adb`, que deja ese campo en null. O sea: la PRIMERA actualización
+     va a seguir pidiendo confirmación, y de la segunda en adelante ya no. No es un bug del código —
+     es cómo se gana el privilegio. Ver el comentario de `instalarConPackageInstaller`. -->
+<uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <application
         android:name=".LaUnionApp"
         android:allowBackup="true"
@@ -130,6 +140,14 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- Resultado de la instalación del APK nuevo (PackageInstaller). Va en el manifest y no
+             registrado a mano porque el proceso que lo registraría es el que la instalación mata:
+             la app se está reinstalando a sí misma. exported=false — el único que le habla es el
+             instalador del sistema, a través del PendingIntent que le pasamos. -->
+        <receiver
+            android:name=".InstalacionReceiver"
+            android:exported="false" />
 
         <!-- Uploader GPS nativo (Opción B): foreground service propio que captura y postea las
              posiciones sin depender del WebView (funciona con la pantalla bloqueada). foregroundServiceType

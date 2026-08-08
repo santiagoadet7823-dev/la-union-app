@@ -5,7 +5,18 @@ Guía operativa del repo. **Leer completo antes de tocar nada.**
 Documentos complementarios:
 - [HANDOFF.md](HANDOFF.md) — pendientes y deudas por prioridad, estado del login, términos, y el
   **entorno completo** (toolchain, emulador, skills, MCPs, cuentas). Es el documento para retomar en
-  otra máquina o en una sesión nueva.
+  otra máquina o en una sesión nueva. ⚠️ **§7 es urgente y tiene fecha de vencimiento**: el parque se
+  unifica a Samsung A07 y hay una decisión (Device Owner) que después de configurar el primer teléfono
+  cuesta un factory reset por equipo. Incluye el checklist de la sesión de USB (§7.7), que es lo que
+  destraba todo lo que el emulador no puede probar, y **§7.9 — la ruta de MDM elegida (Headwind
+  self-hosted) y, sobre todo, el orden**: el servidor va en un VPS con dominio **antes** de que
+  lleguen los teléfonos, nunca en una PC. Ponerlo en una PC obliga a re-inscribir, y re-inscribir es
+  factory reset.
+- [INVENTARIO_TELEFONOS.md](INVENTARIO_TELEFONOS.md) — el mapa **serial ↔ cuenta ↔ IP de Tailscale**
+  de los 9 teléfonos del parque, qué se le dejó puesto a cada uno, cómo conectarse en remoto y cómo
+  agregar uno nuevo. 🔴 Incluye la trampa que costó la sesión del 08/08: **configurar el teléfono no
+  lo pone a rastrear** — sin pasar el gate de GPS no hay token, y sin token no hay puntos por más
+  impecable que se vea el `dumpsys`.
 - [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) — arquitectura, deuda técnica y riesgos (rev. 3,
   04/08/2026, sobre 1.10.0).
 - [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) — qué es cada archivo de la carpeta, y qué es
@@ -251,6 +262,21 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     "por acá anduvo" y para nada más: van punteados, **fuera de los km, fuera del snap y fuera de la
     burbuja en vivo** (`ultimas_posiciones` los filtra, `db/28`). Cambiar un hueco honesto por una
     línea llena inventada es el mismo error que cometía el snap.
+47. 🩸 **Una capa de Leaflet que NO está agregada al mapa no puede responder `getBounds()`.**
+    (08/08/2026.) El encuadre hacía `L.circle([lat,lng],{radius}).getBounds()` sobre un círculo
+    suelto para meter el geocerco del cliente en el `fitBounds`. Un `Circle` guarda su radio en
+    METROS y solo sabe pasarlo a grados con un mapa: `getBounds()` llama a
+    `this._map.layerPointToLatLng(...)` y ahí `_map` es `undefined`. Reventaba con *"Cannot read
+    properties of undefined (reading 'layerPointToLatLng')"*, el `ErrorBoundary` tapaba el mapa con
+    **"No se pudo cargar el mini-mapa"**, y el único lugar donde se veía era la ficha de un cliente
+    YA ubicado — o sea la pantalla desde la que se corrige una ubicación, con la cartera casi entera
+    sin geolocalizar. Lo que hay que usar es `L.latLng(lat,lng).toBounds(radio*2)`, que no necesita
+    mapa (ojo: toma el LADO, no el radio). Vale para cualquier capa: `Circle`, `Marker` y
+    `Polyline` solo saben proyectar cuando están montadas.
+    **Y todo `setTimeout`/`rAF` que toque el mapa se cancela al desmontar**: el
+    `setTimeout(invalidateSize, 60)` del init no se limpiaba, y sobre un mapa ya destruido tiraba
+    `_leaflet_pos` — una excepción ASINCRÓNICA, que ningún ErrorBoundary puede atajar, y que
+    convertía un fallo acotado en una pantalla en blanco.
 41. **El enganche de la cámara es un EVENTO, no una coordenada.** (03/08/2026.) "Hago zoom, toco
     centrar y el seguimiento ya no funciona": el efecto de `seguir` en `LeafletMap` dependía solo de
     `[lat, lng]`, y apretar el botón no cambia la posición de nadie — así que **no corría nunca**. Y
@@ -482,7 +508,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. Alineados en **1.11.0** (agosto 2026).
+Hay varios números que conviven. Alineados en **1.12.0** (agosto 2026).
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -490,16 +516,22 @@ Hay varios números que conviven. Alineados en **1.11.0** (agosto 2026).
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.11.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.11.0` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `29` | Entero incremental de Android |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.12.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.12.0` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `30` | Entero incremental de Android |
 | `app_config.bundle_version` | Supabase | `1.10.0` ⚠️ **sin publicar** | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.10.0` ⚠️ **sin publicar** | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
-> ⚠️ **1.11.0 está en el código pero NO publicado.** Toca `.java` + manifest ⇒ APK nuevo obligatorio
-> (la OTA no alcanza). Al publicar hay que subir `bundle_version`, `latest_version`, `min_version` y
-> `apk_url` a `1.11.0` — sin `min_version` el auto-updater queda inerte y los 9 teléfonos se quedan
-> en 1.10.0, o sea sin el arreglo del arranque.
+> ⚠️ **1.12.0 está en el código pero NO publicado, y arrastra el 1.11.0 que tampoco se publicó.**
+> Toca `.java` + manifest ⇒ APK nuevo obligatorio (la OTA no alcanza). Al publicar hay que subir
+> `bundle_version`, `latest_version`, `min_version` y `apk_url` a `1.12.0` — sin `min_version` el
+> auto-updater queda inerte y los 9 teléfonos se quedan en 1.10.0, o sea sin el arreglo del arranque.
+>
+> 🩸 **1.12.0 es la ÚLTIMA actualización que le va a pedir un toque al vendedor** (en Android 12+).
+> Trae `PackageInstaller` con `USER_ACTION_NOT_REQUIRED` (`ApkUpdaterPlugin`), pero el modo
+> silencioso exige que la app sea su propio instalador de registro y los 9 equipos vinieron de `adb`
+> (installer `null`). O sea: esta pide confirmar, la siguiente ya no. Para saltearlo también en esta,
+> empujar el APK por `adb install -r` sobre Tailscale (ver `INVENTARIO_TELEFONOS.md` §3).
 
 **¿OTA o APK nuevo?**
 
@@ -604,6 +636,19 @@ Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle t�
   Los datos de las tres están vivos (leen `posiciones` y la cartera), así que ninguna depende de
   algo que ya no se llene: es una decisión de producto, no de datos. Rescatar `ReplayJornada`
   significa colgarla del menú "Menú" (`GestionHost`), que es el único camino vivo.
+- 🔴 **La cartera está bloqueada para el vendedor, y no por permisos.** Medido el 08/08/2026:
+  **1998 clientes, 3 con `id_vendedor` y 18 con ubicación.** El lápiz que abre
+  `EditarClienteVendedor` —el ÚNICO camino por el que un vendedor ubica un comercio— solo se dibuja
+  si `c.idVendedor === user?.id` (`vendedor/tabs/InicioTab.jsx`), así que para el 99,8 % de la
+  cartera ningún vendedor lo ve nunca. No es un bug de código: la importación masiva no cargó
+  `id_vendedor`, y `addCliente` solo lo setea cuando el cliente lo crea el propio móvil. Mientras
+  siga así, la geolocalización de la cartera no puede avanzar sola. Los 3 autoasignados se
+  desasignaron el 08/08 (quedaron sus ubicaciones); decidir si el gate correcto es la ZONA
+  (`clientes.id_zona` → `zonas.id_vendedor`) en vez de la asignación directa.
+- 🟠 **Cuentas de perfil DUPLICADAS**: al 08/08/2026 hay 5 pares con el mismo nombre y distinta
+  mayúscula (`Orlando Chavez`/`Orlando chavez`, `Gabriel tevez`/`Gabriel Tevez`, `Luis Mendoza`×2,
+  `Nelson rojas`/`Nelson Ismael Rojas`, `Agustin Vazquez`/`Agustin Vasquez`). La gemela que no
+  rastrea figura "no reportó" para siempre en el informe de jornada. Se limpia en `Usuarios`.
 - 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
   pueden usar el mismo código de cliente. **Con 2 empresas vivas en la base (04/08/2026) ya dejó de ser
   hipotético.**

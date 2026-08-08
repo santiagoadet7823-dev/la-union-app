@@ -1,13 +1,18 @@
 package com.launion.app;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInstaller;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.util.Log;
 
 import androidx.core.content.FileProvider;
+
+import java.io.FileInputStream;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -27,8 +32,10 @@ import java.net.URL;
  * del sistema. Es el complemento de la OTA de Capgo: la OTA cambia solo el bundle web, esto sirve
  * cuando cambió algo NATIVO (plugin, permiso, código Java) y hay que reinstalar el .apk.
  *
- * NO es una instalación silenciosa: Android SIEMPRE muestra su diálogo "¿Instalar?" para un APK
- * de fuera de Play Store. Esto elimina el paso manual de pasar el archivo, no el toque de confirmar.
+ * Desde el 08/08/2026 instala SIN TOQUES en Android 12+ (PackageInstaller con
+ * `USER_ACTION_NOT_REQUIRED`), con la salvedad de la primera vez que explica
+ * `instalarConPackageInstaller`. En Android 11 y anteriores sigue el camino de siempre, que muestra
+ * el diálogo "¿Instalar?" del sistema.
  *
  * Lo dispara el JS (services/apkUpdate.js) solo cuando la versión instalada quedó por debajo de
  * `app_config.min_version`. Requiere el permiso REQUEST_INSTALL_PACKAGES (manifest) y el FileProvider
@@ -42,6 +49,8 @@ import java.net.URL;
  */
 @CapacitorPlugin(name = "ApkUpdater")
 public class ApkUpdaterPlugin extends Plugin {
+
+    private static final String TAG = "ApkUpdater";
 
     @PluginMethod
     public void descargarEInstalar(PluginCall call) {
@@ -117,8 +126,83 @@ public class ApkUpdaterPlugin extends Plugin {
         return destino;
     }
 
-    /** Lanza el instalador del sistema con el .apk vía FileProvider (content:// URI + permiso de lectura). */
+    /**
+     * Instala el .apk. Intenta primero el camino SIN TOQUES y cae al instalador clásico si no se
+     * puede — nunca deja al equipo sin forma de actualizarse.
+     */
     private void lanzarInstalador(File apk) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                instalarConPackageInstaller(apk);
+                return;
+            } catch (Exception e) {
+                // Cualquier cosa que salga mal acá (sesión que no abre, disco lleno, un OEM que lo
+                // bloquea) NO puede dejar el teléfono sin actualizar: se cae al camino de siempre.
+                Log.w(TAG, "PackageInstaller falló, uso el instalador clásico", e);
+            }
+        }
+        instalarConIntent(apk);
+    }
+
+    /**
+     * 🩸 ACTUALIZACIÓN SIN TOQUES (08/08/2026). Hasta hoy, cada versión nueva costaba 3-4 toques de
+     * cada vendedor —y 6-7 la primera vez, con la vuelta por Ajustes— multiplicado por nueve
+     * teléfonos que están en la calle. La consecuencia práctica no era la molestia: era que el parque
+     * quedaba partido en dos versiones durante días, que es como se llega a un bug que solo le pasa
+     * a tres personas.
+     *
+     * Android 12+ (API 31) permite que una app se reinstale A SÍ MISMA sin diálogo, con
+     * `setRequireUserAction(USER_ACTION_NOT_REQUIRED)`. No es una API privilegiada ni necesita
+     * Device Owner: es exactamente el caso de uso para el que se agregó.
+     *
+     * ⚠️ EL PERMISO NO ALCANZA, Y ESTO HAY QUE SABERLO ANTES DE PROBARLO. El sistema concede el modo
+     * silencioso solo si la app es su PROPIO instalador de registro. Los 9 teléfonos del parque se
+     * instalaron por `adb`, que deja `getInstallSourceInfo().getInstallingPackageName()` en null, así
+     * que la PRIMERA actualización va a mostrar el diálogo igual (el receiver lo abre solo, ver
+     * InstalacionReceiver). Esa primera instalación es la que nos convierte en el instalador, y de
+     * ahí en adelante ya no pregunta nunca más. Se puede saltear ese paso empujando el APK bootstrap
+     * por `adb` sobre Tailscale, sin que nadie toque el teléfono.
+     *
+     * El PendingIntent va MUTABLE a propósito: el instalador le agrega los extras del resultado
+     * (`EXTRA_STATUS`, y el `EXTRA_INTENT` del diálogo cuando hace falta confirmar). Con
+     * FLAG_IMMUTABLE el broadcast llega vacío y el diálogo no se puede abrir nunca — el mismo tipo
+     * de trampa que documenta la regla 16 para MovimientoPlugin.
+     */
+    private void instalarConPackageInstaller(File apk) throws Exception {
+        Context ctx = getContext();
+        PackageInstaller installer = ctx.getPackageManager().getPackageInstaller();
+
+        PackageInstaller.SessionParams params =
+            new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        params.setAppPackageName(ctx.getPackageName());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+        }
+
+        int sessionId = installer.createSession(params);
+        try (PackageInstaller.Session session = installer.openSession(sessionId)) {
+            // Se pasa el LARGO real del archivo y no -1: con -1 el instalador no puede reservar
+            // espacio por adelantado y un teléfono al límite falla recién a mitad de la copia.
+            try (OutputStream out = session.openWrite("app", 0, apk.length());
+                 InputStream in = new FileInputStream(apk)) {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                session.fsync(out);
+            }
+
+            Intent intent = new Intent(ctx, InstalacionReceiver.class);
+            PendingIntent pi = PendingIntent.getBroadcast(
+                ctx, sessionId, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE
+            );
+            session.commit(pi.getIntentSender());
+        }
+    }
+
+    /** Instalador del sistema vía FileProvider (content:// URI + permiso de lectura). El camino de
+     *  siempre: siempre pide confirmar. Queda como reserva para Android 11 y anteriores. */
+    private void instalarConIntent(File apk) {
         Context ctx = getContext();
         Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", apk);
         Intent intent = new Intent(Intent.ACTION_VIEW);

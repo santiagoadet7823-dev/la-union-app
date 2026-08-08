@@ -134,7 +134,16 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
           if (conRol) e.rol = p.rol
           // `ts` va en el punto: lo necesita detectarParadas (dwell.js). `bateria` es
           // smallint nullable (0-100) y la muestra la vista.
-          e.points.push({ lat: p.lat, lng: p.lng, ts: p.ts, bateria: p.bateria })
+          //
+          // 🩸 `accuracy` (08/08/2026) — se PEDÍA en el select desde 1.9.0 y se tiraba acá, así que
+          // nunca llegó a `limpiarTrazo` y la rama de puntos TRIANGULADOS no se activó jamás: la
+          // condición es `Number(p.accuracy) > ACCURACY_MAX_M`, y con el campo ausente eso es
+          // `NaN > 30` → false, siempre. O sea que la regla 40 ("un punto triangulado no se dibuja
+          // ni se cuenta como GPS") era falsa en toda la app: esos puntos se dibujaban como línea
+          // llena, entraban al snap y sumaban kilómetros. Medido sobre la semana del 01 al 08/08:
+          // entre 0 y 0,6 % de los puntos por día, así que el arreglo mueve los km muy poco — pero
+          // el que los movía era un dato que la app misma declara que no sirve para medir.
+          e.points.push({ lat: p.lat, lng: p.lng, ts: p.ts, bateria: p.bateria, accuracy: p.accuracy })
         })
         porUsuario.forEach((e, id) => {
           const rolVal = conRol ? e.rol : next[id]?.rol

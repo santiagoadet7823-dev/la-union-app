@@ -12,6 +12,7 @@
  *             Es lo que deja que un vendedor edite el catálogo sin dejar de ser vendedor.
  */
 export const GESTION_ITEMS = [
+  { key: 'reportes', label: 'Reportes', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'clientes', label: 'Clientes', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'duplicados', label: 'Revisar repetidos', roles: ['admin', 'superadmin'] },
   { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },

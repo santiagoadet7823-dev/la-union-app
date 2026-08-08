@@ -82,6 +82,23 @@ export function construirInicios(trails) {
 }
 
 /**
+ * Marcador de CIERRE: el último punto del día de cada persona. Simétrico a `construirInicios` y con
+ * las mismas dos razones para salir de `trails` y no de `byUser` (filtro heredado + puntos limpios).
+ *
+ * ⚠️ Es el ÚLTIMO PUNTO RECIBIDO, no un fin de jornada declarado: esta app no tiene botón de
+ * finalizar. Si el teléfono se quedó sin batería a las 14:10, esto marca las 14:10 — y por eso el
+ * marcador se rotula "último punto". La distinción entre "terminó" y "dejó de reportar" la hace el
+ * reporte, cruzando esta hora contra la ventana de rastreo asignada.
+ */
+export function construirFines(trails) {
+  return (trails || []).flatMap((t) => {
+    const p = t.points?.[t.points.length - 1]
+    if (!p) return []
+    return [{ id: t.id, lat: p.lat, lng: p.lng, ts: p.ts || null, color: t.color, hora: p.ts ? fmtHora(p.ts) : '' }]
+  })
+}
+
+/**
  * Geometría final para `<LeafletMap trails={...}>`.
  *
  * - `snapOn` → geometría pegada a calles (OSRM, Edge Function); si no hay, cae al crudo.

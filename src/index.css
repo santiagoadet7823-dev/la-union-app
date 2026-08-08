@@ -335,3 +335,57 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================================================
+   IMPRESIÓN — el PDF del informe de jornada (features/reportes).
+   ============================================================================================
+   No hay librería de PDF en el repo y es a propósito: el informe impreso TIENE que ser el informe
+   que se verificó en pantalla, no una reconstrucción dibujada de cero con coordenadas de papel
+   (eso son dos copias del mismo layout, y divergen a la primera corrección). Ver el 🩸 largo en
+   features/reportes/exportarInforme.js.
+
+   El PDF es entonces esta hoja: la pantalla, sin el chrome de la app.
+
+   `#lu-informe` se saca de su lugar y se planta en la página con `position:absolute`, en vez de
+   ocultar sus ancestros uno por uno. Es la única forma que funciona acá: el informe vive dentro de
+   `GestionHost`, que es `position:fixed` con `overflow` — un contenedor así imprime SOLO su primera
+   pantalla y recorta el resto, sin importar qué se le diga a los hijos. */
+@media print {
+  @page { margin: 14mm; }
+
+  html, body {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Todo lo que no sea el informe desaparece; el informe se despega de su contenedor recortado. */
+  body > *:not(#lu-informe) { display: none !important; }
+
+  #lu-informe {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Controles, solapas y botones de acción: no son parte del documento. */
+  .lu-no-print { display: none !important; }
+
+  /* Los navegadores descartan fondos e imágenes de fondo al imprimir salvo que se pida lo
+     contrario, y acá el color ES el dato: la barra de la jornada, el rayado de "sin reportar" y
+     los discos de color de cada persona quedarían todos blancos. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Un bloque partido entre dos páginas es exactamente el caso que hace ilegible un informe: la
+     mitad de la línea de tiempo arriba y la otra mitad tres centímetros más abajo, en otra hoja. */
+  #lu-informe > div { break-inside: avoid; page-break-inside: avoid; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+}

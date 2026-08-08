@@ -47,9 +47,18 @@ function roundRect(ctx, x, y, w, h, r) {
 
 /**
  * @param {{ coords:Array<{lat,lng}>, titulo?:string, subtitulo?:string,
- *           stats?:Array<{label,value}>, color?:string, filename?:string }} opts
+ *           stats?:Array<{label,value}>, color?:string, filename?:string,
+ *           paradas?:Array<{lat,lng,orden}>, devolver?:'archivo'|'dataUrl' }} opts
+ *
+ * `paradas` (08/08/2026) dibuja los carteles NUMERADOS, con la misma numeración que el mapa de la
+ * app y que la tabla del informe. Sin ellos la imagen muestra por dónde anduvo pero no qué hizo, que
+ * es justamente lo que alguien busca cuando pide "mandame el recorrido".
+ *
+ * `devolver:'dataUrl'` no descarga nada: devuelve la imagen lista para incrustar en el informe que
+ * se va a imprimir a PDF. Es lo que hace que el PDF salga CON el mapa adentro en vez de mandar dos
+ * archivos sueltos que el que los recibe tiene que volver a juntar.
  */
-export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], color = '#0ABAB5', filename = 'recorrido.png' }) {
+export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], color = '#0ABAB5', filename = 'recorrido.png', paradas = [], devolver = 'archivo' }) {
   if (!coords || coords.length < 2) throw new Error('Sin recorrido para exportar')
 
   const W = 960
@@ -108,16 +117,24 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
   ctx.lineWidth = 5
   trace(); ctx.stroke()
 
-  const mark = (p, fill, label) => {
+  // Disco con número/letra. Relleno BLANCO con anillo de color y texto oscuro: el mismo lenguaje
+  // que los hitos y los carteles numerados del mapa de la app (LeafletMap.hitoIcon / dwellIcon).
+  // Un informe que usa otros símbolos que la pantalla obliga a traducir entre los dos.
+  const mark = (p, anillo, label, r = 11) => {
     const [x, y] = toXY(p)
-    ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2)
-    ctx.fillStyle = fill; ctx.fill()
-    ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fillStyle = '#ffffff'; ctx.fill()
+    ctx.lineWidth = 3; ctx.strokeStyle = anillo; ctx.stroke()
+    ctx.fillStyle = '#0B2B2A'
+    ctx.font = `bold ${r - 2}px sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(label, x, y)
   }
-  mark(coords[0], '#10B981', 'A')
-  mark(coords[coords.length - 1], '#EF4444', 'B')
+  // Las paradas van ANTES que inicio y fin: si una parada coincide con el arranque (arrancó en el
+  // depósito y estuvo media hora cargando), el que tiene que quedar arriba es el hito.
+  paradas.forEach((p) => mark(p, color, String(p.orden), 10))
+  mark(coords[0], '#10B981', '▶')
+  mark(coords[coords.length - 1], '#EF4444', '■')
 
   // --- Encabezado (se dibuja al final, tapa cualquier desborde de tiles/línea) ---
   ctx.fillStyle = '#0B2B2A'
@@ -150,6 +167,9 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
   ctx.fillStyle = '#9fb6b4'
   ctx.font = '11px sans-serif'
   ctx.fillText('Informe de recorrido', W - 28, 62)
+
+  // Para incrustar en el informe impreso: sin descarga, sin hoja de compartir.
+  if (devolver === 'dataUrl') return canvas.toDataURL('image/png')
 
   // --- Descarga (web: anchor; APK: filesystem + compartir, vía helper) ---
   const blob = await new Promise((res, rej) => {

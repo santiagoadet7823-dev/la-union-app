@@ -133,3 +133,34 @@ export function dentroDeHorario(cfg) {
   const ventanas = cfg.ventanas && cfg.ventanas.length ? cfg.ventanas : [cfg]
   return ventanas.some((v) => enVentana(v, now))
 }
+
+/**
+ * A qué hora tendría que haber ARRANCADO el rastreo de esta persona un día dado: el `start` más
+ * temprano entre las ventanas que aplican a ese día de la semana. Devuelve minutos del día, o null
+ * si ese día no se rastrea (o no hay config).
+ *
+ * 🩸 VIVE ACÁ Y NO EN EL REPORTE, y no es una preferencia de organización. La regla 36 dice que la
+ * ventana de rastreo ya está implementada TRES veces —esta, `VentanaRastreo.java` y `en_ventana` en
+ * SQL— y que nada las sincroniza: escribir el filtro de días una cuarta vez, dentro de una pantalla
+ * de reportes, sería agregar un lugar más donde puede divergir en silencio. Acá reusa el MISMO
+ * `v.days` y el mismo `aMinutosDelDia` que `enVentana`, así que si alguien cambia la semántica de
+ * los días, esto cambia con ella.
+ *
+ * Se usa para medir el retraso de arranque, que es el problema de campo mejor documentado del
+ * proyecto: mediana de 51 min sobre 29 días hábiles, 79 % de los días con más de 15 min.
+ *
+ * @param {object} cfg lo que devuelve getTrackConfig
+ * @param {Date} fecha el día a evaluar (se usa solo su día de la semana, en hora local)
+ */
+export function inicioProgramado(cfg, fecha) {
+  if (!cfg || cfg.enabled === false) return null
+  const ventanas = cfg.ventanas && cfg.ventanas.length ? cfg.ventanas : [cfg]
+  const iso = fecha.getDay() === 0 ? 7 : fecha.getDay()
+  let mejor = null
+  for (const v of ventanas) {
+    if (v.days && v.days.length && !v.days.includes(iso)) continue
+    const m = aMinutosDelDia(v.start, 0)
+    if (mejor == null || m < mejor) mejor = m
+  }
+  return mejor
+}

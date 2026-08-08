@@ -24,11 +24,32 @@ import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../servic
  *
  * Con scope `TODAS` ese filtro se saca A PROPÓSITO y la mezcla es lo buscado.
  */
+/**
+ * Quiénes SE ESPERA que reporten posiciones — o sea, quiénes salen a la calle con un teléfono.
+ *
+ * 🩸 08/08/2026 — nace de un informe que mentía el primer día que se usó. El bloque "no reportó ni
+ * un punto" listaba 9 personas de un plantel de 21, y ninguna de las 9 era un problema real:
+ *   · 3 perfiles con `activo = false` (bajas que siguen en la tabla),
+ *   · el `admin` y el `superadmin`, que supervisan desde una PC y nunca llevaron un teléfono,
+ *   · y varias cuentas DUPLICADAS de la misma persona (misma gente cargada dos veces con distinta
+ *     mayúscula), donde la que rastrea reporta y la gemela figura ausente para siempre.
+ * Un aviso que siempre está encendido es un aviso que nadie mira: al tercer día de ver los mismos
+ * nueve nombres, el bloque entero deja de leerse y con él se pierden los que sí importan.
+ *
+ * `propietario` tampoco entra: su pantalla es de solo lectura, es el dueño mirando.
+ *
+ * ⚠️ Lo que esto NO puede arreglar son las cuentas duplicadas: dos perfiles activos con rol de
+ * vendedor son, para el sistema, dos vendedores. Eso se limpia en `Usuarios`, no acá.
+ */
+const ROLES_RASTREADOS = ['vendedor', 'repartidor', 'encargado']
+
 export default function useEquipoEnVivo() {
   const { idEmpresaActiva } = useTenant()
   const idEmpresa = idEmpresaActiva
   const [nombres, setNombres] = useState({}) // { [id_usuario]: nombre }
   const [fotos, setFotos] = useState({})     // { [id_usuario]: foto_url } para la burbuja del mapa
+  const [roles, setRoles] = useState({})     // { [id_usuario]: rol }
+  const [plantel, setPlantel] = useState([]) // ids de quienes SE ESPERA que reporten (ver abajo)
   const [movers, setMovers] = useState({})   // { [id]: {id, rol, lat, lng, ts} }
   const [gpsOff, setGpsOff] = useState({})   // { [id]: {nombre, rol, ts} }
   const [mqttOn, setMqttOn] = useState(false)
@@ -37,14 +58,23 @@ export default function useEquipoEnVivo() {
   // móviles en el mapa). La foto es opcional: si no hay, la burbuja cae a iniciales.
   useEffect(() => {
     if (!idEmpresa) return // el perfil todavía no cargó: no disparar la query sin filtro
-    let q = supabase.from('perfiles').select('id, nombre, foto_url')
+    let q = supabase.from('perfiles').select('id, nombre, foto_url, rol, activo')
     if (idEmpresa !== TODAS) q = q.eq('id_empresa', idEmpresa)
     q.then(({ data }) => {
       const nom = {}
       const fot = {}
-      ;(data || []).forEach((u) => { nom[u.id] = u.nombre; if (u.foto_url) fot[u.id] = u.foto_url })
+      const rol = {}
+      const espera = []
+      ;(data || []).forEach((u) => {
+        nom[u.id] = u.nombre
+        if (u.foto_url) fot[u.id] = u.foto_url
+        rol[u.id] = u.rol
+        if (u.activo !== false && ROLES_RASTREADOS.includes(u.rol)) espera.push(u.id)
+      })
       setNombres(nom)
       setFotos(fot)
+      setRoles(rol)
+      setPlantel(espera)
     })
   }, [idEmpresa])
 
@@ -148,5 +178,5 @@ export default function useEquipoEnVivo() {
     return () => { vivo = false; clearInterval(iv) }
   }, [idEmpresa])
 
-  return { nombres, fotos, movers, gpsOff, mqttOn }
+  return { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn }
 }

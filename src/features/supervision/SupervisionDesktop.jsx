@@ -8,7 +8,7 @@ import { colorPorId } from '../../lib/colors'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import MetricasEquipo from './MetricasEquipo'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
@@ -48,6 +48,7 @@ import { APP_VERSION } from '../../version'
  */
 
 // Vistas de gestión reutilizadas tal cual del panel (lazy, como en SupervisionMovil).
+const ReportesView = lazy(() => import('../reportes/ReportesView'))
 const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
 const RevisarDuplicados = lazy(() => import('../admin/RevisarDuplicados'))
 const ZonasView = lazy(() => import('../admin/ZonasView'))
@@ -69,7 +70,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const { theme, isDark, toggleTheme } = useTheme()
   const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { isMobile, setMode } = useDevice()
-  const { nombres, fotos, movers, gpsOff, mqttOn } = useEquipoEnVivo()
+  const { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   // Incidentes abiertos del equipo (los abre el cron `alertas-equipo`, acá solo se leen).
   const avisos = useAlertasEquipo()
   // 🚨 SCOPE de LECTURA (regla 11). La escritura de GPS no pasa por esta pantalla.
@@ -292,6 +293,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, el MISMO que usa Movil). El
   // `useMemo` es obligatorio por el tick de "hace Xs", que re-renderiza esto una vez por segundo.
   const inicios = useMemo(() => construirInicios(trails), [trails])
+  // Y su simétrico "■ 17:20" en el último punto del día. ⚠️ Último punto RECIBIDO, no fin declarado.
+  const fines = useMemo(() => construirFines(trails), [trails])
 
   function doSync() {
     if (syncing) return
@@ -455,6 +458,22 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           {esGestion ? (
             // Vistas de gestión reutilizadas inline (mismo componente que el panel/APK).
             <Suspense fallback={<Cargando />}>
+              {/* El informe recibe `byUser` YA LIMPIO, el mismo objeto del que salen el trazo y
+                  los carteles: es lo que garantiza que sus km sean los del mapa. */}
+              {view === 'reportes' && (
+                <ReportesView
+                  fecha={fecha}
+                  onFecha={setFecha}
+                  byUser={byUser}
+                  nombres={nombres}
+                  cartera={cartera}
+                  pasaFiltro={pasaFiltro}
+                  filter={filter}
+                  plantelIds={plantel}
+                  roles={roles}
+                  onVerEnMapa={(id) => { setView('mapa'); enfocarUsuario(id) }}
+                />
+              )}
               {view === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
               {view === 'duplicados' && <RevisarDuplicados onToast={showToast} />}
               {view === 'zonas' && <ZonasView onToast={showToast} />}
@@ -575,6 +594,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       dwellSel={dwellSel}
                       onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
                       inicios={inicios}
+                      fines={fines}
+                      // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una
+                      // persona recalcularía `calcularDwells` — ~410 ms por persona-día.
+                      focoId={foco?.id || null}
                       markers={mapMarkers}
                       clients={showClientes ? clientMarkers : []}
                       fit={!fitDone}
@@ -782,6 +805,7 @@ function Chip({ on, dim, color, dotRadius, count, label, onClick }) {
 // Íconos de las acciones de gestión (idénticos a los del menú "+" de la vista móvil).
 function GestIcon({ k }) {
   const inner = {
+    reportes: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" /><path d="M9 17v-3M12 17v-5M15 17v-2" /></>,
     clientes: <><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></>,
     zonas: <><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
     catalogo: <path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />,

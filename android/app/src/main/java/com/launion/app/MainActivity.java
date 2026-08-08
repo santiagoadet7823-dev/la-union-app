@@ -32,6 +32,10 @@ public class MainActivity extends BridgeActivity {
         // Plugin local: generación de QR en nativo (ZXing) para el modal "Invitar", sin sumar
         // una librería de QR al bundle web. Ver QrPlugin. Antes de super.onCreate().
         registerPlugin(QrPlugin.class);
+        // Plugin local: PDF del informe de jornada imprimiendo el WebView (PrintManager), en vez de
+        // sumar una librería de PDF que obligaría a dibujar el informe una segunda vez. Ver
+        // ImpresionPlugin. Mismo requisito: antes de super.onCreate().
+        registerPlugin(ImpresionPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

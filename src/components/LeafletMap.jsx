@@ -99,6 +99,11 @@ function pinIcon(color, label, labelColor, selected) {
   })
 }
 
+// Cuánto se hunde en el apilado un cartel/hito que no es de la persona enfocada. Ver el 🩸 del
+// efecto de carteles: tiene que superar la altura del mundo en píxeles, porque Leaflet deriva el
+// z de cada marker de su latitud. Un millón sobra y no cuesta nada.
+const Z_ATENUADO = -1000000
+
 /**
  * Cartel de PARADA ("permaneció 5 min acá"): píldora con texto libre. Es una VARIANTE de
  * pinIcon, no un reemplazo: pinIcon es un círculo fijo de 22/26px con font-size 10 donde
@@ -116,8 +121,17 @@ function pinIcon(color, label, labelColor, selected) {
  * `extra` es el tercer renglón, que SOLO existe ampliado: hoy `sub` tiene que elegir entre el
  * horario y el nombre del comercio (dwells.js) y descarta el otro. Ampliar sirve para mostrar más,
  * no para mostrar lo mismo más grande — mismo criterio que la tarjeta del pin.
+ *
+ * `orden` (08/08/2026) es el número de parada dentro de la jornada de ESA persona, y nace de un
+ * pedido de campo: con doce carteles en pantalla el cliente veía cuánto duró cada parada pero no en
+ * qué orden ocurrieron, así que el recorrido no se podía reconstruir. Va en un círculo blanco a la
+ * izquierda, el mismo lenguaje que el ▶ de `hitoIcon`: sobre el color de la persona, un disco blanco
+ * es lo único que se lee sin importar qué color le tocó.
+ *
+ * `atenuado` (08/08/2026) es el cartel de alguien que NO es la persona enfocada. Ver el 🩸 del
+ * efecto de carteles: la atenuación de una píldora no es la de un trazo.
  */
-function dwellIcon({ label, sub, extra, color, k = 1 }) {
+function dwellIcon({ label, sub, extra, color, k = 1, orden = null, atenuado = false }) {
   const c = color || '#2DD4CE'
   const px = (n) => n * k
   // `sub` va en un segundo renglón, más chico y translúcido. En una sola línea la píldora se iba a
@@ -129,12 +143,18 @@ function dwellIcon({ label, sub, extra, color, k = 1 }) {
     extra && `<div style="font-size:${px(8.5)}px;font-weight:500;opacity:.7;letter-spacing:.02em">${extra}</div>`,
   ].filter(Boolean).join('')
   const apilado = !!renglones
+  // El disco del número. `flex:none` para que no se ovale cuando el texto de al lado es largo.
+  const badge = orden == null ? '' :
+    `<span style="display:grid;place-items:center;flex:none;width:${px(13)}px;height:${px(13)}px;border-radius:50%;background:#fff;color:${c};font-size:${px(8)}px;font-weight:700;line-height:1">${esc(orden)}</span>`
+  // Con badge el padding izquierdo se achica para abrazar el disco (mismo criterio que `hitoIcon`).
+  const padIzq = orden == null ? px(7) : px(3)
   return L.divIcon({
     className: 'lu-dwell',
     // `pointer-events:auto` (antes `none`): el cartel es el objetivo del toque. Le gana el click a
     // la polilínea que tenga debajo —que no es clickeable— y NO a los pines en vivo, que viven en
-    // markerPane (z 600) por encima de este pane (450).
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:auto;cursor:pointer;text-align:center;background:${c};color:#fff;border:${px(1.5)}px solid rgba(255,255,255,.9);border-radius:${apilado ? px(9) : 99}px;padding:${apilado ? `${px(3)}px ${px(7)}px` : `${px(2)}px ${px(7)}px`};box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:${px(10)}px;font-weight:600;line-height:1.35">${label || ''}${renglones}</div>`,
+    // markerPane (z 600) por encima de este pane (450). Atenuado vuelve a `none`: un cartel de
+    // fondo no puede robarle el toque al de la persona que se está revisando.
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:${atenuado ? 'none' : 'auto'};cursor:${atenuado ? 'default' : 'pointer'};display:flex;align-items:center;gap:${px(4)}px;text-align:center;opacity:${atenuado ? 0.32 : 1};background:${c};color:#fff;border:${px(1.5)}px solid rgba(255,255,255,.9);border-radius:${apilado ? px(9) : 99}px;padding:${apilado ? `${px(3)}px ${px(7)}px ${px(3)}px ${padIzq}px` : `${px(2)}px ${px(7)}px ${px(2)}px ${padIzq}px`};box-shadow:${atenuado ? 'none' : '0 1px 5px rgba(0,0,0,.35)'};font-family:'IBM Plex Mono',monospace;font-size:${px(10)}px;font-weight:600;line-height:1.35">${badge}<div>${label || ''}${renglones}</div></div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
@@ -263,14 +283,18 @@ function firmaMovers(ms) {
 function firmaDwells(ds) {
   if (!ds || !ds.length) return ''
   let s = ''
-  for (const d of ds) s += firmaPunto(d) + ':' + (d.label || '') + ':' + (d.sub || '') + ':' + (d.extra || '') + ':' + (d.color || '') + '|'
+  // `orden` e `id` entran a la firma: dos paradas pueden tener el mismo texto y distinto número
+  // (o ser de personas distintas), y sin esto un reordenamiento no redibujaría nada.
+  for (const d of ds) s += firmaPunto(d) + ':' + (d.label || '') + ':' + (d.sub || '') + ':' + (d.extra || '') + ':' + (d.color || '') + ':' + (d.orden ?? '') + ':' + (d.id || '') + '|'
   return s
 }
 
-function firmaInicios(is) {
-  if (!is || !is.length) return ''
+// Sirve para los DOS hitos de la jornada —inicios y fines—, que tienen la misma forma
+// ({lat,lng,hora,color,id}). Una firma por lista, dos llamadas.
+function firmaHitos(hs) {
+  if (!hs || !hs.length) return ''
   let s = ''
-  for (const i of is) s += firmaPunto(i) + ':' + (i.hora || '') + ':' + (i.color || '') + '|'
+  for (const h of hs) s += firmaPunto(h) + ':' + (h.hora || '') + ':' + (h.color || '') + ':' + (h.id || '') + '|'
   return s
 }
 
@@ -286,30 +310,47 @@ function depotIcon(theme) {
 }
 
 /**
- * Marcador de INICIO de jornada: "▶ 08:47" en el primer punto del día de la persona.
+ * Los dos HITOS de la jornada: "▶ 08:47" en el primer punto del día y "■ 17:20" en el último.
  *
- * 🩸 05/08/2026 — es la contracara visual del arranque tardío del rastreo (ver `construirInicios`
- * en features/supervision/trazos.js). El dato ya estaba en el mapa —el trazo empieza donde empieza—
- * pero sin hora y sin nada que lo distinga del resto de la línea.
+ * 🩸 05/08/2026 — el de inicio es la contracara visual del arranque tardío del rastreo (ver
+ * `construirInicios` en features/supervision/trazos.js). El dato ya estaba en el mapa —el trazo
+ * empieza donde empieza— pero sin hora y sin nada que lo distinga del resto de la línea.
  *
  * Es una VARIANTE de `dwellIcon`, no un uso de él: comparte la técnica (iconSize [0,0] + hijo
  * centrado por transform, así el ancho lo fija el texto y no hay que adivinarlo) pero no la
- * semántica. Un cartel de parada se toca para ampliarse; este es una ETIQUETA — `interactive:false`
- * en el marcador — y no debe robarle el toque a nada.
+ * semántica. Un cartel de parada se toca para ampliarse; estos son ETIQUETAS —`interactive:false`
+ * en el marcador— y no deben robarle el toque a nada.
  *
- * El triángulo va en un círculo blanco sobre el color de la persona: a diferencia del cartel de
- * parada, este marcador tiene que leerse como "acá empieza" incluso cuando el trazo del mismo color
- * le pasa por debajo.
+ * 🩸 08/08/2026 — LA PÍLDORA ES BLANCA, no del color de la persona. Pedido de campo, y el motivo es
+ * el mismo que lo hizo nacer: pintado del color de la persona, el hito queda camuflado justo contra
+ * el trazo de esa misma persona, que le pasa por debajo. "Cuesta encontrarlo" era literal. El color
+ * no se pierde, se muda al BORDE y al disco del glifo — así sigue diciendo de quién es sin dejar de
+ * gritar "acá empieza". El borde de color, además, es lo que lo salva en los dos extremos: sobre el
+ * basemap claro un blanco pelado se disuelve, y sobre satélite/oscuro brilla de más.
+ *
+ * Inicio y fin salen de la MISMA función a propósito: son la misma etiqueta con otro glifo, y dos
+ * copias serían dos cosas que se pueden desincronizar (regla 31, en chico). Lo único que los
+ * distingue es la FORMA del glifo —triángulo vs. cuadrado—, no el color: a un vistazo, y también
+ * para quien no distingue bien los colores.
+ *
+ * El cuadrado del fin se dibuja con un div y no con el carácter '■' porque el glifo depende de la
+ * fuente y en IBM Plex Mono no queda centrado ni del tamaño que se pide.
  */
-function inicioIcon({ hora, color }) {
+function hitoIcon({ hora, color, glifo, atenuado = false }) {
   const c = color || '#2DD4CE'
   return L.divIcon({
-    className: 'lu-inicio',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;background:${c};color:#fff;border:1.5px solid rgba(255,255,255,.9);border-radius:99px;padding:2px 7px 2px 3px;box-shadow:0 1px 5px rgba(0,0,0,.35);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;line-height:1.35"><span style="display:grid;place-items:center;width:13px;height:13px;border-radius:50%;background:#fff;color:${c};font-size:7px;line-height:1;padding-left:1px">▶</span>${esc(hora || '')}</div>`,
+    className: 'lu-hito',
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#0B2B2A;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:#fff;font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
 }
+
+const GLIFO_INICIO = '<span style="margin-left:1px">▶</span>'
+const GLIFO_FIN = '<span style="width:5px;height:5px;background:#fff;border-radius:1px"></span>'
+
+const inicioIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_INICIO })
+const finIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_FIN })
 
 export default function LeafletMap({
   theme = 'dark',
@@ -333,10 +374,20 @@ export default function LeafletMap({
   // se toca un cartel. Así la selección solo re-dibuja la capa.
   dwellSel = null,
   onDwellClick,
-  // Marcadores de ARRANQUE de jornada: [{lat,lng,hora,color}] — el primer punto del día de cada
+  // Marcadores de ARRANQUE de jornada: [{id,lat,lng,hora,color}] — el primer punto del día de cada
   // persona (features/supervision/trazos.js → construirInicios). Opcional: con [] o undefined el
   // mapa se comporta exactamente igual que antes.
   inicios = [],
+  // Marcadores de CIERRE: el último punto del día (→ construirFines). Misma forma que `inicios`.
+  // ⚠️ Es el último punto RECIBIDO, no un cierre declarado: no existe botón de finalizar jornada.
+  // Si el teléfono se quedó sin batería a las 14:10, el marcador dice 14:10 — por eso el title
+  // habla de "último punto" y no de "fin".
+  fines = [],
+  // Persona ENFOCADA, o null. Va como prop suelta por el mismo motivo que `dwellSel` (ver arriba):
+  // `dwells` sale de `calcularDwells`, que cuesta ~410 ms por persona-día, y las vistas lo memoizan
+  // a propósito SIN el foco en las dependencias. Si la atenuación se resolviera dentro de cada
+  // `dwells[i]`, tocar a una persona recalcularía el detector de paradas entero del equipo.
+  focoId = null,
   height = 460,
   followLive = false,
   fit = true, // si es false, no reencuadra (preserva el zoom/pan del usuario)
@@ -417,6 +468,7 @@ export default function LeafletMap({
   const trailsLayerRef = useRef(null)
   const dwellsLayerRef = useRef(null)
   const iniciosLayerRef = useRef(null)
+  const finesLayerRef = useRef(null)
   const moversLayerRef = useRef(null)
   const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
@@ -496,12 +548,19 @@ export default function LeafletMap({
     // vivo) y no hace falta un pane nuevo. El layerGroup propio sí, para vaciarlos por separado —
     // los inicios cambian con la fecha y los carteles con el toggle de paradas.
     iniciosLayerRef.current = L.layerGroup().addTo(map)
+    finesLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     // Arrastrar el mapa desengancha el seguimiento. Va acá (una sola vez, en el init) y no en el
     // efecto de `seguir`: el handler es estable porque lee el callback de un ref, y re-suscribirlo
     // en cada posición nueva sería registrar y quitar un listener cada 5 segundos.
     map.on('dragstart', () => seguirFinRef.current?.())
-    setTimeout(() => map.invalidateSize(), 60)
+    // 🩸 Se guarda el id para poder CANCELARLO al desmontar (08/08/2026). Sin eso, un mapa que se
+    // va antes de los 60 ms deja el timer vivo y `invalidateSize()` corre sobre un mapa ya
+    // destruido: "Cannot read properties of undefined (reading '_leaflet_pos')", una excepción NO
+    // capturable por el ErrorBoundary (es asincrónica) que se llevaba puesta la pantalla entera.
+    // Aparecía en cascada detrás de cualquier otro fallo del mapa, y hacía ver un bug acotado como
+    // una app rota.
+    const tInvalidar = setTimeout(() => map.invalidateSize(), 60)
     // Reajustar el mapa al rotar / cambiar tamaño (alturas en vh).
     const onResize = () => map.invalidateSize()
     window.addEventListener('resize', onResize)
@@ -525,6 +584,7 @@ export default function LeafletMap({
     if (ro && divRef.current) ro.observe(divRef.current)
 
     return () => {
+      clearTimeout(tInvalidar)
       window.removeEventListener('resize', onResize)
       if (pendiente) cancelAnimationFrame(pendiente)
       if (ro) ro.disconnect()
@@ -574,7 +634,8 @@ export default function LeafletMap({
   const kMarkers = useMemo(() => firmaMarkers(markers), [markers])
   const kMovers = useMemo(() => firmaMovers(movers), [movers])
   const kDwells = useMemo(() => firmaDwells(dwells), [dwells])
-  const kInicios = useMemo(() => firmaInicios(inicios), [inicios])
+  const kInicios = useMemo(() => firmaHitos(inicios), [inicios])
+  const kFines = useMemo(() => firmaHitos(fines), [fines])
 
   // ---- Capa ESTÁTICA: depósito, punto en vivo, círculo, rastro suelto y ruta por calles ----
   useEffect(() => {
@@ -804,26 +865,44 @@ export default function LeafletMap({
   //    por encima, así que siguen ganando el toque.
   //  - NO entran al fitBounds (a diferencia de `circle`): un cartel lejano descuadraría
   //    el encuadre del recorrido.
+  //
+  // 🩸 ATENUACIÓN POR FOCO (08/08/2026). Con una persona enfocada, `construirLeaflet` baja los
+  // trazos ajenos a 0.12 — pero los carteles seguían a todo color, y al ser más grandes que una
+  // línea TAPABAN los de la persona que se estaba revisando. Dos cosas que hay que saber:
+  //
+  //  1. Atenuar no destapa nada. Una píldora tenue ocupa los mismos píxeles y sigue estando
+  //     encima, así que el arreglo de verdad es el zIndexOffset; la opacidad es lo que la manda
+  //     al fondo a la vista. Hacen falta las dos.
+  //  2. El offset es ENORME (un millón) y no un 100 cualquiera: Leaflet calcula el z de un marker
+  //     a partir de su LATITUD en píxeles, así que un cartel al norte trepa por encima de otro al
+  //     sur. Es el mismo motivo por el que estos carteles necesitaron un pane propio (ver arriba).
+  //     Cualquier número del orden de la altura del mundo en píxeles alcanza; un millón sobra y no
+  //     cuesta nada. Queda dentro del pane 'luDwells' (z 450), que es su propio contexto de
+  //     apilamiento, así que no se escapa por debajo de los trazos.
+  //
+  // Y la atenuación de un cartel NO es la de un trazo: una línea a 0.12 sigue siendo una línea, un
+  // texto a 0.12 es ruido ilegible. Por eso 0.32 y sin sombra, no 0.12.
   useEffect(() => {
     const layer = dwellsLayerRef.current
     if (!layer) return
     layer.clearLayers()
     ;(dwells || []).forEach((d, i) => {
       const abierto = dwellSel === i
+      const atenuado = !!focoId && !!d.id && d.id !== focoId
       const m = L.marker([d.lat, d.lng], {
-        icon: dwellIcon({ label: d.label, sub: d.sub, extra: abierto ? d.extra : null, color: d.color, k: abierto ? 1.5 : 1 }),
+        icon: dwellIcon({ label: d.label, sub: d.sub, extra: abierto ? d.extra : null, color: d.color, k: abierto ? 1.5 : 1, orden: d.orden, atenuado }),
         pane: 'luDwells',
         keyboard: false,
         // El ampliado se dibuja por encima de sus vecinos: si no, un cartel chico de al lado le
         // puede tapar justo el renglón que se acaba de destapar.
-        zIndexOffset: abierto ? 100 : 0,
-        title: abierto ? 'Tocar para achicar' : 'Tocar para ampliar',
+        zIndexOffset: atenuado ? Z_ATENUADO : (abierto ? 100 : 0),
+        title: atenuado ? '' : (abierto ? 'Tocar para achicar' : 'Tocar para ampliar'),
       })
       m.on('click', () => dwellClickRef.current?.(i))
       m.addTo(layer)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kDwells, dwellSel])
+  }, [kDwells, dwellSel, focoId])
 
   // ---- Capa de MARCADORES DE ARRANQUE ("▶ 08:47") ---------------------------------------------
   // Efecto propio y no un agregado al de los carteles de parada: cambian por motivos distintos
@@ -840,16 +919,45 @@ export default function LeafletMap({
     if (!layer) return
     layer.clearLayers()
     ;(inicios || []).forEach((i) => {
+      const atenuado = !!focoId && !!i.id && i.id !== focoId
       L.marker([i.lat, i.lng], {
-        icon: inicioIcon({ hora: i.hora, color: i.color }),
+        icon: inicioIcon({ hora: i.hora, color: i.color, atenuado }),
         pane: 'luDwells',
         interactive: false,
         keyboard: false,
+        zIndexOffset: atenuado ? Z_ATENUADO : 0,
         title: i.hora ? 'Inicio de jornada ' + i.hora : 'Inicio de jornada',
       }).addTo(layer)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kInicios])
+  }, [kInicios, focoId])
+
+  // ---- Capa de MARCADORES DE CIERRE ("■ 17:20") -----------------------------------------------
+  // Capa propia y no un agregado a la de inicios por el mismo motivo por el que los inicios no
+  // están con los carteles: se vacían por separado.
+  //
+  // ⚠️ El título dice "último punto" y NO "fin de jornada", y la diferencia no es cosmética: no
+  // existe un botón de finalizar jornada en esta app, así que esto es el último punto que llegó.
+  // Un teléfono que se quedó sin batería a las 14:10 pone el marcador a las 14:10, y afirmar ahí
+  // "terminó a las 14:10" sería exactamente la clase de mentira que documenta la regla 22-bis: un
+  // ícono asegurando una hora y un lugar que nadie verificó.
+  useEffect(() => {
+    const layer = finesLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    ;(fines || []).forEach((f) => {
+      const atenuado = !!focoId && !!f.id && f.id !== focoId
+      L.marker([f.lat, f.lng], {
+        icon: finIcon({ hora: f.hora, color: f.color, atenuado }),
+        pane: 'luDwells',
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: atenuado ? Z_ATENUADO : 0,
+        title: f.hora ? 'Último punto ' + f.hora : 'Último punto',
+      }).addTo(layer)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kFines, focoId])
 
   // ---- ENCUADRE ------------------------------------------------------------------------------
   // El encuadre necesita ver TODAS las geometrías juntas, así que no puede vivir dentro de
@@ -885,8 +993,19 @@ export default function LeafletMap({
       t.points.forEach((p) => extend([p.lat, p.lng]))
     })
     if (circle) {
-      const b = L.circle([circle.lat, circle.lng], { radius: circle.radiusM }).getBounds()
-      bounds = bounds ? bounds.extend(b) : b
+      // 🩸 08/08/2026 — ACÁ NO SE PUEDE USAR `L.circle(...).getBounds()`. Un `Circle` de Leaflet
+      // guarda su radio en METROS y solo sabe convertirlo a grados cuando está agregado a un mapa:
+      // `getBounds()` hace `this._map.layerPointToLatLng(...)`, y en un círculo suelto `_map` es
+      // `undefined`. Reventaba con "Cannot read properties of undefined (reading
+      // 'layerPointToLatLng')", el ErrorBoundary tapaba el mapa entero con "No se pudo cargar el
+      // mini-mapa", y el único lugar donde se veía era la ficha de un cliente YA ubicado — que es
+      // justo la pantalla desde la que se corrige una ubicación.
+      //
+      // `latLng.toBounds(size)` hace la misma cuenta sin mapa. Toma el LADO del cuadrado, no el
+      // radio: por eso el ×2.
+      bounds = bounds
+        ? bounds.extend(L.latLng(circle.lat, circle.lng).toBounds(circle.radiusM * 2))
+        : L.latLng(circle.lat, circle.lng).toBounds(circle.radiusM * 2)
     }
     if (!bounds || !bounds.isValid()) return
 
