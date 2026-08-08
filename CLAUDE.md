@@ -527,11 +527,20 @@ Hay varios números que conviven. Alineados en **1.12.0** (agosto 2026).
 > `bundle_version`, `latest_version`, `min_version` y `apk_url` a `1.12.0` — sin `min_version` el
 > auto-updater queda inerte y los 9 teléfonos se quedan en 1.10.0, o sea sin el arreglo del arranque.
 >
-> 🩸 **1.12.0 es la ÚLTIMA actualización que le va a pedir un toque al vendedor** (en Android 12+).
-> Trae `PackageInstaller` con `USER_ACTION_NOT_REQUIRED` (`ApkUpdaterPlugin`), pero el modo
-> silencioso exige que la app sea su propio instalador de registro y los 9 equipos vinieron de `adb`
-> (installer `null`). O sea: esta pide confirmar, la siguiente ya no. Para saltearlo también en esta,
-> empujar el APK por `adb install -r` sobre Tailscale (ver `INVENTARIO_TELEFONOS.md` §3).
+> 🩸 **Para que la actualización sea silenciosa hay que instalar con `-i`, no solo con `-r`.**
+> 1.12.0 trae `PackageInstaller` con `USER_ACTION_NOT_REQUIRED` (`ApkUpdaterPlugin`), pero Android
+> solo lo concede si la app es su **propio instalador de registro**. Verificado en un A07 real el
+> 08/08/2026: después de `adb install -r`, `pm dump` seguía diciendo `installerPackageName=null` —
+> o sea que la actualización siguiente **tampoco** habría sido silenciosa. La bandera `-i` lo fija:
+>
+> ```
+> adb install -r -i com.launion.app app-release.apk    # → installerPackageName=com.launion.app
+> ```
+>
+> Con eso el equipo queda habilitado y **la próxima versión se instala sola, sin un solo toque**.
+> Un `adb install -r` a secas deja el privilegio sin ganar y hay que volver a pasar por el cable.
+> `-r` conserva datos, sesión, cola y permisos (verificado: `ACCESS_BACKGROUND_LOCATION` y la
+> exención de batería sobrevivieron).
 
 **¿OTA o APK nuevo?**
 
