@@ -26,7 +26,7 @@ export function GpsProvider({ children }) {
   // pipeline es tener un `fcm_token` guardado, porque si no los avisos de `alertas-equipo` no
   // tienen a dónde llegarles (30/07/2026: el admin y el superadmin tenían CERO tokens, así que
   // el equipo entero podía quedarse mudo y ellos no se enteraban).
-  const esSupervisor = rol === 'admin' || rol === 'propietario' || rol === 'superadmin'
+  const esSupervisor = rol === 'admin' || rol === 'superadmin'
   const id = user?.id || null
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
@@ -38,7 +38,7 @@ export function GpsProvider({ children }) {
   //
   // Un supervisor va a escribir `gps_ok: false`, y está bien: es cierto, no se lo rastrea. No
   // ensucia ningún panel porque `useDiagnosticoEquipo` itera `usePerfilesEquipo`, que filtra a
-  // vendedor/repartidor/encargado — las filas de admin/propietario/superadmin nunca se leen.
+  // vendedor/repartidor/encargado — las filas de admin/superadmin nunca se leen.
   useEstadoDispositivo({ enabled: esMovil || esSupervisor, id, idEmpresa, rol, pos: gps.pos, error: gps.error })
 
   // Watchdog por push (FCM): registra el token para que el backend pueda despertar la app cada

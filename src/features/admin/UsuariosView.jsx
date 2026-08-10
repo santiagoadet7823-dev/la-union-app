@@ -17,16 +17,18 @@ import { invalidarTrackCache } from '../../services/tracking'
  * otros superadmin. Sin ninguna referencia a facturación (abono P2P).
  */
 
-// `propietario` = dueño de la distribuidora, vista de solo lectura (equipo + recorridos + KPIs).
+// 🩸 Acá vivió `propietario` hasta el 08/08/2026. Se borró el rol entero (`db/31`) sin haber tenido
+// nunca un perfil: el dueño de la distribuidora usa `admin`, que ya tenía los mismos permisos de
+// lectura. Si alguien lo vuelve a poner en esta lista, el alta revienta contra el CHECK de la base.
 // Ya se puede asignar desde 1.6.x: el check constraint de perfiles.rol lo acepta (db/20).
-const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'propietario', 'admin']
+const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 130px 120px 80px 140px 100px 110px', gap: 10, alignItems: 'center' }
 
 const rolPill = (r) => {
-  const c = { superadmin: 'var(--info)', propietario: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
+  const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
   return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}</span>
 }
 

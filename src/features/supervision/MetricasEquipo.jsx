@@ -12,15 +12,13 @@
 import { useDeferredValue, useMemo } from 'react'
 import { detectarParadas } from '../../services/geolocation/dwell'
 import { distanciaMetros } from '../../services/geolocation/geofence'
+import { kmDePuntos } from '../../lib/geo'
 import { colorPorId } from '../../lib/colors'
 import { fmtDuracion } from '../../lib/format'
 
 /** Km recorridos: suma de haversine entre puntos consecutivos del rastro crudo. */
 export function kmDeTrazo(points) {
-  if (!points || points.length < 2) return 0
-  let m = 0
-  for (let i = 1; i < points.length; i++) m += distanciaMetros(points[i - 1], points[i])
-  return m / 1000
+  return kmDePuntos(points)
 }
 
 /** Agrega las paradas detectadas: n, promedio, menor y mayor duración (ms). */

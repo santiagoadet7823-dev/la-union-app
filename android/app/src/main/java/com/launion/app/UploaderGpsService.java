@@ -689,8 +689,32 @@ public class UploaderGpsService extends Service {
             cGuardados++;
         }
         fixRetenido = null;
-        lastLat = loc.getLatitude();
-        lastLng = loc.getLongitude();
+        // 🩸 EL ANCLA NO PERSIGUE AL RUIDO (10/08/2026). Hasta hoy estas dos líneas corrían SIEMPRE,
+        // también cuando el punto se encoló solo por el keepAlive estando quieto (`vivo && !movio`).
+        // Efecto: cada 30 s el ancla saltaba a donde la había puesto el jitter del GPS, y la
+        // comparación del próximo fix se hacía contra la posición ya corrida. El ancla perseguía al
+        // ruido en vez de sujetarlo, y esos metros se acumulaban como distancia recorrida.
+        //
+        // Medido sobre 5 días: entre 1 y 1,8 km FALSOS por persona por día, en hops de 1,5 a 5,5 m
+        // —todos por debajo de minMove, o sea que entraron por keepAlive y no por movimiento—. En
+        // quien camina poco eso era hasta el 45 % de su día (Zura 10/08: 0,65 de 1,44 km).
+        //
+        // El ancla ahora queda clavada donde la persona se detuvo y solo se corre cuando de verdad
+        // se movió. `lastSentAt` SÍ se sigue actualizando: es lo que agenda el próximo keepAlive, y
+        // si no se moviera, el punto de cortesía saldría en cada fix.
+        //
+        // El punto de cortesía se sigue encolando igual (marcador de "vivo") y se sigue dibujando
+        // donde el teléfono dice que está: acá no se pega nada al ancla, porque una deriva LENTA Y
+        // REAL —alguien caminando dentro de un depósito— tiene que verse. Lo que cambia es qué se
+        // toma como referencia, no qué se muestra.
+        //
+        // El espejo de esto en el front es el piso de ruido de `kmDePuntos` (lib/geo.js) y de la RPC
+        // `metricas_actividad` (db/32), que corrigen el número para los días YA guardados. Los dos
+        // hacen falta: este arregla el origen de hoy en adelante, aquellos arreglan el histórico.
+        if (movio) {
+            lastLat = loc.getLatitude();
+            lastLng = loc.getLongitude();
+        }
         lastSentAt = now;
         tieneLast = true;
         encolar(loc);

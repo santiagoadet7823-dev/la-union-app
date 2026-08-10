@@ -13,7 +13,7 @@ import usePerfilesEquipo from './usePerfilesEquipo'
  * con una presentación distinta: el encargado quiere el informe técnico completo, el dueño quiere
  * saber si puede confiar en que la ausencia de un dato significa algo.
  *
- * Y ese es el punto delicado de todo el rol propietario: **"sin señal" no es "no trabajó"**. Puede
+ * Y ese es el punto delicado del panel de dirección: **"sin señal" no es "no trabajó"**. Puede
  * ser batería, permisos o zona sin cobertura. La app no puede distinguir un franco de un teléfono
  * descargado, así que no lo interpreta: expone el diagnóstico y la conversación la tiene una persona.
  *

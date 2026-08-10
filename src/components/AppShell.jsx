@@ -7,7 +7,6 @@ import MiCuenta from '../features/perfil/MiCuenta'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
-  propietario: { label: 'Propietario', color: 'var(--info)' },
   admin: { label: 'Administrador', color: 'var(--primary)' },
   encargado: { label: 'Encargado', color: 'var(--primary)' },
   vendedor: { label: 'Vendedor', color: 'var(--success)' },

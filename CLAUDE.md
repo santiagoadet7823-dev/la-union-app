@@ -54,11 +54,30 @@ de `App.jsx` lo consultan. Desactivar una empresa no tiene efecto, aunque la UI 
 
 ### Roles
 
-`superadmin` · `admin` · `encargado` · `vendedor` · `repartidor` · `propietario`
+`superadmin` · `admin` · `encargado` · `vendedor` · `repartidor`
 
-`encargado` es dual: se lo trackea por GPS **y** supervisa. `propietario` tiene su propia pantalla
-(`features/propietario/PropietarioMovil.jsx`) y **ya está en el check constraint** (`db/20`,
-verificado en base viva 28/07/2026 — el §8 decía lo contrario y estaba desactualizado).
+`encargado` es dual: se lo trackea por GPS **y** supervisa.
+
+> 🩸 **`propietario` se eliminó el 10/08/2026 (`db/31`).** Existió del 27/07 al 10/08 y **nunca tuvo
+> un solo perfil**: era un rol entero —CHECK, 8 policies RLS, 1 RPC y media docena de listas de UI—
+> mantenido para nadie, y cada policy nueva tenía que acordarse de incluirlo o el dueño perdía
+> acceso en silencio. **El dueño de la distribuidora usa `admin`**, que ya figuraba en las mismas 8
+> policies con los mismos permisos de lectura, así que la migración fue una resta pura.
+> Lo que **no** se tiró fue su pantalla: es `features/direccion/PanelDireccion.jsx`, y ahora la ve
+> `admin`/`superadmin` **en web/PWA desde un celular** (ver `decidirPanelDireccion` en `App.jsx`).
+
+**Qué pantalla ve cada quien:**
+
+| Rol | APK (nativo) | PWA en celular | PWA en PC |
+|---|---|---|---|
+| `vendedor` / `repartidor` | `VendedorView`/`RepartidorView` + `GpsGate` | idem | idem |
+| `encargado` | `SupervisionMovil` (Panel) · `VendedorView` (Mi jornada) | `SupervisionDesktop` | `SupervisionDesktop` |
+| `admin` / `superadmin` | `SupervisionMovil` | **`PanelDireccion`** | `SupervisionDesktop` |
+
+El corte celular/PC lo da `useDevice().isMobile` (ancho + puntero + userAgent, con override manual
+en Mi cuenta). ⚠️ **El override vive en `localStorage['lu-device']` y es pegajoso**: si alguien eligió
+"Celular" alguna vez, ese navegador entra al `PanelDireccion` aunque esté en una pantalla de 1280 px.
+Por eso `PanelDireccion` pasa `showDeviceToggle` a `MiCuenta` — sin eso quedaría encerrado.
 
 **Los roles son EXCLUYENTES** (`RoleRouter` es un if/else). Para dar una capacidad extra sin cambiar
 lo que la persona *es*, va por **`perfiles.permisos text[]`** (`db/23`), no por un rol nuevo: un
@@ -255,6 +274,23 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     (80,6 % · 23,3 % · 9,0 % · 0,4 % del largo a ciegas): el umbral de 35 % deja pasar a los tres
     que andan bien y frena al que está fallando. Y **el anti-detour ×2,5 no rechazaba NADA** — una
     guarda que nunca actúa no es una guarda. Ver `fraccionCiega` en `segmentar.ts`.
+49. 🩸 **"¿Sabemos qué pasó en el medio?" se contesta con UN número, y hoy son tres.** (10/08/2026.)
+    El cliente reportó que el trazo "salta calles" en tres vendedores. **No era el snap inventando**:
+    con el `fraccionCiega` real, Gabriel ya iba **72 % crudo** y Javier **57 %** — la guarda ya los
+    rechazaba. Lo que cruzaba manzanas eran **las rectas del crudo**, porque el snap declaraba ciego
+    un hueco de 45 s (`HUECO_CIEGO_MS`) mientras el dibujo recién cortaba a los 4 min (`HUECO_MS`).
+    El snap decía "no sé" y el dibujo decía "fue por acá": ganaba el que miente. Desde hoy
+    `HUECO_DUDOSO_MS` (`lib/geo.js`) parte el DIBUJO a los 45 s — el recorrido no se corta y los km
+    no cambian (salen de `puntos`), solo se deja de afirmar el camino.
+    ⚠️ **Son constantes en dos runtimes** (Deno y el bundle) que no pueden compartir módulo: si se
+    toca una, tocar la otra. `HUECO_MS` sigue espejando a `GAP_MS`, que responde otra pregunta
+    ("¿esto es otro tramo?") y **no se toca**.
+    🩸 **Y antes de cambiar un umbral, contrastar la hipótesis contra los datos.** En la misma sesión
+    se probó bajar `CIEGO_MAX_FRAC` de 0,35 a 0,30 (cero tramos cambiados en 7 días: la fracción
+    ciega es bimodal) y subir `VEL_HIST_MS` a 45 s (refutado: Gabriel da 3 % de cruces de umbral en
+    los huecos contra 2,8 % en los tramos normales, y además sus huecos pasan **caminando**, lejos
+    del umbral). Las dos se revirtieron sin publicar. Tres cambios de constante de GPS en la
+    historia del repo, tres teorías plausibles e incompletas.
 40. **Un punto TRIANGULADO no se dibuja ni se cuenta como GPS.** (1.9.0.) Desde el APK 1.9.0, con el
     GPS callado más de 90 s el teléfono pide ubicación por antenas y WiFi. Esos puntos entran a
     `posiciones` con `accuracy` de 20 a 150 m, y **la precisión ES la marca** (hasta 1.8.1 no existía
@@ -481,10 +517,11 @@ adb shell dumpsys notification --noredact | grep -i channel   # en qué canal ca
 
 | Ruta | Qué hay |
 |---|---|
-| `src/App.jsx` | Ruteo por rol+plataforma. **`decidirSupervisionMovil()` (:102) es el único lugar que sabe esta regla** |
+| `src/App.jsx` | Ruteo por rol+plataforma. **`decidirSupervisionMovil()` y `decidirPanelDireccion()` son el único lugar que sabe esta regla** |
 | `src/context/` | Auth, Catalog (+ arranca las colas), Gps, Device, Theme |
 | `src/features/supervision/` | `SupervisionMovil` (APK, full-screen) y `SupervisionDesktop` (PWA/PC) |
-| `src/features/{vendedor,repartidor,propietario,admin,auth,catalog,perfil,movil}/` | Vistas por rol |
+| `src/features/direccion/` | `PanelDireccion` — admin/superadmin en web+celular (el dueño desde su iPhone) |
+| `src/features/{vendedor,repartidor,admin,auth,catalog,perfil,movil}/` | Vistas por rol |
 | `src/services/geolocation/` | 🔴 **Zona peligrosa.** `tracker.js`, `estados.js`, `index.js`, `dwell.js` |
 | `src/services/sync/` | 🔴 **Zona peligrosa.** `queue.js` (posiciones), `writeQueue.js` (catálogo), `realtime.js` |
 | `src/services/persistence/` | Puerto localStorage (web) / SQLite (nativo), con timeouts y fallback |
@@ -501,7 +538,7 @@ adb shell dumpsys notification --noredact | grep -i channel   # en qué canal ca
 
 | Quiero… | Ir a |
 |---|---|
-| Agregar una vista o cambiar quién ve qué | `src/App.jsx` (`decidirSupervisionMovil`) + **`src/lib/gestion.js`** (`GESTION_ITEMS`, un solo lugar desde el 28/07/2026: antes estaba duplicado en las dos supervisiones) + el despacho `{gestion === 'x' && …}` en `SupervisionMovil.jsx` **y** `SupervisionDesktop.jsx` |
+| Agregar una vista o cambiar quién ve qué | `src/App.jsx` (`decidirSupervisionMovil` / `decidirPanelDireccion`) + **`src/lib/gestion.js`** (`GESTION_ITEMS`) + **`features/supervision/components/DespachoGestion.jsx`** — el despacho estaba copiado en las dos supervisiones y se unificó el 10/08/2026, antes de que `PanelDireccion` lo volviera una tercera copia (regla 31) |
 | Dar una capacidad extra a alguien sin cambiarle el rol | `perfiles.permisos` + el campo `permiso` de la fila en `src/lib/gestion.js` + la policy correspondiente (ver `db/23_perfiles_permisos.sql`) |
 | Agregar un campo a cliente/producto | Migración en la base viva + `mapCliente`/`mapProducto` en `CatalogContext.jsx:18-48` + el form correspondiente |
 | Agregar un tipo de mutación offline | `src/services/sync/writeQueue.js` — la op debe ser **idempotente** en reintento |
@@ -537,7 +574,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. Alineados en **1.12.1** (agosto 2026).
+Hay varios números que conviven. Alineados en **1.13.0** (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -545,9 +582,9 @@ Hay varios números que conviven. Alineados en **1.12.1** (agosto 2026).
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.12.1` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.12.1` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `31` | Entero incremental de Android |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.13.0` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `32` | Entero incremental de Android |
 | `app_config.bundle_version` + `latest_version` | Supabase | `1.12.1` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.12.1` ✅ publicado | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
@@ -654,9 +691,8 @@ Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle t�
 - ✅ **`02_saas.sql` y `05_schema_real.sql`**: movidos a `db/historico/` el 29/07/2026, con un
   `LEER_ANTES_DE_TOCAR.md` al lado. Ya no están en el camino de un `psql -f` distraído.
 - ✅ **Versiones desfasadas** (§6): alineadas en 1.6.0 (versionName 1.6.0 / versionCode 20 / APP_VERSION 1.6.0).
-- ✅ **Rol `propietario` de punta a punta**: el CHECK lo acepta (`db/20`), `UsuariosView` lo ofrece y
-  desde el 29/07/2026 `crear-usuario` también (v3 desplegada). Ya se puede dar de alta un
-  propietario desde el modal.
+- ✅ **Rol `propietario` ELIMINADO** (10/08/2026, `db/31` + `crear-usuario` v4). Ver §1. El dueño usa
+  `admin`; su pantalla sobrevive como `features/direccion/PanelDireccion.jsx`.
 - ✅ **Storage con alcance por empresa** (`db/25`, 29/07/2026): las policies de escritura eran
   `to authenticated` mirando solo el `bucket_id`, así que cualquier usuario de cualquier empresa
   podía borrar las fotos de otra. Ahora exigen ser dueño de la ruta. El **SELECT sigue abierto a

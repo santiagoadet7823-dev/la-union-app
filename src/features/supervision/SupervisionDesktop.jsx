@@ -23,6 +23,7 @@ import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
 import RailMapa from './components/RailMapa'
+import DespachoGestion from './components/DespachoGestion'
 import { APP_VERSION } from '../../version'
 
 /**
@@ -42,21 +43,14 @@ import { APP_VERSION } from '../../version'
  * lista GESTION_ITEMS que la vista móvil para no divergir.
  *
  * props:
- *   - role         'admin' | 'superadmin' | 'encargado' | 'propietario'
+ *   - role         'admin' | 'superadmin' | 'encargado'
  *   - vista        'panel' | 'jornada' | null   (solo informativo para el encargado)
  *   - onIrAJornada () => void | null   (solo encargado: volver a "Mi jornada")
  */
 
-// Vistas de gestión reutilizadas tal cual del panel (lazy, como en SupervisionMovil).
-const ReportesView = lazy(() => import('../reportes/ReportesView'))
-const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
-const RevisarDuplicados = lazy(() => import('../admin/RevisarDuplicados'))
-const ZonasView = lazy(() => import('../admin/ZonasView'))
-const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
-const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
-import InvitarModal from '../../components/InvitarModal'
-const UsuariosView = lazy(() => import('../admin/UsuariosView'))
-const EmpresasView = lazy(() => import('../admin/EmpresasView'))
+// Las vistas de gestión se despachan desde el módulo compartido con SupervisionMovil y
+// PanelDireccion (regla 31). Acá se renderiza INLINE, sin GestionHost: el sidebar tiene que
+// seguir visible al lado, y por eso lo que se comparte es el despacho y no el contenedor.
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
@@ -76,7 +70,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // 🚨 SCOPE de LECTURA (regla 11). La escritura de GPS no pasa por esta pantalla.
   const { idEmpresaActiva, puedeCambiarScope, empresasDisponibles, setEmpresaActiva, esOverride, nombreActiva } = useTenant()
   const base = useEmpresaBase(idEmpresaActiva) // dónde abre el mapa (depósito de la empresa)
-  const isProp = role === 'propietario'
 
   const [view, setView] = useState('mapa') // 'mapa' | 'dash' | <clave de gestión>
   const [filter, setFilter] = useState(null) // null | 'v' | 'r'
@@ -105,8 +98,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const toastRef = useRef(null)
   const dateRef = useRef(null) // <input type="date"> del rail compacto (modo inmersivo)
 
-  // Ítems de gestión visibles para el rol (vacío para propietario → sin sección).
-  const gestionItems = useMemo(() => (isProp ? [] : itemsDeGestion(role, permisos)), [role, isProp, permisos])
+  // Ítems de gestión visibles para el rol. Sale de la tabla compartida (`lib/gestion.js`), igual
+  // que en SupervisionMovil y en PanelDireccion: si queda vacía, la sección no se dibuja.
+  const gestionItems = useMemo(() => itemsDeGestion(role, permisos), [role, permisos])
   const esGestion = !!GESTION_TITLES[view]
   const esHoy = fecha === hoyStr()
 
@@ -303,9 +297,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   }
 
   const nombre = perfil?.nombre || user?.email || 'Usuario'
-  const roleLabel = { propietario: 'Propietario', encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
+  const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
   const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard total')
-  const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : (isProp ? 'Vista de dirección · solo lectura' : 'Indicadores del día'))
+  const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : 'Indicadores del día')
 
   // Elegir una sección desde el sidebar (cierra el drawer y el menú de cuenta).
   const irA = (k) => { setView(k); setPinId(null); setAcctOpen(false); setDrawerOpen(false) }
@@ -349,7 +343,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
             </SideItem>
           </SideGroup>
 
-          {/* Gestión: oculta para el propietario (solo lectura). */}
+          {/* Gestión: no se dibuja si el rol no tiene ninguna pantalla habilitada. */}
           {gestionItems.length > 0 && (
             <SideGroup label="Gestión">
               {gestionItems.map((it) => (
@@ -421,7 +415,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   </div>
                   <div style={{ height: 1, background: 'var(--line)' }} />
                   <div style={{ padding: 6 }}>
-                    {onIrAJornada && !isProp && (
+                    {onIrAJornada && (
                       <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
                         <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg></div>
                         <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
@@ -456,36 +450,27 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         {/* ===== ÁREA CENTRAL ===== */}
         <main style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
           {esGestion ? (
-            // Vistas de gestión reutilizadas inline (mismo componente que el panel/APK).
-            <Suspense fallback={<Cargando />}>
-              {/* El informe recibe `byUser` YA LIMPIO, el mismo objeto del que salen el trazo y
-                  los carteles: es lo que garantiza que sus km sean los del mapa. */}
-              {view === 'reportes' && (
-                <ReportesView
-                  fecha={fecha}
-                  onFecha={setFecha}
-                  byUser={byUser}
-                  nombres={nombres}
-                  cartera={cartera}
-                  pasaFiltro={pasaFiltro}
-                  filter={filter}
-                  plantelIds={plantel}
-                  roles={roles}
-                  onVerEnMapa={(id) => { setView('mapa'); enfocarUsuario(id) }}
-                />
-              )}
-              {view === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
-              {view === 'duplicados' && <RevisarDuplicados onToast={showToast} />}
-              {view === 'zonas' && <ZonasView onToast={showToast} />}
-              {/* onEditarProducto y onToast NO son opcionales: sin el primero el botón de editar
-                  del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}
-              {view === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} onEditarProducto={(p) => setModalProducto(p)} onToast={showToast} />}
-              {view === 'faltante' && <FaltanteTab />}
-              {/* Invitar: ventana flotante con el QR de descarga; el panel de atrás queda vacío. */}
-              {view === 'invitar' && <InvitarModal open onClose={() => setView('mapa')} onToast={showToast} />}
-              {view === 'usuarios' && <UsuariosView onToast={showToast} />}
-              {view === 'empresas' && <EmpresasView onToast={showToast} />}
-            </Suspense>
+            <DespachoGestion
+              vista={view}
+              reportes={{
+                fecha,
+                onFecha: setFecha,
+                byUser,
+                nombres,
+                cartera,
+                pasaFiltro,
+                filter,
+                plantelIds: plantel,
+                roles,
+                onVerEnMapa: (id) => { setView('mapa'); enfocarUsuario(id) },
+              }}
+              onToast={showToast}
+              onNuevoCliente={() => setModalCliente(true)}
+              onNuevoProducto={() => setModalProducto(true)}
+              onEditarProducto={(p) => setModalProducto(p)}
+              invitarInline
+              onCerrarInvitar={() => setView('mapa')}
+            />
           ) : (
             <div style={{ maxWidth: 1500, width: '100%', margin: '0 auto', boxSizing: 'border-box', padding: isMobile ? 14 : 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
@@ -669,7 +654,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
               {/* MÉTRICAS DEBAJO del mapa (Monitoreo) / expandidas (Dashboard). */}
               <Metricas
                 expanded={view === 'dash'}
-                isProp={isProp}
                 isMobile={isMobile}
                 moversArr={moversArr}
                 nombres={nombres}
@@ -707,7 +691,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 // ---- MÉTRICAS (Estado del equipo + Equipo en la calle + KPIs) ----
 // Reutiliza EstadoEquipo y replica las tarjetas de PropietarioView / SupervisionMovil.
 // `expanded` (vista Dashboard) usa una grilla más ancha para los KPIs.
-function Metricas({ expanded, isProp, isMobile, moversArr, nombres, byUser, filter, pasaFiltro, onSelectUsuario }) {
+function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasaFiltro, onSelectUsuario }) {
   return (
     <div style={{ display: 'grid', gap: 16, gridTemplateColumns: !isMobile && !expanded ? '1fr 1fr' : '1fr' }}>
       {/* Estado del equipo · por qué no llega la señal. Click → enfoca su recorrido en el mapa. */}
@@ -739,7 +723,7 @@ function Metricas({ expanded, isProp, isMobile, moversArr, nombres, byUser, filt
       <div style={{ ...panelSx, gridColumn: '1 / -1' }}>
         <div style={{ padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={label10}>{isProp ? 'Métricas de dirección' : 'Rendimiento del día'}</div>
+            <div style={label10}>Rendimiento del día</div>
             <span style={{ fontSize: 10.5, color: 'var(--faint)' }}>km recorridos y tiempo de parada por persona</span>
           </div>
           <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={onSelectUsuario} />
@@ -758,10 +742,6 @@ const panelSx = { background: 'var(--surface)', border: '1px solid var(--line)',
 const label10 = { fontSize: 10.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }
 const acctItem = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', borderRadius: 11, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box', color: 'var(--text)' }
 const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', display: 'grid', placeItems: 'center' }
-
-function Cargando() {
-  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Cargando…</div>
-}
 
 function Chevron() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>

@@ -84,6 +84,39 @@ export const NEAR_LIVE_RAPIDO_MS = 5000   // captura EN MOVIMIENTO RÁPIDO (auto
 // ruta (≥40 km/h) el problema no existe aunque los puntos estén lejos: son caminos largos sin otra
 // calle con la que confundirse.
 export const VEL_UMBRAL_MPS = 3           // ~11 km/h: por encima de esto, activar la cadencia rápida
+// 🩸 10/08/2026 — SE PROBÓ SUBIRLO A 45 s Y SE REVIRTIÓ EN LA MISMA SESIÓN, ANTES DE PUBLICAR.
+// Queda anotado para que nadie vuelva a intentarlo por el mismo camino.
+//
+// La hipótesis era: el reparto puerta a puerta cruza el umbral de 3 m/s en cada esquina, cae a la
+// cadencia lenta, y el piso anti-churn (REPEDIDO_MIN_MS, 60 s) le impide volver — así que subir la
+// histéresis lo mantendría en la rápida. Encajaba con lo medido en movimiento ese día:
+//
+//   Agustin Vasquez  5,0 s entre puntos · 29 m mediana ·  42 m p90 · 19 km/h
+//   Javier          11,5 s              · 45 m         · 158 m p90 · 18 km/h
+//   Gabriel tevez   12,9 s              · 64 m         · 157 m p90 · 13 km/h
+//
+// LA HIPÓTESIS ES FALSA. Se contrastó contando, sobre 3 días, cuántos huecos de ≥25 s en movimiento
+// caen justo después de un cruce del umbral. Si el churn de modo fuera la causa, los huecos tendrían
+// que estar enriquecidos en cruces respecto de los tramos normales. No lo están:
+//
+//   Gabriel   1 cruce en 29 huecos (3 %)  vs  33 en 1181 normales (2,8 %)  → CERO enriquecimiento
+//   Javier    7 cruces en 49 huecos (14 %) vs  41 en  924 normales (4,4 %)
+//   Agustin   5 cruces en 20 huecos (25 %) vs  55 en  713 normales (7,7 %)
+//
+// Y sobre todo: los huecos de Gabriel —el caso que reportó el cliente— pasan a 0,5-1,5 m/s, o sea
+// CAMINANDO, muy por debajo del umbral de 3 m/s. La histéresis no lo toca ni en la vieja ni en la
+// nueva: nunca estuvo cerca de la cadencia rápida. El cambio habría sido inerte justo para el caso
+// que decía arreglar.
+//
+// Lo que sí apareció al contrastar: los huecos de Javier y Agustin vienen precedidos por fixes de
+// PEOR precisión (25,8 m y 18,4 m de promedio contra 18,9 y 13,2 en los tramos normales), con el
+// techo de descarte en 30. O sea que buena parte del hueco es ACCURACY_MAX_M haciendo su trabajo —
+// el agujero es el filtro, no el GPS fallando. Y ojo con "arreglarlo" subiendo el techo: eso mete
+// de vuelta las vueltas falsas que motivaron la regla 18.
+//
+// MORALEJA, que es la que vale más que el número: antes de tocar una constante de GPS, contrastar la
+// hipótesis contra los datos. Las tres veces que se movió algo acá se movió por una teoría plausible
+// y las tres veces la teoría era incompleta.
 export const VEL_HIST_MS = 20000          // sostener 20 s bajo el umbral antes de volver a la cadencia lenta (anti-flapping)
 export const ACCURACY_MAX_M = 30   // fixes menos precisos que esto se descartan (jitter de interior = causa #1 de "vueltas" falsas)
 export const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un salto imposible → glitch

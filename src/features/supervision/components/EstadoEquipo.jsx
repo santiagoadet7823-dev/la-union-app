@@ -11,7 +11,7 @@ import useDiagnosticoEquipo from '../../../hooks/useDiagnosticoEquipo'
  *   - Sin actividad hoy → no hay ningún latido registrado hoy.
  *
  * El CÁLCULO no vive acá: está en `hooks/useDiagnosticoEquipo.js`, porque el dashboard del
- * propietario necesita exactamente estos datos con otra presentación (28/07/2026). Este componente
+ * panel de dirección necesita exactamente estos datos con otra presentación (28/07/2026). Este componente
  * es la presentación "informe técnico completo", pensada para el encargado y el admin.
  */
 export default function EstadoEquipo({ compact = false, onSelectUsuario }) {

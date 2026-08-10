@@ -1,0 +1,48 @@
+-- 32 — Piso de ruido en los km de `metricas_actividad`.
+--
+-- APLICADA en la base viva el 10/08/2026. Este archivo es el registro, no la fuente de verdad
+-- (regla 5). El cuerpo completo de la función quedó en la migración `km_piso_de_ruido`; acá va el
+-- porqué, que es lo que hay que leer antes de tocarlo.
+--
+-- ── EL PROBLEMA ──────────────────────────────────────────────────────────────────────────────
+-- El cliente reportó metros falsos estando parado. Es real y está medido: entre **1 y 1,8 km por
+-- persona por día**, y en quien camina poco llega al **45 %** del total (Zura 10/08: 0,65 de 1,44 km).
+--
+-- La causa está en `UploaderGpsService.java`: el ancla del filtro de movimiento (`lastLat`/`lastLng`)
+-- se actualiza INCONDICIONALMENTE, también cuando el punto se guardó solo por el keepAlive estando
+-- quieto. O sea que cada 30 s el ancla salta a donde la puso el ruido y la comparación siguiente se
+-- hace contra la posición ya corrida: el ancla persigue al ruido en vez de sujetarlo.
+--
+-- ── POR QUÉ EL PISO, Y POR QUÉ 9 m ───────────────────────────────────────────────────────────
+-- Un hop de menos de `MIN_MOVE_M` (9) entre dos puntos GUARDADOS es, por construcción, un punto de
+-- cortesía: el uploader solo guarda si se movió >= minMove **o** si venció el keepAlive, así que por
+-- debajo de minMove no hubo movimiento. Se usa el umbral A PIE (9) y no el del modo (urbano 15,
+-- ruta 100) a propósito: es el más conservador de los tres, así que nunca descarta un desplazamiento
+-- que el teléfono haya considerado movimiento real.
+--
+-- Este piso corrige el NÚMERO y además arregla el histórico, sin depender de un APK nuevo. El
+-- arreglo del ORIGEN (que el ancla no se mueva en un punto de cortesía) va en el próximo APK; los
+-- dos son necesarios y ninguno reemplaza al otro.
+--
+-- ── MEDIDO, con el código real sobre días guardados ──────────────────────────────────────────
+--   Gabriel tevez 10/08   7,812 → 6,776 km   (-13 %)
+--   Agustin Vasquez 10/08 7,084 → 6,372 km   (-10 %)
+--   Luis Mendoza 10/08   11,636 → 11,081 km  (-5 %)
+--
+-- ⚠️ EL ESPEJO EN JS es `kmDePuntos` en `src/lib/geo.js`, que es ahora el ÚNICO lugar donde el front
+-- suma kilómetros (antes estaba duplicado en `MetricasEquipo.kmDeTrazo` y en `trazos.construirTrails`).
+-- Si se cambia el piso acá, cambiarlo allá.
+--
+-- ⚠️ Los dos NO tienen por qué dar el mismo número al dígito: esta RPC suma sobre los puntos CRUDOS
+-- de la base y el front suma sobre los puntos que pasaron por `limpiarTrazo` (que además saca los
+-- saltos imposibles y los triangulados). Esa diferencia ya existía antes de este cambio. Lo que sí
+-- tiene que ser igual es el CRITERIO — si divergen los pisos, divergen las dos pantallas.
+
+-- El cuerpo es idéntico al de db/31 salvo la línea del piso, dentro del CTE `totales`:
+--
+--   coalesce(sum(metros) filter (where metros >= 9), 0) / 1000.0 as km_dia
+--
+-- (antes: coalesce(sum(metros), 0) / 1000.0)
+
+-- Grants, sin cambios respecto de db/31: la llama el navegador y tiene guarda de rol adentro.
+-- revoke execute ... from public;  revoke ... from anon;  grant ... to authenticated;

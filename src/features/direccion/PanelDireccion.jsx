@@ -33,31 +33,46 @@ import FilaEquipo from './components/FilaEquipo'
 import SinDatoBloque from './components/SinDatoBloque'
 import SheetPersona from './components/SheetPersona'
 import GestionHost from '../../components/GestionHost'
+import InvitarModal from '../../components/InvitarModal'
+// Las pantallas de gestión (incluido el informe) salen del MISMO despacho que las dos
+// supervisiones: acá solo se decide cuál abrir. Todas son lazy adentro del módulo, así que el
+// chunk inicial de esta pantalla sigue siendo el pulso del período y nada más.
+import DespachoGestion from '../supervision/components/DespachoGestion'
+import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 
-// El informe del día, el MISMO que ven las supervisiones. Lazy: el dueño abre esta pantalla para
-// el pulso del período, y el informe detallado es un paso opcional que no tiene por qué estar en
-// el chunk inicial.
-const ReportesView = lazy(() => import('../reportes/ReportesView'))
+// Modales de alta que abren Clientes y Catálogo. Van por Overlay (--z-modal, 500), o sea por
+// encima del GestionHost (--z-screen, 400) — mismo apilamiento que en SupervisionMovil.
+const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
+const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 
 /**
- * Dashboard del DUEÑO (rol `propietario`). Entrega de diseño v1.3, sección 4d/4e.
+ * PANEL DE DIRECCIÓN — la pantalla de `admin`/`superadmin` EN CELULAR (web/PWA).
+ * Entrega de diseño v1.3, secciones 4d/4e.
  *
- * ES UN SCROLL ÚNICO Y EMPIEZA POR LOS NÚMEROS. La pantalla anterior de este rol era
- * `SupervisionMovil` en modo solo-lectura: mapa a pantalla completa y los números escondidos
- * detrás de un bottom-sheet. Pero el dueño no viene a explorar un mapa, viene a saber si el
- * negocio funciona hoy; el mapa es contexto, no titular. Acá es una tarjeta más del scroll y se
- * abre a pantalla completa con un toque.
+ * ES UN SCROLL ÚNICO Y EMPIEZA POR LOS NÚMEROS. Quien abre esto no viene a explorar un mapa, viene
+ * a saber si el negocio funciona hoy; el mapa es contexto, no titular. Acá es una tarjeta más del
+ * scroll y se abre a pantalla completa con un toque.
  *
- * Ese cambio además elimina las 6 capas de chrome con `backdrop-filter` que flotaban sobre
- * Leaflet, que es el efecto más caro que existe en un Android de gama baja (regla 28 y el bug del
+ * Ese orden además elimina las 6 capas de chrome con `backdrop-filter` que flotaban sobre Leaflet,
+ * que es el efecto más caro que existe en un teléfono de gama baja (regla 28 y el bug del
  * 20/07/2026). En el inicio no hay una sola capa sobre el mapa.
  *
- * 🩸 REEMPLAZA A `PropietarioView.jsx`, que era código MUERTO: `decidirSupervisionMovil()` atajaba
- * el rol antes de llegar al RoleRouter, así que sus 4 tarjetas "PRÓXIMAMENTE" no las vio nunca
- * nadie. Eran, eso sí, la mejor pista de qué quiere ver el dueño.
+ * 🩸 HISTORIA (leerla antes de "simplificar" el ruteo). Esta pantalla nació como el dashboard del
+ * rol `propietario`, creado para el dueño de la distribuidora. Ese rol se borró el 08/08/2026
+ * (`db/31`) sin haber tenido nunca un solo perfil: el dueño usa `admin`, que ya tenía exactamente
+ * los mismos permisos de lectura. Lo que NO se tiró fue la pantalla, porque el problema que
+ * resuelve seguía intacto — un admin que abre la PWA en un teléfono caía en `SupervisionDesktop`,
+ * la consola de escritorio colapsada a una columna. Antes de eso reemplazó a `PropietarioView.jsx`,
+ * que era código muerto y nadie vio jamás.
  *
- * SOLO LECTURA: no hay un control que escriba. Lo único tocable son las dos capas (detalle de
- * persona y mapa completo), el selector de horizonte, el grupo colapsable y el menú de cuenta.
+ * QUIÉN LA VE (`decidirPanelDireccion` en App.jsx, único lugar que sabe la regla):
+ * web/PWA + pantalla de celular + rol de gestión. En el APK los gestores siguen en
+ * `SupervisionMovil`, y el `encargado` —supervisor de campo, no dirección— nunca entra acá.
+ *
+ * CASI TODO ES LECTURA. Los únicos controles son el selector de horizonte, el grupo colapsable, el
+ * detalle de persona, el mapa completo, el menú de cuenta y —desde que la usa `admin`— el botón
+ * "Menú" de gestión, que abre las mismas pantallas que las dos supervisiones a través del despacho
+ * compartido (`supervision/components/DespachoGestion`, regla 31).
  */
 const HORIZONTES = [
   { id: 'hoy', label: 'Hoy' },
@@ -65,15 +80,21 @@ const HORIZONTES = [
   { id: 'mes', label: 'Mes' },
 ]
 
-export default function PropietarioMovil() {
-  const { idEmpresa, perfil } = useAuth()
+export default function PanelDireccion() {
+  const { idEmpresa, perfil, rol, permisos } = useAuth()
   const { theme, isDark } = useTheme()
   // El default depende de la hora: antes de las 11 "hoy" casi no tiene datos y un dueño que abre
   // a las 8:30 vería 4 km y sacaría una conclusión falsa sobre un día que recién empieza.
   const [horizonte, setHorizonte] = useState(() => horizonteInicial())
   const [personaSel, setPersonaSel] = useState(null)
   const [mapaAbierto, setMapaAbierto] = useState(false)
-  const [reportesAbierto, setReportesAbierto] = useState(false)
+  // Pantalla de gestión abierta (clave de GESTION_ITEMS) o null. El informe de jornada es una más
+  // de la lista: el botón del cuerpo abre 'reportes', el mismo que el menú.
+  const [gestion, setGestion] = useState(null)
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  const [modalCliente, setModalCliente] = useState(false)
+  const [modalProducto, setModalProducto] = useState(false)
+  const [toast, setToast] = useState(null)
   const [cuentaAbierta, setCuentaAbierta] = useState(false)
   // ---- Estado del MAPA a pantalla completa. Antes no existía ninguno de estos: el mapa se abría
   // en un sheet de 60vh con cuatro props y sin un solo control.
@@ -144,7 +165,7 @@ export default function PropietarioMovil() {
     //
     // `diag` sale de `usePerfilesEquipo`, que filtra a `rol in (vendedor, repartidor, encargado)`.
     // Ese filtro está bien para el informe técnico —es el plantel que SE RASTREA— pero acá dejaba
-    // fuera a cualquier admin, superadmin o propietario que saliera a la calle con la app: sus km
+    // fuera a cualquier admin o superadmin que saliera a la calle con la app: sus km
     // se contaban en el total, su trazo se dibujaba en el mapa, y en la lista "Equipo" no estaban.
     // La pregunta que responde esta pantalla es "quién tuvo actividad hoy", no "quién figura en el
     // plantel". `usePerfilesEquipo` NO se toca: lo comparte EstadoEquipo en las dos supervisiones.
@@ -321,6 +342,22 @@ export default function PropietarioMovil() {
     ? activos.find((p) => p.id === personaSel) || sinDatos.find((p) => p.id === personaSel) || null
     : null
 
+  const mostrarToast = useCallback((msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2600)
+  }, [])
+
+  // Pantallas de gestión que este usuario puede abrir. Sale de la MISMA tabla que las dos
+  // supervisiones (`lib/gestion.js`), así que un permiso nuevo aparece en los tres canales o en
+  // ninguno. Para un admin sale completa; el filtro por rol y por `permisos` ya vive allá.
+  const gestionItems = useMemo(() => itemsDeGestion(rol, permisos), [rol, permisos])
+
+  // El botón atrás de Android cierra el menú antes que la app (reglas 26-27).
+  useEffect(() => {
+    if (!menuAbierto) return
+    return apilarAtras(() => setMenuAbierto(false))
+  }, [menuAbierto])
+
   return (
     <div style={sx('position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}>
       {/* ---- Header fijo. Sin bottom-nav, sin tabs: no hay segundo nivel del que volver. ---- */}
@@ -348,6 +385,21 @@ export default function PropietarioMovil() {
                 setMapaAbierto(true)
               }}
             />
+            {/* Gestión. Va como un ícono más del header y no como una barra propia: esta pantalla
+                se lee de arriba hacia abajo y el menú es un desvío, no un destino. Si el rol no
+                tiene ninguna pantalla habilitada, el botón no existe. */}
+            {gestionItems.length > 0 && (
+              <button
+                onClick={() => setMenuAbierto(true)}
+                className="lu-press"
+                aria-label="Menú de gestión"
+                style={sx('width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer')}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M3 12h18M3 18h18" />
+                </svg>
+              </button>
+            )}
             {/* El diseño no previó acceso a la cuenta: sin esto el dueño se queda sin editar su
                 perfil, sin cambiar el tema y —sobre todo— sin poder cerrar sesión. */}
             <button
@@ -356,7 +408,7 @@ export default function PropietarioMovil() {
               aria-label="Mi cuenta"
               style={sx('width:36px;height:36px;flex:none;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);color:var(--deep);font-family:var(--font-display);font-size:var(--fs-sm);font-weight:700;cursor:pointer')}
             >
-              {initials(perfil?.nombre || 'Dueño')}
+              {initials(perfil?.nombre || perfil?.email || '?')}
             </button>
           </div>
         </div>
@@ -477,7 +529,7 @@ export default function PropietarioMovil() {
             <button
               type="button"
               className="lu-press"
-              onClick={() => setReportesAbierto(true)}
+              onClick={() => setGestion('reportes')}
               style={sx('margin-top:14px;width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);color:var(--text);font-size:var(--fs-sm);font-weight:600;cursor:pointer')}
             >
               Ver el informe de la jornada
@@ -509,24 +561,50 @@ export default function PropietarioMovil() {
         onClose={() => setPersonaSel(null)}
       />
 
-      {/* El dueño no tiene menú de gestión (`gestionItems` es [] para su rol), así que el informe
-          se abre con el MISMO contenedor full-screen que usan las supervisiones — header con
-          atrás, Escape y botón físico de Android incluidos. */}
-      {reportesAbierto && (
-        <GestionHost title="Informe de jornada" onClose={() => setReportesAbierto(false)}>
-          <Suspense fallback={<div style={sx('padding:32px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:13px')}>Cargando…</div>}>
-            <ReportesView
-              fecha={fechaMapa}
-              onFecha={setFechaMapa}
-              byUser={byUser}
-              nombres={nombres}
-              cartera={cartera}
-              plantelIds={plantel}
-              roles={roles}
-              onVerEnMapa={(id) => { setReportesAbierto(false); setMapaAbierto(true); enfocarPersona(id) }}
-            />
-          </Suspense>
+      {/* ===== GESTIÓN =====
+          Mismo contenedor full-screen que usa SupervisionMovil (header con atrás, Escape y botón
+          físico de Android), y el MISMO despacho: una sola definición de qué pantalla es cada
+          clave, compartida por las tres vistas (regla 31).
+          'invitar' queda afuera: es una ventana flotante, no una pantalla. */}
+      {gestion && gestion !== 'invitar' && (
+        <GestionHost
+          title={GESTION_TITLES[gestion] || 'Informe de jornada'}
+          onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}
+        >
+          <DespachoGestion
+            vista={gestion}
+            reportes={{
+              fecha: fechaMapa,
+              onFecha: setFechaMapa,
+              byUser,
+              nombres,
+              cartera,
+              plantelIds: plantel,
+              roles,
+              onVerEnMapa: (id) => { setGestion(null); setMapaAbierto(true); enfocarPersona(id) },
+            }}
+            onToast={mostrarToast}
+            onNuevoCliente={() => setModalCliente(true)}
+            onNuevoProducto={() => setModalProducto(true)}
+            onEditarProducto={(p) => setModalProducto(p)}
+          />
         </GestionHost>
+      )}
+
+      <InvitarModal open={gestion === 'invitar'} onClose={() => setGestion(null)} onToast={mostrarToast} />
+
+      {(modalCliente || modalProducto) && (
+        <Suspense fallback={null}>
+          {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={mostrarToast} center={null} />}
+          {/* `true` = alta; un objeto producto = edición (mismo patrón que las supervisiones). */}
+          {modalProducto && (
+            <NuevoProducto
+              onClose={() => setModalProducto(false)}
+              onToast={mostrarToast}
+              producto={modalProducto === true ? null : modalProducto}
+            />
+          )}
+        </Suspense>
       )}
 
       {mapaAbierto && (
@@ -570,10 +648,49 @@ export default function PropietarioMovil() {
         />
       )}
 
+      {menuAbierto && (
+        <Overlay open onClose={() => setMenuAbierto(false)} variant="sheet" title="Gestión">
+          <div style={sx('display:flex;flex-direction:column;gap:2px;padding-bottom:4px')}>
+            {gestionItems.map((it) => (
+              <button
+                key={it.key}
+                className="lu-press"
+                onClick={() => { setMenuAbierto(false); setGestion(it.key) }}
+                style={sx('display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:0 4px;background:none;border:none;border-radius:var(--r-md);color:var(--text);font-size:var(--fs-md);font-weight:500;text-align:left;cursor:pointer')}
+              >
+                {it.label}
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            ))}
+          </div>
+        </Overlay>
+      )}
+
       {cuentaAbierta && (
         <Overlay open onClose={() => setCuentaAbierta(false)} variant="sheet" title="Mi cuenta">
-          <MiCuenta />
+          {/* 🩸 `showDeviceToggle` NO es opcional acá. Esta pantalla se elige por ANCHO de
+              viewport, así que un admin en una ventana angosta de PC entra al panel y sin este
+              switch se queda sin ninguna forma de volver a la consola de escritorio. */}
+          <MiCuenta showDeviceToggle />
         </Overlay>
+      )}
+
+      {toast && (
+        <div
+          className="lu-rise"
+          style={{
+            ...sx('position:fixed;left:16px;right:16px;display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:13px;background:var(--glass-strong);border:0.5px solid var(--glass-brd);box-shadow:var(--shadow-lg);font-size:var(--fs-sm);font-weight:500'),
+            bottom: 'calc(18px + env(safe-area-inset-bottom,0px))',
+            zIndex: 'var(--z-toast)',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          {toast}
+        </div>
       )}
     </div>
   )

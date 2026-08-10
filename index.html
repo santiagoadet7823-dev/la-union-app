@@ -6,6 +6,21 @@
     <meta name="theme-color" content="#0C0C0C" />
     <title>DisT-At</title>
 
+    <!--
+      iOS / iPadOS instalado en la pantalla de inicio (08/08/2026). El dueño de la distribuidora
+      usa iPhone y entra por la PWA, no por el APK — este es su único canal.
+
+      `apple-mobile-web-app-capable` es el que saca la barra de Safari. Safari moderno respeta el
+      `display: standalone` del manifest, pero el parque de iPhones es mixto y este meta es la
+      única forma de cubrir los que no. `black-translucent` deja el contenido pasar POR DEBAJO de
+      la barra de estado, que es justo lo que el layout ya espera: `viewport-fit=cover` (arriba)
+      más los `env(safe-area-inset-*)` de PanelDireccion. Sin las tres piezas juntas, el header se
+      mete abajo de la hora y la señal.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DisT-At" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

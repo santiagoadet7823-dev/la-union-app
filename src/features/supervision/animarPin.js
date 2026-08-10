@@ -21,7 +21,7 @@ import { obtenerRuta } from '../../services/routing'
  *     donde todo entra con `cubic-bezier(.23,1,.32,1)`.
  *
  * Vive en `features/supervision/` y no en el componente del mapa porque lo consumen las dos
- * supervisiones y el propietario (regla 31: lo compartido va en un módulo, nunca copiado).
+ * supervisiones y el panel de dirección (regla 31: lo compartido va en un módulo, nunca copiado).
  */
 
 const R_TIERRA = 6371000

@@ -28,20 +28,13 @@ import BurbujasEquipo from './components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from './components/RailMapa'
 import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
+import DespachoGestion from './components/DespachoGestion'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
 
-// Vistas de gestión migradas al botón "Menú" (antes vivían en el Panel de gestión / AdminView,
-// la vista de escritorio tipo PWA). Se cargan bajo demanda para no engordar el chunk del mapa.
-const ReportesView = lazy(() => import('../reportes/ReportesView'))
-const ClientesTab = lazy(() => import('../admin/tabs/ClientesTab'))
-const RevisarDuplicados = lazy(() => import('../admin/RevisarDuplicados'))
-const ZonasView = lazy(() => import('../admin/ZonasView'))
-const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
-const FaltanteTab = lazy(() => import('../admin/tabs/FaltanteTab'))
+// Las vistas de gestión (Clientes, Zonas, Catálogo, …) se despachan desde un módulo compartido con
+// SupervisionDesktop y PanelDireccion: acá solo se dice CUÁL abrir, no cómo construirla (regla 31).
 import InvitarModal from '../../components/InvitarModal'
-const UsuariosView = lazy(() => import('../admin/UsuariosView'))
-const EmpresasView = lazy(() => import('../admin/EmpresasView'))
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
@@ -51,15 +44,14 @@ const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
  * del handoff (SupervisionMovil.dc.html): mapa a pantalla completa como capa base y
  * "chrome" de vidrio flotando encima (header, chips, bottom-nav, bottom-sheet).
  *
- * Un solo componente con dos variantes por rol:
- *   - encargado   → supervisor operativo: incluye menú "+" de acciones y equipo en vivo.
- *   - propietario → dueño, SOLO LECTURA: sin menú "+", dashboard con KPIs "próximamente".
+ * La ve el ENCARGADO (supervisor operativo) y los gestores (admin/superadmin) en el APK. En web un
+ * gestor no llega acá: en PC va a `SupervisionDesktop` y en celular al `PanelDireccion`.
  *
  * El "mapa principal" muestra los RECORRIDOS del día (trazos por persona) + los
  * móviles en vivo como pines. Datos reales por empresa (RLS aísla el tenant).
  *
  * props:
- *   - role         'encargado' | 'propietario' | 'admin' | 'superadmin'
+ *   - role         'encargado' | 'admin' | 'superadmin'
  *   - onIrAJornada () => void | null   (solo encargado: volver a "Mi jornada")
  *
  * Las funciones de gestión (Clientes, Zonas, Catálogo, Faltante, Invitar, Usuarios,
@@ -422,7 +414,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   }
 
   const nombre = perfil?.nombre || user?.email || 'Usuario'
-  const roleLabel = { propietario: 'Propietario', encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
+  const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
   const title = section === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard total'
   const cerrarTodo = () => { setPlusOpen(false); setAcctOpen(false); setDatePop(false); setPinId(null) }
 
@@ -609,7 +601,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== RAIL DE CONTROLES (vertical, abajo a la derecha) =====
           El markup vive en ./components/RailMapa (regla 31: lo comparten esta pantalla, su modo
-          inmersivo y el mapa del propietario).
+          inmersivo y el mapa del panel de dirección).
 
           🩸 EN INMERSIVO YA NO DESAPARECE (30/07/2026). Antes todo el rail estaba envuelto en
           `{!inmersivo && …}`, así que al abrir el mapa a pantalla completa se iban los botones de
@@ -776,7 +768,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         title="Dashboard"
         subtitle="Jornada en curso"
       >
-      {/* Informe: por qué no llega la señal (lo ve también el propietario). Click en una
+      {/* Informe: por qué no llega la señal (lo ve también el panel de dirección). Click en una
           persona → cierra el sheet y encuadra su recorrido. */}
       <div style={{ marginBottom: 10 }}><EstadoEquipo onSelectUsuario={enfocarUsuario} /></div>
 
@@ -814,33 +806,25 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* 'invitar' NO usa GestionHost: es una ventana flotante (InvitarModal), se maneja abajo. */}
       {gestion && gestion !== 'invitar' && (
         <GestionHost title={GESTION_TITLES[gestion]} onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}>
-          <Suspense fallback={<GestionCargando />}>
-            {/* El informe recibe `byUser` YA LIMPIO, el mismo objeto del que salen el trazo y los
-                carteles: es lo que garantiza que sus km sean dígito por dígito los del mapa. */}
-            {gestion === 'reportes' && (
-              <ReportesView
-                fecha={fecha}
-                onFecha={setFecha}
-                byUser={byUser}
-                nombres={nombres}
-                cartera={cartera}
-                pasaFiltro={pasaFiltro}
-                filter={filter}
-                plantelIds={plantel}
-                roles={roles}
-                onVerEnMapa={(id) => { setGestion(null); enfocarUsuario(id) }}
-              />
-            )}
-            {gestion === 'clientes' && <ClientesTab onToast={showToast} onNuevoCliente={() => setModalCliente(true)} />}
-              {gestion === 'duplicados' && <RevisarDuplicados onToast={showToast} />}
-            {gestion === 'zonas' && <ZonasView onToast={showToast} />}
-            {/* onEditarProducto y onToast NO son opcionales: sin el primero el botón de editar
-                del catálogo no hace nada (y el de borrar sí funciona, que es lo peligroso). */}
-            {gestion === 'catalogo' && <CatalogoTab onNuevoProducto={() => setModalProducto(true)} onEditarProducto={(p) => setModalProducto(p)} onToast={showToast} />}
-            {gestion === 'faltante' && <FaltanteTab />}
-            {gestion === 'usuarios' && <UsuariosView onToast={showToast} />}
-            {gestion === 'empresas' && <EmpresasView onToast={showToast} />}
-          </Suspense>
+          <DespachoGestion
+            vista={gestion}
+            reportes={{
+              fecha,
+              onFecha: setFecha,
+              byUser,
+              nombres,
+              cartera,
+              pasaFiltro,
+              filter,
+              plantelIds: plantel,
+              roles,
+              onVerEnMapa: (id) => { setGestion(null); enfocarUsuario(id) },
+            }}
+            onToast={showToast}
+            onNuevoCliente={() => setModalCliente(true)}
+            onNuevoProducto={() => setModalProducto(true)}
+            onEditarProducto={(p) => setModalProducto(p)}
+          />
         </GestionHost>
       )}
 
@@ -891,11 +875,6 @@ function GestIcon({ k }) {
     empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
   }[k]
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{inner}</svg>
-}
-
-// Fallback mientras carga (lazy) la vista de gestión dentro del GestionHost.
-function GestionCargando() {
-  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Cargando…</div>
 }
 
 function themeBtn(active) {

@@ -18,7 +18,7 @@ import CompartirUbicacion from '../../components/CompartirUbicacion'
  *
  * props: { onToast }
  */
-const ROLE_LABEL = { propietario: 'Propietario', encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor' }
+const ROLE_LABEL = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor' }
 const item = { ...sx('display:flex;align-items:center;gap:12px;padding:13px 4px;cursor:pointer;min-height:44px;box-sizing:border-box') }
 const iconBox = { ...sx('width:32px;height:32px;flex:none;border-radius:10px;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;color:var(--deep)') }
 

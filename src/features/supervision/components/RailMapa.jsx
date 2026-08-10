@@ -7,7 +7,7 @@ import BtnInmersivo from '../../../components/BtnInmersivo'
  *
  * ANTES vivía inline dentro de `SupervisionMovil`. Salió acá el 30/07/2026 por la regla 31: pasó a
  * tener tres consumidores —la supervisión normal, la supervisión en PANTALLA COMPLETA y el mapa del
- * propietario— y este repo ya tiene dos casos documentados de lo mismo copiado divergiendo.
+ * panel de dirección— y este repo ya tiene dos casos documentados de lo mismo copiado divergiendo.
  *
  * 🩸 EL BUG QUE ORIGINÓ EL MODO `compacto` (30/07/2026): el rail entero estaba envuelto en
  * `{!inmersivo && (…)}`. O sea que al abrir el mapa a pantalla completa —justo cuando más se lo

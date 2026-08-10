@@ -15,7 +15,7 @@
  *   construirLeaflet   → las polilíneas finales, con foco, snap y conectores de hueco
  */
 import { colorPorId } from '../../lib/colors'
-import { limpiarTrazo, simplificarTrazo } from '../../lib/geo'
+import { kmDePuntos, limpiarTrazo, simplificarTrazo } from '../../lib/geo'
 import { fmtHora } from '../../lib/format'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 
@@ -50,9 +50,10 @@ export function construirTrails(byUser, pasaFiltro) {
   return Object.entries(byUser)
     .filter(([, v]) => v.points.length >= 2 && pasaFiltro(v.rol))
     .map(([id, v]) => {
-      let km = 0
-      for (let i = 1; i < v.points.length; i++) km += distanciaMetros(v.points[i - 1], v.points[i])
-      return { id, points: v.points, segmentos: v.segmentos, aproximados: v.aproximados || [], color: colorPorId(id), km: km / 1000 }
+      // 🩸 El km sale del MISMO helper que usa MetricasEquipo (`kmDePuntos`, lib/geo.js). Estaba
+      // duplicado acá como un for suelto, y cuando se le agregó el piso de ruido en un lado el otro
+      // habría seguido inflando — el panel y la supervisión mostrando distinto para el mismo día.
+      return { id, points: v.points, segmentos: v.segmentos, aproximados: v.aproximados || [], color: colorPorId(id), km: kmDePuntos(v.points) }
     })
 }
 

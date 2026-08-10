@@ -21,7 +21,7 @@ import { btnSecundario, btnPrimario, apagado } from '../../lib/botones'
  *
  * props: { onClose, onToast }
  */
-const ROLE_LABEL = { propietario: 'Propietario', encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor' }
+const ROLE_LABEL = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor' }
 
 export default function MiPerfilModal({ onClose, onToast }) {
   const { perfil, user, rol, actualizarMiPerfil } = useAuth()

@@ -251,7 +251,7 @@ export default function EmpresasView({ onToast }) {
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Avisos al supervisor</div>
         <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>
           Se revisa cada 10 minutos y solo <strong>dentro del horario de rastreo</strong> de cada
-          persona. El aviso llega como notificación a los encargados, admins y propietarios que
+          persona. El aviso llega como notificación a los encargados y admins que
           tengan la app instalada, y queda en la campanita de Supervisión (que es la única forma de
           verlo desde la PC: una web no recibe notificaciones push).
         </div>

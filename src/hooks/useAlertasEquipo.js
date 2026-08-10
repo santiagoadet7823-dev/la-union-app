@@ -26,7 +26,7 @@ export default function useAlertasEquipo({ idEmpresa: scope } = {}) {
   const idEmpresa = scope !== undefined ? scope : idPropio
   // Solo los roles que supervisan tienen policy de lectura. Sin esta guarda, un vendedor dispararía
   // una consulta cada minuto que RLS le devuelve vacía siempre.
-  const puedeVer = rol === 'admin' || rol === 'encargado' || rol === 'propietario' || rol === 'superadmin'
+  const puedeVer = rol === 'admin' || rol === 'encargado' || rol === 'superadmin'
   const [alertas, setAlertas] = useState([])
   const [error, setError] = useState(null)
 

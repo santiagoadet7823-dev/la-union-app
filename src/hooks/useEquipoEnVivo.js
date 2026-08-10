@@ -4,7 +4,7 @@ import { useTenant, TODAS } from '../context/TenantContext'
 import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../services/sync/realtime'
 
 /**
- * Equipo en vivo de la empresa (para paneles de solo lectura como el del propietario
+ * Equipo en vivo de la empresa (para paneles de lectura como el panel de dirección
  * o el mapa del admin). Encapsula lo que antes vivía suelto en AdminView:
  *   - nombres: { [id]: nombre } de los perfiles de la empresa (para etiquetar móviles).
  *   - movers: { [id]: {id, rol, lat, lng, ts} } — última posición conocida de cada móvil,
@@ -36,7 +36,7 @@ import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../servic
  * Un aviso que siempre está encendido es un aviso que nadie mira: al tercer día de ver los mismos
  * nueve nombres, el bloque entero deja de leerse y con él se pierden los que sí importan.
  *
- * `propietario` tampoco entra: su pantalla es de solo lectura, es el dueño mirando.
+ * Los gestores (admin/superadmin) tampoco entran: miran, no se los rastrea.
  *
  * ⚠️ Lo que esto NO puede arreglar son las cuentas duplicadas: dos perfiles activos con rol de
  * vendedor son, para el sistema, dos vendedores. Eso se limpia en `Usuarios`, no acá.

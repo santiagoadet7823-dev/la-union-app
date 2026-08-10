@@ -3,7 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { TenantProvider } from './context/TenantContext'
 import { CatalogProvider } from './context/CatalogContext'
 import { GpsProvider } from './context/GpsContext'
-import { DeviceProvider } from './context/DeviceContext'
+import { DeviceProvider, useDevice } from './context/DeviceContext'
 import AppShell from './components/AppShell'
 import PhoneFrame from './components/PhoneFrame'
 import GpsGate from './components/GpsGate'
@@ -23,7 +23,7 @@ import { initNativeUI } from './services/nativeUI'
 const VendedorView = lazy(() => import('./features/vendedor/VendedorView'))
 const RepartidorView = lazy(() => import('./features/repartidor/RepartidorView'))
 const AdminView = lazy(() => import('./features/admin/AdminView'))
-const PropietarioMovil = lazy(() => import('./features/propietario/PropietarioMovil'))
+const PanelDireccion = lazy(() => import('./features/direccion/PanelDireccion'))
 const SupervisionMovil = lazy(() => import('./features/supervision/SupervisionMovil'))
 // Shell de escritorio (PWA/.exe) para los roles de supervisión: sidebar izq + topbar +
 // mapa + métricas. Reemplaza al AppShell+AdminView SOLO en web.
@@ -44,7 +44,8 @@ function usarSupervisionMovil() {
  *    vista del vendedor, con GPS) y "Panel" (auditoría). El switch vive en AppShell.
  *  - admin / superadmin → panel de escritorio (AdminView).
  *
- * El PROPIETARIO no llega hasta acá: `AuthedApp` lo atiende antes (ver más abajo).
+ * ⚠️ El `return <AdminView/>` del final es INALCANZABLE: `AuthedApp` ataja a los 5 roles antes de
+ * llegar acá. Está documentado como deuda en CLAUDE.md §8 junto con las 3 pantallas que arrastra.
  */
 function RoleRouter({ vista }) {
   const { rol } = useAuth()
@@ -103,10 +104,6 @@ function CargandoPerfil({ error, onRetry }) {
  * hoc que hay que reinventar/recordar cada vez que se agregue un rol o vista.
  */
 function decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor }) {
-  // OJO: el PROPIETARIO ya NO pasa por acá. Hasta el 28/07/2026 esta función lo devolvía `true`
-  // como primera regla, y eso lo mandaba a `SupervisionMovil` (la pantalla del encargado en modo
-  // solo-lectura) — que además dejaba a `PropietarioView.jsx` inalcanzable, código muerto que
-  // nadie vio nunca. Ahora tiene su propia pantalla y `AuthedApp` lo atiende antes de llegar acá.
   if (!nativo) return false
   if (esEncargado && vista === 'panel') return true
   // Admin/superadmin en la APK: SIEMPRE supervisión móvil. La gestión se abre nativa desde
@@ -116,12 +113,36 @@ function decidirSupervisionMovil({ nativo, rol, esEncargado, vista, esGestor }) 
 }
 
 /**
+ * ¿Va al PANEL DE DIRECCIÓN? (`features/direccion/PanelDireccion.jsx` — scroll único que empieza
+ * por los números, con el mapa como una tarjeta que se abre.)
+ *
+ * La condición es WEB + PANTALLA DE CELULAR + rol de gestión, y cada término está por algo:
+ *
+ *  - `!nativo`  — en la APK los gestores siguen en `SupervisionMovil`, que es la herramienta de
+ *    campo y lo que hoy corre en los teléfonos del parque. Esto no la toca.
+ *  - `isMobile` — es el término que resuelve el caso real: el DUEÑO abre la PWA desde su iPhone.
+ *    Hasta el 08/08/2026 el ruteo solo miraba `isNative()`, nunca el tamaño de pantalla, así que
+ *    caía en `SupervisionDesktop` — el sidebar de escritorio colapsado a una columna en 390 px.
+ *    Sale de `useDevice()`, que ya combina ancho + puntero + userAgent y admite override manual
+ *    (el switch "Celular / PC" de Mi cuenta). No se inventa una detección nueva.
+ *  - `esGestor` — el `encargado` NO entra: es el supervisor de campo, no dirección, y su Panel
+ *    es la auditoría del equipo. Sigue yendo a `SupervisionDesktop`.
+ *
+ * 🩸 Esta pantalla era del rol `propietario`, que se borró el 08/08/2026 (`db/31`) sin haber
+ * tenido nunca un perfil. El dueño usa `admin`.
+ */
+function decidirPanelDireccion({ nativo, esGestor, isMobile }) {
+  return !nativo && esGestor && isMobile
+}
+
+/**
  * Rol efectivo para el ruteo.
  *
- * En DESARROLLO se puede forzar con `localStorage['lu-dev-rol']`, para poder abrir una pantalla de
- * un rol que todavía no tiene usuarios en la base (hoy: `propietario` y `repartidor`, ambos con 0
- * perfiles). Es solo de ruteo: la RPC y las policies siguen aplicando el rol REAL del usuario, así
- * que esto no da acceso a ningún dato que la sesión no tuviera igual.
+ * En DESARROLLO se puede forzar con `localStorage['lu-dev-rol']`, para poder abrir la pantalla de
+ * un rol del que no hay usuarios con quien probar (hoy `repartidor`: 1 perfil, inactivo). Es solo
+ * de ruteo: la RPC y las policies siguen aplicando el rol REAL del usuario, así que esto no da
+ * acceso a ningún dato que la sesión no tuviera igual — y por eso mismo forzar un rol de gestión
+ * desde una sesión de vendedor muestra la pantalla vacía, no los datos del equipo.
  *
  * `import.meta.env.DEV` lo deja fuera de cualquier build de producción — Vite lo reemplaza por
  * `false` y el bloque entero desaparece en el tree-shaking.
@@ -137,6 +158,7 @@ function rolEfectivo(rolReal) {
  */
 function AuthedApp() {
   const { rol: rolReal } = useAuth()
+  const { isMobile } = useDevice()
   const rol = rolEfectivo(rolReal)
   const esEncargado = rol === 'encargado'
   const esGestor = rol === 'admin' || rol === 'superadmin'
@@ -146,19 +168,6 @@ function AuthedApp() {
   const cambiarVista = (v) => {
     try { localStorage.setItem('lu-encargado-vista', v) } catch (_) {}
     setVista(v)
-  }
-
-  // El DUEÑO tiene su propia pantalla, y es la misma en la APK y en la PWA: abre el sistema desde
-  // el celular. Va antes que todo lo demás porque no comparte nada con la supervisión del
-  // encargado — no es una variante de otra vista, es otro producto.
-  if (rol === 'propietario') {
-    return (
-      <ErrorBoundary>
-        <Suspense fallback={<Cargando />}>
-          <PropietarioMovil />
-        </Suspense>
-      </ErrorBoundary>
-    )
   }
 
   // Supervisión móvil (full-screen, sin el marco del AppShell). Solo en la APK nativa
@@ -179,12 +188,28 @@ function AuthedApp() {
     )
   }
 
-  // En WEB/PWA (no nativo) los roles de GESTIÓN usan el nuevo shell de ESCRITORIO
-  // (sidebar izq + topbar + mapa + métricas) en vez del AppShell+AdminView: la PWA de
-  // escritorio es solo para PC. Gestor (admin/superadmin) siempre; encargado solo en "Panel"
-  // (en "Mi jornada" sigue con el PhoneFrame del vendedor). El PROPIETARIO NO entra acá: ya
-  // salió arriba por supMovil (vista móvil de solo-lectura, celular). La APK también.
-  const usaDesktop = !nativo && (esGestor || (esEncargado && vista === 'panel'))
+  // PANEL DE DIRECCIÓN — web/PWA en un CELULAR, para los roles de gestión. Es el caso del dueño
+  // abriendo la app desde su iPhone: hasta acá el ruteo solo miraba `isNative()`, así que caía en
+  // el sidebar de escritorio colapsado. Ver `decidirPanelDireccion`.
+  if (decidirPanelDireccion({ nativo, esGestor, isMobile })) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<Cargando />}>
+          <PanelDireccion />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
+
+  // En WEB/PWA (no nativo) los roles de GESTIÓN usan el shell de ESCRITORIO (sidebar izq + topbar
+  // + mapa + métricas) en vez del AppShell+AdminView. Gestor (admin/superadmin) siempre; encargado
+  // solo en "Panel" (en "Mi jornada" sigue con el PhoneFrame del vendedor).
+  //
+  // El `!isMobile` es lo que separa este caso del panel de dirección de arriba: en una pantalla de
+  // celular el gestor ya salió por ahí. El encargado NO lleva esa condición a propósito — su Panel
+  // es la auditoría del equipo y el layout ya se colapsa a una columna con drawer (`isMobile` de
+  // `useDevice` adentro de SupervisionDesktop), así que en un celular sigue viendo lo suyo.
+  const usaDesktop = !nativo && ((esGestor && !isMobile) || (esEncargado && vista === 'panel'))
   if (usaDesktop) {
     return (
       <ErrorBoundary>

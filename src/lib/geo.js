@@ -136,7 +136,74 @@ const msDe = (ts) => (typeof ts === 'number' ? ts : new Date(ts).getTime())
 // Umbrales del corte por hueco. 4 min es holgado a propósito: el reenvío estando quieto es cada
 // 30 s (STATIONARY_KEEPALIVE_MS) y una cola que drena tarde puede dejar baches de un par de
 // minutos que SÍ son recorrido continuo. Cortar ahí llenaría el mapa de tramos falsos.
+//
+// Es el mismo valor que `GAP_MS` de `supabase/functions/snap-recorridos/segmentar.ts` y responde la
+// misma pregunta ("¿esto es otro tramo?"). Si se toca uno hay que tocar el otro.
 export const HUECO_MS = 4 * 60000
+
+/**
+ * 🩸 EL HUECO DUDOSO (10/08/2026) — "no sabemos" dibujado como si supiéramos.
+ *
+ * El cliente reportó que el trazo "salta calles" en tres vendedores. NO era el snap inventando: con
+ * el `fraccionCiega` real, Gabriel ya iba **72 % crudo** y Javier **57 %**, o sea que la guarda del
+ * snap ya los estaba rechazando. Lo que cruzaba manzanas eran las RECTAS DEL CRUDO.
+ *
+ * La causa es que la pregunta *"¿sabemos qué pasó en el medio?"* estaba contestada con dos números
+ * que difieren ×5: el snap declara ciego un hueco de más de `HUECO_CIEGO_MS` (45 s) y se niega a
+ * rutearlo, pero el dibujo recién cortaba a los 4 minutos. Entre esos dos valores el mapa trazaba
+ * una recta LLENA — el snap decía "no sé" y el dibujo decía "fue por acá", y ganaba el que miente.
+ *
+ * Medido: el **45 %** de los km dibujados de Gabriel (10/08) y de Javier (08/08) caía en esa franja,
+ * y la recta más larga de esa clase medía **3.839 m**.
+ *
+ * Un hueco dudoso NO parte el recorrido (para eso está `HUECO_MS`): parte solo el DIBUJO. El tramo
+ * queda como un salto entre dos segmentos, y `construirLeaflet` (trazos.js) ya dibuja punteado y
+ * fino entre segmentos consecutivos — no hizo falta agregar nada, el mecanismo existía y decía
+ * exactamente esto: "siguió siendo la misma persona, pero acá no hay datos".
+ *
+ * Los kilómetros NO cambian: salen de `puntos`, que conserva los dos extremos del salto. Ese
+ * desplazamiento ocurrió de verdad; lo único que deja de afirmarse es POR DÓNDE.
+ *
+ * Medido con el código real sobre dos días guardados, y discrimina:
+ *   Gabriel tevez 10/08 → 45 % del dibujo pasa a punteado (3,415 km, 40 conectores). km: 7,812 sin cambio.
+ *   Agustin Vasquez 10/08 (día sano, control) → 2 % (0,115 km). km: 7,084 sin cambio.
+ *
+ * ⚠️ Vale 45.000 porque es `HUECO_CIEGO_MS` de `segmentar.ts:109`. Son dos constantes en dos runtimes
+ * (Deno vs. el bundle) que no pueden compartir módulo: si se cambia una, cambiar la otra.
+ */
+export const HUECO_DUDOSO_MS = 45000
+
+/**
+ * 🩸 KILÓMETROS DE UN RECORRIDO — ÚNICO lugar donde se suman (10/08/2026).
+ *
+ * Estaba escrito dos veces (un `for` en `kmDeTrazo` de MetricasEquipo.jsx y otro suelto en
+ * `construirTrails` de trazos.js), más una tercera vez en SQL dentro de la RPC
+ * `metricas_actividad`. Tres sumas de lo mismo, ninguna sincronizada.
+ *
+ * EL PISO DE RUIDO. Un hop de menos de `MIN_MOVE_M` entre dos puntos GUARDADOS es, por
+ * construcción, un punto de cortesía estando quieto: el servicio nativo solo guarda si se movió
+ * ≥ minMove **o** si venció el keepAlive, así que por debajo de minMove no hubo movimiento. Esos
+ * metros son el jitter del GPS y no se caminaron.
+ *
+ * El problema de fondo está en `UploaderGpsService.java` (el ancla `lastLat/lastLng` se actualiza
+ * también en un punto de cortesía, así que persigue al ruido en vez de sujetarlo) y se corrige en
+ * el próximo APK. Este piso corrige el NÚMERO mientras tanto, y además arregla el histórico.
+ *
+ * Medido con el piso de 9 m sobre 6 días: Zura 10/08 baja 26 % (0,45 de 1,75 km), Nelson rojas
+ * 08/08 19 %, Emanuel Arias 06/08 16 %, Gabriel tevez 10/08 13 %.
+ *
+ * ⚠️ Se usa `MIN_MOVE_M` (9, el umbral a pie) y NO el del modo: es el piso más conservador de los
+ * tres, así que nunca descarta un desplazamiento que el teléfono consideró movimiento real.
+ */
+export function kmDePuntos(points) {
+  if (!points || points.length < 2) return 0
+  let m = 0
+  for (let i = 1; i < points.length; i++) {
+    const d = metros(points[i - 1], points[i])
+    if (d >= MIN_MOVE_M) m += d
+  }
+  return m / 1000
+}
 // 800 m: más que la cuadra más larga del pueblo y menos que cualquier traslado real entre clientes.
 export const HUECO_M = 800
 // Si se descartan tantos puntos seguidos, el punto de referencia ya no es confiable (puede ser ÉL
@@ -218,6 +285,19 @@ export function limpiarTrazo(points) {
       // recorrido en un tramo por punto.
       const hueco = dt * 1000 > HUECO_MS || d > HUECO_M || seguidos >= MAX_DESCARTES_SEGUIDOS
       if (hueco) {
+        if (actual.length) segmentos.push(actual)
+        actual = []
+      } else if (dt * 1000 > HUECO_DUDOSO_MS) {
+        // HUECO DUDOSO: no alcanza para cortar el recorrido, pero tampoco se puede afirmar por dónde
+        // pasó. Se cierra la línea llena acá y el segmento se reabre en el punto nuevo.
+        //
+        // NO hace falta emitir el conector: `construirLeaflet` (trazos.js) ya dibuja una línea
+        // punteada y fina entre cada par de segmentos consecutivos, y existe exactamente para esto
+        // — "siguió siendo la misma persona, pero acá no hay datos". Partir el segmento ES el
+        // mecanismo completo.
+        //
+        // Los km NO cambian: salen de `puntos`, que conserva los dos extremos del salto. Ese
+        // desplazamiento ocurrió de verdad; lo único que se deja de afirmar es el camino.
         if (actual.length) segmentos.push(actual)
         actual = []
       }
