@@ -18,19 +18,38 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
-### Publicado hoy
+### Publicado — 1.13.0 (10/08/2026)
 
 | | |
 |---|---|
-| Versión publicada | **1.11.0** en `app_config` (`latest_version` = `min_version` = `bundle_version`, verificado por MCP el 07/08), con `apk_url` y `bundle_url` cargados. Como `min_version` está en 1.11.0, **los teléfonos con versión menor se reinstalan solos** |
-| Versión en el código | **1.11.0**, en línea con lo publicado — `src/version.js`, `versionName`/`versionCode 29`. Trae el arreglo del arranque del rastreo al horario (§4 #4-bis). ⏳ **Falta la verificación de campo**: comparar el primer punto del día contra las 08:00 y contra la línea de base de 51 min de mediana (`db/30`) |
-| Rastreo | 08:00–18:00, Lunes a Sábado, alertas de equipo activas |
-| Parque | ~9 teléfonos en la calle. **Samsung A07 y A06**, comprados por la empresa. Un equipo verificado por USB el 07/08: **SM-A075M, Android 16 (API 36)**, One UI 8.0.5 — ⚠️ **el parque corre Android 16 mientras el `targetSdk` del proyecto es 34** (ver §8) |
+| Versión publicada | **1.13.0** en los TRES canales. `app_config`: `latest_version` = `min_version` = `bundle_version` = `1.13.0`, con `apk_url` y `bundle_url` al release `ota-1.13.0`. PWA: commit `3cae911` en `main`, workflow **success** |
+| Versión en el código | **1.13.0** — `src/version.js`, `versionName` 1.13.0 / `versionCode 32`. Alineados |
+| ⏳ **Único paso sin hacer** | **El push de aviso a los teléfonos.** Es el `net.http_post` a `push-actualizacion` de `CLAUDE.md §3` (con `timeout_milliseconds := 60000`). No se mandó porque el header lleva la `service_role` key y no se transcriben credenciales |
+| Rastreo | 08:00–23:55, Lunes a Sábado, alertas de equipo activas |
+| Parque | 9 teléfonos. **7 con el APK 1.13.0**; faltan Eduardo ruiz (nunca conectó — parece que no le entregaron el equipo) y Gabriel tevez (sin adb remoto, tiene que venir por cable) |
 
-### La base viva (verificado el 04/08 por MCP)
+#### ⏳ La verificación que falta, y es la que dice si esto sirvió
 
-**2 empresas** (ya no es mono-empresa) · 15 perfiles, **3 esperando aprobación** · 1.998 clientes ·
-693 productos · 30.839 posiciones · 3 visitas · **0 pedidos** · **30 MB** de 500 del plan free.
+1.13.0 corrige el **ancla del filtro de movimiento** (nativo, `UploaderGpsService.java`). **No se pudo
+probar acá**: el emulador no tiene GPS real ni Doze. La medición honesta es post-jornada, con dos
+consultas contra la base viva:
+
+- **km por persona/día** → deberían bajar entre **5 % y 26 %** (baseline medida el 10/08: Zura 26 %,
+  Nelson rojas 19 %, Emanuel Arias 16 %, Gabriel tevez 13 %, Agustin Vasquez 10 %, Luis Mendoza 5 %).
+- **km de "ruido parado"** (hops < 9 m entre puntos guardados) → deberían caer **cerca de cero**.
+
+**Si no bajan, el ancla no quedó sujeta y hay que volver sobre el Java.** No hay forma de saberlo
+antes de que trabajen un día con la versión nueva.
+
+### La base viva (verificado el 10/08 por MCP)
+
+**2 empresas** · 24 perfiles · 1.998 clientes · 693 productos · **42.804 posiciones** · 5 visitas ·
+**0 pedidos**.
+
+⚠️ **Roles: son CINCO.** `superadmin` · `admin` · `encargado` · `vendedor` · `repartidor`.
+`propietario` **se eliminó el 10/08** (`db/31`) sin haber tenido nunca un perfil — el dueño usa
+`admin`, y su pantalla vive en `features/direccion/PanelDireccion.jsx` (la ven admin/superadmin en
+web + celular; resuelve el caso del dueño entrando por PWA desde su iPhone).
 
 ### Los tres canales de despliegue, que son independientes
 
@@ -242,22 +261,78 @@ cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files
 
 ## 4. Pendientes
 
+### 📌 Qué pasó en la sesión del 10/08/2026 (leer antes que nada)
+
+Cuatro cosas cerradas, y **tres hipótesis que se probaron y se revirtieron** — esas son las que más
+ahorran tiempo, porque son caminos que ya se recorrieron:
+
+| Qué | Dónde | Estado |
+|---|---|---|
+| Rol `propietario` eliminado, fusionado en `admin` | `db/31`, `crear-usuario` v4, `features/direccion/PanelDireccion.jsx`, `App.jsx` (`decidirPanelDireccion`) | ✅ aplicado |
+| `DespachoGestion` — el despacho de pantallas de gestión estaba copiado en las dos supervisiones | `features/supervision/components/DespachoGestion.jsx` | ✅ |
+| Corte del dibujo a 45 s (`HUECO_DUDOSO_MS`) | `lib/geo.js` | ✅ verificado con el código real |
+| Piso de ruido en los km (`kmDePuntos`, único lugar del front) | `lib/geo.js` + `db/32` | ✅ aplicado |
+| Ancla que no persigue al ruido | `UploaderGpsService.java` | ✅ en 7 de 9 teléfonos — **sin medir** |
+| PWA en iPhone (metas `apple-mobile-web-app-*`) | `index.html` | ✅ |
+
+**🩸 Lo que se probó y NO funcionó — no repetirlo sin datos nuevos:**
+
+1. **Bajar `CIEGO_MAX_FRAC` de 0,35 a 0,30**: probado contra 7 días guardados, **cero tramos
+   cambiados**. La fracción ciega es bimodal (o ~0, o 57-100 %); no hay nada en esa franja.
+2. **Subir `VEL_HIST_MS` de 20 s a 45 s** (hipótesis: el churn de modo causa los huecos):
+   **refutada**. Gabriel da 3 % de cruces de umbral en los huecos contra 2,8 % en los tramos
+   normales — cero enriquecimiento. Y sus huecos pasan **caminando** (0,5-1,5 m/s), muy por debajo
+   del umbral de 3 m/s: la histéresis nunca lo hubiera tocado.
+3. **"Salta calles" NO es el snap inventando**: con el `fraccionCiega` real, Gabriel ya iba **72 %
+   crudo** y Javier **57 %** — la guarda ya los rechazaba. Eran las rectas del crudo.
+
+**Moraleja, que vale más que los tres:** antes de tocar una constante de GPS, **contrastar la
+hipótesis contra los datos**. Tres cambios en la historia del repo, tres teorías plausibles e
+incompletas.
+
+**Diagnósticos que quedaron abiertos** (medidos, sin arreglar):
+
+- **Javier se calla 23 y 29 min manejando a 73 km/h** entre pueblos. El teléfono está sano
+  (permisos, servicio, batería, 31 satélites). La cola **sí** guarda sin internet — se leyó el
+  código: `encolar()` no consulta la red. Los puntos **nunca se capturaron**, no es que no se
+  subieron. Hipótesis sin verificar: sin cobertura no hay A-GPS ni carril de triangulación, y los
+  dos colchones cuelgan de lo que falta. Se prueba con modo avión y una vuelta a la manzana.
+- **Luis Mendoza: saltos de 115 y 124 km/h en el pueblo**, de 11 s. Invisibles para los dos filtros
+  (precisión 20-25 m, bajo el techo de 30; velocidad bajo `MAX_SPEED_MPS` = 162 km/h). El arreglo
+  correcto es un umbral **por modo**, como ya lo son `MIN_MOVE_URBANO_M`/`MIN_MOVE_RUTA_M`.
+- **La cadena de alarmas se rompe**: 6 de 9 teléfonos tenían `alarma_proxima_ts` clavada dos días
+  atrás. La alarma que no dispara **no se re-arma sola**. Eso —y no la ventana horaria— es el
+  "no arrancan a las 8".
+- 🩸 **`estado_dispositivo` lo escribe el JS**, que solo corre con la app abierta. Hay teléfonos con
+  puntos de hoy y latido de hace días. **Para saber si un equipo está vivo, mirar
+  `max(posiciones.ts)`, no `estado_dispositivo.updated_at`** — el panel de diagnóstico miente.
+
+**Fuera del código:** el **documento de servicios/contrato** (.docx + .pdf) quedó **sin empezar**.
+Decisiones ya tomadas con el cliente: abono **mensual por módulo** ($300.000 rastreo con tope de 20
+usuarios + $300.000 catálogo/pedidos), los **$200.000 ya cobrados** se imputan como **puesta en
+marcha abonada**, y la tienda virtual B2B queda como plus a cotizar. El plan completo con las 13
+secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
+
 ### 🔴 Hacer ya
 
 | # | Pendiente | Por qué duele | Qué lo cierra |
 |---|---|---|---|
+| **0** | ⏳ **MEDIR 1.13.0 — es lo primero de la próxima sesión** | El arreglo del **ancla** es nativo y **no se pudo probar**: el emulador no tiene GPS real ni Doze. Un arreglo sin medir no está confirmado. Baseline del 10/08 en §1 | Dos consultas: (a) km por persona/día — deberían bajar 5-26 %; (b) km de hops < 9 m — deberían caer a ~0. **Si no bajan, volver sobre `UploaderGpsService.java`** |
+| **0-bis** | ⏳ **Mandar el push de aviso de 1.13.0** | Los tres canales están publicados pero **nadie avisó a los teléfonos**. Sin el push, los que no se actualizan solos no se enteran | El `net.http_post` a `push-actualizacion` de `CLAUDE.md §3`, con `timeout_milliseconds := 60000`. Lo tiene que correr una persona: lleva la `service_role` key |
+| **0-ter** | 🔴 **Terminar de actualizar 2 teléfonos** | **Eduardo ruiz** nunca se conectó (parece que no le entregaron el equipo) y **Gabriel tevez** no tiene adb remoto | Eduardo: `adb install -r -i com.launion.app` por Tailscale cuando aparezca. Gabriel: por cable cuando venga — y aprovechar para dejarle `adb tcpip 5555`, así deja de depender de una visita. ⚠️ **El `-i` no es opcional**: sin él el equipo no queda como su propio instalador y la próxima tampoco es silenciosa |
+| **0-cuatro** | 🟠 **Alejandro mercado y Zura: APK puesto, app sin abrir** | Tienen 1.13.0 instalado pero el latido sigue viejo. **`estado_dispositivo` lo escribe el JS**, que solo corre con la app abierta — el dashboard los muestra en 1.11.0 aunque el nativo esté actualizado | Abrirles la app por Tailscale (`adb shell monkey -p com.launion.app -c android.intent.category.LAUNCHER 1`) o esperar a que la abran ellos |
 | 1 | **Respaldar el keystore** (§2.1) | Punto único de falla, y se está por mudar de disco | Contraseñas a un gestor + `.keystore` en 2 lugares |
 | 2 | **Cerrar el circuito de recuperación de contraseña** | Está **roto en producción**: el botón manda el mail y no hay pantalla donde poner la nueva. Ver §5 | Vista nueva + handler de `PASSWORD_RECOVERY` |
 | 3 | **Versionar `ingesta_tokens` y `mi_token_ingesta`** | Recrear la base desde `db/` deja al uploader nativo sin poder autenticarse. Y la Edge Function referencia un `db/16_ingesta_tokens.sql` **que no existe** | Migración nueva contra la base viva |
 | 4 | **Unificar la ventana de rastreo**, hoy implementada 3 veces | `dentroDeHorario()` (JS), `VentanaRastreo.dentro()` (Java) y `en_ventana` (SQL). Tocar una sin las otras hace que **los avisos al supervisor mientan en silencio** | Una sola fuente — el SQL es el candidato: se verifica con un `select` |
-| 4-bis | ✅ **1.11.0 publicada** (arranque del rastreo al horario) — falta **medirla** | Se publicó en los tres canales el 05/08 (verificado por MCP el 07/08). Pero **un arreglo sin medir no está confirmado**: la línea de base era 51 min de mediana de retraso sobre 29 días hábiles (`db/30`) | Consulta contra `posiciones`: primer punto del día por usuario vs. las 08:00, sobre los días hábiles desde el 05/08. Si sigue arriba de ~15 min, el arreglo no alcanzó |
+| 4-bis | ⚠️ **1.11.0 publicada** (arranque del rastreo al horario) — **SUPERADA por 1.13.0, y la medición NUNCA se hizo.** Sigue vigente como deuda | Se publicó en los tres canales el 05/08 (verificado por MCP el 07/08). Pero **un arreglo sin medir no está confirmado**: la línea de base era 51 min de mediana de retraso sobre 29 días hábiles (`db/30`) | Consulta contra `posiciones`: primer punto del día por usuario vs. las 08:00, sobre los días hábiles desde el 05/08. Si sigue arriba de ~15 min, el arreglo no alcanzó |
 | 4-ter | **Que un cambio de horario llegue al teléfono con la app cerrada** | Las prefs con la ventana solo las escribe `configurar()` con la app viva. Si el admin cambia el horario y la persona no abre la app en días, el teléfono sigue con la ventana vieja — y ahora también con la alarma calculada sobre ella | `LaUnionMessagingService` escribiendo la ventana en prefs desde un data-message de FCM (corre en nativo, con el WebView muerto) |
 | 4-cinco | 🟢 **Pasar los 9 teléfonos por `diagnostico-usb.sh --configurar`** | **Medido el 07/08 en un A07 real: un cable resuelve el onboarding entero en ~30 s** — exención de batería (que **sobrevive al reboot**), los 5 permisos incluido "Permitir siempre", y los 2 appops. Hoy **3 de 5** equipos con diagnóstico están **sin exención de batería**, que es la palanca del arranque al horario. **No hace falta esperar a Headwind, ni al recambio de personal, ni resetear nada** | [`scripts/diagnostico-usb.sh`](scripts/diagnostico-usb.sh). Ir anotando marca/modelo/API de cada equipo en el `.txt` que genera — es el dato que el pendiente #7 todavía no recolecta |
 | 4-quater | 🔴🔴 **ANTES de reasignar un teléfono a un usuario nuevo: actualizarlo a ≥1.8.0** | Se va a hacer un recambio total de usuarios (07/08: *"los usuarios que ya están se descartan, cada teléfono va a tener un usuario nuevo"*). **Tres equipos están por debajo del fix de la regla 19-bis** — Nelson Rojas y Luis Mendoza en **1.6.0**, julii Adet en **1.6.6** — y en esas versiones el uploader nativo sigue subiendo con el token de la cuenta anterior: los puntos se escriben **a nombre de quien no estaba**, en una tabla **sin policy de UPDATE ni de DELETE**. 🩸 **Incorregible: no se puede borrar ni reasignar después.** Que el escenario es real ya está probado — Emanuel Arias tiene **42 puntos en `cuarentena_nativa`**, o sea que la cuarentena ya atrapó un cambio de cuenta | Orden obligatorio **por equipo**: (1) verificar `app_version ≥ 1.8.0` en `estado_dispositivo`; (2) si no, actualizar y confirmar que subió; (3) recién ahí cerrar sesión **desde la app** (el `signOut` es el que llama `cerrarSesionUploader()` y borra el token — apagar el teléfono NO alcanza); (4) entrar con el usuario nuevo |
 | 5 | **Términos y condiciones + política de privacidad** | La app pide `ACCESS_BACKGROUND_LOCATION` y rastrea empleados; hoy no hay ni una línea legal. Ver §6 | Borradores ya escritos en [`legal/`](legal/) — falta revisión, publicación y link |
 | 6 | 🔴 **Device Owner ANTES de desprecintar los Samsung A07** | Device Owner exige un teléfono sin ninguna cuenta configurada. Si se configuran primero, cuesta un **factory reset por equipo** (~media jornada, más el FRP). **Decidido el 07/08: sí, vía Headwind MDM** (§7.9) | Leer §7.2-7.3 y §7.9. La sesión de USB (§7.7) va **primero**, antes de la cuenta de Google |
 | 6-bis | 🔴 **Laboratorio de Headwind ANTES de gastar un peso** | Se eligió Headwind sin haber visto el panel funcionando. Tres cosas están **sin verificar** y una de ellas (¿bloquea el force-stop?) es la única capacidad que justifica todo el aparato de Device Owner | WSL2 + Ubuntu 22.04 contra un teléfono viejo. **Nunca contra un A07.** Ver §7.9, Fase 0 |
-| 7 | **Registrar marca/modelo/API level en `estado_dispositivo`** | Es la precondición de toda decisión por dispositivo. Hoy se mide el **síntoma** del OEM agresivo (`fgs_bloqueado`, `bateria_exenta`, `gps_silencio_max_ms`) y **nunca la identidad**: no se puede contestar con un `select` qué teléfonos hay, ni cruzar los síntomas contra un modelo | Parseo del user-agent en `useEstadoDispositivo.js` + `db/31`. **Sale por OTA, sin APK.** Ver §7.10 #1 |
+| 7 | **Registrar marca/modelo/API level en `estado_dispositivo`** | Es la precondición de toda decisión por dispositivo. Hoy se mide el **síntoma** del OEM agresivo (`fgs_bloqueado`, `bateria_exenta`, `gps_silencio_max_ms`) y **nunca la identidad**: no se puede contestar con un `select` qué teléfonos hay, ni cruzar los síntomas contra un modelo | Parseo del user-agent en `useEstadoDispositivo.js` + una migración nueva (⚠️ `db/31` y `db/32` YA están usadas — la próxima es `db/33`). **Sale por OTA, sin APK.** Ver §7.10 #1 |
 | 8 | **Actualización silenciosa: `PackageInstaller` + `UPDATE_PACKAGES_WITHOUT_USER_ACTION`** | Hoy actualizar cuesta 3-4 toques del vendedor (6-7 la primera vez). **Decidido**, va en el próximo APK — pero ⚠️ **si Headwind pasa la Fase 0, esto queda redundante para los A07**: decidir #6-bis primero para no escribirlo al pedo | Reemplazar `lanzarInstalador` en `ApkUpdaterPlugin.java:121-130`. Ver §7.4 |
 
 ### 🟠 Próximo sprint
