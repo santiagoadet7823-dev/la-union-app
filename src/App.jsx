@@ -48,7 +48,14 @@ function usarSupervisionMovil() {
  * llegar acá. Está documentado como deuda en CLAUDE.md §8 junto con las 3 pantallas que arrastra.
  */
 function RoleRouter({ vista }) {
-  const { rol } = useAuth()
+  // 🩸 11/08/2026 — pasa por `rolEfectivo` igual que `AuthedApp`. Sin esto el override
+  // `localStorage['lu-dev-rol']` funcionaba A MEDIAS: servía para las decisiones de AuthedApp
+  // (supervisión móvil / panel / escritorio) pero acá se volvía a leer el rol REAL, así que forzar
+  // `vendedor` desde una sesión de gestión caía igual en `AdminView` — la rama muerta. Costó no
+  // poder mirar la pantalla del vendedor para verificar un arreglo que ya estaba publicado.
+  // En producción es un no-op: `rolEfectivo` devuelve el rol real fuera de DEV.
+  const { rol: rolReal } = useAuth()
+  const rol = rolEfectivo(rolReal)
 
   if (rol === 'vendedor' || rol === 'repartidor') {
     return (

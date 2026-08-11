@@ -120,13 +120,12 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
               <div style={{ ...sx('width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600'), background: nBg, color: nColor }}>{String(i + 1).padStart(2, '0')}</div>
               <div style={sx('flex:1;min-width:0')}>
                 <div style={sx('display:flex;align-items:center;gap:6px')}>
-                  {/* 🩸 10/08/2026 — el nombre se CORTABA y es el dato que el vendedor usa para
-                      saber a qué comercio está entrando. Tenía `nowrap` + ellipsis, así que en un
-                      teléfono angosto "LJ MOLINA TERMINAL" quedaba en "LJ MOLINA T…". Ahora baja
-                      de renglón: la tarjeta crece un poco y el nombre se lee entero, que es lo que
-                      importa. `overflow-wrap:anywhere` es para que un nombre de una sola palabra
-                      larga tampoco desborde la tarjeta. */}
-                  <div style={sx('font-weight:600;font-size:13.5px;overflow-wrap:anywhere')}>{c.name}</div>
+                  {/* 🩸 11/08/2026 — el nombre va en UNA línea con ellipsis, y así se queda. El
+                      10/08 se probó dejarlo envolver para que entrara completo: con nombres de
+                      hasta 43 caracteres la tarjeta se estiraba a varios renglones y la lista se
+                      volvía ilegible. El espacio para el nombre se gana ACHICANDO EL BOTÓN (ver
+                      abajo), no dejando crecer la tarjeta. */}
+                  <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
                   {!c.activo && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
                 </div>
                 <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
@@ -144,13 +143,21 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                 <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                 </button>
-                {/* `padding` de 12 y no de 16 en Check-in: son 8 px que le devuelve al nombre del
-                    comercio, que es lo que de verdad hay que leer. El alto sigue en 44 (área táctil
-                    mínima). ⚠️ El comentario va ACÁ y no adentro del ternario: entre `? (` y el
-                    elemento no hay posición de hijos JSX, así que `{/* … */}` ahí es un error de
-                    sintaxis y voltea el build entero. */}
+                {/* 🩸 11/08/2026 — CHECK-IN SIN LA PALABRA, y el motivo es aritmética, no estética.
+                    Un vendedor reportó que no le entraba el nombre del comercio. A 375 px la columna
+                    del nombre mide ~170 px: la tarjeta son 375 menos 24 de padding, 30 del número,
+                    36 del lápiz, 26 de gaps y ~90 que se llevaba este botón con la palabra adentro.
+                    Achicarle el padding devolvía 8 px, o sea UN carácter — no servía de nada.
+                    Con solo el ícono el botón baja a 44 px y devuelve ~46: entran 6-7 caracteres
+                    más. Medido contra la cartera: 1.803 clientes, 18 caracteres de nombre en
+                    promedio y máximo 43; con esto se leen enteros los de hasta ~31, que son 1.758
+                    (97,5 %). El área táctil se mantiene en 44×44, igual que el lápiz de al lado.
+                    Sin texto visible, el nombre accesible tiene que vivir en `title` y `aria-label`
+                    o el botón queda mudo para un lector de pantalla. */}
                 {c.status === 'pendiente' ? (
-                  <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 12px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
+                  <button onClick={() => startVisit(c.id)} title="Check-in" aria-label={`Check-in en ${c.name}`} style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;cursor:pointer;border:none')}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  </button>
                 ) : (
                   <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
                     <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
