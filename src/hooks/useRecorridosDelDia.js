@@ -106,12 +106,29 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     if (incremental) cargadosRef.current += data.length
     else cargadosRef.current = data.length
     // Autocontrol: el servidor dice cuántas filas hay (`count: 'exact'`) y comparamos contra
-    // lo que realmente juntamos. Si no coinciden, el recorrido que se está por dibujar está
+    // lo que realmente juntamos. Si FALTAN, el recorrido que se está por dibujar está
     // incompleto — y un recorrido incompleto se ve igual de convincente que uno entero. Este
-    // chequeo es la única defensa contra que vuelva a pasar en silencio.
+    // chequeo es la única defensa contra que vuelva a pasar en silencio (viene del bug de
+    // paginación que documenta el comentario de arriba, y del mismo de `snap-recorridos`).
+    //
+    // 🩸 Pero la comparación es `<`, NO `!==` (10/08/2026). El `count` se pide en la PRIMERA
+    // vuelta y la paginación termina segundos después: con la jornada EN CURSO entran puntos
+    // nuevos en el medio, y como el orden es `ts` ascendente caen al final del rango
+    // `lte(hasta)` — no corren los offsets ya leídos, así que no se pierde ni se duplica nada,
+    // pero se juntan MÁS filas de las que el server contó al empezar. Con `!==` la guarda
+    // gritaba INCOMPLETO todos los días: medido en la PWA con la sesión de superadmin, cuatro
+    // cargas seguidas en un minuto y las cuatro con el mismo signo (7209/7210, 7218/7219,
+    // 7236/7238, 7253/7255), siempre de MÁS — y el texto encima decía "solo se juntaron".
+    // Una alarma que suena todos los días por algo benigno es una alarma que nadie va a mirar
+    // el día que suene de verdad: es el mismo patrón de la regla 34, donde un token FCM muerto
+    // dejaba `fallidos` clavado en > 0 y tapaba las fallas reales.
+    // El caso `<` sí es siempre un defecto: `posiciones` no tiene policy de DELETE (regla 32),
+    // así que las filas que el servidor contó no se van a ningún lado.
     if (!incremental) {
-      if (total != null && data.length !== total) {
-        console.error(`[recorridos] ${fecha}: INCOMPLETO — el servidor tiene ${total} puntos y solo se juntaron ${data.length}`)
+      if (total != null && data.length < total) {
+        console.error(`[recorridos] ${fecha}: INCOMPLETO — el servidor tiene ${total} puntos y se juntaron ${data.length}: faltan ${total - data.length}`)
+      } else if (total != null && data.length > total) {
+        console.info(`[recorridos] ${fecha}: ${data.length} puntos (completo; ${data.length - total} entraron durante la carga)`)
       } else if (!data.length) {
         // Carga completa que vuelve VACÍA: casi siempre es fecha corrida (reloj/zona del device)
         // o empresa nula, no una jornada realmente sin puntos. Se deja el rango a la vista.

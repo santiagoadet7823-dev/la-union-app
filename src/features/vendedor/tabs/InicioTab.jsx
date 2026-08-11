@@ -120,7 +120,13 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
               <div style={{ ...sx('width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600'), background: nBg, color: nColor }}>{String(i + 1).padStart(2, '0')}</div>
               <div style={sx('flex:1;min-width:0')}>
                 <div style={sx('display:flex;align-items:center;gap:6px')}>
-                  <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
+                  {/* 🩸 10/08/2026 — el nombre se CORTABA y es el dato que el vendedor usa para
+                      saber a qué comercio está entrando. Tenía `nowrap` + ellipsis, así que en un
+                      teléfono angosto "LJ MOLINA TERMINAL" quedaba en "LJ MOLINA T…". Ahora baja
+                      de renglón: la tarjeta crece un poco y el nombre se lee entero, que es lo que
+                      importa. `overflow-wrap:anywhere` es para que un nombre de una sola palabra
+                      larga tampoco desborde la tarjeta. */}
+                  <div style={sx('font-weight:600;font-size:13.5px;overflow-wrap:anywhere')}>{c.name}</div>
                   {!c.activo && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
                 </div>
                 <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
@@ -139,7 +145,9 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                 </button>
                 {c.status === 'pendiente' ? (
-                  <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 16px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
+                  {/* `padding` de 12 y no de 16: son 8 px que le devuelve al nombre, que es lo que
+                      de verdad hay que leer. El alto sigue en 44 (área táctil mínima). */}
+                  <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 12px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
                 ) : (
                   <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
                     <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}

@@ -285,6 +285,20 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     ⚠️ **Son constantes en dos runtimes** (Deno y el bundle) que no pueden compartir módulo: si se
     toca una, tocar la otra. `HUECO_MS` sigue espejando a `GAP_MS`, que responde otra pregunta
     ("¿esto es otro tramo?") y **no se toca**.
+    🩸 **Y el corte del dibujo lleva DOS condiciones, no una: tiempo Y distancia** (misma fecha, esa
+    tarde). Con solo el tiempo, el corte disparaba sobre saltos que no habían recorrido nada — con la
+    cadencia lenta (30 s) **un solo fix perdido ya son 60 s**, así que cualquier hipo del chip estando
+    parado partía el trazo. Medido sobre la jornada del 10/08, cortes de menos de 9 m sobre el total:
+    Alejandro mercado 27/27, Orlando chavez 42/43, **Agustin Vasquez 181/189 — y Agustin es el equipo
+    más sano del parque, con CERO metros dudosos de 50 m o más.** El vendedor que mejor funciona era
+    el que peor se veía. **Una recta de 3 m no cruza una manzana**: no había mentira que prevenir,
+    solo confeti. Va el piso de `MIN_MOVE_M` (9 m), la misma constante del piso de `kmDePuntos` y del
+    filtro de captura nativo. Verificado con el código real sobre la jornada de Zura: **26 → 9
+    segmentos y 341,0 → 336,3 m punteados** (se dejan de declarar 4,7 m), con los km idénticos hasta
+    el sexto decimal.
+    ⚠️ **El que espeja a `segmentar.ts` es el umbral de TIEMPO, y ése no cambió**: la guarda de
+    distancia es solo del dibujo y la Edge Function no se toca. Del lado del snap ya era inmune por
+    construcción — un hop ciego de 3 m aporta ~0 a `fraccionCiega`, que mide LARGO ruteado a ciegas.
     🩸 **Y antes de cambiar un umbral, contrastar la hipótesis contra los datos.** En la misma sesión
     se probó bajar `CIEGO_MAX_FRAC` de 0,35 a 0,30 (cero tramos cambiados en 7 días: la fracción
     ciega es bimodal) y subir `VEL_HIST_MS` a 45 s (refutado: Gabriel da 3 % de cruces de umbral en
@@ -574,7 +588,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. Alineados en **1.13.0** (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
+Hay varios números que conviven. **1.13.1** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.1; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -582,11 +596,11 @@ Hay varios números que conviven. Alineados en **1.13.0** (agosto 2026). ⚠️ 
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.1` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.13.0` | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `32` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.12.1` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | `1.12.1` ✅ publicado | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.1` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.13.1 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la

@@ -40,9 +40,31 @@ function distPerpM(p, a, b, origen, cosLat) {
   return Math.hypot(P.x - (A.x + t * dx), P.y - (A.y + t * dy))
 }
 
-// Pre-pase LINEAL O(n): descarta puntos a menos de `minM` del último conservado. Colapsa barato los
-// racimos de "quieto" (miles de puntos casi idénticos parado en un cliente), que además son el peor caso
-// de RDP. Deja el primero y el último siempre.
+/**
+ * Pre-pase LINEAL O(n): descarta puntos a menos de `minM` del último conservado. Colapsa barato los
+ * racimos de "quieto" (miles de puntos casi idénticos parado en un cliente), que además son el peor
+ * caso de RDP. Deja el primero y el último siempre.
+ *
+ * 🩸 SE PROBÓ HACER ESTE PISO ADAPTATIVO Y NO SIRVIÓ — no repetirlo (10/08/2026, noche).
+ *
+ * Hipótesis: el cliente reportó "zonas con puntos" (manchas donde el vendedor estuvo parado), y
+ * medido sobre la jornada del 10/08 el **58 % de los puntos de la flota** cae dentro de una parada
+ * (Zura 89 %, Nelson rojas 87 %, Orlando chavez 70 %… Luis Mendoza 27 %). Parecía que este
+ * pre-pase las dejaba pasar enteras: con `epsilonM` 7 el piso es de 3,5 m y el jitter de un
+ * teléfono con 20-25 m de precisión separa los puntos 10-25 m.
+ *
+ * Se implementó `umbral = max(minM, pisoDeRuido(ref, p))` y **se midió A/B en la PWA con la flota
+ * entera: 351 paths / 717 vértices SIN el cambio, 352 / 719 CON él.** Cero efecto. Sobre el día de
+ * Zura daba 32 → 26 vértices, y ése era el único caso que se movía.
+ *
+ * El motivo es que RDP y el corte por huecos YA parten el día en tramos cortos, así que a la
+ * decimación nunca le llega una nube densa: la cadencia estando quieto entrega un punto cada
+ * 38-54 s (medido), no cada 10. En una nube sintética densa sí colapsa (40 → 7 vértices), o sea
+ * que serviría si la cadencia volviera a bajar — pero hoy no.
+ *
+ * **Y las "zonas con puntos" eran otra cosa**: los CONECTORES punteados que dejaba el corte de
+ * 45 s (Agustin llegó a 267 en un día), ya resueltos con el piso de distancia de `HUECO_DUDOSO_MS`.
+ */
 function decimarPorDistancia(points, minM) {
   const n = points.length
   if (n <= 2) return points.slice()
@@ -170,8 +192,80 @@ export const HUECO_MS = 4 * 60000
  *
  * ⚠️ Vale 45.000 porque es `HUECO_CIEGO_MS` de `segmentar.ts:109`. Son dos constantes en dos runtimes
  * (Deno vs. el bundle) que no pueden compartir módulo: si se cambia una, cambiar la otra.
+ *
+ * 🩸 Y EL CORTE NECESITA DOS CONDICIONES, NO UNA (10/08/2026, esa misma tarde). Con solo el tiempo,
+ * el corte disparaba sobre saltos que no habían recorrido NADA. Medido sobre la jornada del 10/08,
+ * cortes de menos de 9 m sobre el total de cortes dudosos: Alejandro mercado 27 de 27, Orlando
+ * chavez 42 de 43, **Agustin Vasquez 181 de 189** — y Agustin es el equipo más sano del parque, con
+ * CERO metros dudosos de 50 m o más. O sea: el trazo del vendedor que mejor funciona quedaba picado
+ * en 189 pedazos por saltos de 3 metros.
+ *
+ * La causa es la cadencia: con `NEAR_LIVE_MS` en 30 s (la lenta), **un solo fix perdido ya son 60 s**
+ * y eso pasa los 45. Parado en un cliente, cualquier hipo del chip corta el dibujo.
+ *
+ * Una recta de 3 metros no cruza una manzana: no hay ninguna mentira que prevenir, solo confeti.
+ * Se le agrega el piso de `MIN_MOVE_M` (9 m) — la MISMA constante del piso de `kmDePuntos` y del
+ * filtro de captura del servicio nativo: por debajo de eso el teléfono considera que no se movió,
+ * así que no hay camino que afirmar. Lo que sí tiene distancia real sigue punteado entero (Gabriel
+ * tevez conserva sus 6,8 km, Javier 2,3 km, Luis Mendoza 1,2 km).
+ *
+ * Efecto medido sobre el 10/08: Agustin 189 → 8 cortes, Orlando 43 → 1, Zura 74 → 4, Alejandro
+ * 27 → 0, Nelson rojas 86 → 6, Javier 119 → 22, Luis 69 → 14, Gabriel tevez 123 → 63.
+ *
+ * ⚠️ Esto NO toca los 45.000: el umbral de TIEMPO sigue espejando a `segmentar.ts` y la Edge
+ * Function no se toca. Del lado del snap la guarda ya era inmune por construcción — un hop ciego de
+ * 3 m aporta ~0 a `fraccionCiega`, que mide LARGO ruteado a ciegas.
  */
 export const HUECO_DUDOSO_MS = 45000
+
+/**
+ * 🩸 EL PISO DE RUIDO ES ADAPTATIVO, NO UN NÚMERO FIJO (10/08/2026, noche).
+ *
+ * Un desplazamiento solo es EVIDENCIA de movimiento si supera la incertidumbre de los dos fixes
+ * que lo forman. Con 2,7 m de precisión, 9 metros son movimiento; con 23 m, 9 metros son ruido —
+ * y hasta hoy el piso era el mismo 9 para los dos casos.
+ *
+ * Eso explica por qué el mapa se ve tan distinto según la persona. Medido sobre la jornada del
+ * 10/08 CON EL ANCLA (que es lo que hace el código; ver `kmDePuntos`), σ combinada = √(σ₁²+σ₂²),
+ * k = 0,75:
+ *
+ *   Agustin Vasquez  σ̄ 2,7 m  · 51,88 → 51,85 km →  −0,1 %   ← no lo toca
+ *   Javier           σ̄ 16,5 m · 66,62 → 65,81 km →  −1,2 %   ← no lo toca
+ *   Orlando chavez   σ̄ 12,4 m ·  6,93 →  6,56 km →  −5,4 %
+ *   Gabriel tevez    σ̄ 16,9 m · 17,12 → 16,00 km →  −6,6 %
+ *   Luis Mendoza     σ̄ 21,4 m · 14,45 → 12,68 km → −12,3 %
+ *   Alejandro merc.  σ̄ 23,4 m · 14,55 → 12,45 km → −14,4 %
+ *   Nelson rojas     σ̄ 20,7 m ·  8,51 →  6,96 km → −18,1 %
+ *   Zura             σ̄ 21,7 m ·  1,32 →  0,94 km → −28,9 %   ← no se movió en todo el día
+ *
+ * **Que discrimine es la prueba de que está bien**: un filtro que recorta parejo estaría comiendo
+ * datos buenos. Éste deja intactos a los dos que de verdad viajaron y recorta a los que estuvieron
+ * parados. En la ventana de monitoreo de 33 min (19:04-19:37) la separación es aún más cruda:
+ * Orlando 231 m de jitter contra 21 m de movimiento real; Gabriel 119 contra 13.
+ *
+ * ⚠️ **Sin el ancla los recortes se DUPLICAN y son falsos** (Orlando daría −21,8 % en vez de
+ * −5,4 %; Zura −40,7 % en vez de −28,9 %). Medir hop por hop cuenta como ruido cada pedacito de un
+ * desplazamiento real que se hizo de a poco. Es la cota superior, no el efecto.
+ *
+ * `k = 0,75` y no 1: a 1σ empieza a comerse caminatas lentas en teléfonos malos, y el criterio del
+ * repo ante la duda es NO destruir dato (regla 20). Nunca baja de `MIN_MOVE_M`, así que no puede
+ * ser más permisivo que el piso viejo.
+ *
+ * ⚠️ Depende de que `accuracy` LLEGUE. Estuvo ausente desde 1.9.0 hasta el 08/08/2026 y nadie lo
+ * notó porque `NaN > 30` es `false` en silencio (ver `useRecorridosDelDia.js`). Si falta, el
+ * término vale 0 y esto degrada exactamente al piso fijo de antes — verificar el campo antes de
+ * creerle a esta función.
+ */
+export const SIGMA_K = 0.75
+
+export function pisoDeRuido(a, b) {
+  const sa = Number(a?.accuracy)
+  const sb = Number(b?.accuracy)
+  // Sin dato de precisión el término se anula: degrada al piso fijo, nunca a algo más permisivo.
+  const na = Number.isFinite(sa) && sa > 0 ? sa : 0
+  const nb = Number.isFinite(sb) && sb > 0 ? sb : 0
+  return Math.max(MIN_MOVE_M, SIGMA_K * Math.hypot(na, nb))
+}
 
 /**
  * 🩸 KILÓMETROS DE UN RECORRIDO — ÚNICO lugar donde se suman (10/08/2026).
@@ -194,18 +288,92 @@ export const HUECO_DUDOSO_MS = 45000
  *
  * ⚠️ Se usa `MIN_MOVE_M` (9, el umbral a pie) y NO el del modo: es el piso más conservador de los
  * tres, así que nunca descarta un desplazamiento que el teléfono consideró movimiento real.
+ *
+ * 🩸 Y SE MIDE CONTRA UN ANCLA, NO CONTRA EL PUNTO ANTERIOR (10/08/2026, noche). Con el piso
+ * adaptativo (`pisoDeRuido`) el umbral en un teléfono malo llega a ~26 m, y descartando hop por hop
+ * un peatón lento perdería la caminata entera en pedacitos que nunca llegan solos al umbral. El
+ * ancla acumula: se queda quieta mientras el desplazamiento sea ruido y salta —sumando el tramo
+ * completo— recién cuando hay evidencia de que se movió. Es la misma idea que el ancla del servicio
+ * nativo (`UploaderGpsService.procesarFix`), y por el mismo motivo.
  */
 export function kmDePuntos(points) {
   if (!points || points.length < 2) return 0
   let m = 0
+  let ancla = points[0]
   for (let i = 1; i < points.length; i++) {
-    const d = metros(points[i - 1], points[i])
-    if (d >= MIN_MOVE_M) m += d
+    const p = points[i]
+    const d = metros(ancla, p)
+    if (d >= pisoDeRuido(ancla, p)) { m += d; ancla = p }
   }
   return m / 1000
 }
 // 800 m: más que la cuadra más larga del pueblo y menos que cualquier traslado real entre clientes.
 export const HUECO_M = 800
+
+/* ==============================================================================================
+   🩸 PINCHOS — el punto que se va y vuelve (10/08/2026, noche).
+
+   El cliente reportó "trazos irracionales". Son PINCHOS: un fix que se aleja 40-90 m y el
+   siguiente vuelve al mismo lugar. En el mapa es una púa que sale de la calle y entra de nuevo.
+
+   El filtro de salto imposible NO los ve, y no es un descuido: mide VELOCIDAD, y 89 m en 16 s son
+   20 km/h — perfectamente normales. `MAX_SPEED_MPS` está calibrado en 162 km/h para teleports de
+   127 km (regla 22-bis), no para esto.
+
+   Medido sobre la jornada del 10/08: **19 pinchos, 1.964 metros falsos**, 12 de ellos de un solo
+   teléfono (Luis Mendoza). Y de dónde salen, que es lo que decide el arreglo:
+
+     precisión 0-15 m  → 46,1 % de los puntos →  0 % de los pinchos
+     precisión 15-20 m → 22,3 % de los puntos → 10,5 %
+     precisión 20-30 m → 31,6 % de los puntos → 89,5 %   ← acá están
+
+   ⚠️ **Y la salida NO es bajar `ACCURACY_MAX_M`**, aunque la tabla lo sugiera. Medido: con techo
+   20 m, Alejandro mercado pierde el **75,1 %** de sus puntos, Zura 62 %, Nelson rojas 61,9 % y
+   Luis Mendoza 60 % — les vacía el recorrido. La regla 18 tiene razón y esta medición la confirma
+   en vez de contradecirla. Por eso el filtro es GEOMÉTRICO: ataca la forma del glitch, no la banda
+   de precisión donde vive, y así no le cuesta un punto legítimo a nadie.
+
+   Se decide con los dos VECINOS, así que hace falta una pasada previa: `limpiarTrazo` es un
+   recorrido hacia adelante y no puede mirar el punto que sigue.
+   ============================================================================================== */
+export const PINCHO_DESVIO_M = 40    // cuánto se tiene que ir para llamarlo pincho
+export const PINCHO_REGRESO_M = 25   // los dos vecinos casi en el mismo lugar: por eso es ida y vuelta
+export const PINCHO_MAX_MS = 120000  // la ida y la vuelta, dentro de 2 min
+
+/**
+ * Índices de los puntos que son un pincho. Solo mira el carril de GPS: un punto TRIANGULADO no
+ * toca la referencia de `limpiarTrazo` (va por `aproximados`), así que tampoco puede ser vecino
+ * de un pincho ni serlo él mismo.
+ *
+ * Limitación conocida y aceptada: dos pinchos SEGUIDOS se tapan entre sí (cada uno es vecino del
+ * otro y ninguno cumple el regreso). No se persigue ese caso — en la jornada medida no aparece
+ * ninguno, y una pasada iterativa correría el riesgo de comerse una curva cerrada real.
+ */
+function marcarPinchos(points) {
+  const malos = new Set()
+  const idx = []
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]
+    if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lng))) continue
+    if (Number(p.accuracy) > ACCURACY_MAX_M) continue
+    idx.push(i)
+  }
+  for (let k = 1; k < idx.length - 1; k++) {
+    const a = points[idx[k - 1]]
+    const p = points[idx[k]]
+    const b = points[idx[k + 1]]
+    const dt = msDe(b.ts) - msDe(a.ts)
+    // Sin reloj no se puede afirmar que la ida y la vuelta pasaron juntas: no se descarta nada.
+    if (!(dt > 0 && dt <= PINCHO_MAX_MS)) continue
+    // El desvío tiene que superar TAMBIÉN el piso de ruido de esos fixes: con 25 m de precisión,
+    // 40 m está dentro de lo que el propio teléfono admite no saber.
+    const minDesvio = Math.max(PINCHO_DESVIO_M, pisoDeRuido(a, p))
+    if (metros(a, p) > minDesvio && metros(p, b) > minDesvio && metros(a, b) < PINCHO_REGRESO_M) {
+      malos.add(idx[k])
+    }
+  }
+  return malos
+}
 // Si se descartan tantos puntos seguidos, el punto de referencia ya no es confiable (puede ser ÉL
 // el malo, no los que vienen). Se acepta el siguiente y se abre segmento nuevo, en vez de tirar el
 // resto de la jornada por creerle a un solo fix.
@@ -254,8 +422,16 @@ export function limpiarTrazo(points) {
     aprox = []
   }
 
-  for (const p of points) {
+  // Pasada previa: los pinchos se deciden mirando los DOS vecinos y este bucle va hacia adelante.
+  const pinchos = marcarPinchos(points)
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]
     if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lng))) continue
+    // Pincho: se va y vuelve al mismo lugar. Se descarta como el salto imposible —no toca la
+    // referencia ni los km— pero no cuenta para `seguidos`: no es "la referencia está podrida",
+    // es un fix aislado y el que viene es bueno. Ver el 🩸 de `marcarPinchos`.
+    if (pinchos.has(i)) { descartados++; continue }
     const ms = msDe(p.ts)
 
     // Triangulado: va al carril aproximado y no toca NADA de lo demás (ni la referencia de saltos,
@@ -287,7 +463,7 @@ export function limpiarTrazo(points) {
       if (hueco) {
         if (actual.length) segmentos.push(actual)
         actual = []
-      } else if (dt * 1000 > HUECO_DUDOSO_MS) {
+      } else if (dt * 1000 > HUECO_DUDOSO_MS && d >= pisoDeRuido(ult, p)) {
         // HUECO DUDOSO: no alcanza para cortar el recorrido, pero tampoco se puede afirmar por dónde
         // pasó. Se cierra la línea llena acá y el segmento se reabre en el punto nuevo.
         //
@@ -298,6 +474,12 @@ export function limpiarTrazo(points) {
         //
         // Los km NO cambian: salen de `puntos`, que conserva los dos extremos del salto. Ese
         // desplazamiento ocurrió de verdad; lo único que se deja de afirmar es el camino.
+        //
+        // El `d >= pisoDeRuido(...)` de la condición es el piso de distancia: un salto de tiempo
+        // que no recorrió nada no tiene camino que ocultar, y cortar ahí solo pica el trazo. Ver
+        // el 🩸 de `HUECO_DUDOSO_MS`, con los números del 10/08. Usa el piso ADAPTATIVO y no el
+        // fijo por el mismo motivo que los km: en un teléfono con 25 m de precisión, 12 metros de
+        // "desplazamiento" durante el hueco no son evidencia de que se haya movido a ningún lado.
         if (actual.length) segmentos.push(actual)
         actual = []
       }

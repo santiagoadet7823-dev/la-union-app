@@ -31,15 +31,49 @@ Todo en español: código, comentarios, UI y commits.
 #### ⏳ La verificación que falta, y es la que dice si esto sirvió
 
 1.13.0 corrige el **ancla del filtro de movimiento** (nativo, `UploaderGpsService.java`). **No se pudo
-probar acá**: el emulador no tiene GPS real ni Doze. La medición honesta es post-jornada, con dos
-consultas contra la base viva:
+probar acá**: el emulador no tiene GPS real ni Doze. La medición honesta es post-jornada, contra la
+base viva.
 
-- **km por persona/día** → deberían bajar entre **5 % y 26 %** (baseline medida el 10/08: Zura 26 %,
-  Nelson rojas 19 %, Emanuel Arias 16 %, Gabriel tevez 13 %, Agustin Vasquez 10 %, Luis Mendoza 5 %).
-- **km de "ruido parado"** (hops < 9 m entre puntos guardados) → deberían caer **cerca de cero**.
+> 🩸 **EL CRITERIO DE ACEPTACIÓN ESTABA MAL Y HABRÍA MANDADO A REABRIR EL JAVA AL PEDO**
+> (corregido el 10/08 a las 18:00, midiendo la base viva). Este documento pedía que *"los km de ruido
+> parado (hops < 9 m) cayeran cerca de cero"*. **No pueden caer.** El arreglo clava el ancla pero
+> **el punto de cortesía se sigue encolando igual** — lo dice el comentario del propio
+> `procesarFix()`. Esos hops < 9 m son el jitter entre puntos de keepalive obligatorios: existen
+> pase lo que pase, y lo que los saca del NÚMERO es el piso de `kmDePuntos` (`lib/geo.js`) + `db/32`,
+> que ya están publicados. Medido el 10/08: el ritmo de puntos guardados estando quieto es de
+> **110-130 por hora en todos los equipos, 1.13.0 y 1.11.0 por igual** = el keepalive de 30 s y nada
+> más. Los metros de jitter por persona (1,0-1,7 km) **no separan una versión de la otra**.
 
-**Si no bajan, el ancla no quedó sujeta y hay que volver sobre el Java.** No hay forma de saberlo
-antes de que trabajen un día con la versión nueva.
+**El número que el ancla sí tiene que mover** es el **trinquete estando quieto**: hops **≥ 9 m** cuyo
+desplazamiento neto en ±6 puntos es **< 40 m**. Ésos son los que hoy inflan los km, y son los que
+desaparecen si el ancla quedó sujeta. Línea de base medida el **10/08 (jornada PRE-fix, ver abajo)**:
+
+| | km del día | m de trinquete parado | **% de km falso** |
+|---|---|---|---|
+| Zura | 1,32 | 500 | **37,8 %** |
+| Nelson rojas | 6,07 | 1.392 | **22,9 %** |
+| Orlando chavez | 6,45 | 1.339 | **20,8 %** |
+| Luis Mendoza | 14,45 | 2.022 | 14,0 % |
+| Gabriel tevez (**control**, sigue en 1.11.0) | 17,10 | 480 | 2,8 % |
+| Agustin Vasquez | 51,86 | 1.300 | 2,5 % |
+| Javier | 61,48 | 569 | 0,9 % |
+
+**Criterio:** el % de km falso baja en los cinco que tienen `apk_version = 1.13.0` y **se queda igual
+en Gabriel tevez**, que es el control natural porque no recibió el APK. Si baja en todos por igual,
+no fue el ancla. Si no baja en ninguno, ahí sí se vuelve al Java.
+
+> 🔴 **La jornada del 10/08 NO sirve para medir: es PRE-fix.** El `app-release.apk` con el ancla
+> arreglada se compiló ese mismo día a las **13:08** y llegó a los teléfonos a la tarde
+> (`app_config` pasó a 1.13.0 a las 17:32). Es además la misma jornada de la que salió esta línea de
+> base. **La primera jornada medible es la del martes 11/08.**
+
+> 🩸 **Para cualquier cosa NATIVA la columna que vale es `estado_dispositivo.apk_version`, no
+> `app_version`.** `app_version` es el bundle OTA: un teléfono con el APK 1.13.0 puesto sigue
+> diciendo `app_version = 1.12.1` hasta que baje la OTA, y al revés. Medido el 10/08 a las 18:00:
+> **con APK 1.13.0** → Orlando chavez, Javier, Nelson rojas, Agustin Vasquez, Luis Mendoza (+ Zura y
+> Alejandro mercado, que lo tienen puesto pero no abren la app, así que reportan 1.11.0 viejo);
+> **sin el APK** → **Gabriel tevez**, que reportó hoy a las 17:07 en 1.11.0 y es justamente el peor
+> trazo del parque.
 
 ### La base viva (verificado el 10/08 por MCP)
 
@@ -274,6 +308,9 @@ ahorran tiempo, porque son caminos que ya se recorrieron:
 | Piso de ruido en los km (`kmDePuntos`, único lugar del front) | `lib/geo.js` + `db/32` | ✅ aplicado |
 | Ancla que no persigue al ruido | `UploaderGpsService.java` | ✅ en 7 de 9 teléfonos — **sin medir** |
 | PWA en iPhone (metas `apple-mobile-web-app-*`) | `index.html` | ✅ |
+| 🔴 **Piso de distancia en el corte por hueco dudoso** — el corte de 45 s disparaba sobre saltos que no recorrieron nada y dejaba el trazo hecho confeti | `lib/geo.js` (`limpiarTrazo`) | ⏳ **hecho y verificado, SIN PUBLICAR** (sale por OTA, es JS puro) |
+| 🔴 **Piso de ruido ADAPTATIVO por incertidumbre, con ancla** — el piso era 9 m fijo para todos; ahora es `max(9, 0,75·√(σ₁²+σ₂²))` medido contra un ancla que acumula | `lib/geo.js` (`pisoDeRuido`, `kmDePuntos`) | ⏳ **hecho y verificado, SIN PUBLICAR** |
+| 🔴 **Filtro de PINCHOS** — el fix que se va 40-90 m y vuelve; el filtro de salto no los ve porque mide velocidad | `lib/geo.js` (`marcarPinchos`) | ⏳ **hecho y verificado, SIN PUBLICAR** |
 
 **🩸 Lo que se probó y NO funcionó — no repetirlo sin datos nuevos:**
 
@@ -290,7 +327,31 @@ ahorran tiempo, porque son caminos que ya se recorrieron:
 hipótesis contra los datos**. Tres cambios en la historia del repo, tres teorías plausibles e
 incompletas.
 
+**🔴 El corte de 45 s dejaba el trazo hecho confeti, y el 80-100 % de los cortes no decía nada**
+(medido el 10/08 a las 18:00, y es lo que el cliente estaba viendo como "el trazo sigue fallando").
+`HUECO_DUDOSO_MS` parte el dibujo por TIEMPO, y con la cadencia lenta (30 s) **un solo fix perdido ya
+son 60 s** — cualquier hipo del chip estando parado partía el trazo. Cortes de menos de 9 m sobre el
+total de cortes dudosos de la jornada: Alejandro mercado 27/27, Orlando chavez 42/43, **Agustin
+Vasquez 181/189** (y Agustin es el equipo más sano: **cero** metros dudosos de ≥ 50 m). Los que sí
+valen se concentran en tres personas: Gabriel tevez 6.843 m, Javier 2.321 m, Luis Mendoza 1.248 m.
+**Arreglado con un piso de `MIN_MOVE_M` en la condición del corte** (regla 49 de `CLAUDE.md`);
+verificado con el código real sobre la jornada de Zura: 26 → 9 segmentos, 341,0 → 336,3 m punteados,
+km idénticos hasta el sexto decimal.
+
 **Diagnósticos que quedaron abiertos** (medidos, sin arreglar):
+
+- 🆕 **Luis Mendoza dejó de ESCRIBIR posiciones a las 14:43 con el servicio vivo.** El 10/08 su
+  último punto es 14:43 y sin embargo `fix_ultimo_ts` marca **17:30**, `gps_silencio_max_ms` solo
+  **10 min** y `cola_pendiente` 0. O sea: el servicio nativo **captura fixes y no guarda ninguno**
+  durante 2 h 45. No es un silencio de GPS y no es la cola. Es un modo de falla nuevo — el keepalive
+  de 30 s tendría que estar encolando un punto de cortesía igual. Mirar `procesarFix`: el único
+  camino que explica "fixes sí, filas no" es `!movio && !vivo` sostenido, que con `lastSentAt`
+  avanzando no debería poder pasar.
+- 🆕 **Los silencios son el defecto dominante del trazo, y 1.13.0 no los tocaba.** Minutos perdidos
+  en huecos > 4 min el 10/08: **Luis Mendoza 509** (máximo 201 min), **Javier 180** (máximo 40 min,
+  con un salto de **28 km** adentro), **Gabriel tevez 132**, **Zura 95**, **Nelson rojas 91**
+  (máximo **62 min**, y arrancó 10:50 en vez de 08:00). Mientras esto siga así, el trazo va a tener
+  tramos punteados por más que el dibujo se afine: **no hay dato**.
 
 - **Javier se calla 23 y 29 min manejando a 73 km/h** entre pueblos. El teléfono está sano
   (permisos, servicio, batería, 31 satélites). La cola **sí** guarda sin internet — se leyó el
@@ -317,7 +378,7 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 
 | # | Pendiente | Por qué duele | Qué lo cierra |
 |---|---|---|---|
-| **0** | ⏳ **MEDIR 1.13.0 — es lo primero de la próxima sesión** | El arreglo del **ancla** es nativo y **no se pudo probar**: el emulador no tiene GPS real ni Doze. Un arreglo sin medir no está confirmado. Baseline del 10/08 en §1 | Dos consultas: (a) km por persona/día — deberían bajar 5-26 %; (b) km de hops < 9 m — deberían caer a ~0. **Si no bajan, volver sobre `UploaderGpsService.java`** |
+| **0** | ⏳ **MEDIR 1.13.0 — lo primero de la sesión del martes 11/08** | El arreglo del **ancla** es nativo y **no se pudo probar**: el emulador no tiene GPS real ni Doze. Un arreglo sin medir no está confirmado. ⚠️ **La jornada del 10/08 no sirve: el APK se compiló ese día 13:08 y llegó a la tarde, así que es PRE-fix** | El **% de km falso** (trinquete parado: hops ≥ 9 m con neto < 40 m en ±6 puntos) tiene que bajar en los 5 con `apk_version=1.13.0` y quedarse igual en **Gabriel tevez**, que es el control porque no lo recibió. Tabla de línea de base y la advertencia sobre el criterio viejo, en §1. **Si no baja en ninguno, volver sobre `UploaderGpsService.java`** |
 | **0-bis** | ⏳ **Mandar el push de aviso de 1.13.0** | Los tres canales están publicados pero **nadie avisó a los teléfonos**. Sin el push, los que no se actualizan solos no se enteran | El `net.http_post` a `push-actualizacion` de `CLAUDE.md §3`, con `timeout_milliseconds := 60000`. Lo tiene que correr una persona: lleva la `service_role` key |
 | **0-ter** | 🔴 **Terminar de actualizar 2 teléfonos** | **Eduardo ruiz** nunca se conectó (parece que no le entregaron el equipo) y **Gabriel tevez** no tiene adb remoto | Eduardo: `adb install -r -i com.launion.app` por Tailscale cuando aparezca. Gabriel: por cable cuando venga — y aprovechar para dejarle `adb tcpip 5555`, así deja de depender de una visita. ⚠️ **El `-i` no es opcional**: sin él el equipo no queda como su propio instalador y la próxima tampoco es silenciosa |
 | **0-cuatro** | 🟠 **Alejandro mercado y Zura: APK puesto, app sin abrir** | Tienen 1.13.0 instalado pero el latido sigue viejo. **`estado_dispositivo` lo escribe el JS**, que solo corre con la app abierta — el dashboard los muestra en 1.11.0 aunque el nativo esté actualizado | Abrirles la app por Tailscale (`adb shell monkey -p com.launion.app -c android.intent.category.LAUNCHER 1`) o esperar a que la abran ellos |

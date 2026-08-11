@@ -108,11 +108,25 @@ export function construirFines(trails) {
  * - Con una persona enfocada, su trazo va nítido (0.95, más grueso) y el resto muy tenue (0.12)
  *   pero visible; sin foco, todos con la opacidad de siempre. El enfocado se dibuja ÚLTIMO para
  *   que los tenues no lo tapen.
- * - 🩸 CONECTORES DE HUECO (30/07/2026). Cada segmento es su propia polilínea, así que entre dos
+ * - 🩸 CONECTORES DE HUECO (30/07/2026). Cada segmento se dibuja por separado, así que entre dos
  *   queda un vacío. Sin nada en el medio, el recorrido parece dos recorridos distintos; con una
  *   línea llena, vuelve la mentira original (una recta que cruza manzanas por las que no pasó).
  *   La línea punteada y fina es la única lectura honesta: "siguió siendo la misma persona, pero
  *   acá no hay datos". No entra al encuadre porque su opacidad queda bajo 0.5 (ver LeafletMap).
+ *
+ * 🩸 UNA PIEZA POR PERSONA Y POR TIPO, NO UNA POR TRAMO (10/08/2026, noche). El cliente reportó que
+ * al final de la jornada el mapa queda imposible de usar, "re lento y trabado". **No era la
+ * cantidad de puntos.** Medido en la PWA con los 8 equipos del día: **352 `<path>` de SVG para 719
+ * vértices en total — 345 de esos paths tenían exactamente DOS puntos**, más 111 markers. O sea
+ * ~463 capas de Leaflet, y cada capa se re-proyecta entera en cada pan y cada zoom. 719 vértices no
+ * le pesan a nadie; 463 capas sí.
+ *
+ * La causa es que el día se parte en muchos tramos (huecos de GPS) y antes cada tramo, cada
+ * aproximado y cada conector era su PROPIA polilínea. Como todos los de una persona comparten
+ * color, grosor, opacidad y dashArray, van en UNA sola capa multi-línea (`lineas`, array de arrays,
+ * que Leaflet acepta de forma nativa): 352 capas → ~24, tres por persona.
+ *
+ * **No cambia ni un pixel de lo que se dibuja**: son exactamente las mismas líneas, agrupadas.
  */
 export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId = null }) {
   const out = trails.flatMap((t) => {
@@ -120,29 +134,29 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     const opacity = !focoId ? 0.85 : (enfocado ? 0.95 : 0.12)
     const weight = enfocado ? 5 : 4
     const segs = snapOn ? snapped[t.id] : null
-    const base = (segs && segs.length)
-      ? segs.map((s) => ({ points: s }))
-      : (t.segmentos || []).map((s) => ({ points: simplificarTrazo(s) }))
-    const piezas = base.map((b) => ({ ...b, color: t.color, id: t.id, opacity, weight }))
+    const lineas = (segs && segs.length)
+      ? segs.filter((s) => s?.length >= 2)
+      // OJO: `(s) => simplificarTrazo(s)` y no `.map(simplificarTrazo)` — map pasa el ÍNDICE como
+      // segundo argumento y ahí sería `epsilonM`, o sea una tolerancia distinta por segmento.
+      : (t.segmentos || []).map((s) => simplificarTrazo(s)).filter((s) => s.length >= 2)
+    const piezas = []
+    if (lineas.length) piezas.push({ id: t.id, color: t.color, opacity, weight, lineas })
     // 🩸 TRAMOS APROXIMADOS (1.9.0): lo que el teléfono triangula por antenas y WiFi cuando el GPS
     // se calla. Van SIEMPRE punteados y finos, también con el snap prendido — porque no son un
     // trazo peor, son otra cosa: "por acá anduvo, con ±80 m". Dibujarlos como línea llena sería
     // cambiar un hueco honesto por una precisión que no tenemos.
-    for (const a of t.aproximados || []) {
-      if (a.length >= 2) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.6, dashArray: '2 6', points: a })
-    }
+    const aprox = (t.aproximados || []).filter((a) => a.length >= 2)
+    if (aprox.length) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.6, dashArray: '2 6', lineas: aprox })
     // Los conectores solo tienen sentido sobre el crudo: la rama snap trae los segmentos que
     // decidió OSRM, que no se corresponden con los huecos de captura.
     if (!segs || !segs.length) {
-      for (let i = 1; i < base.length; i++) {
-        const a = base[i - 1].points
-        const b = base[i].points
-        if (!a?.length || !b?.length) continue
-        piezas.push({
-          id: t.id, color: t.color, weight: 2, opacity: opacity * 0.5,
-          dashArray: '3 7', points: [a[a.length - 1], b[0]],
-        })
+      const conectores = []
+      for (let i = 1; i < lineas.length; i++) {
+        const a = lineas[i - 1]
+        const b = lineas[i]
+        conectores.push([a[a.length - 1], b[0]])
       }
+      if (conectores.length) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.5, dashArray: '3 7', lineas: conectores })
     }
     return piezas
   })

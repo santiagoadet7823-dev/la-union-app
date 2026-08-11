@@ -249,10 +249,21 @@ function firmaPuntos(pts) {
   return pts.length + '@' + firmaPunto(pts[0]) + '>' + firmaPunto(pts[pts.length - 1])
 }
 
+/**
+ * Las líneas de una pieza de trail. Desde el agrupado del 10/08/2026 una pieza trae `lineas`
+ * (array de arrays: multi-polilínea, una capa de Leaflet para todos los tramos de una persona).
+ * Se acepta `points` igual para cualquier llamador que todavía pase una sola línea suelta.
+ */
+const lineasDe = (t) => (t?.lineas?.length ? t.lineas : (t?.points?.length ? [t.points] : []))
+
 function firmaTrails(trails) {
   if (!trails || !trails.length) return ''
   let s = ''
-  for (const t of trails) s += (t.id || '') + ':' + (t.color || '') + ':' + (t.opacity ?? '') + ':' + (t.weight ?? '') + ':' + (t.dashArray || '') + ':' + firmaPuntos(t.points) + '|'
+  for (const t of trails) {
+    s += (t.id || '') + ':' + (t.color || '') + ':' + (t.opacity ?? '') + ':' + (t.weight ?? '') + ':' + (t.dashArray || '') + ':'
+    for (const l of lineasDe(t)) s += firmaPuntos(l) + ';'
+    s += '|'
+  }
   return s
 }
 
@@ -498,6 +509,16 @@ export default function LeafletMap({
     const map = L.map(divRef.current, {
       center: [center.lat, center.lng],
       zoom,
+      // 🩸 CANVAS Y NO SVG (10/08/2026). Con SVG, Leaflet crea un `<path>` del DOM por capa
+      // vectorial y lo re-proyecta en cada pan y cada zoom. Al final de la jornada eso eran
+      // cientos de nodos y el mapa quedaba "re lento y trabado" (reporte del cliente, medido:
+      // 352 paths + 111 markers). Con canvas, TODOS los vectores —trazos, conectores, círculos
+      // de cliente— se dibujan en un solo `<canvas>`.
+      //
+      // ⚠️ No alcanza solo con esto: lo que más pesa es la CANTIDAD de capas, y eso se arregla
+      // agrupando (ver `construirLeaflet`). Las dos cosas van juntas.
+      // ⚠️ No afecta a `L.marker`: los marcadores con icono siguen siendo elementos del DOM.
+      preferCanvas: true,
       // Sin el cartel "Leaflet | © OpenStreetMap" flotando abajo a la derecha. En un mapa a
       // pantalla completa tapa contenido y Leaflet no deja moverlo de esquina sin pelearse con
       // los demás controles. El crédito NO se pierde: va al pie del menú de capas
@@ -695,8 +716,12 @@ export default function LeafletMap({
     // `opacity`/`weight` por trail: al enfocar a una persona, su trazo va nítido y el resto
     // muy tenue. Si el trail no los trae, se usa el valor de siempre (0.85 / 4).
     ;(trails || []).forEach((t) => {
-      if (!t.points || t.points.length < 2) return
-      L.polyline(t.points.map((p) => [p.lat, p.lng]), {
+      // UNA capa por pieza, con TODOS sus tramos adentro (multi-polilínea). Ver el 🩸 de
+      // `construirLeaflet` en features/supervision/trazos.js: antes era una capa por tramo y el
+      // mapa llegaba a 352 `<path>` para 719 vértices, que es lo que lo trababa.
+      const lineas = lineasDe(t).filter((l) => l.length >= 2)
+      if (!lineas.length) return
+      L.polyline(lineas.map((l) => l.map((p) => [p.lat, p.lng])), {
         color: t.color || trailColor, weight: t.weight ?? 4, opacity: t.opacity ?? 0.85, lineJoin: 'round',
         // `dashArray`: lo usan los CONECTORES DE HUECO (features/supervision/trazos.js). Un trazo
         // se parte en segmentos donde el GPS dejó de reportar, y entre dos segmentos va una línea
@@ -986,11 +1011,13 @@ export default function LeafletMap({
     movers.forEach((mv) => extend([mv.lat, mv.lng]))
     if (trail && trail.length >= 2) trail.forEach((p) => extend([p.lat, p.lng]))
     ;(trails || []).forEach((t) => {
-      if (!t.points || t.points.length < 2) return
       // Los trazos atenuados (enfoque de otra persona) NO entran al encuadre: el fit lo
       // manda el recorrido enfocado, no los tenues de fondo.
       if ((t.opacity ?? 0.85) < 0.5) return
-      t.points.forEach((p) => extend([p.lat, p.lng]))
+      for (const l of lineasDe(t)) {
+        if (l.length < 2) continue
+        l.forEach((p) => extend([p.lat, p.lng]))
+      }
     })
     if (circle) {
       // 🩸 08/08/2026 — ACÁ NO SE PUEDE USAR `L.circle(...).getBounds()`. Un `Circle` de Leaflet
