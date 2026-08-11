@@ -18,6 +18,30 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.1 (10/08/2026, 23:36) — **OTA + PWA, sin APK**
+
+`app_config`: `latest_version` = `bundle_version` = **1.13.1**; `min_version` sigue en **1.13.0**
+(1.13.1 es JS puro). PWA: commit `228a731`, workflow **success**. Bundle: release `ota-1.13.1`.
+
+Contenido: piso de ruido **adaptativo con ancla** + **filtro de pinchos** + piso de distancia en el
+corte de 45 s (`lib/geo.js`); mapa con **una capa por persona y por tipo** + **renderer canvas**
+(`trazos.js`, `LeafletMap.jsx`); nombre del cliente completo en la lista del vendedor; falsa alarma
+"recorridos INCOMPLETO".
+
+> 🩸 **El primer intento de publicar se cayó, y la causa vale más que el incidente.** Un
+> `{/* comentario */}` metido entre el `? (` de un ternario y su elemento **no es un comentario, es
+> un error de sintaxis**: volteó el build entero (`Expected ")" but found "onClick"`). El
+> `ota-release.sh` tiene `set -e` y cortó antes de publicar, así que ningún teléfono recibió nada; y
+> el workflow de Pages falló, que **no despliega**, así que la PWA en vivo siguió sirviendo 1.13.0.
+> La lección: se había corrido un `vite build` en verde ANTES de ese cambio y se lo dio por válido
+> después. El chequeo barato es pedirle el módulo al dev server (`curl
+> localhost:5173/la-union-app/src/…/Archivo.jsx`) — tarda dos segundos y devuelve el error exacto.
+
+⚠️ **Los teléfonos aplican el bundle en el PRÓXIMO arranque de la app, no al bajarlo** (regla 48: no
+se fuerza `reload()`). La noche del 10/08 se despertaron 4 equipos por Tailscale y a las 23:39
+seguían reportando `app_version` 1.13.0 con el bundle ya descargándose: **eso es lo esperado**, no un
+fallo. Se confirma mirando `estado_dispositivo.app_version` a la mañana siguiente.
+
 ### Publicado — 1.13.0 (10/08/2026)
 
 | | |
