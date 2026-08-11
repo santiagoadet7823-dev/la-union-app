@@ -18,6 +18,31 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.2 (11/08/2026, 13:13) — **OTA + PWA, sin APK**
+
+`app_config`: `latest_version` = `bundle_version` = **1.13.2**; `min_version` sigue en 1.13.0.
+PWA: commit `9cc23da`, workflow **success**. Bundle: release `ota-1.13.2`.
+
+Arregla lo que 1.13.1 rompió en la tarjeta del vendedor, y hace bien el cambio que se había pedido:
+el botón de Check-in pasa a **solo ícono, 44×44** en vez de ~90 de ancho. Medido a 375 px sobre los
+1.803 clientes reales: **antes entraban 0 nombres enteros (88 px de espacio), ahora 1.560 (87 %)** —
+por eso el vendedor los veía todos cortados. Los 243 que siguen cortados pasan de ~29 caracteres.
+
+> 🩸 **1.13.1 imprimió texto basura en CADA tarjeta durante toda una mañana, y el build daba verde.**
+> Un `{/* … */}` escrito como ejemplo **adentro** de un comentario JSX lo cierra antes de tiempo y el
+> resto se renderiza. **Para JSX el build no alcanza: hay que mirar el DOM.** El chequeo que lo caza
+> es recorrer los nodos de texto del componente y comprobar que no haya ninguno de más. Y para
+> sintaxis, `curl localhost:5173/la-union-app/src/…/Archivo.jsx` tarda 2 s contra los 7 min del build.
+>
+> 🟢 **De paso quedó medido lo que se quería testear**: a las 13:00 del 11/08, **7 de 8 equipos ya
+> habían aplicado el bundle 1.13.1 solos**, sin que nadie tocara nada. El auto-update funciona. El
+> único rezagado fue Nelson rojas, que no abrió la app desde las 00:51.
+
+> 🔧 **`RoleRouter` ahora pasa por `rolEfectivo`.** El override `localStorage['lu-dev-rol']` servía
+> para las decisiones de `AuthedApp` pero `RoleRouter` releía el rol REAL, así que forzar `vendedor`
+> desde una sesión de gestión caía en `AdminView`. Costó no poder mirar la pantalla del vendedor para
+> verificar un arreglo ya publicado. En producción es un no-op.
+
 ### Publicado — 1.13.1 (10/08/2026, 23:36) — **OTA + PWA, sin APK**
 
 `app_config`: `latest_version` = `bundle_version` = **1.13.1**; `min_version` sigue en **1.13.0**
