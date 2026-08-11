@@ -56,6 +56,9 @@ public class UploaderGpsPlugin extends Plugin {
         // de siempre. ⚠️ accuracyMaxM se puede SUBIR en un modelo con GPS malo; bajarlo vacía los
         // recorridos (regla 18).
         double accuracyMaxM = call.getDouble("accuracyMaxM", 30.0);
+        // 1.13.3 — techo de CONFIANZA, distinto del de captura (regla 18-bis). El default es 30 para
+        // que un APK nuevo con un bundle viejo (que no manda esta clave) se comporte como siempre.
+        double accuracyConfM = call.getDouble("accuracyConfM", 30.0);
         double maxSpeedMps = call.getDouble("maxSpeedMps", 45.0);
         double minJumpM = call.getDouble("minJumpM", 9.0);
         int maxSaltosSeguidos = call.getInt("maxSaltosSeguidos", 3);
@@ -92,6 +95,7 @@ public class UploaderGpsPlugin extends Plugin {
             .putFloat(UploaderGpsService.K_VEL_UMBRAL, (float) velUmbralMps)
             .putInt(UploaderGpsService.K_VEL_HIST, velHistMs)
             .putFloat(UploaderGpsService.K_ACCURACY_MAX, (float) accuracyMaxM)
+            .putFloat(UploaderGpsService.K_ACCURACY_CONF, (float) accuracyConfM)
             .putFloat(UploaderGpsService.K_MAX_SPEED, (float) maxSpeedMps)
             .putFloat(UploaderGpsService.K_MIN_JUMP, (float) minJumpM)
             .putInt(UploaderGpsService.K_MAX_SALTOS, maxSaltosSeguidos)

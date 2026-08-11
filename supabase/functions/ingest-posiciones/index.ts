@@ -22,6 +22,34 @@ const json = (b: unknown, status = 200) =>
 const MAX_PUNTOS = 500          // tope por request: el servicio nativo agrupa; más que esto es abuso
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
+/* 🩸 TELEMETRÍA QUE NO DEPENDE DEL WEBVIEW (1.13.3, 11/08/2026).
+ *
+ * Los contadores del servicio nativo (`fix_total`, `fix_desc_precision`, `gps_silencio_max_ms`…)
+ * viajaban SOLO en el latido, que lo escribe el JS. Y el JS se congela: el 11/08 los últimos latidos
+ * del parque eran de las 07:37, 09:05, 09:47 y 11:17 mientras esos mismos cuatro teléfonos seguían
+ * subiendo puntos hasta las 14:45 por este endpoint. O sea que **justo cuando un teléfono falla, el
+ * diagnóstico deja de llegar** — y una tabla que compara contadores entre personas está comparando
+ * cortes de horas distintas sin decirlo.
+ *
+ * El uploader nativo postea cada 5-10 s cuando hay red, así que la telemetría viene gratis con el
+ * lote. Se escribe en el MISMO upsert de `estado_dispositivo` y con su propio `telemetria_ts`, que
+ * es lo que permite saber de cuándo es cada número.
+ *
+ * ⚠️ Solo campos que produce el servicio nativo. `fcm_token`, `bg_ok`, `permiso` y compañía siguen
+ * siendo del JS y NO se tocan acá: un upsert que los mandara en null los borraría, que es
+ * exactamente el bug del token FCM nulo (10/08). Por eso la lista es explícita y corta.
+ *
+ * ⚠️ `updated_at` NO se toca: sigue significando "último latido del JS" (verificado: la tabla no
+ * tiene triggers). Si esto lo moviera, un teléfono con el WebView muerto figuraría vivo — y hay
+ * media docena de lugares que usan esa columna para decidir justamente eso. Por eso la telemetría
+ * nativa lleva su propio `telemetria_ts`.
+ */
+const CAMPOS_TEL = [
+  'fix_total', 'fix_guardados', 'fix_desc_precision', 'fix_desc_precision_racha',
+  'fix_desc_salto', 'fix_desc_movimiento', 'gps_fixes_red', 'gps_repedidos',
+  'cuarentena_nativa', 'gps_intervalo_ms', 'gps_silencio_max_ms',
+] as const
+
 // ts: acepta epoch ms (número) o ISO (string). Devuelve ISO o null.
 function tsISO(v: unknown): string | null {
   if (typeof v === 'number' && Number.isFinite(v)) return new Date(v).toISOString()
@@ -79,6 +107,25 @@ Deno.serve(async (req) => {
     // 3) Upsert idempotente por client_uid (reintentos nativos no duplican).
     const { error } = await admin.from('posiciones').upsert(filas, { onConflict: 'client_uid', ignoreDuplicates: true })
     if (error) return json({ error: 'insert', detalle: error.message }, 500)
+
+    // 4) Telemetría del servicio nativo, si vino. Va DESPUÉS del upsert y su fallo no rompe la
+    // ingesta: perder un diagnóstico es molesto, perder puntos es irreversible.
+    const tel = body?.tel
+    if (tel && typeof tel === 'object') {
+      const fila: Record<string, unknown> = {
+        id_usuario: tk.id_usuario, id_empresa: tk.id_empresa,
+        telemetria_ts: new Date().toISOString(),
+      }
+      for (const k of CAMPOS_TEL) {
+        const v = num((tel as Record<string, unknown>)[k])
+        // null = "el servicio todavía no lo sabe" y se OMITE, nunca se escribe: mandar null pisaría
+        // el último valor bueno. Es la lección del token FCM (10/08), aplicada acá por adelantado.
+        if (v !== null && v >= 0) fila[k] = Math.round(v)
+      }
+      if (Object.keys(fila).length > 3) {
+        await admin.from('estado_dispositivo').upsert(fila, { onConflict: 'id_usuario' })
+      }
+    }
 
     return json({ insertados: filas.length, descartados: puntos.length - filas.length })
   } catch (e) {

@@ -160,8 +160,37 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     registra sin error y **nunca entrega nada**.
 17. **`MovimientoReceiver` va declarado en el manifest, no dinámico.** Los dinámicos mueren con el
     proceso en OEMs agresivos.
-18. **No subir `priority` a 102 ni bajar `ACCURACY_MAX_M`.** Los fixes con precisión > 30 m se
-    descartan: vaciaría los recorridos.
+18. **No subir `priority` a 102 ni bajar `ACCURACY_MAX_M`.** Los fixes con precisión > 30 m no se
+    dibujan como línea ni suman km: bajar el techo vaciaría los recorridos.
+18-bis. 🩸 **CAPTURAR NO ES CONFIAR: son DOS techos de precisión, no uno.** (11/08/2026.) Un mismo
+    número gobernaba tres cosas —qué captura el servicio nativo, qué se dibuja lleno y qué suma
+    kilómetros— y solo la segunda quería 30 m. Como el nativo tiraba el fix, el punto **no llegaba a
+    existir**, así que la maquinaria que existe desde 1.9.0 para dibujarlo punteado (regla 40) no
+    tenía nada que dibujar. Medido sobre la jornada del 11/08: **Alejandro mercado descartó 960 de
+    1.452 fixes por precisión (66 %) y perdió 39,6 km de ruta a 76 km/h sin un solo punto** — y su
+    propio servicio reportaba `gps_silencio_max_ms` de **0,3 min**, o sea que los fixes llegaban
+    puntuales y el agujero lo hacía el filtro, no el chip. El parque tiene dos poblaciones: Orlando y
+    Agustin trabajan con p90 de 1,9 y 5,0 m y descartan ~0 % (Orlando: 10 de 3.131) — y son
+    exactamente los dos con 0 % de km sin dibujar; los otros seis viven en 20-28 m, **pegados al
+    techo**, y descartan del 10 al 66 %.
+    ⚠️ Al leer esos contadores: son ACUMULADOS DEL DÍA y los sube el latido del JS, que se congela
+    con el WebView. Un corte de media mañana da porcentajes muy distintos a los de cierre — Orlando
+    a las 07:37 figuraba con 30 % de descarte y al cierre con 0 %. **Comparar personas exige mirar
+    `updated_at` de cada fila.**
+    Desde 1.13.3 hay `ACCURACY_CAPTURA_MAX_M` (120 m, va al nativo por prefs → OTA) y
+    `ACCURACY_MAX_M` (30 m, decide línea vs. punteado y los km). **La regla 18 sigue intacta: el que
+    no se toca es el de 30.**
+    ⚠️ **Y el techo de confianza vive en CUATRO runtimes.** Además de `gpsConfig.js` está escrito a
+    mano en `metricas_actividad` y `vigilancia_equipo` (`db/33`), porque las dos calculan movimiento
+    en SQL. Sin ese filtro, subir el techo de captura habría inflado los km del panel con jitter y
+    —peor— **apagado los dos avisos al supervisor**: el umbral de "se movió" son 40 m y un fix de
+    ±120 m los supera solo, así que un teléfono parado parecería moverse (no sale el aviso de
+    quieto) y uno que solo entrega basura contaría como reportando bien (no sale el de sin
+    reportar). Si se mueve el 30, se mueven los cuatro.
+    ⚠️ Gotcha de Postgres que hay que conocer para leer esas RPC: **`least(1, NULL)` devuelve `1`**,
+    no NULL. En el haversine eso da `asin(1)` = 20.015 km por fila. Las dos RPC están a salvo porque
+    envuelven la cuenta en un `case when lat_prev is null then null`; cualquier copia del patrón
+    necesita esa guarda.
 19. **Un error de la cola de posiciones puede ser PERMANENTE, no solo "no hay red".** La clave
     `lu-pos-queue` es del **dispositivo**, no del usuario: si se cambia de cuenta en el mismo
     teléfono, los puntos de la cuenta anterior fallan `posiciones_ins` (`id_usuario = auth.uid()`)
@@ -588,7 +617,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. **1.13.1** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.1; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
+Hay varios números que conviven. **1.13.3** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.3; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -596,10 +625,10 @@ Hay varios números que conviven. **1.13.1** es OTA-solo (JS): `APP_VERSION` y e
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.2` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.3` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.13.0` | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `32` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.2` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.3` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.13.1 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

@@ -150,6 +150,22 @@ public class UploaderGpsService extends Service {
     // nada por sí solo. ⚠️ `accuracyMaxM` está acá para poder SUBIRLO en un modelo con GPS malo;
     // bajarlo vacía los recorridos (regla 18).
     static final String K_ACCURACY_MAX = "accuracyMaxM";
+    /**
+     * 🩸 EL TECHO DE CONFIANZA, distinto del de captura (11/08/2026 — regla 18-bis).
+     *
+     * `K_ACCURACY_MAX` es hasta dónde se CAPTURA (desde 1.13.3 son 120 m); éste es hasta dónde se
+     * CREE. Un fix entre los dos techos se guarda —vale para "por acá anduvo", el front lo dibuja
+     * punteado y fuera de los km— pero no manda: no vota la cadencia, no mueve la referencia del
+     * filtro de salto y, sobre todo, NO cuenta como "el GPS está entregando bien".
+     *
+     * Ese último punto es el bug que arregla. Hasta 1.13.0 `ultimoFixAt` y `apagarCarrilRed()`
+     * corrían ANTES del filtro de precisión, así que un fix de 400 m —que el filtro estaba por
+     * tirar— apagaba el carril de triangulación y reseteaba el reloj del silencio. El servicio se
+     * declaraba sano mientras no guardaba un solo punto. Medido el 11/08 en Alejandro mercado:
+     * `gps_fixes_red` = 0 y `gps_silencio_max_ms` = 0,3 min con 31 minutos y 39,6 km sin un punto.
+     * El respaldo existía desde 1.9.0 y no se encendió nunca porque preguntaba lo que no era.
+     */
+    static final String K_ACCURACY_CONF = "accuracyConfM";
     static final String K_MAX_SPEED = "maxSpeedMps";
     static final String K_MIN_JUMP = "minJumpM";
     static final String K_MAX_SALTOS = "maxSaltosSeguidos";
@@ -158,6 +174,7 @@ public class UploaderGpsService extends Service {
     // de movimiento o el sistema operativo estrangulando los fixes. Ver los contadores en memoria.
     static final String K_TEL_FIXES = "telFixes";
     static final String K_TEL_PRECISION = "telDescPrecision";
+    static final String K_TEL_PRECISION_RACHA = "telDescPrecisionRacha"; // 1.13.3, ver cDescPrecisionRacha
     static final String K_TEL_SALTO = "telDescSalto";
     static final String K_TEL_MOVIMIENTO = "telDescMovimiento";
     static final String K_TEL_GUARDADOS = "telGuardados";
@@ -314,6 +331,14 @@ public class UploaderGpsService extends Service {
     // `silencioMax` es el hueco más largo del día, que es la forma de saber si el WakeLock sirvió.
     private int cRepedidos = 0, cFixesRed = 0;
     private long silencioMax = 0L;
+    /**
+     * 1.13.3: descartes por precisión CONSECUTIVOS, y el peor del día. `cDescPrecision` solo dice
+     * cuántos se tiraron en total, y eso no distingue el goteo normal (un fix malo suelto entre
+     * buenos) de la falla que costó 39,6 km de ruta: **una racha entera sin un solo fix usable**.
+     * Alejandro mercado el 11/08 tenía 66 % de descarte y aun así "0,3 min de silencio máximo" —
+     * ninguno de los dos números decía que había estado media hora sin poder guardar nada.
+     */
+    private int cDescPrecisionSeguidos = 0, cDescPrecisionRacha = 0;
     private int diaContadores = 0; // yyyymmdd: los contadores se reinician por DÍA, no por arranque
 
     // Último texto pintado en la notificación. Sin esto, `nm.notify` correría en cada fix (cada 5-15 s)
@@ -537,6 +562,7 @@ public class UploaderGpsService extends Service {
         diaContadores = hoy;
         cFixes = 0; cDescPrecision = 0; cDescSalto = 0; cDescMovimiento = 0; cGuardados = 0;
         cRepedidos = 0; cFixesRed = 0; silencioMax = 0;
+        cDescPrecisionSeguidos = 0; cDescPrecisionRacha = 0;
         volcarTelemetria(sp.edit()).putInt(K_TEL_DIA, hoy).apply();
     }
 
@@ -544,6 +570,7 @@ public class UploaderGpsService extends Service {
     private SharedPreferences.Editor volcarTelemetria(SharedPreferences.Editor e) {
         return e.putInt(K_TEL_FIXES, cFixes)
             .putInt(K_TEL_PRECISION, cDescPrecision)
+            .putInt(K_TEL_PRECISION_RACHA, cDescPrecisionRacha)
             .putInt(K_TEL_SALTO, cDescSalto)
             .putInt(K_TEL_MOVIMIENTO, cDescMovimiento)
             .putInt(K_TEL_GUARDADOS, cGuardados)
@@ -624,21 +651,58 @@ public class UploaderGpsService extends Service {
         float accMax = deRed
             ? sp.getFloat(K_ACCURACY_RED_MAX, 150f)   // el carril de red tiene su propio techo
             : sp.getFloat(K_ACCURACY_MAX, ACCURACY_MAX_M);
+        // Techo de CONFIANZA (regla 18-bis): por encima de esto el fix se guarda pero no manda.
+        float accConf = sp.getFloat(K_ACCURACY_CONF, ACCURACY_MAX_M);
         double velMax = sp.getFloat(K_MAX_SPEED, (float) MAX_SPEED_MPS);
         float saltoMin = sp.getFloat(K_MIN_JUMP, MIN_JUMP_M);
         int maxSaltos = sp.getInt(K_MAX_SALTOS, MAX_SALTOS_SEGUIDOS);
 
         long now = System.currentTimeMillis();
         cFixes++;
-        // El silencio más largo del día: es lo que dice si el WakeLock sirvió (ver `tomarWakeLock`).
-        if (ultimoFixAt > 0 && now - ultimoFixAt > silencioMax) silencioMax = now - ultimoFixAt;
-        // 🩸 `ultimoFixAt` solo lo mueve el GPS. Si lo moviera el carril de red, el silencio se
-        // "curaría" solo con puntos triangulados y no volveríamos a mirar el problema de fondo.
-        if (!deRed) { ultimoFixAt = now; apagarCarrilRed(); }
         if (deRed) cFixesRed++;
+        // El silencio más largo del día: es lo que dice si el WakeLock sirvió (ver `tomarWakeLock`).
+        // Va ANTES de todos los filtros a propósito: mide el hueco sin fixes USABLES (porque
+        // `ultimoFixAt` solo lo mueve un fix confiable), y si se calculara más abajo, un teléfono
+        // que solo entrega basura lo dejaría clavado en cero — que es justo el caso a detectar.
+        if (ultimoFixAt > 0 && now - ultimoFixAt > silencioMax) silencioMax = now - ultimoFixAt;
 
-        // Filtro de precisión: descartar fixes imprecisos (regla 18) para no meter ruido.
-        if (loc.hasAccuracy() && loc.getAccuracy() > accMax) { cDescPrecision++; return; }
+        // Filtro de precisión: por encima del techo de CAPTURA el fix no sirve ni para decir "por
+        // acá anduvo" y se tira.
+        if (loc.hasAccuracy() && loc.getAccuracy() > accMax) {
+            cDescPrecision++;
+            cDescPrecisionSeguidos++;
+            if (cDescPrecisionSeguidos > cDescPrecisionRacha) cDescPrecisionRacha = cDescPrecisionSeguidos;
+            return;
+        }
+        cDescPrecisionSeguidos = 0;
+
+        /* 🩸 EL ORDEN DE ESTAS LÍNEAS ERA EL BUG (11/08/2026 — regla 18-bis).
+         *
+         * Hasta 1.13.0 el bloque de abajo corría ANTES del filtro de precisión. O sea que un fix de
+         * 400 m —uno que el filtro estaba por tirar en la línea siguiente— reseteaba el reloj del
+         * silencio y APAGABA el carril de triangulación. El servicio contestaba "¿hace cuánto que no
+         * me llega un fix?" cuando la pregunta que importa es "¿hace cuánto que no me llega un fix
+         * USABLE?", y mientras lloviera basura se declaraba sano.
+         *
+         * El respaldo existe desde 1.9.0 y por esto no se encendía nunca. Medido el 11/08 sobre
+         * Alejandro mercado: `gps_fixes_red` = 0, `gps_silencio_max_ms` = 0,3 min —o sea "vengo
+         * recibiendo perfecto"— y al mismo tiempo **31 minutos y 39,6 km de ruta sin un solo punto
+         * guardado**, con 960 de 1.452 fixes descartados por precisión. El agujero lo hacía el
+         * filtro, no el chip, y ninguna de las dos métricas del propio teléfono lo delataba.
+         *
+         * Ahora un fix que no se confía no toca nada de esto: si el GPS bueno se calla 90 s, el
+         * carril de red se enciende aunque sigan entrando fixes malos.
+         */
+        boolean confiable = !loc.hasAccuracy() || loc.getAccuracy() <= accConf;
+        // 🩸 `ultimoFixAt` solo lo mueve el GPS CONFIABLE. Si lo moviera el carril de red, el
+        // silencio se "curaría" solo con puntos triangulados y no volveríamos a mirar el problema de
+        // fondo; si lo moviera un fused de 400 m, pasa exactamente lo mismo por otra puerta.
+        if (!deRed && confiable) { ultimoFixAt = now; apagarCarrilRed(); }
+
+        // Desde acá, un fused que no se confía se trata IGUAL que uno del carril de red: se guarda
+        // para tapar el hueco y nada más. Ese es también el que cierra el riesgo declarado al subir
+        // el techo de captura por OTA en 1.13.3 (ver el 🩸 de ACCURACY_CAPTURA_MAX_M en gpsConfig).
+        boolean soloParaTapar = deRed || !confiable;
         // Salto imposible → glitch del chip. Se compara contra el último fix CRUDO bueno (no contra
         // el último guardado): el filtro por movimiento descarta puntos a propósito y usar su
         // referencia daría dt enormes que hacen pasar cualquier salto. Se descarta el fix ENTERO: no
@@ -658,17 +722,25 @@ public class UploaderGpsService extends Service {
         // por movimiento, que decide qué se GUARDA). Si va rápido, sube la cadencia de captura para
         // que el trazo no cruce manzanas; al frenar, vuelve a la lenta. Los de red no votan: su
         // error de ±80 m daría velocidades inventadas.
-        if (!deRed) evaluarCadencia(velocidadMps(loc), now, sp);
-        lastFixLat = loc.getLatitude();
-        lastFixLng = loc.getLongitude();
-        lastFixTime = loc.getTime();
-        tieneFix = true;
+        if (!soloParaTapar) evaluarCadencia(velocidadMps(loc), now, sp);
+        // 🩸 Y LA REFERENCIA DEL SALTO TAMPOCO LA MUEVE UN FIX QUE NO SE CONFÍA. Si un fused de
+        // 100 m quedara como `lastFixLat/lastFixLng`, el próximo fix bueno se mediría contra un
+        // lugar donde la persona nunca estuvo: da velocidades inventadas y puede hacer pasar un
+        // salto real o descartar un punto sano. Es la misma idea que el ancla de `procesarFix`
+        // (10/08) y que el ancla de `kmDePuntos` en el front — un punto que no es evidencia no
+        // puede ser el patrón de medida.
+        if (!soloParaTapar) {
+            lastFixLat = loc.getLatitude();
+            lastFixLng = loc.getLongitude();
+            lastFixTime = loc.getTime();
+            tieneFix = true;
+        }
         // Filtro por movimiento (espejo de tracker.js): guardar solo si se movió, o cada keepAlive
         // estando quieto. Recorta el volumen de un vendedor parado sin perder el trazo en
         // movimiento. Cuánto hay que moverse depende del MODO desde 1.9.0(ver K_MIN_MOVE_URBANO);
-        // los fixes de red usan el umbral de a pie, que es el más permisivo: están para tapar un
-        // hueco, no para ahorrar filas.
-        float minMove = deRed ? sp.getInt(K_MIN_MOVE, 9) : minMoveDelModo(sp);
+        // los fixes que solo tapan un hueco (red, o fused por debajo del techo de confianza) usan el
+        // umbral de a pie, que es el más permisivo: están para tapar un hueco, no para ahorrar filas.
+        float minMove = soloParaTapar ? sp.getInt(K_MIN_MOVE, 9) : minMoveDelModo(sp);
         boolean movio = !tieneLast || haversine(lastLat, lastLng, loc.getLatitude(), loc.getLongitude()) >= minMove;
         boolean vivo = tieneLast && (now - lastSentAt) >= keepAlive;
         if (!movio && !vivo) {
@@ -1040,6 +1112,36 @@ public class UploaderGpsService extends Service {
         } catch (Exception ignored) { return 0; }
     }
 
+    /**
+     * 🩸 LA TELEMETRÍA VIAJA CON EL LOTE, NO CON EL LATIDO (1.13.3, 11/08/2026).
+     *
+     * Hasta 1.13.2 estos contadores llegaban a `estado_dispositivo` SOLO por el latido, que lo
+     * escribe el JS — y el JS se congela con el WebView. El 11/08 los últimos latidos del parque
+     * eran de las 07:37, 09:05, 09:47 y 11:17 mientras esos mismos cuatro teléfonos seguían subiendo
+     * puntos hasta las 14:45 por este mismo POST. **Justo cuando un teléfono falla, el diagnóstico
+     * deja de llegar**, y comparar contadores entre personas era comparar horas distintas sin saberlo.
+     *
+     * Cuesta ~200 bytes por lote y ningún request extra: el uploader ya postea cada 5-10 s con red.
+     * El servidor sella `telemetria_ts`, así que el número siempre viene con la hora en que se midió.
+     */
+    private JSONObject telemetriaJson() {
+        JSONObject t = new JSONObject();
+        try {
+            t.put("fix_total", cFixes);
+            t.put("fix_guardados", cGuardados);
+            t.put("fix_desc_precision", cDescPrecision);
+            t.put("fix_desc_precision_racha", cDescPrecisionRacha);
+            t.put("fix_desc_salto", cDescSalto);
+            t.put("fix_desc_movimiento", cDescMovimiento);
+            t.put("gps_fixes_red", cFixesRed);
+            t.put("gps_repedidos", cRepedidos);
+            t.put("gps_intervalo_ms", intervaloVigente);
+            t.put("gps_silencio_max_ms", silencioMax);
+            t.put("cuarentena_nativa", largoCuarentena());
+        } catch (Exception ignored) { /* la telemetría nunca puede impedir que suban los puntos */ }
+        return t;
+    }
+
     private void subirLote() throws Exception {
         SharedPreferences sp = prefs();
         String token = sp.getString(K_TOKEN, null);
@@ -1057,6 +1159,7 @@ public class UploaderGpsService extends Service {
         JSONObject body = new JSONObject();
         body.put("token", token);
         body.put("puntos", puntos);
+        body.put("tel", telemetriaJson());
 
         HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
         try {
@@ -1178,6 +1281,10 @@ public class UploaderGpsService extends Service {
 
     private int largoCola() {
         try { return new JSONArray(prefs().getString(K_COLA, "[]")).length(); } catch (Exception e) { return 0; }
+    }
+
+    private int largoCuarentena() {
+        try { return new JSONArray(prefs().getString(K_CUARENTENA, "[]")).length(); } catch (Exception e) { return 0; }
     }
 
     /**

@@ -118,7 +118,56 @@ export const VEL_UMBRAL_MPS = 3           // ~11 km/h: por encima de esto, activ
 // hipótesis contra los datos. Las tres veces que se movió algo acá se movió por una teoría plausible
 // y las tres veces la teoría era incompleta.
 export const VEL_HIST_MS = 20000          // sostener 20 s bajo el umbral antes de volver a la cadencia lenta (anti-flapping)
-export const ACCURACY_MAX_M = 30   // fixes menos precisos que esto se descartan (jitter de interior = causa #1 de "vueltas" falsas)
+export const ACCURACY_MAX_M = 30   // fixes menos precisos que esto NO SE CONFÍAN (jitter de interior = causa #1 de "vueltas" falsas)
+
+/**
+ * 🩸 DOS TECHOS, NO UNO: CAPTURAR NO ES CONFIAR (11/08/2026).
+ *
+ * `ACCURACY_MAX_M` gobernaba TRES cosas distintas a la vez y solo una de las tres quería ese valor:
+ * el techo de CAPTURA del servicio nativo, el umbral del carril punteado al DIBUJAR (`limpiarTrazo`)
+ * y el filtro del carril JS. Como el nativo tiraba el fix, el dibujo nunca lo veía: el punto no
+ * llegaba a existir.
+ *
+ * Medido sobre la jornada COMPLETA del 11/08 (base viva + telemetría del propio teléfono).
+ * ⚠️ Los contadores son acumulados del día y el latido los sube cuando el JS corre: un corte de
+ * media mañana da porcentajes muy distintos. Éstos son de cierre.
+ *
+ *   Alejandro mercado  960 de 1.452 (66 %) · red 0  · silencio 0,3 min → **84 % de sus km sin dibujar**
+ *   Javier             457 de 1.507 (30 %) · red 30 · silencio 44,6 min → **84 % sin dibujar**
+ *   Luis Mendoza       256 de   923 (28 %) · red 22 · silencio 42,2 min → 27 %
+ *   Gabriel tevez      154 de 1.528 (10 %) · red 50                     → 39 %
+ *   Orlando chavez      10 de 3.131 ( 0 %) · red 0  · silencio 0,5 min →  **0 %**  ← control
+ *   Agustin Vasquez      0 de    62 ( 0 %) · red 0                      → 11 %     ← control
+ *
+ * Alejandro es el caso que lo prueba, y los controles son los que lo cierran: su servicio **nunca
+ * estuvo más de 18 segundos sin recibir un fix**, y aun así perdió **39,6 km de ruta a 76 km/h sin
+ * un solo punto**. Los fixes llegaban puntuales y venían todos peores que 30 m, así que se tiraron
+ * uno por uno. No fue un silencio del chip: fue este filtro. Los dos teléfonos que descartan ~0 %
+ * son exactamente los dos que dibujan bien.
+ *
+ * Y el parque tiene DOS poblaciones: Orlando y Agustin trabajan con precisión p90 de 1,9 y 5,0 m
+ * (trazos perfectos); los otros seis viven en 20-28 m, **pegados al techo**. Un teléfono que se
+ * ubica por antenas y WiFi —que es lo que hace el A07 adentro de un vehículo, verificado con
+ * `dumpsys location`: `Location[network … hAcc=400.0]`— no puede pasar nunca un techo de 30.
+ *
+ * Un fix de 60 m no sirve para afirmar POR QUÉ CALLE pasó alguien. Sirve perfectamente para decir
+ * **"por acá anduvo"**, y esa distinción ya está construida y probada desde 1.9.0: `limpiarTrazo`
+ * manda todo lo que supere `ACCURACY_MAX_M` al carril `aproximados` —punteado fino, fuera de los km,
+ * fuera del snap y fuera de la burbuja en vivo (regla 40, `db/28`)—. Lo único que faltaba era que el
+ * punto LLEGARA.
+ *
+ * ⚠️ Esto NO contradice la regla 18, que prohíbe BAJAR `ACCURACY_MAX_M`: ese techo no se mueve y
+ * sigue decidiendo qué se dibuja lleno y qué suma kilómetros. El que sube es otro.
+ *
+ * 120 y no 150 (el techo de `ACCURACY_RED_MAX_M`) a propósito: así la precisión sigue distinguiendo
+ * si el punto vino del carril de red o del fused.
+ *
+ * ⚠️ Riesgo conocido mientras el APK sea 1.13.0: en `UploaderGpsService.procesarFix` un fix
+ * impreciso que ahora se acepta también vota la cadencia (`evaluarCadencia`) y pasa a ser la
+ * referencia del filtro de salto imposible. Lo contiene el propio filtro (45 m/s) y
+ * `MAX_SALTOS_SEGUIDOS`. El próximo APK lo cierra tratándolo con la semántica de `deRed`.
+ */
+export const ACCURACY_CAPTURA_MAX_M = 120
 export const MAX_SPEED_MPS = 45    // ~160 km/h: un desplazamiento más rápido es un salto imposible → glitch
 // Cuántos fixes seguidos se pueden descartar por "salto imposible" antes de sospechar de la REFERENCIA
 // en vez de los fixes nuevos. Pasa cuando el primer fix tras arrancar el servicio es el malo: sin este

@@ -18,6 +18,87 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.3 (11/08/2026) — **OTA + PWA + 2 migraciones, sin APK**
+
+`app_config`: `latest_version` = `bundle_version` = **1.13.3**; `min_version` sigue en 1.13.0.
+
+**El trazo tenía agujeros porque el teléfono tiraba los fixes, no porque el mapa los dibujara mal.**
+El cliente reportó por enésima vez "saltos, zonas con puntos, en ruta no marca el recorrido" y esta
+vez la causa no estaba en el dibujo: `ACCURACY_MAX_M = 30` gobernaba **tres** cosas a la vez —qué
+CAPTURA el servicio nativo, qué se dibuja lleno y qué suma km— y solo la segunda quería ese número.
+Como el nativo tiraba el fix, el punto **no llegaba a existir**, así que la maquinaria que existe
+desde 1.9.0 para dibujarlo punteado (regla 40) no tenía nada que dibujar.
+
+Desde 1.13.3 son dos techos: `ACCURACY_CAPTURA_MAX_M` (120 m, viaja al nativo por prefs) y
+`ACCURACY_MAX_M` (30 m, decide línea vs. punteado y los km). **Ni una línea de dibujo cambió.**
+
+Y con el techo de captura arriba, dos RPC que calculan movimiento en SQL pasaron a ser un riesgo, así
+que van en la misma tanda (`db/33`): `metricas_actividad` habría inflado los km del panel con jitter
+y —peor— `vigilancia_equipo` habría **apagado los dos avisos al supervisor**, porque su umbral de "se
+movió" son 40 m y un fix de ±120 m los supera solo. Efecto medido del filtro sobre los 7 días ya
+guardados: **máximo −1,9 km (Javier), resto por debajo de −0,5**. Hoy es casi un no-op; desde mañana
+es lo que sostiene el cambio.
+
+`db/34` agrega `fix_desc_precision_racha` y `telemetria_ts`, que los estrena el próximo APK.
+
+#### ⏳ Listo en el repo, SIN publicar — va con el próximo APK
+
+Tres cambios escritos y compilando (`gradlew compileReleaseJavaWithJavac` en verde), a propósito
+sin salir hoy porque **lo nativo no viaja por OTA**:
+
+1. 🔴 **`procesarFix`: `ultimoFixAt` y `apagarCarrilRed()` pasan a correr DESPUÉS del filtro de
+   precisión.** Es la causa raíz. Hasta hoy un fix de 400 m —uno que estaba por descartarse—
+   reseteaba el reloj del silencio y apagaba el carril de triangulación, así que el respaldo que
+   existe desde 1.9.0 **no se encendía nunca** (Alejandro: `gps_fixes_red` = 0). Ver la regla 18-bis.
+2. **Un fix por encima del techo de confianza se trata como los del carril de red**: se guarda, pero
+   no vota la cadencia ni mueve la referencia del filtro de salto. **Eso cierra el riesgo declarado
+   de la Parte 1** (con el APK 1.13.0 en la calle, un fix de 100 m sí puede votar la cadencia).
+   Viaja por la pref nueva `accuracyConfM`, que el bundle 1.13.3 **ya manda** — los APK viejos la
+   ignoran y se quedan con su default de 30.
+3. **La telemetría se manda con cada lote a `ingest-posiciones`** en vez de depender del latido del
+   JS, más el contador `fix_desc_precision_racha`.
+
+⚠️ **La Edge Function `ingest-posiciones` NO se desplegó** aunque el código está en el repo: es
+inerte hasta que exista un APK que mande `tel`, y es el endpoint por el que entra TODO el GPS del
+parque. Se despliega junto con el APK, no antes. **Y va con `verify_jwt: false`** — se autentica con
+token de dispositivo, no con JWT; desplegarla con el default `true` corta la ingesta de los 9
+teléfonos.
+
+#### Línea de base del 11/08 — contra esto se mide mañana
+
+Jornada completa. `km línea` es lo que se dibuja lleno; el resto son km que el mapa solo puede
+insinuar. Los contadores del teléfono son **acumulados del día**, así que va la hora del latido: sin
+eso se comparan cortes distintos (Orlando a las 07:37 daba 30 % de descarte y al cierre 0 %).
+
+| Persona | km | km línea | **no dibujado** | descarte x precisión | carril red | silencio máx | latido |
+|---|---|---|---|---|---|---|---|
+| **Alejandro mercado** | 58,0 | 9,4 | **84 %** | **960/1.452 = 66 %** | **0** | 0,3 min | 11:17 |
+| **Javier** | 135,9 | 22,1 | **84 %** | 457/1.507 = 30 % | 30 | **44,6 min** | 16:18 |
+| Gabriel tevez | 18,8 | 11,6 | 39 % | 154/1.528 = 10 % | 50 | 484 min | 15:30 |
+| Zura (sigue en 1.11.0) | 3,1 | 2,1 | 33 % | — | — | — | — |
+| Luis Mendoza | 27,1 | 19,6 | 27 % | 256/923 = 28 % | 22 | 42,2 min | 14:42 |
+| Agustin Vasquez ← control | 100,2 | 89,5 | 11 % | 0/62 = 0 % | 0 | 0,2 min | 09:05 |
+| Nelson rojas | 13,5 | 13,5 | 0 % | — | 9 | 62,2 min | 00:51 |
+| Orlando chavez ← control | 86,4 | 86,3 | **0 %** | **10/3.131 = 0 %** | 0 | 0,5 min | 14:52 |
+
+**Los dos que descartan ~0 % son exactamente los dos que dibujan al 100 %.** Ésa es la correlación
+que sostiene el cambio, y los dos controles son los que la cierran.
+
+#### El criterio de aceptación es de MAÑANA (12/08), con la jornada completa
+
+1. `fix_desc_precision` de Alejandro **baja de 66 % a < 10 %** — los fixes dejan de tirarse.
+2. Los km **no dibujados** de Alejandro y Javier bajan de 84 % a **menos de 40 %**, contando el
+   punteado como dibujado.
+3. 🔴 **Los km de Orlando y Agustin NO cambian.** Salen de `puntos`, que sigue filtrando en 30 m. Si
+   sus km se mueven, la separación de techos está mal hecha y hay que revertir el 120.
+4. Aparecen filas con `accuracy` entre 30 y 120 en `posiciones` (hoy hay 43 en todo el parque, todas
+   del carril de red).
+5. **La prueba honesta es visual**: abrir el recorrido de Javier y ver si el tramo de ruta quedó como
+   una línea punteada continua o sigue siendo una recta entre dos pueblos.
+
+⚠️ **Lo que este cambio NO arregla**: el silencio real de Javier (§ diagnósticos abiertos). Si su
+`no dibujado` no baja tanto como el de Alejandro, es esperable — son dos causas distintas.
+
 ### Publicado — 1.13.2 (11/08/2026, 13:13) — **OTA + PWA, sin APK**
 
 `app_config`: `latest_version` = `bundle_version` = **1.13.2**; `min_version` sigue en 1.13.0.
@@ -110,6 +191,43 @@ desaparecen si el ancla quedó sujeta. Línea de base medida el **10/08 (jornada
 **Criterio:** el % de km falso baja en los cinco que tienen `apk_version = 1.13.0` y **se queda igual
 en Gabriel tevez**, que es el control natural porque no recibió el APK. Si baja en todos por igual,
 no fue el ancla. Si no baja en ninguno, ahí sí se vuelve al Java.
+
+#### 🟡 Medido el 11/08 — **INCONCLUSO, y el control se perdió**
+
+| | 10/08 (pre) | 11/08 (post) | km del día 10 → 11 |
+|---|---|---|---|
+| Alejandro mercado | 30,7 % | **1,4 %** | 27,7 → 57,8 |
+| Orlando chavez | 27,7 % | **0,5 %** | 7,1 → 85,7 |
+| Luis Mendoza | 23,2 % | 8,6 % | 27,5 → 25,0 |
+| Zura | 60,9 % | 19,3 % | 1,5 → 2,7 |
+| Gabriel tevez (era el control) | 3,7 % | 2,0 % | 17,2 → 17,3 |
+| Javier | 1,7 % | 1,3 % | 71,6 → 134,6 |
+| Agustin Vasquez | 4,2 % | 4,0 % | 52,8 → 97,5 |
+| **Nelson rojas** | 22,7 % | **99,8 %** | 8,8 → 10,4 |
+
+**No se puede concluir nada de esto, por dos motivos, y conviene decirlo antes de festejar los −27
+puntos de Orlando:**
+
+1. 🩸 **El porcentaje depende de cuánto caminó la persona ese día, así que se mueve solo.** Orlando
+   hizo 7 km el lunes y 86 el martes: su ratio se derrumbaba con arreglo o sin él. Alejandro,
+   igual (28 → 58 km). Los metros ABSOLUTOS de trinquete cuentan otra historia y tampoco son
+   limpios: bajan en Orlando (1.953 → 448), Alejandro (8.518 → 814), Luis (6.376 → 2.134) y Zura,
+   pero **suben** en Javier (1.196 → 1.743) y Agustin (2.193 → 3.913).
+2. 🔴 **Gabriel tevez ya no es control**: recibió el APK 1.13.0 y al 11/08 reporta
+   `apk_version = 1.13.0`. Los 9 equipos están en la misma versión nativa, o sea que **no queda
+   ningún grupo de comparación** y el A/B ya no se puede correr contra el parque.
+
+**Qué hacer en vez de insistir con esta métrica:** medir metros de trinquete **por hora quieto**
+(normalizado por tiempo, no por km recorridos), que es lo único que no se mueve con la jornada. Si
+después de eso sigue sin separarse, dar el ancla por no medible en producción y cerrarlo — el
+arreglo es correcto por lectura del código y el costo de seguir persiguiéndolo ya supera al del bug.
+
+> 🔴 **Y salió un hallazgo nuevo que NO es esto: Nelson rojas al 99,8 %.** El 11/08 figura con
+> 10,4 km de los cuales 10,3 son trinquete: en todo el día **no tuvo un solo desplazamiento neto de
+> más de 40 m**. Su teléfono captura 1.116 puntos con una cadencia de metrónomo de 31,5 s, precisión
+> de 17-28 m y saltos de 35 m como máximo. `dumpsys location` en su equipo (`100.89.1.75`) muestra
+> el proveedor GNSS en `OFF`: **se está ubicando por red, no por satélite.** O el equipo pasó el día
+> quieto en un lugar sin cielo, o hay que mirarle el GPS. Es lo primero a revisar mañana.
 
 > 🔴 **La jornada del 10/08 NO sirve para medir: es PRE-fix.** El `app-release.apk` con el ancla
 > arreglada se compiló ese mismo día a las **13:08** y llegó a los teléfonos a la tarde
@@ -389,6 +507,12 @@ km idénticos hasta el sexto decimal.
 
 **Diagnósticos que quedaron abiertos** (medidos, sin arreglar):
 
+- ✅ **"Luis Mendoza captura fixes y no guarda ninguno" — RESUELTO el 11/08, y era una clase entera
+  de bug, no un caso suelto.** El camino que faltaba no era `!movio && !vivo`: era el **filtro de
+  precisión**. `procesarFix` avanzaba `ultimoFixAt` y llamaba `apagarCarrilRed()` ANTES de tirar el
+  fix, así que un fix de 400 m —uno que estaba por descartarse— reseteaba el reloj del silencio y
+  apagaba el respaldo de triangulación. De ahí la firma imposible: `fix_ultimo_ts` fresco,
+  `gps_silencio_max_ms` bajo, cola en 0, y cero filas. Ver 1.13.3 y la regla 18-bis.
 - 🆕 **Luis Mendoza dejó de ESCRIBIR posiciones a las 14:43 con el servicio vivo.** El 10/08 su
   último punto es 14:43 y sin embargo `fix_ultimo_ts` marca **17:30**, `gps_silencio_max_ms` solo
   **10 min** y `cola_pendiente` 0. O sea: el servicio nativo **captura fixes y no guarda ninguno**
@@ -402,11 +526,26 @@ km idénticos hasta el sexto decimal.
   (máximo **62 min**, y arrancó 10:50 en vez de 08:00). Mientras esto siga así, el trazo va a tener
   tramos punteados por más que el dibujo se afine: **no hay dato**.
 
-- **Javier se calla 23 y 29 min manejando a 73 km/h** entre pueblos. El teléfono está sano
+- 🔶 **Javier se calla 23 y 29 min manejando a 73 km/h** entre pueblos. El teléfono está sano
   (permisos, servicio, batería, 31 satélites). La cola **sí** guarda sin internet — se leyó el
   código: `encolar()` no consulta la red. Los puntos **nunca se capturaron**, no es que no se
-  subieron. Hipótesis sin verificar: sin cobertura no hay A-GPS ni carril de triangulación, y los
-  dos colchones cuelgan de lo que falta. Se prueba con modo avión y una vuelta a la manzana.
+  subieron.
+  **Avance del 11/08 (parcial, y la hipótesis vieja quedó descartada):** el silencio se ve DESDE
+  AFUERA. `dumpsys location` en su equipo (`100.126.96.63`) guarda
+  `ProviderRequest[OFF] WorkSource{}` **de 14:00:03 a 14:36:51 — 36m48s** que coinciden al segundo
+  con su agujero de 37 min y 28,6 km. El propio servicio lo mide: `gps_silencio_max_ms` = **44,6
+  min**. **No es Doze ni el WakeLock** (verificado en los 4 equipos alcanzables: el
+  `PARTIAL_WAKE_LOCK 'launion:uploader-gps'` estaba tomado hacía ~6 h, standby bucket 5, en la
+  whitelist de deviceidle, foreground service vivo) **y no es la cola** (`cola_pendiente` y
+  `cuarentena_nativa` en 0, y la cola nativa retiene 5.000 puntos sin descartar). Los equipos sanos
+  (Orlando, Agustin) alternan `@+10s` ↔ `@+5s` sin un solo `OFF`.
+  **Lo que falta**: por qué GMS deja de encender el chip. Es la cuarta teoría de GPS de este repo y
+  las tres anteriores se revirtieron por saltarse la medición, así que **no se toca una constante
+  hasta tener el muestreo**: `dumpsys location` por minuto en Javier + Alejandro contra Orlando +
+  Agustin como control, una jornada entera.
+  ⚠️ Ojo con confundirlo con el bug de precisión que se arregló en 1.13.3: **el silencio de Javier
+  es real** (el servicio no recibía NADA), mientras que el agujero de Alejandro era el filtro
+  tirando fixes que sí llegaban. Se distinguen por `gps_silencio_max_ms`: 44,6 min contra 0,3.
 - **Luis Mendoza: saltos de 115 y 124 km/h en el pueblo**, de 11 s. Invisibles para los dos filtros
   (precisión 20-25 m, bajo el techo de 30; velocidad bajo `MAX_SPEED_MPS` = 162 km/h). El arreglo
   correcto es un umbral **por modo**, como ya lo son `MIN_MOVE_URBANO_M`/`MIN_MOVE_RUTA_M`.

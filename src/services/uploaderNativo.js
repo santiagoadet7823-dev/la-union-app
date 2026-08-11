@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 import { setUploaderNativo } from './geolocation/tracker'
 import {
   MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS,
-  ACCURACY_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS,
+  ACCURACY_MAX_M, ACCURACY_CAPTURA_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS,
   MIN_MOVE_URBANO_M, MIN_MOVE_RUTA_M, VEL_RUTA_MPS, NEAR_LIVE_QUIETO_MS,
   ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS,
 } from './gpsConfig'
@@ -98,9 +98,18 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       // que el trazo siga la calle, y vuelve a la lenta al frenar. Afinables por OTA (SharedPreferences).
       intervaloRapidoMs: NEAR_LIVE_RAPIDO_MS, velUmbralMps: VEL_UMBRAL_MPS, velHistMs: VEL_HIST_MS,
       // Umbrales de descarte (1.8.0): estaban hardcodeados en el Java y ahora viajan también por
-      // prefs, así que se afinan por OTA. ⚠️ ACCURACY_MAX_M se puede SUBIR si un modelo entrega
-      // fixes malos; bajarlo vacía los recorridos (regla 18).
-      accuracyMaxM: ACCURACY_MAX_M, maxSpeedMps: MAX_SPEED_MPS,
+      // prefs, así que se afinan por OTA.
+      //
+      // 🩸 Acá va el techo de CAPTURA (`ACCURACY_CAPTURA_MAX_M`, 120 m) y NO el de confianza
+      // (`ACCURACY_MAX_M`, 30 m). Hasta 1.13.2 iba el de 30 y el servicio nativo tiraba el 66 % de
+      // los fixes de Alejandro mercado, con el resultado de que 39,6 km de ruta no existieran en la
+      // base. Lo que se captura y lo que se dibuja lleno son dos preguntas distintas: el techo de
+      // 30 sigue vivo, del lado del dibujo (`limpiarTrazo`), decidiendo qué es línea y qué es
+      // punteado. Ver el 🩸 de `ACCURACY_CAPTURA_MAX_M` en gpsConfig.js.
+      // `accuracyConfM` lo estrena el APK 1.13.3+; los que están en la calle (1.13.0) ignoran la
+      // clave y se quedan con su default de 30, así que mandarla ahora no rompe nada y evita tener
+      // que acordarse cuando salga el APK.
+      accuracyMaxM: ACCURACY_CAPTURA_MAX_M, accuracyConfM: ACCURACY_MAX_M, maxSpeedMps: MAX_SPEED_MPS,
       minJumpM: MIN_MOVE_M, maxSaltosSeguidos: MAX_SALTOS_SEGUIDOS,
       // 1.9.0 — guardado por DISTANCIA según el modo (el pedido del cliente), cadencia con "quieto"
       // confirmado por el acelerómetro, carril de triangulación durante un silencio y piso
