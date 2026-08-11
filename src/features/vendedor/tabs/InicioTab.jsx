@@ -144,9 +144,12 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                 <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                 </button>
+                {/* `padding` de 12 y no de 16 en Check-in: son 8 px que le devuelve al nombre del
+                    comercio, que es lo que de verdad hay que leer. El alto sigue en 44 (área táctil
+                    mínima). ⚠️ El comentario va ACÁ y no adentro del ternario: entre `? (` y el
+                    elemento no hay posición de hijos JSX, así que `{/* … */}` ahí es un error de
+                    sintaxis y voltea el build entero. */}
                 {c.status === 'pendiente' ? (
-                  {/* `padding` de 12 y no de 16: son 8 px que le devuelve al nombre, que es lo que
-                      de verdad hay que leer. El alto sigue en 44 (área táctil mínima). */}
                   <button onClick={() => startVisit(c.id)} style={sx('flex:none;min-height:44px;padding:0 12px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;border:none')}>Check-in</button>
                 ) : (
                   <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
