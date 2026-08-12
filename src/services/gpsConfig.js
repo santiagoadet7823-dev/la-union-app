@@ -53,7 +53,31 @@ export const KEEPALIVE_MS = 90000  // reenvío de cortesía aunque no se mueva (
 // tener esa medición los números vuelven a los que se sabe que funcionan. La densidad ahora la
 // gobierna la distancia por modo, que es más barata en batería y más fiel al trazo que apretar el
 // temporizador.
-export const NEAR_LIVE_MS = 10000  // 10 s
+//
+// 🩸 BAJADO A 4 s EL 12/08/2026, POR PEDIDO EXPLÍCITO Y CON LA BATERÍA DESCARTADA COMO CRITERIO
+// ("baja los segundos, no nos interesa vida útil de teléfono por ahora"). Es un EXPERIMENTO, y hay
+// que saber que **este mismo cambio ya falló una vez** — ver el 🩸 de arriba, 1.8.1, el único
+// teléfono que corrió 5 s / 2 s pasó de 0,9 % a 24 % de huecos de más de un minuto.
+//
+// Por qué esta vez es un experimento DISTINTO y no el mismo error: en 1.8.1 no existía nada de lo
+// que se culpó del fracaso. Desde 1.9.0 están el **WakeLock parcial** (sin él, en Doze no corría ni
+// el latido), el **piso anti-churn** `REPEDIDO_MIN_MS` de 60 s (que es lo que impide que el modo
+// rápido entre y salga cada 20-30 s reiniciando la agenda de entrega, la causa señalada entonces) y
+// la telemetría que permite medirlo. O sea: se cambia el mismo número, pero el mecanismo que lo
+// hundió está tapado.
+//
+// El problema que viene a atacar, medido el 12/08 sobre la jornada en curso: **el 42 % de los
+// puntos de Javier son TRIANGULADOS** (170 de 408), repartidos en **46 tramos punteados sueltos**
+// que alternan con la línea llena — eso es lo que el cliente ve como "muchos puntos y no trazos".
+// Y son triangulados porque su GPS bueno llega cada ~48 s: cualquier hipo cruza el silencio de 90 s
+// y enciende el carril de red. Con la cadencia en 4 s hacen falta 22 fixes perdidos seguidos para
+// llegar ahí. Los teléfonos sanos (Orlando, Agustin) tienen **0 % de triangulados**.
+//
+// ⚠️ **Lo que esto NO arregla**: el GNSS de Javier se apaga por minutos (`ProviderRequest[OFF]` 17
+// veces hoy, una de 44 min seguidos, contra CERO en los otros dos con el mismo modelo, el mismo
+// build y los mismos ajustes). Pedir más seguido no sirve cuando el proveedor está apagado. Eso se
+// dirime cambiándole el teléfono con alguien sano por un día.
+export const NEAR_LIVE_MS = 4000   // 4 s (era 10 s hasta 1.13.5)
 // Reenvío estando QUIETO. Antes el gate de "quieto" usaba NEAR_LIVE_MS (10 s): un vendedor parado en un
 // cliente emitía 6 puntos/min redundantes → inundaba `posiciones`, saturaba Realtime y trababa el mapa
 // (medido 26/07/2026). El marcador sigue "vivo" y se corta el volumen de quieto.
@@ -77,7 +101,9 @@ export const STATIONARY_KEEPALIVE_MS = 30000  // 30 s
 // 03/08/2026: vuelve a 5 s por el mismo motivo que NEAR_LIVE_MS (ver el 🩸 de arriba). Los 2 s son
 // el sospechoso número uno del churn: con ese destino, el modo rápido entraba y salía cada 20-30 s
 // y cada entrada reemplazaba el LocationRequest.
-export const NEAR_LIVE_RAPIDO_MS = 5000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
+// 12/08/2026: baja a 2 s junto con la cadencia base (ver el 🩸 de NEAR_LIVE_MS). En ruta a 100 km/h
+// son ~55 m entre puntos en vez de los ~140 de 5 s, que es donde el trazo dejaba de seguir el camino.
+export const NEAR_LIVE_RAPIDO_MS = 2000   // captura EN MOVIMIENTO RÁPIDO (auto): trazo que sigue la calle
 // 30/07/2026: bajado de 4 m/s (14 km/h) a 3 (11 km/h). La banda de 5-14 km/h —moto lenta, auto en el
 // pueblo, alguien apurado— quedaba en cadencia lenta y es donde MÁS falta densidad: son calles de
 // ciudad, con paralelas a media cuadra, o sea justo donde un trazo pobre inventa por dónde pasó. En
@@ -192,7 +218,25 @@ export const MAX_SALTOS_SEGUIDOS = 3
 // Dimensión real del "problema" de carga, para no exagerarlo: `posiciones` tiene 25.368 filas y
 // 14 MB en total, con 3.171 filas/día. Esto entra porque es lo correcto para el trazo en ruta.
 export const MIN_MOVE_URBANO_M = 15   // 11-40 km/h: denso, es donde se confunden las calles
-export const MIN_MOVE_RUTA_M = 100    // > 40 km/h: sin paralelas, se puede ralear sin perder nada
+/**
+ * 🩸 BAJADO DE 100 m A 50 m EL 12/08/2026 — esto es lo que literalmente NO GUARDA en ruta.
+ *
+ * Los 100 m salieron del pedido original del cliente ("en ruta que sea cada 50 o 100 metros para
+ * minimizar carga en base de datos") y el razonamiento era correcto: en ruta no hay calles paralelas
+ * con las que confundirse. Pero el cliente ahora reporta lo contrario —*"en ruta está mal, no está
+ * guardando nada"*— y con razón: **un punto cada 100 m en una ruta con curvas dibuja las curvas como
+ * cuerdas**, y a 100 km/h son 3,6 s entre puntos guardados aunque el chip esté entregando cada 2.
+ *
+ * Con 50 m el trazo de ruta duplica su densidad y las curvas dejan de cortarse. El techo de volumen
+ * lo sigue poniendo esta constante y no la cadencia, así que el costo es acotado y calculable: un
+ * viaje de 200 km pasa de ~2.000 a ~4.000 filas.
+ *
+ * ⚠️ La banda URBANA no se toca (`MIN_MOVE_URBANO_M` = 15): ahí el problema nunca fue la densidad.
+ * ⚠️ Y esto multiplica los puntos por día, que es justo la variable de la que dependía el mapa
+ * lento. Se puede porque `detectarParadas` dejó de ser cuadrático (1.13.4/1.13.5); si el mapa vuelve
+ * a arrastrarse, **este número es el primer sospechoso**, no el detector.
+ */
+export const MIN_MOVE_RUTA_M = 50     // > 40 km/h: sin paralelas, pero las curvas necesitan densidad
 export const VEL_RUTA_MPS = 11        // ~40 km/h: desde acá se considera "ruta"
 
 // Cadencia con "quieto" CONFIRMADO por el acelerómetro (Activity Recognition). Es de donde sale la
@@ -206,7 +250,30 @@ export const NEAR_LIVE_QUIETO_MS = 30000
 // su propio techo y el front los dibuja PUNTEADOS, fuera de los km y fuera del snap. La marca es la
 // precisión misma — hasta hoy no existe en `posiciones` un solo punto con accuracy > ACCURACY_MAX_M.
 export const ACCURACY_RED_MAX_M = 150
-export const SILENCIO_MS = 90000
+
+/**
+ * 🩸 SUBIDO DE 90 s A 150 s EL 12/08/2026 — el respaldo se estaba encendiendo por HIPOS, no por
+ * apagones, y eso es lo que picaba el trazo.
+ *
+ * Medido sobre la jornada en curso: el **42 % de los puntos de Javier eran triangulados** (170 de
+ * 408), repartidos en **46 tramos punteados sueltos** que alternan con la línea llena. Eso es
+ * exactamente lo que el cliente ve como "muchos puntos y no trazos": no es un trazo malo, son 46
+ * pedacitos de otra cosa intercalados.
+ *
+ * Y el reparto dice dónde está el problema: **115 de esos 170 entraron con el GPS bueno callado
+ * MENOS de 150 s**. O sea que no tapaban un apagón — tapaban un bache de dos minutos que el propio
+ * GPS iba a cerrar solo. El costo de taparlo es alto (un tramo punteado nuevo, con su corte a cada
+ * lado) y el beneficio es nulo: entre dos fixes buenos separados 100 s, el dibujo ya pone un
+ * conector punteado, que dice lo mismo con una línea en vez de con cuatro.
+ *
+ * Con 150 s quedan los 55 que sí tapan silencios largos —los tramos de ruta, que es donde el
+ * respaldo hace falta de verdad— y desaparecen los 115 que solo fragmentaban.
+ *
+ * ⚠️ Se calibra CONTRA LA CADENCIA: con la captura en 4 s, 150 s son 37 fixes perdidos seguidos, que
+ * no es un hipo. Si alguna vez se vuelve a subir `NEAR_LIVE_MS`, este número tiene que volver a
+ * bajar o el respaldo llega tarde.
+ */
+export const SILENCIO_MS = 150000
 
 // Piso entre dos cambios de cadencia (anti-churn). Cada `requestLocationUpdates` reemplaza el
 // request y reinicia la agenda de entrega del proveedor: cambiar de cadencia cada 20-30 s equivale a

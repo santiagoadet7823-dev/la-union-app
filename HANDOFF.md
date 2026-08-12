@@ -18,6 +18,68 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.6 (12/08/2026) — **OTA + PWA. Cuatro umbrales de GPS: es un EXPERIMENTO**
+
+`app_config`: `latest_version` = `bundle_version` = **1.13.6**; `min_version` sigue en 1.13.0.
+
+**El cliente pidió "bajar los segundos" con la batería descartada como criterio** (*"no nos interesa
+vida útil de teléfono por ahora, Javier se tiene que solucionar ya"*), después de ver que el trazo se
+renderiza como puntos sueltos y no como recorrido.
+
+#### Lo que estaba pasando, medido
+
+| | puntos | **triangulados** | tramos punteados sueltos |
+|---|---|---|---|
+| **Javier** | 408 | **170 (42 %)** | **46** |
+| Luis Mendoza | 343 | 95 (27 %) | 37 |
+| Gabriel tevez | 272 | 29 (11 %) | 17 |
+| Orlando chavez | 740 | **0** | 0 |
+| Agustin Vasquez | 882 | **0** | 0 |
+
+El cliente preguntó si el mapa le estaba mostrando ubicaciones **trianguladas y no puras**. La
+respuesta es sí: **el 42 % de lo que ve de Javier lo es**, y está partido en 46 pedacitos punteados
+que alternan con la línea llena. Eso es exactamente "muchos puntos y no trazos" — no es un trazo
+malo, son 46 tramos de otra cosa intercalados.
+
+**Y el reparto dice dónde está el problema: 115 de esos 170 entraron con el GPS bueno callado MENOS
+de 150 s.** No tapaban un apagón: tapaban un bache de dos minutos que el propio GPS iba a cerrar
+solo, y el precio era un tramo punteado nuevo con su corte a cada lado.
+
+#### Los cuatro números
+
+| constante | antes | ahora | por qué |
+|---|---|---|---|
+| `NEAR_LIVE_MS` | 10 s | **4 s** | más fixes buenos → menos silencios que crucen el umbral |
+| `NEAR_LIVE_RAPIDO_MS` | 5 s | **2 s** | en ruta, ~55 m entre puntos en vez de ~140 |
+| `SILENCIO_MS` | 90 s | **150 s** | el respaldo deja de encenderse por hipos (los 115) |
+| `MIN_MOVE_RUTA_M` | 100 m | **50 m** | esto es lo que literalmente no guardaba en ruta: a 100 m las curvas se dibujan como cuerdas |
+
+Todos son prefs → viajan por OTA, **sin APK**. `NEAR_LIVE_QUIETO_MS` (30 s) **no se toca**: parado no
+hay trazo que perder y bajarlo es batería a cambio de nada.
+
+> 🩸 **ESTE MISMO CAMBIO YA FALLÓ UNA VEZ.** El 03/08, en 1.8.1, el único teléfono que corrió
+> 5 s / 2 s pasó de **0,9 % a 24 %** de huecos de más de un minuto. Lo que hace que hoy sea un
+> experimento DISTINTO y no el mismo error: en 1.8.1 no existía nada de lo que se culpó del fracaso.
+> Desde 1.9.0 están el **WakeLock parcial**, el **piso anti-churn `REPEDIDO_MIN_MS` de 60 s** (que
+> impide que el modo rápido entre y salga reiniciando la agenda de entrega, la causa señalada
+> entonces) y la telemetría para medirlo. **Se revierte por OTA en minutos si sale mal.**
+
+#### 🔴 Qué mirar mañana, y el número que obliga a revertir
+
+1. **`gps_silencio_max_ms` y los huecos > 60 s de Orlando y Agustin** (los sanos, hoy con 0 % de
+   triangulados). **Si se degradan, se revierte**: es exactamente el fracaso de 1.8.1 repitiéndose.
+2. Los triangulados de Javier bajan de 42 % a menos del 15 %, y los tramos punteados sueltos de 46 a
+   menos de 15.
+3. `posiciones` por día: con `MIN_MOVE_RUTA_M` a la mitad, los viajes largos duplican filas. Si el
+   mapa vuelve a arrastrarse, **el primer sospechoso es este número, no el detector de paradas**.
+
+⚠️ **Lo que esto NO arregla, y hay que decirlo**: el GNSS de Javier **se apaga solo**
+(`ProviderRequest[OFF]` **17 veces hoy**, una de **44 minutos** seguidos, contra **cero** en Orlando
+y Agustin — mismo modelo SM-A075M, mismo build `A075MUBS6CZF6`, mismo parche, mismos ajustes, misma
+versión de la app). Pedir más seguido no sirve cuando el proveedor está apagado. **Eso se dirime
+cambiándole el teléfono con alguien sano por un día**: si el problema sigue en el aparato, es
+hardware; si sigue con la persona, es dónde lo lleva.
+
 ### Publicado — 1.13.5 (12/08/2026) — **OTA + PWA, sin APK ni migración**
 
 Dos cosas: **el cache del detector que en 1.13.4 quedó a medio camino**, y el **buscador de clientes**
