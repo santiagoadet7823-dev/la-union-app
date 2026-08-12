@@ -46,7 +46,17 @@ const stat = { fontFamily: 'var(--font-mono)', fontWeight: 600 }
 
 /**
  * Tarjetas de métricas por usuario. `filter` se pasa como clave de memo (el detector de paradas
- * cuesta ~410 ms sobre una jornada real; sin memo estable recalcularía en cada tick de "hace Xs").
+ * cuesta ~250 ms sobre una jornada real; sin memo estable recalcularía en cada tick de "hace Xs").
+ *
+ * 🩸 ESTE NÚMERO ES LA FUENTE QUE CITA MEDIA DOCENA DE ARCHIVOS, Y SE PUDRIÓ SOLO (11/08/2026).
+ * Decía "~410 ms" y era cierto cuando una jornada traía ~850 puntos. Nadie tocó el detector y aun
+ * así el costo real había llegado a **7.090 ms para los 8 de la flota** (un solo teléfono, Nelson
+ * rojas con 2.152 puntos quieto todo el día, costaba 5.607 ms): `detectarParadas` era cuadrático,
+ * así que el número envejece con los DATOS, no con el código. Eso explica por qué "el mapa lento"
+ * volvía después de cada arreglo.
+ * Desde 1.13.4 el detector es ×7,8 más rápido con salida bit-idéntica (ver el 🩸 de
+ * `services/geolocation/dwell.js`, con la medición contra 63 persona-días reales).
+ * **Si este número vuelve a subir, el problema no es el memo: es la densidad.**
  */
 export default function MetricasEquipo({ byUser, nombres = {}, pasaFiltro, filter, onSelect }) {
   const byUserDif = useDeferredValue(byUser)

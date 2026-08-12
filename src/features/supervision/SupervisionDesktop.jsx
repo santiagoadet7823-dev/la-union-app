@@ -251,7 +251,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   // Paradas → carteles sobre el mapa. Misma lógica exacta que Movil (./dwells): hasta 1.5.7
   // los carteles existían solo en la vista móvil, así que en la PWA de escritorio no aparecían.
-  // `useDeferredValue`: ver la nota en SupervisionMovil — el detector cuesta ~410 ms sobre una
+  // `useDeferredValue`: ver la nota en SupervisionMovil — el detector cuesta ~250 ms sobre una
   // jornada real y bloqueaba el pintado del trazo. Diferido, el mapa aparece primero.
   const byUserDiferido = useDeferredValue(byUser)
   const dwells = useMemo(
@@ -581,7 +581,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       inicios={inicios}
                       fines={fines}
                       // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una
-                      // persona recalcularía `calcularDwells` — ~410 ms por persona-día.
+                      // persona recalcularía `calcularDwells` — ~250 ms por persona-día.
                       focoId={foco?.id || null}
                       markers={mapMarkers}
                       clients={showClientes ? clientMarkers : []}

@@ -36,7 +36,7 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
   // 🩸 Las métricas se calculan SOLO para la burbuja abierta (29/07/2026).
   //
   // Antes esto recorría todo `byUser` y corría el detector de paradas para CADA persona, aunque
-  // nadie estuviera mirando esos números. Con 7 móviles y ~410 ms por jornada (MetricasEquipo.jsx:50)
+  // nadie estuviera mirando esos números. Con 7 móviles y ~250 ms por jornada (MetricasEquipo.jsx:50)
   // eran segundos de trabajo tirado, justo al entrar a pantalla completa — el momento en que el
   // mapa más necesita el hilo principal.
   //

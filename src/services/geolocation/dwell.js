@@ -19,17 +19,80 @@
  * es cada NEAR_LIVE_MS = 10 s (antes 90 s), así que una parada deja MÁS fixes que antes.
  * El algoritmo ya funcionaba con ventanas chicas (no asume densidad alta): más densidad
  * solo lo hace más preciso, nunca lo rompe.
+ *
+ * 🩸 PERO CUESTA AL CUADRADO, Y ESO SÍ LO ROMPIÓ (11/08/2026). El párrafo de arriba es cierto
+ * sobre la PRECISIÓN y falso sobre el COSTO. El cliente viene reportando hace sesiones que "el mapa
+ * se pone lento al final de la jornada", y perfilando el pipeline de la supervisión con el código
+ * real sobre la forma de la jornada de hoy:
+ *
+ *     limpiarTrazo 36 ms · kmDePuntos 18 ms · simplificarTrazo 54 ms · detectarParadas 7.090 ms
+ *
+ * **El 99 % del tiempo estaba acá**, y el arreglo de capas de Leaflet del 10/08 —que sirvió— no
+ * podía tocarlo. Peor: el costo creció SOLO, sin que nadie modificara este archivo, porque depende
+ * del cuadrado de los puntos de una parada. Medido: 200 puntos → 55 ms; 800 → 682 ms; 1.200 →
+ * 1.561 ms; **2.152 → 5.607 ms**. Y el 11/08 Nelson rojas tenía 2.152 puntos con la racha quieta
+ * más larga de 2.152: su jornada entera era UNA ventana, y él solo costaba ~7 segundos.
+ * El comentario de `LeafletMap.jsx` que decía "~410 ms por persona-día" era cierto cuando un día
+ * traía ~850 puntos. Con 2,5× los puntos costaba 17× más.
+ *
+ * Lo que se hizo: **las mismas decisiones, sin copiar ni ordenar** (ver `selMediana` y el bucle
+ * principal). Medido sobre 63 persona-días REALES de 7 días: **×8,0 más rápido y salida
+ * BIT-IDÉNTICA** — 605 paradas, cero días con distinto número, centro corrido 0,0000 m.
+ *
+ * 🩸 **Y lo que se probó primero y NO sirve, para no repetirlo**: acotar las medianas a una muestra
+ * de K puntos de la ventana. Contra trazas SINTÉTICAS daba ×7,7 con salida idéntica y parecía la
+ * solución. Contra los 63 persona-días REALES cambiaba el número de paradas en 8 de ellos, con el
+ * centro corrido hasta **286 m** y duraciones distintas por hasta **29 minutos** (con K=128 seguía
+ * fallando en 5). El dato real tiene deriva y paradas que se solapan; el sintético no. **Ninguna
+ * medición de este detector vale si no es contra días guardados.**
  */
 import { distanciaMetros } from './geofence'
 
 export const DWELL_MIN_MS = 180000 // 3 min: menos que esto es un semáforo, no una visita
 export const DWELL_RADIO_M = 40    // m: mismo umbral que STATIONARY_R en la Edge Function
 
-/** Mediana simple (mismo criterio que la Edge Function: en pares toma el de arriba). */
-const mediana = (arr) => {
-  const s = [...arr].sort((a, b) => a - b)
-  return s[Math.floor(s.length / 2)]
+/**
+ * Buffer reusado para las medianas. Vive a nivel de módulo a propósito: `esParada` se llama una vez
+ * por punto y antes cada llamada asignaba tres arrays nuevos del tamaño de la ventana — con una
+ * parada de 2.000 fixes eso son millones de asignaciones que el GC después tiene que limpiar.
+ *
+ * ⚠️ No es reentrante, y no puede serlo: `detectarParadas` es sincrónica y JS es de un solo hilo,
+ * así que dos llamadas nunca se solapan. Si algún día esto se mueve a un Worker, cada Worker tiene
+ * su propio módulo y su propio buffer, así que sigue valiendo.
+ */
+let _buf = new Float64Array(4096)
+const bufDe = (n) => {
+  if (_buf.length < n) _buf = new Float64Array(n * 2)
+  return _buf
 }
+
+/**
+ * k-ésimo elemento (k = ⌊n/2⌋) por SELECCIÓN, sin ordenar el resto — mismo resultado que
+ * `[...arr].sort()[⌊n/2⌋]`, que es el criterio de la Edge Function (en pares toma el de arriba).
+ *
+ * Ordenar cuesta O(n log n) y acá solo hace falta UN elemento, que es O(n). Muta el buffer, nunca
+ * la entrada.
+ */
+const selMediana = (a, n) => {
+  const k = n >> 1
+  let lo = 0
+  let hi = n - 1
+  while (lo < hi) {
+    const p = a[(lo + hi) >> 1]
+    let i = lo
+    let j = hi
+    while (i <= j) {
+      while (a[i] < p) i++
+      while (a[j] > p) j--
+      if (i <= j) { const t = a[i]; a[i] = a[j]; a[j] = t; i++; j-- }
+    }
+    if (k <= j) hi = j
+    else if (k >= i) lo = i
+    else break
+  }
+  return a[k]
+}
+
 
 /** ts a ms epoch: acepta número o string ISO. Devuelve NaN si no se puede leer. */
 const tsMs = (ts) => {
@@ -39,16 +102,29 @@ const tsMs = (ts) => {
   return NaN
 }
 
-/** Centro de la ventana: mediana de lats y de lngs POR SEPARADO (robusto a outliers). */
-const centroDe = (win) => ({
-  lat: mediana(win.map((p) => p.lat)),
-  lng: mediana(win.map((p) => p.lng)),
-})
+/**
+ * Centro de los primeros `n` puntos de `win`: mediana de lats y de lngs POR SEPARADO (robusto a
+ * outliers).
+ *
+ * Toma `n` en vez de recibir el array ya cortado porque los dos llamadores lo usan sobre un PREFIJO
+ * de la ventana, y cortarlo con `slice` era una copia por llamada — en el bucle de punto fijo de
+ * `cerrar`, varias por parada.
+ */
+const centroDe = (win, n = win.length) => {
+  const b = bufDe(n)
+  for (let i = 0; i < n; i++) b[i] = win[i].lat
+  const lat = selMediana(b, n)
+  for (let i = 0; i < n; i++) b[i] = win[i].lng
+  const lng = selMediana(b, n)
+  return { lat, lng }
+}
 
-/** ¿La ventana sigue siendo una parada? Mediana de distancias al centro < radio. */
-const esParada = (win, radioM) => {
-  const centro = centroDe(win)
-  return mediana(win.map((p) => distanciaMetros(centro, p))) < radioM
+/** ¿Los primeros `n` puntos siguen siendo una parada? Mediana de distancias al centro < radio. */
+const esParada = (win, n, radioM) => {
+  const centro = centroDe(win, n)
+  const b = bufDe(n)
+  for (let i = 0; i < n; i++) b[i] = distanciaMetros(centro, win[i])
+  return selMediana(b, n) < radioM
 }
 
 /**
@@ -95,7 +171,7 @@ export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_R
   const cerrar = (win) => {
     let fin = win.length
     for (;;) {
-      const centro = centroDe(win.slice(0, fin))
+      const centro = centroDe(win, fin)
       let nuevoFin = fin
       while (nuevoFin > 0 && distanciaMetros(centro, win[nuevoFin - 1]) >= radioM) nuevoFin--
       if (nuevoFin === fin) break
@@ -121,16 +197,19 @@ export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_R
     return win.slice(fin)
   }
 
+  // 🩸 LA VENTANA CRECE CON `push`, NO CON `[...win, p]` (11/08/2026). Ese spread copiaba la
+  // ventana ENTERA una vez por punto: con una parada de 2.152 fixes son ~2,3 millones de copias de
+  // referencia solo para probar si el punto siguiente entra. Se prueba empujando y, si no entra, se
+  // deshace con `pop` — misma decisión, sin la copia. Ver el 🩸 de la cabecera.
   let win = [pts[0]]
   for (let i = 1; i < pts.length; i++) {
-    const cand = [...win, pts[i]]
-    if (esParada(cand, radioM)) {
-      win = cand
-      continue
-    }
+    win.push(pts[i])
+    if (esParada(win, win.length, radioM)) continue
+    win.pop()
     // El punto nuevo rompió la condición: cerramos y arrancamos ventana nueva con los
     // sobrantes + el punto que rompió (cada punto se procesa una sola vez).
-    win = [...cerrar(win), pts[i]]
+    win = cerrar(win)
+    win.push(pts[i])
   }
   cerrar(win)
   return paradas

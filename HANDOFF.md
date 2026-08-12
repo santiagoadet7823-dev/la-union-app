@@ -18,6 +18,54 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.4 (11/08/2026) — **OTA + PWA, sin APK ni migración**
+
+`app_config`: `latest_version` = `bundle_version` = **1.13.4**; `min_version` sigue en 1.13.0.
+
+**El mapa lento al final de la jornada: era el detector de paradas, y era cuadrático.**
+
+El cliente lo viene reportando hace tres sesiones. La primera vez era la cantidad de capas de
+Leaflet (352 `<path>` → ~24) y el arreglo sirvió. Volvió igual, así que esta vez se **perfilaron las
+cuatro etapas** con el código real sobre la forma de la jornada del 11/08:
+
+| etapa | los 8 de la flota |
+|---|---|
+| `limpiarTrazo` | 36 ms |
+| `kmDePuntos` | 18 ms |
+| `simplificarTrazo` | 54 ms |
+| **`detectarParadas`** | **7.090 ms — el 99 %** |
+
+`detectarParadas` copiaba la ventana entera y ordenaba tres veces **por cada punto**: 200 puntos
+55 ms, 800 → 682 ms, **2.152 → 5.607 ms**. Y ese día Nelson rojas tenía 2.152 puntos con la racha
+quieta más larga de 2.152 — su jornada entera era UNA ventana, y él solo costaba ~7 s.
+**Por eso "volvía" después de cada arreglo: el costo crece con la densidad de captura, sin que nadie
+toque el código.** Los comentarios de media docena de archivos decían "~410 ms por persona-día", y
+era cierto cuando un día traía ~850 puntos.
+
+El arreglo **no cambia una sola decisión del algoritmo**: quickselect en vez de `sort`, un buffer
+reusado, y `push`/`pop` en vez de `[...win, p]`. Más un cache de paradas por persona (WeakMap sobre
+el array de puntos) y una grilla para `comercioCercano`, que recorría los 1.803 clientes por cada
+parada.
+
+Medido sobre **63 persona-días REALES** (7 días, 49.954 puntos, 605 paradas):
+
+| | antes | después | |
+|---|---|---|---|
+| `detectarParadas` | 14.193 ms | 1.809 ms | **×7,8** |
+| `calcularDwells` (8 jornadas) | 14.224 ms | 2.136 ms | ×6,7 |
+| `calcularDwells` 2ª vez (tocar el chip Vend./Rep.) | 14.224 ms | **14 ms** | ×998 |
+
+**Salida bit-idéntica**: 0 días con distinto número de paradas, centro corrido 0,000000 m, duración
+0 s de diferencia, 0 carteles distintos. Eso importa porque `detectarParadas` también numera las
+paradas del **informe de jornada** (`features/reportes/informe.js`): si el detector cambiara, el
+reporte y el mapa dejarían de coincidir.
+
+> 🩸 **Lo que se probó primero y NO sirve — no repetirlo.** La idea inicial era acotar las medianas a
+> una muestra de K puntos. Contra trazas **sintéticas** daba ×7,7 con salida idéntica y parecía
+> resuelto. Contra los **63 persona-días reales** cambiaba el número de paradas en 8, con el centro
+> corrido hasta **286 m** y duraciones distintas por hasta **29 minutos** (con K=128 seguía fallando
+> en 5). El dato real tiene deriva y paradas que se solapan; el sintético no. Ver la regla 50-bis.
+
 ### Publicado — 1.13.3 (11/08/2026) — **OTA + PWA + 2 migraciones, sin APK**
 
 `app_config`: `latest_version` = `bundle_version` = **1.13.3**; `min_version` sigue en 1.13.0.

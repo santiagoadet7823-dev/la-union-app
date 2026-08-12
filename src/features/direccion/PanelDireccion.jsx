@@ -723,7 +723,7 @@ function MapaCompleto({ theme, onClose, ...p }) {
         inicios={p.inicios}
         fines={p.fines}
         // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una persona
-        // recalcularía `calcularDwells` — ~410 ms por persona-día. Ver el 🩸 en LeafletMap.
+        // recalcularía `calcularDwells` — ~250 ms por persona-día. Ver el 🩸 en LeafletMap.
         focoId={p.foco?.id || null}
         fit={!p.fitDone}
         focus={p.focusData}

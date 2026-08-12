@@ -85,7 +85,7 @@ export default function ReportesView({
     return () => { vivo = false }
   }, [byUser])
 
-  // 🩸 Diferido igual que en las supervisiones: `detectarParadas` cuesta ~410 ms por persona-día y
+  // 🩸 Diferido igual que en las supervisiones: `detectarParadas` cuesta ~250 ms por persona-día y
   // esto lo corre para TODO el equipo. Sin diferir, abrir el informe congela la pantalla.
   const byUserDif = useDeferredValue(byUser)
   const informe = useMemo(

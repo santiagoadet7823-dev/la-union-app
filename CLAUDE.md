@@ -252,6 +252,28 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     franja: eso era el "abajo del mapa no se puede hacer click" de la PWA (30/07/2026,
     `BurbujasEquipo`). Verificado con `document.elementFromPoint`, que es la única forma honesta de
     probarlo.
+50. 🩸 **"El mapa está lento" hay que PERFILARLO, no adivinarlo — y el costo puede crecer sin que
+    nadie toque el código.** (11/08/2026.) El cliente lo reportó tres sesiones seguidas. La primera
+    vez era la cantidad de CAPAS de Leaflet (352 `<path>` → ~24, regla del multi-línea) y el arreglo
+    sirvió. La segunda vez volvió, y perfilando las cuatro etapas con el código real sobre la forma
+    de la jornada de ese día: `limpiarTrazo` 36 ms · `kmDePuntos` 18 ms · `simplificarTrazo` 54 ms ·
+    **`detectarParadas` 7.090 ms**. El 99 % estaba en un lugar que nadie miraba.
+    **La causa de que "vuelva" es que `detectarParadas` era CUADRÁTICO** (copiaba la ventana entera
+    y ordenaba tres veces por cada punto): 200 puntos → 55 ms, 800 → 682 ms, **2.152 → 5.607 ms**.
+    Como la densidad de captura sube sola con cada mejora del GPS, el costo se multiplica sin un
+    solo commit. Los comentarios de media docena de archivos decían "~410 ms por persona-día" y eran
+    ciertos cuando un día traía ~850 puntos.
+    **Corolario para la próxima**: antes de tocar el DIBUJO por lentitud, medir las etapas. Y si un
+    comentario afirma un costo, tiene que decir sobre qué volumen se midió.
+50-bis. 🩸 **Un detector no se optimiza contra datos SINTÉTICOS.** En esa misma sesión, la primera
+    idea fue acotar las medianas a una muestra de K puntos. Contra trazas sintéticas daba **×7,7 con
+    salida idéntica** y parecía resuelto. Contra **63 persona-días reales** cambiaba el número de
+    paradas en 8 de ellos, con el centro corrido hasta **286 m** y duraciones distintas por hasta
+    **29 minutos** (con K=128 seguía fallando en 5). El dato real tiene deriva y paradas que se
+    solapan; el sintético no. Lo que sí funcionó fue **no cambiar ninguna decisión**: quickselect en
+    vez de `sort`, buffer reusado y `push`/`pop` en vez de `[...win, p]` → **×7,8 y salida
+    BIT-IDÉNTICA** sobre esos mismos 63 días (605 paradas, centro 0,0000 m). Es la regla 49 otra vez:
+    contrastar contra los datos guardados antes de creerle a una mejora.
 31. **Lo que las DOS supervisiones muestran igual va en un módulo compartido**, nunca copiado:
     `features/supervision/dwells.js` (carteles de parada), `trazos.js` (limpieza + geometría) y
     `components/` (burbujas, tarjeta del pin, estado del equipo). `SupervisionMovil` y
@@ -617,7 +639,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. **1.13.3** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.3; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
+Hay varios números que conviven. **1.13.4** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.4; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -625,10 +647,10 @@ Hay varios números que conviven. **1.13.3** es OTA-solo (JS): `APP_VERSION` y e
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.3` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.4` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.13.0` | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `32` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.3` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.4` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.13.1 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

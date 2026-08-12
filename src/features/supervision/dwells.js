@@ -52,6 +52,36 @@ export const horarioDwell = (p) => `${fmtHora(p.desde)}–${fmtHora(p.hasta)}`
 const MATCH_RADIO_M = 60 // un poco más que el radio de parada (40 m) para tolerar el jitter del centro
 
 /**
+ * Grilla de la cartera geolocalizada, cacheada por IDENTIDAD del array de clientes.
+ *
+ * `comercioCercano` recorría la cartera ENTERA por cada parada: con 605 paradas en la semana y
+ * 1.803 clientes vigentes son más de un millón de haversines por recálculo, y crece con las dos
+ * cosas a la vez (más clientes ubicados × más paradas). La celda es de 0,001° ≈ 111 m, o sea más
+ * grande que MATCH_RADIO_M, así que mirar el vecindario de 3×3 alcanza para cubrir el radio entero.
+ *
+ * El cache es un `WeakMap` sobre el array: cuando el llamador arma una lista nueva, la grilla vieja
+ * se recolecta sola. Sin él, `calcularDwells` reconstruiría la grilla en cada recálculo y estaríamos
+ * cambiando un problema por otro.
+ */
+const CELDA = 0.001
+const _grillas = new WeakMap()
+const clave = (lat, lng) => Math.floor(lat / CELDA) + ':' + Math.floor(lng / CELDA)
+
+function grillaDe(clientes) {
+  let g = _grillas.get(clientes)
+  if (g) return g
+  g = new Map()
+  for (const c of clientes) {
+    if (c.lat == null || c.lng == null) continue
+    const k = clave(c.lat, c.lng)
+    const celda = g.get(k)
+    if (celda) celda.push(c); else g.set(k, [c])
+  }
+  _grillas.set(clientes, g)
+  return g
+}
+
+/**
  * Nombre del comercio geolocalizado más cercano a menos de MATCH_RADIO_M, o null.
  *
  * Exportada desde el 30/07/2026: la lista de paradas del dueño (`SheetPersona`) mostraba las
@@ -59,20 +89,48 @@ const MATCH_RADIO_M = 60 // un poco más que el radio de parada (40 m) para tole
  */
 export function comercioCercano(lat, lng, clientes) {
   if (!clientes || !clientes.length) return null
+  const g = grillaDe(clientes)
+  const ci = Math.floor(lat / CELDA)
+  const cj = Math.floor(lng / CELDA)
   let mejor = null
   let mejorD = MATCH_RADIO_M
-  for (const c of clientes) {
-    if (c.lat == null || c.lng == null) continue
-    const d = distanciaMetros({ lat, lng }, c)
-    if (d < mejorD) { mejorD = d; mejor = c }
+  for (let i = ci - 1; i <= ci + 1; i++) {
+    for (let j = cj - 1; j <= cj + 1; j++) {
+      const celda = g.get(i + ':' + j)
+      if (!celda) continue
+      for (const c of celda) {
+        const d = distanciaMetros({ lat, lng }, c)
+        if (d < mejorD) { mejorD = d; mejor = c }
+      }
+    }
   }
   return mejor ? (mejor.name || mejor.nombre_comercio || null) : null
+}
+
+/**
+ * Paradas ya detectadas, cacheadas por IDENTIDAD del array de puntos de cada persona.
+ *
+ * `calcularDwells` se memoiza en las vistas con `[byUser, filter, clientes]`, así que **tocar el
+ * chip Vend./Rep. recalculaba el detector de TODO el equipo** aunque los puntos fueran exactamente
+ * los mismos. Y en el refresco de 60 s, `useRecorridosDelDia` solo reemplaza el array de quien
+ * recibió puntos nuevos (`next[id] = { …, points: prevPoints.concat(nuevos) }`): los demás
+ * conservan la misma referencia, así que acá salen gratis.
+ *
+ * `WeakMap` sobre el array de puntos: cuando esa jornada se descarta (cambio de fecha, de empresa),
+ * la entrada se va sola. Sin esto sería una fuga que crece un día por cada fecha visitada.
+ */
+const _paradas = new WeakMap()
+function paradasDe(points) {
+  if (!points || !points.length) return []
+  let r = _paradas.get(points)
+  if (!r) { r = detectarParadas(points); _paradas.set(points, r) }
+  return r
 }
 
 export function calcularDwells(byUser, pasaFiltro, clientes) {
   return Object.entries(byUser)
     .filter(([, v]) => pasaFiltro(v.rol))
-    .flatMap(([id, v]) => detectarParadas(v.points || [])
+    .flatMap(([id, v]) => paradasDe(v.points)
       .map((p, i) => {
         const comercio = comercioCercano(p.lat, p.lng, clientes)
         const horario = horarioDwell(p)

@@ -380,7 +380,7 @@ export default function LeafletMap({
   // el mapa se comporta exactamente igual que antes (SupervisionDesktop no la pasa).
   dwells = [],
   // Índice del cartel de parada AMPLIADO (o null). Va como prop suelta y NO adentro de cada
-  // `dwells[i]` a propósito: `dwells` sale de `calcularDwells`, que cuesta ~410 ms por persona-día,
+  // `dwells[i]` a propósito: `dwells` sale de `calcularDwells`, que cuesta ~250 ms por persona-día,
   // y meter la selección adentro obligaría a recalcular el detector de paradas entero cada vez que
   // se toca un cartel. Así la selección solo re-dibuja la capa.
   dwellSel = null,
@@ -395,7 +395,7 @@ export default function LeafletMap({
   // habla de "último punto" y no de "fin".
   fines = [],
   // Persona ENFOCADA, o null. Va como prop suelta por el mismo motivo que `dwellSel` (ver arriba):
-  // `dwells` sale de `calcularDwells`, que cuesta ~410 ms por persona-día, y las vistas lo memoizan
+  // `dwells` sale de `calcularDwells`, que cuesta ~250 ms por persona-día, y las vistas lo memoizan
   // a propósito SIN el foco en las dependencias. Si la atenuación se resolviera dentro de cada
   // `dwells[i]`, tocar a una persona recalcularía el detector de paradas entero del equipo.
   focoId = null,

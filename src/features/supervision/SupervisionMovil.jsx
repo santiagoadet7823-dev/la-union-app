@@ -287,7 +287,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // que antes no los tenía porque estaban cableados solo acá). Mismo filtro por chip y mismo
   // color por persona que los trazos.
   //
-  // `useDeferredValue`: detectar paradas sobre una jornada real (2.982 puntos) cuesta ~410 ms
+  // `useDeferredValue`: detectar paradas sobre una jornada real (2.982 puntos) cuesta ~250 ms
   // en una PC → 1,5-2 s en un teléfono, y corría en el mismo render que el trazo: el mapa
   // entero se congelaba esperando los carteles. Diferido, React pinta el recorrido primero y
   // recalcula los carteles en un render de baja prioridad. Los carteles aparecen un instante
@@ -366,7 +366,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
   // Resumen del día de la persona del pin: km recorridos y paradas. Solo se calcula con la
   // tarjeta AMPLIADA — agrandarla sirve para mostrar más, no solo para mostrar lo mismo más
-  // grande. Y el detector de paradas cuesta ~410 ms sobre una jornada real (ver MetricasEquipo),
+  // grande. Y el detector de paradas cuesta ~250 ms sobre una jornada real (ver MetricasEquipo),
   // así que no puede correr mientras la tarjeta está chica.
   const pinResumen = useMemo(() => {
     if (!pinId || pinK === 1) return null
@@ -458,7 +458,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           inicios={inicios}
           fines={fines}
           // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una persona
-          // recalcularía `calcularDwells` — ~410 ms por persona-día. Ver el 🩸 en LeafletMap.
+          // recalcularía `calcularDwells` — ~250 ms por persona-día. Ver el 🩸 en LeafletMap.
           focoId={foco?.id || null}
           fit={!fitDone}
           focus={focusData}
