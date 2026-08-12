@@ -310,6 +310,44 @@ export function kmDePuntos(points) {
 // 800 m: más que la cuadra más larga del pueblo y menos que cualquier traslado real entre clientes.
 export const HUECO_M = 800
 
+/**
+ * 🩸 EL CARRIL PUNTEADO TAMBIÉN INVENTABA CAMINO (12/08/2026) — y era el mismo error de la regla 49,
+ * cometido de nuevo en el otro carril.
+ *
+ * El cliente reportó que el trazo "sigue haciendo trazos por sobre las cuadras". Medido sobre la
+ * jornada del 12/08, separando los metros dibujados por carril:
+ *
+ *                    línea llena (GPS puro)      punteado (triangulado)
+ *   Javier              8.486 m · 21 m/tramo      32.951 m (80 %) · 141 m/tramo · el mayor 4.174 m
+ *   Luis Mendoza        5.051 m                    9.474 m (65 %) · 13 tramos > 150 m
+ *   Gabriel tevez      11.931 m                    4.173 m (26 %) ·  8 tramos > 150 m
+ *   Orlando · Agustin  32.323 · 50.054 m                    0
+ *
+ * O sea: **el 80 % de los metros que se dibujaban de Javier salían del carril triangulado**, y su
+ * línea de GPS puro promedia 21 m por tramo — ésa nunca estuvo mal. Lo que cruzaba las manzanas eran
+ * las rectas del punteado.
+ *
+ * El error de diseño es unir con una LÍNEA dos fixes de ±60-120 m. Un punto así sirve para decir
+ * "por acá anduvo"; una recta entre dos afirma **por dónde fue**, que es exactamente lo que no se
+ * sabe. Con 4 km entre dos puntos eso no es un trazo impreciso: es una invención.
+ *
+ * El reparto de los tramos punteados de ese día dice dónde cortar (toda la flota):
+ *
+ *   < 40 m   268 tramos ·  3.084 m   ← más corto que el propio error del fix: no cruza nada
+ *   40-80 m   94 tramos ·  5.716 m
+ *   80-150 m  50 tramos ·  5.327 m
+ *   150-400 m 29 tramos ·  6.543 m
+ *   > 400 m   15 tramos · 25.883 m   ← el 3 % de los tramos con el 56 % de los metros
+ *
+ * 150 m: por debajo la recta es del orden de la incertidumbre y es inofensiva; por encima empieza a
+ * atravesar manzanas. Deja de dibujar 44 tramos que cargaban 32,4 km de camino inventado.
+ *
+ * ⚠️ **Los puntos NO se descartan**: se sigue viendo dónde estuvo, solo se deja de afirmar el camino
+ * entre uno y el siguiente. Es la misma decisión que `HUECO_DUDOSO_MS` tomó para la línea llena.
+ * ⚠️ Y los km NO cambian: salen de `puntos`, que nunca incluyó a los triangulados (regla 40).
+ */
+export const APROX_MAX_TRAMO_M = 150
+
 /* ==============================================================================================
    🩸 PINCHOS — el punto que se va y vuelve (10/08/2026, noche).
 
@@ -414,12 +452,19 @@ export function limpiarTrazo(points) {
   let descartados = 0
   let seguidos = 0
 
-  const cerrarAprox = (siguiente) => {
-    if (!aprox.length) return
-    // Se cose al punto de GPS que sigue: sin eso el tramo punteado termina en el aire.
-    if (siguiente) aprox.push(siguiente)
+  // Corta el tramo punteado en curso y lo emite si tiene con qué dibujarse.
+  const emitirAprox = () => {
     if (aprox.length >= 2) aproximados.push(aprox)
     aprox = []
+  }
+
+  const cerrarAprox = (siguiente) => {
+    if (!aprox.length) return
+    // Se cose al punto de GPS que sigue: sin eso el tramo punteado termina en el aire. Pero solo si
+    // está CERCA — si el próximo fix bueno aparece a 4 km, coserlo dibuja justamente la recta que
+    // este cambio vino a sacar (ver el 🩸 de APROX_MAX_TRAMO_M).
+    if (siguiente && metros(aprox[aprox.length - 1], siguiente) <= APROX_MAX_TRAMO_M) aprox.push(siguiente)
+    emitirAprox()
   }
 
   // Pasada previa: los pinchos se deciden mirando los DOS vecinos y este bucle va hacia adelante.
@@ -437,7 +482,14 @@ export function limpiarTrazo(points) {
     // Triangulado: va al carril aproximado y no toca NADA de lo demás (ni la referencia de saltos,
     // ni los km, ni los segmentos). Ver el 🩸 de arriba.
     if (Number(p.accuracy) > ACCURACY_MAX_M) {
-      if (!aprox.length && ult) aprox.push(ult)
+      // 🩸 Se corta el tramo si el salto hasta este punto pasa de APROX_MAX_TRAMO_M: unir con una
+      // recta dos fixes de ±100 m separados por kilómetros no es un trazo impreciso, es una
+      // invención — y era el 80 % de los metros que se dibujaban de Javier. Ver el 🩸 de la
+      // constante. El punto NO se descarta: arranca un tramo nuevo, así se sigue viendo dónde
+      // estuvo y solo se deja de afirmar el camino entre uno y otro.
+      const anterior = aprox.length ? aprox[aprox.length - 1] : ult
+      if (anterior && metros(anterior, p) > APROX_MAX_TRAMO_M) emitirAprox()
+      if (!aprox.length && ult && metros(ult, p) <= APROX_MAX_TRAMO_M) aprox.push(ult)
       aprox.push(p)
       continue
     }

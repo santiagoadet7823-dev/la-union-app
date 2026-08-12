@@ -18,6 +18,85 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.7 (12/08/2026) — **OTA + PWA. Y la comparación que reencuadra todo**
+
+#### 🔴 LO MÁS IMPORTANTE DE ESTA SESIÓN: el código no empeoró, el GPS de los teléfonos sí
+
+El cliente pidió comparar contra versiones anteriores *"cuando todo funcionaba ok"*. Tenía razón, y
+el dato reencuadra semanas de trabajo. Misma vara, todos los días guardados:
+
+| día | personas | km | **línea llena** | punteado | **sin nada** | huecos duros | recta más larga |
+|---|---|---|---|---|---|---|---|
+| **06/08** | 3 | 106 | **100 %** | 0 | **0 %** | 1 | **270 m** |
+| **07/08** | 7 | 271 | **100 %** | 0 | **0 %** | 2 | **285 m** |
+| 08/08 | 12 | 647 | 36 % | 0 | **64 %** | **97** | 3.839 m |
+| 10/08 | 8 | 231 | 73 % | 1 % | 26 % | 71 | 1.016 m |
+| 11/08 | 9 | 552 | 53 % | 3 % | 44 % | 65 | 2.192 m |
+| 12/08 | 6 | 200 | 57 % | 24 % | 19 % | **5** | 4.174 m |
+
+**Algo se rompió el 08/08.** Y la causa NO es la app — es la PRECISIÓN del chip. Mediana de
+`accuracy` por persona y día:
+
+| | 05-07/08 | 08/08 | 12/08 |
+|---|---|---|---|
+| **Nelson rojas** | **1,5 m** (86 % ≤10 m) | **23,5 m** (0 %) | 19,6 m (0 %) |
+| **Luis Mendoza** | **3,2 m** (98 %) | **25,7 m** (4 %) | 16,8 m |
+| Orlando chavez | — | 1,0 m (81 %) | **1,6 m (96 %)** |
+| Agustin Vasquez | — | 24,2 m | **1,6 m (100 %)** |
+| Javier | — | 20,0 m | 18,3 m |
+| Gabriel tevez | 12,1 m | 14,6 m | 13,7 m |
+
+**Nelson pasó de 1,5 m a 23,5 m de un día para el otro. Luis, de 3,2 a 25,7.** Con mediana de 1,5 m
+el carril de triangulación no se enciende NUNCA y el trazo es 100 % línea llena; con 20 m se
+enciende todo el tiempo. Todo lo demás —el punteado, los huecos, las rectas largas— es consecuencia.
+
+**Y que no es la app lo prueban Orlando y Agustin**: corren exactamente el mismo bundle y están en
+1,6 m con trazos perfectos. Si el software hubiera degradado el GPS, los degradaría a todos.
+
+⚠️ El 08/08 es el día en que se configuró el parque nuevo por cable (`INVENTARIO_TELEFONOS.md`) y se
+cambiaron las cuentas. **Hay dos poblaciones de aparato y hay que separarlas mirando `accuracy`, no
+la versión.**
+
+🔎 **La sospecha número uno para el próximo turno** (medida a medias, NO confirmada): el plugin JS de
+Capacitor mantiene un watcher con `PRIORITY_HIGH_ACCURACY` **a 1 Hz** —hardcodeado, no se toca desde
+JS— **en paralelo** con el request del servicio nativo. Con el uploader nativo activo ese carril **ya
+no encola ni sube nada** (`tracker.js`, `if (!uploaderNativoActivo)`): sobrevive solo para alimentar
+el heartbeat y el `pos` del `GpsGate`. En `dumpsys location` de Javier se ven los dos requests
+peleando (`@0` / `@+1s0ms` en ráfagas cada 60 s, y después `OFF`). Sacarlo o espaciarlo es un cambio
+de APK y necesita reemplazar antes las dos cosas que sí usa.
+
+#### Lo que sí se publicó hoy: el carril punteado deja de inventar camino
+
+El cliente reportó que el trazo *"sigue haciendo trazos por sobre las cuadras"*. Medido: **el 80 % de
+los metros dibujados de Javier salían del carril TRIANGULADO**, con rectas de 141 m de promedio. Su
+línea de GPS puro promedia 21 m — ésa nunca estuvo mal.
+
+Unir con una recta dos fixes de ±100 m separados por kilómetros no es un trazo impreciso: es una
+invención. Es el mismo error de la regla 49, cometido en el otro carril. Desde 1.13.7 el tramo
+punteado **se corta a los `APROX_MAX_TRAMO_M` = 150 m**.
+
+A/B con el código real sobre la jornada del 12/08:
+
+| | antes tramos / metros / **la más larga** | después |
+|---|---|---|
+| Javier | 234 / 32.794 m / **4.174 m** | 213 / **7.249 m** / **144 m** |
+| Luis Mendoza | 156 / 31.877 m / **21.594 m** | 142 / **5.479 m** / **150 m** |
+| Gabriel tevez | 73 / 4.548 m / **997 m** | 64 / **1.699 m** / **129 m** |
+| Orlando · Agustin · Nelson | 0 | 0 (sin cambio) |
+
+**Ninguna recta punteada de más de 150 m sobrevive** y se dejan de dibujar **56 km de camino
+inventado**. Los **km no cambian en ninguno** (salen de `puntos`, que nunca incluyó triangulados).
+Solo **19 puntos de 336** quedan sin dibujar por caer aislados.
+
+#### 🟠 Y un bug encontrado verificando
+
+`reiniciarContadoresSiCambioElDia` tiene un comentario que promete que los contadores sobreviven a un
+reinicio del servicio a media jornada. **El código nunca los vuelve a leer**: quedan en 0 en memoria,
+la función sale temprano porque el día no cambió, y el primer volcado pisa lo acumulado con ceros. Se
+ve en los datos (Javier con `fix_total = 1` subiendo 54 puntos en 30 min). Va con el próximo APK.
+⚠️ **Varias cifras de telemetría citadas estos días están subestimadas** para los equipos que
+reiniciaron. Lo que sale de `posiciones` (km, huecos, triangulados) **no está afectado**.
+
 ### Publicado — 1.13.6 (12/08/2026) — **OTA + PWA. Cuatro umbrales de GPS: es un EXPERIMENTO**
 
 `app_config`: `latest_version` = `bundle_version` = **1.13.6**; `min_version` sigue en 1.13.0.
