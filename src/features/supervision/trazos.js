@@ -99,6 +99,34 @@ export function construirFines(trails) {
   })
 }
 
+/** Largo de una polilínea de puntos {lat,lng}, en metros. */
+function largoDe(linea) {
+  let m = 0
+  for (let i = 1; i < linea.length; i++) m += distanciaMetros(linea[i - 1], linea[i])
+  return m
+}
+
+/**
+ * ¿La geometría pegada a calles representa el recorrido, o perdió pedazos por el camino?
+ *
+ * Se comparan LARGOS y no cantidad de tramos: el snap agrupa y adelgaza a propósito, así que contar
+ * piezas no dice nada, pero el largo total sí — un ruteo honesto queda cerca del crudo (la guarda
+ * anti-detour de la propia Edge Function ya rechaza lo que se alargue más de ×1,5/×1,8).
+ *
+ * El umbral sale de los datos del 12/08: los recorridos sanos daban 100 % de cobertura y los rotos
+ * 0 % (Nelson) y 38 % (Luis). Con 0,75 los dos casos malos caen del lado correcto y queda margen
+ * para el adelgazado normal del snap, que sobre un día 100 % crudo ya da ~×0,86.
+ */
+const COBERTURA_MIN = 0.75
+
+function cubreElRecorrido(segs, segmentosCrudos) {
+  const crudo = (segmentosCrudos || []).reduce((a, s) => a + largoDe(s), 0)
+  // Sin crudo con qué comparar no hay nada que sospechar: se usa lo pegado.
+  if (crudo <= 0) return true
+  const pegado = segs.reduce((a, s) => a + largoDe(s), 0)
+  return pegado >= COBERTURA_MIN * crudo
+}
+
 /**
  * Geometría final para `<LeafletMap trails={...}>`.
  *
@@ -133,8 +161,27 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     const enfocado = focoId && t.id === focoId
     const opacity = !focoId ? 0.85 : (enfocado ? 0.95 : 0.12)
     const weight = enfocado ? 5 : 4
+    // 🩸 EL SNAP NO PUEDE BORRAR RECORRIDO (12/08/2026) — invariante, no optimización.
+    //
+    // La geometría pegada REEMPLAZA a la cruda, así que cualquier tramo que la Edge Function decida
+    // no devolver **desaparece del mapa**. Y devolvía de menos: `snap-recorridos` descartaba entero
+    // todo segmento que `isStationary` considerara quieto (mediana de distancia al centro < 40 m),
+    // que con un teléfono de 20 m de error se cumple caminando un par de cuadras. Medido sobre la
+    // jornada del 12/08, metros que desaparecían al prender "Calles":
+    //
+    //   Nelson rojas  6.446 m — **el 100 % de su día**  ·  Luis Mendoza 5.230 m (62 %)
+    //   Gabriel tevez 1.591 m (18 %)  ·  Orlando y Agustin (precisión 1,6 m): 0 m
+    //
+    // Lo reportó el cliente con el mecanismo exacto: *"al tener un ruido de gps el pegado a calles no
+    // sabe a cuál va y elimina el trazo"*.
+    //
+    // La causa se arregla en la Edge Function (ALGO 11: quieto = no rutear, pero sí dibujar). Esta
+    // guarda es la RED DE CONTENCIÓN, y se queda para siempre: el snap es un servicio remoto con su
+    // propio cache y sus propias guardas, y ninguna de ellas puede tener licencia para borrar
+    // kilómetros del recorrido. Si lo pegado cubre bastante menos que el crudo, se dibuja el crudo.
     const segs = snapOn ? snapped[t.id] : null
-    const lineas = (segs && segs.length)
+    const usable = segs && segs.length && cubreElRecorrido(segs, t.segmentos)
+    const lineas = usable
       ? segs.filter((s) => s?.length >= 2)
       // OJO: `(s) => simplificarTrazo(s)` y no `.map(simplificarTrazo)` — map pasa el ÍNDICE como
       // segundo argumento y ahí sería `epsilonM`, o sea una tolerancia distinta por segmento.
@@ -149,7 +196,7 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     if (aprox.length) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.6, dashArray: '2 6', lineas: aprox })
     // Los conectores solo tienen sentido sobre el crudo: la rama snap trae los segmentos que
     // decidió OSRM, que no se corresponden con los huecos de captura.
-    if (!segs || !segs.length) {
+    if (!usable) {
       const conectores = []
       for (let i = 1; i < lineas.length; i++) {
         const a = lineas[i - 1]

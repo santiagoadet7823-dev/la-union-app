@@ -18,6 +18,48 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.8 (12/08/2026) — **El snap borraba recorrido. OTA + PWA**
+
+#### 🔴 "El pegado a calles elimina el trazo" — el cliente tenía razón, y el mecanismo era literal
+
+Reportado así: *"al tener un ruido de gps el pegado a calles no sabe a cuál va y elimina el trazo"*.
+
+`snap-recorridos` descartaba **el segmento entero** cuando `isStationary` lo consideraba quieto —un
+`continue` sin devolver nada—. Y como el front usa **SOLO** la geometría pegada cuando viene no vacía
+(`construirLeaflet`: `segs && segs.length`), cada segmento que caía ahí **desaparecía del mapa**.
+
+`isStationary` compara la mediana de distancia al centro contra `STATIONARY_R` = **40 m**: en un
+teléfono con 20 m de error, un tramo caminado de un par de cuadras la cumple. Medido sobre la jornada
+del 12/08, metros que desaparecían al prender "Calles" (que está **encendido por defecto** en las
+tres supervisiones):
+
+| | segmentos | descartados | **metros que desaparecían** | % del día |
+|---|---|---|---|---|
+| **Nelson rojas** | 1 | 1 | **6.446 m** | **100 %** |
+| **Luis Mendoza** | 5 | 3 | **5.230 m** | **62 %** |
+| Gabriel tevez | 3 | 1 | 1.591 m | 18 % |
+| Javier | 7 | 3 | 47 m | 0 % |
+| Orlando · Agustin (1,6 m de precisión) | 1 | **0** | **0** | **0 %** |
+
+**La correlación es con el RUIDO del GPS, no con la persona.** Los de 14-20 m de mediana perdían
+trazo; los de 1,6 m no perdían nada. La intención original era correcta —rutear jitter inventa
+vueltas— pero la ejecución tiraba el dato en vez de dejarlo crudo. Con "Calles" APAGADO esos mismos
+puntos SÍ se dibujan: prender el botón borraba parte del recorrido.
+
+**Dos arreglos, uno publicado y uno listo sin desplegar:**
+
+1. ✅ **PUBLICADO (front, OTA)** — `construirLeaflet` compara el largo de lo pegado contra el crudo y
+   **usa el crudo si la cobertura cae por debajo del 75 %**. No es una optimización: es el invariante
+   *"el snap no puede borrar recorrido"*, y **se queda para siempre** — el snap es un servicio remoto
+   con su propio cache y sus propias guardas, y ninguna puede tener licencia para borrar kilómetros.
+   Recupera **11.676 de los 13.314 m** (Nelson y Luis enteros; Gabriel queda al 82 % y no dispara).
+2. ⏳ **ESCRITO Y SIN DESPLEGAR (Edge Function)** — `snap-recorridos`: `quieto` deja de descartar y
+   pasa a `usarCrudo('quieto')`, con `ALGO` subido a **11** para invalidar el cache viejo (sin eso los
+   días ya calculados seguirían devolviendo la geometría incompleta). Cubre además el 18 % de Gabriel.
+   **El deploy quedó pendiente por presupuesto de contexto, no por riesgo**: el cambio está commiteado
+   y verificado, y si la función fallara el front cae al crudo, que es más seguro que hoy.
+   ⚠️ Va con **`verify_jwt: true`** (es el valor actual; se autentica con la sesión del usuario).
+
 ### Publicado — 1.13.7 (12/08/2026) — **OTA + PWA. Y la comparación que reencuadra todo**
 
 #### 🔴 LO MÁS IMPORTANTE DE ESTA SESIÓN: el código no empeoró, el GPS de los teléfonos sí

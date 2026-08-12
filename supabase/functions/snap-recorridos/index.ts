@@ -80,7 +80,10 @@ const json = (b: unknown, status = 200) =>
  */
 const OSRM_FOOT = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot'
 const OSRM_CAR = 'https://routing.openstreetmap.de/routed-car/route/v1/driving'
-const ALGO = 10          // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
+// ⚠️ ALGO 11 (12/08/2026): sube porque los tramos QUIETOS ya no se descartan (ver el 🩸 abajo). Sin
+// subirlo, los días ya cacheados seguirían devolviendo la geometría vieja —con los segmentos
+// faltantes— y el arreglo no se vería hasta el día siguiente.
+const ALGO = 11          // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
 const MIN_RUN_M = 80      // m: por debajo no vale una consulta a un host donado (era 150: una vuelta
                           // manzana de reparto entraba abajo de ese número y quedaba cruda)
 const MAX_RUTEOS = 40     // techo de consultas OSRM por invocación (ver el comentario de abajo)
@@ -218,7 +221,7 @@ Deno.serve(async (req) => {
     let truncados = 0
     // Desglose de por qué un tramo quedó crudo. Viaja en la respuesta: un tope silencioso se lee
     // como "salió todo bien" cuando en realidad quedaron tramos sin pegar a la calle.
-    const crudos = { corto: 0, largoPeaton: 0, creciendo: 0, presupuesto: 0, osrm: 0, detour: 0, ciego: 0 }
+    const crudos = { corto: 0, largoPeaton: 0, creciendo: 0, presupuesto: 0, osrm: 0, detour: 0, ciego: 0, quieto: 0 }
     let autos = 0, pies = 0   // tramos enviados a cada motor
     let triangulados = 0      // puntos apartados por venir de red y no de GPS
     // 🩸 LA MEDIDA QUE DECIDE SI ESTO SIRVE. Sin el cociente pegado/crudo, "se ve más pegado a la
@@ -243,7 +246,32 @@ Deno.serve(async (req) => {
       let osrmMiss = false
       for (const seg of splitGaps(pts)) {
         if (seg.length < 2) continue
-        if (isStationary(seg)) continue // quieto (jitter) → no rutear vueltas falsas
+        /* 🩸 QUIETO SIGNIFICA "NO RUTEAR", NO "NO DIBUJAR" (12/08/2026).
+         *
+         * Hasta hoy acá había un `continue` que **descartaba el segmento entero**. Como el front usa
+         * SOLO la geometría pegada cuando viene no vacía (`construirLeaflet`: `segs && segs.length`),
+         * cada segmento que caía acá **desaparecía del mapa** al prender "Calles".
+         *
+         * Lo reportó el cliente con el mecanismo exacto: *"al tener un ruido de gps el pegado a
+         * calles no sabe a cuál va y elimina el trazo"*. Y es literal, porque `isStationary` mide la
+         * mediana de distancia al centro contra `STATIONARY_R` = 40 m: en un teléfono con 20 m de
+         * error, un tramo caminado de un par de cuadras la cumple. Medido sobre la jornada del
+         * 12/08, metros que desaparecían con el snap prendido:
+         *
+         *   Nelson rojas    1 de 1 segmento  ·  6.446 m  ·  **el 100 % de su día**
+         *   Luis Mendoza    3 de 5           ·  5.230 m  ·  62 %
+         *   Gabriel tevez   1 de 3           ·  1.591 m  ·  18 %
+         *   Javier          3 de 7           ·     47 m  ·   0 %
+         *   Orlando · Agustin (precisión 1,6 m)  ·  0 m  ·   0 %
+         *
+         * La correlación es con el RUIDO, no con la persona: los de 14-20 m de mediana perdían el
+         * trazo, los de 1,6 m no perdían nada.
+         *
+         * La intención original era correcta —rutear jitter inventa vueltas— pero la ejecución tiró
+         * el dato en vez de dejarlo crudo. Con el snap APAGADO esos mismos puntos SÍ se dibujan, así
+         * que prender "Calles" borraba parte del recorrido: eso nunca puede pasar.
+         */
+        const quieto = isStationary(seg)
         for (const run of splitModo(seg)) {
           if (run.pts.length < 2) continue
           const f = firmaRun(run.pts)
@@ -265,6 +293,9 @@ Deno.serve(async (req) => {
           //  - `!run.auto && lenM > FOOT_LEN`: ver el bloque de FOOT_LEN.
           //  - `creciendo`: ver COLA_VIVA_MS.
           //  - presupuesto agotado: ver MAX_RUTEOS.
+          // Quieto: se dibuja crudo y no se consulta OSRM (ver el 🩸 de arriba). Va PRIMERO para no
+          // gastar presupuesto de ruteo en un tramo que de todas formas no se va a rutear.
+          if (quieto) { usarCrudo('quieto'); continue }
           if (lenM < MIN_RUN_M) { usarCrudo('corto'); continue }
           if (!run.auto && lenM > FOOT_LEN) { usarCrudo('largoPeaton'); continue }
           if (creciendo) { usarCrudo('creciendo'); continue }
