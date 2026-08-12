@@ -108,29 +108,23 @@ export function comercioCercano(lat, lng, clientes) {
 }
 
 /**
- * Paradas ya detectadas, cacheadas por IDENTIDAD del array de puntos de cada persona.
+ * 🩸 EL CACHE DE PARADAS NO VIVE ACÁ — está adentro de `detectarParadas` (`dwell.js`).
  *
- * `calcularDwells` se memoiza en las vistas con `[byUser, filter, clientes]`, así que **tocar el
- * chip Vend./Rep. recalculaba el detector de TODO el equipo** aunque los puntos fueran exactamente
- * los mismos. Y en el refresco de 60 s, `useRecorridosDelDia` solo reemplaza el array de quien
- * recibió puntos nuevos (`next[id] = { …, points: prevPoints.concat(nuevos) }`): los demás
- * conservan la misma referencia, así que acá salen gratis.
+ * Estuvo acá durante 1.13.4 y fue un error de diseño: cubría solo a este llamador, mientras
+ * `MetricasEquipo` seguía invocando el detector por su cuenta en cada recálculo (medido: 552 ms
+ * extra por vuelta sobre la jornada del 11/08). Puesto en el módulo lo aprovechan los cuatro
+ * llamadores y ninguno tiene que acordarse. Tener el mismo criterio en dos lugares es cómo divergen
+ * (regla 31); acá directamente sobraba.
  *
- * `WeakMap` sobre el array de puntos: cuando esa jornada se descarta (cambio de fecha, de empresa),
- * la entrada se va sola. Sin esto sería una fuga que crece un día por cada fecha visitada.
+ * Lo que sigue siendo cierto y es lo que hace que el cache sirva: `calcularDwells` se memoiza en las
+ * vistas con `[byUser, filter, clientes]`, así que tocar el chip Vend./Rep. vuelve a entrar acá con
+ * los MISMOS arrays de puntos — y en el refresco de 60 s, `useRecorridosDelDia` solo reemplaza el
+ * array de quien recibió puntos nuevos, así que los demás salen gratis.
  */
-const _paradas = new WeakMap()
-function paradasDe(points) {
-  if (!points || !points.length) return []
-  let r = _paradas.get(points)
-  if (!r) { r = detectarParadas(points); _paradas.set(points, r) }
-  return r
-}
-
 export function calcularDwells(byUser, pasaFiltro, clientes) {
   return Object.entries(byUser)
     .filter(([, v]) => pasaFiltro(v.rol))
-    .flatMap(([id, v]) => paradasDe(v.points)
+    .flatMap(([id, v]) => detectarParadas(v.points || [])
       .map((p, i) => {
         const comercio = comercioCercano(p.lat, p.lng, clientes)
         const horario = horarioDwell(p)

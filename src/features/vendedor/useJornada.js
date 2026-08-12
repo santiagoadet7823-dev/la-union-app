@@ -37,6 +37,11 @@ export function useJornada() {
   // (las pestañas se montan/desmontan por render condicional).
   const [search, setSearch] = useState('')       // buscador de productos (VisitaCatalogo)
   const [catFilter, setCatFilter] = useState('Todos') // chip de categoría activo (VisitaCatalogo)
+  // Buscador de CLIENTES (InicioTab). Vive acá y no en la pestaña por el mismo motivo que los dos
+  // de arriba: InicioTab se monta y se desmonta con el cambio de pestaña, así que un estado local
+  // se perdería cada vez que el vendedor va a la ruta y vuelve — justo en medio de una búsqueda.
+  const [buscaCli, setBuscaCli] = useState('')
+  const [soloPendientes, setSoloPendientes] = useState(false)
   const [routeCalc, setRouteCalc] = useState(false) // ruta calculada (RutaTab)
   const [rutaInfo, setRutaInfo] = useState(null)  // métricas de la ruta (RutaTab)
   const timerRef = useRef(null)
@@ -131,6 +136,36 @@ export function useJornada() {
   const montoHoy = conPedido.reduce((a, c) => a + (c.monto || 0), 0)
   const visitC = clients.find((c) => c.id === visit)
 
+  /**
+   * 🩸 LA LISTA QUE SE DIBUJA, FILTRADA (11/08/2026). No es un extra: son **1.803 clientes
+   * vigentes** en una sola columna, sin paginar ni virtualizar, y el vendedor tenía que scrollearlos
+   * para encontrar al que está por visitar. El encargado además no podía cargar ubicaciones por lo
+   * mismo — el lápiz existe desde el 08/08 pero llegar hasta la tarjeta era imposible.
+   *
+   * **Este problema ya estaba diagnosticado y resuelto… en la otra pantalla.** `ClientesTab` (la de
+   * gestión) tiene el buscador desde hace tiempo, con un comentario que dice textualmente que sin
+   * filtrar no hay forma de encontrar nada. La del vendedor —la única que un vendedor tiene— nunca
+   * lo recibió. Se copia el CRITERIO, no el código: los mismos tres campos (nombre, código y
+   * localidad), para que buscar lo mismo dé lo mismo en las dos pantallas.
+   *
+   * El orden NO se toca: la numeración de las tarjetas y "Próxima parada" salen de `clients`, así
+   * que filtrar no puede reordenar la jornada. `idx` conserva el número original de cada cliente
+   * para que el 07 siga siendo el 07 con el buscador puesto.
+   */
+  const clientsFiltrados = (() => {
+    const q = buscaCli.trim().toLowerCase()
+    if (!q && !soloPendientes) return clients.map((c, i) => ({ ...c, idx: i }))
+    return clients
+      .map((c, i) => ({ ...c, idx: i }))
+      .filter((c) => {
+        if (soloPendientes && c.status !== 'pendiente') return false
+        if (!q) return true
+        return (c.name || '').toLowerCase().includes(q)
+          || (c.codigo || '').toLowerCase().includes(q)
+          || (c.loc || '').toLowerCase().includes(q)
+      })
+  })()
+
   // --- carrito ---
   const prodById = (id) => PRODUCTS.find((p) => p.id === id)
   // Precio que se cobra: el de oferta cuando el producto está en oferta y tiene precio_oferta.
@@ -152,7 +187,8 @@ export function useJornada() {
     visit, seconds, cart, sheet, setSheet, motivo, setMotivo,
     search, setSearch, catFilter, setCatFilter, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,
     catLoading, PRODUCTS,
-    clients, nextId, done, conPedido, montoHoy, visitC,
+    clients, clientsFiltrados, buscaCli, setBuscaCli, soloPendientes, setSoloPendientes,
+    nextId, done, conPedido, montoHoy, visitC,
     cartCount, cartKg, cartTotal, timer,
     pend, pendingCoords, meta, efect,
     toast, showToast, startVisit, endVisit, cancelVisit, addCart,

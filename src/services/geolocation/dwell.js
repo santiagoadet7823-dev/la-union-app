@@ -128,6 +128,33 @@ const esParada = (win, n, radioM) => {
 }
 
 /**
+ * 🩸 EL CACHE VA ACÁ, NO EN EL CONSUMIDOR (11/08/2026, esa misma noche).
+ *
+ * En 1.13.4 este cache se puso en `features/supervision/dwells.js` y **cubría la mitad de las
+ * llamadas**: `MetricasEquipo.metricasParadas` invoca el detector otra vez, por su cuenta, para las
+ * tarjetas de métricas. O sea que en una supervisión el detector corría DOS veces por persona en
+ * cada recálculo y solo una estaba cacheada — medido sobre la jornada del 11/08 con 1.13.4 puesto:
+ * 673 ms el del mapa (cacheado) **más 552 ms el de las métricas, cada vez**. Por eso el cliente
+ * reportó que con 1.13.4 el mapa seguía lento.
+ *
+ * Puesto en el módulo lo aprovechan los CUATRO llamadores (los carteles del mapa, las métricas, la
+ * ficha de persona y el informe de jornada) sin que ninguno tenga que acordarse.
+ *
+ * `WeakMap` sobre el array de puntos: cuando esa jornada se descarta (cambio de fecha o de empresa)
+ * la entrada se va sola. Con un `Map` sería una fuga que crece un día por cada fecha visitada.
+ *
+ * ⚠️ **Solo se cachea la llamada con las opciones POR DEFECTO.** `SheetPersona` y el informe usan
+ * los umbrales de siempre, pero si alguien llama con `minMs`/`radioM` propios, dos llamadas con
+ * criterios distintos sobre el mismo array se pisarían — y el bug sería invisible, porque la
+ * segunda devolvería un resultado perfectamente formado pero de otro umbral.
+ *
+ * ⚠️ **El array devuelto es COMPARTIDO: no se muta.** Verificado en los cuatro llamadores (solo
+ * `.length`, `.filter`, `.map` y un `for…of`). Un `sort()` o un `push()` sobre el resultado
+ * envenenaría el cache para todos los demás, y el síntoma aparecería en otra pantalla.
+ */
+const _cache = new WeakMap()
+
+/**
  * Detecta las paradas de una traza GPS con una ventana deslizante.
  *
  * @param {Array<{lat:number,lng:number,ts:number|string,bateria?:number|null}>} points ordenados por ts ASC
@@ -136,8 +163,14 @@ const esParada = (win, n, radioM) => {
  *   lat/lng = centro (mediana) de la parada; desde/hasta = ms epoch; puntos = fixes que la
  *   componen; bateria = último % con dato de la parada (null si ningún fix lo trae).
  */
-export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_RADIO_M } = {}) {
+export function detectarParadas(points, opts = {}) {
+  const { minMs = DWELL_MIN_MS, radioM = DWELL_RADIO_M } = opts
   if (!Array.isArray(points) || points.length === 0) return []
+  const cacheable = minMs === DWELL_MIN_MS && radioM === DWELL_RADIO_M
+  if (cacheable) {
+    const hit = _cache.get(points)
+    if (hit) return hit
+  }
 
   // Normalizamos y descartamos basura (lat/lng o ts inválidos) antes de nada.
   const pts = []
@@ -212,5 +245,6 @@ export function detectarParadas(points, { minMs = DWELL_MIN_MS, radioM = DWELL_R
     win.push(pts[i])
   }
   cerrar(win)
+  if (cacheable) _cache.set(points, paradas)
   return paradas
 }

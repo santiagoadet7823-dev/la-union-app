@@ -18,6 +18,53 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+### Publicado — 1.13.5 (12/08/2026) — **OTA + PWA, sin APK ni migración**
+
+Dos cosas: **el cache del detector que en 1.13.4 quedó a medio camino**, y el **buscador de clientes**
+en la pantalla del vendedor (pendiente desde el 08/08).
+
+#### 🩸 El cache estaba en el consumidor, no en el módulo
+
+1.13.4 puso el `WeakMap` en `features/supervision/dwells.js` y por eso el cliente reportó que el mapa
+**seguía lento**. `MetricasEquipo.metricasParadas` llama a `detectarParadas` **por su cuenta**, así
+que en una supervisión el detector corría dos veces por persona y solo una estaba cacheada. Medido
+sobre la jornada del 11/08 con 1.13.4 puesto: 673 ms el del mapa (cacheado) **+ 552 ms el de las
+métricas, en cada recálculo**. Son cuatro los llamadores (mapa, métricas, ficha de persona e informe
+de jornada) y ninguno debería tener que acordarse.
+
+Movido adentro de `detectarParadas`. Medido sobre los 63 persona-días reales: la segunda llamada
+pasa de **552 ms a 1,2 ms**, con **0 diferencias** en 605 paradas.
+
+⚠️ Se cachea **solo con las opciones por defecto** (si no, dos llamadas con umbrales distintos se
+pisarían) y **el array devuelto no se muta** — verificado en los cuatro llamadores.
+
+#### 🩸 Y la lista del vendedor dibujaba las 1.803 tarjetas siempre
+
+Al verificar el buscador nuevo apareció el problema de fondo: **escribir UNA tecla no terminaba en
+30 segundos**, tres intentos seguidos. Son ~12 nodos de DOM y **13 llamadas a `sx()` por tarjeta**, y
+`sx()` parsea un string CSS en cada llamada → **~22.000 nodos y ~23.400 parseos por render**.
+
+Con el tope de 50: **906 nodos** (medido en pantalla, con los 1.803 clientes reales cargados), pie
+"Mostrando 50 de 1803" y botón "Ver 50 más".
+
+#### Qué se verificó y qué no
+
+✅ **En pantalla, con la sesión real y los 1.803 clientes**: 50 tarjetas numeradas 01-50, **906
+nodos**, `basura: false` en el recorrido de nodos de texto (la lección del 11/08 — cada tarjeta tiene
+exactamente número, nombre, localidad, `·`, código y estado), nombre en una línea con ellipsis, botón
+de check-in de 44×44, y el pie con "Ver 50 más".
+
+⚠️ **El filtrado NO se pudo accionar desde el navegador**, y la causa es del arnés, no de la app: el
+panel del navegador está oculto (no compone frames, así que no hay clicks ni tecleo reales), y el
+mock de `navigator.geolocation` que uso para pasar el `GpsGate` entrega una posición y después se
+queda mudo → el gate declara el fix viejo, **remonta el árbol y `useJornada` pierde el estado**. Se
+verificó en cambio la lógica exacta contra la cartera real: `acosta` → **7 de 1.803**, `zayago` → 2,
+un código → 1, `kiosco` → 106 (dibuja 50 y ofrece el resto), `zzzzz` → 0 con el mensaje de vacío.
+
+> 📌 **Para la próxima**: el arnés necesita un mock de geolocalización que lata solo (un
+> `setInterval` que alimente a TODOS los suscriptores). Sin eso, cualquier verificación de estado en
+> la vista del vendedor se cae sola a los 2 segundos y parece un bug de la app.
+
 ### Publicado — 1.13.4 (11/08/2026) — **OTA + PWA, sin APK ni migración**
 
 `app_config`: `latest_version` = `bundle_version` = **1.13.4**; `min_version` sigue en 1.13.0.

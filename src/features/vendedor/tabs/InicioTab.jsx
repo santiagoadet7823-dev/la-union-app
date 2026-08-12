@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Pin } from '../../../components/icons'
@@ -8,6 +9,24 @@ import { card, Stat } from '../ui'
 
 const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
 
+/**
+ * 🩸 CUÁNTAS TARJETAS SE DIBUJAN DE UNA (11/08/2026) — no es una preferencia, es lo que hace usable
+ * la pantalla.
+ *
+ * La lista dibujaba **las 1.803 tarjetas siempre**. Cada una son ~12 nodos de DOM y **13 llamadas a
+ * `sx()`**, y `sx()` (lib/sx.js) parsea un string CSS con `split(';')` y arma un objeto nuevo en
+ * cada llamada, sin memo. O sea **~22.000 nodos y ~23.400 parseos de CSS por render**.
+ *
+ * Medido al verificar el buscador nuevo: escribir UNA tecla con la lista entera montada **no
+ * terminaba en 30 segundos** en el navegador, tres intentos seguidos. El buscador servía para
+ * encontrar al cliente, pero era inusable justo cuando más falta hace.
+ *
+ * 50 y no 20: entra más que una pantalla, así que scrollear un poco sigue funcionando como siempre
+ * y el pie solo aparece cuando de verdad hay más. **No se agrega una librería de virtualización**:
+ * el repo no usa ninguna y esto no lo justifica.
+ */
+const POR_TANDA = 50
+
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
 export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
@@ -15,6 +34,18 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
   const puedeCatalogo = !!onAbrirCatalogo && (permisos || []).includes('catalogo')
   const nombre = perfil?.nombre || 'Vendedor'
   const { clients, done, conPedido, montoHoy, meta, efect, nextId, startVisit, catLoading } = j
+  // 🩸 La lista que se DIBUJA sale filtrada de `useJornada`, pero los contadores de arriba
+  // (Paradas, barra de progreso) siguen saliendo de `clients` ENTERO: el avance de la jornada es
+  // sobre la cartera real, no sobre lo que el vendedor esté buscando en este momento.
+  const { clientsFiltrados: lista, buscaCli, setBuscaCli, soloPendientes, setSoloPendientes } = j
+
+  // Tope de tarjetas dibujadas (ver POR_TANDA). Vive acá y NO en `useJornada` a propósito: es
+  // estado de PRESENTACIÓN, y que se reinicie al volver a la pestaña es lo correcto — nadie espera
+  // reencontrar "500 tarjetas desplegadas" media hora después.
+  const [tope, setTope] = useState(POR_TANDA)
+  // Cada búsqueda o cambio de filtro arranca de cero: si no, buscar algo con 3 resultados dejaría
+  // el tope en 500 y "Ver 50 más" seguiría ahí sin nada que mostrar.
+  useEffect(() => { setTope(POR_TANDA) }, [buscaCli, soloPendientes])
 
   return (
     <div style={sx('flex:1;overflow-y:auto;padding:14px 14px 92px')}>
@@ -98,6 +129,42 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
         </button>
       </div>
 
+      {catLoading || clients.length === 0 ? null : (
+        <div style={sx('margin-bottom:10px')}>
+          <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:42px')}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" style={{ flex: 'none' }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
+            <input
+              value={buscaCli}
+              onChange={(e) => setBuscaCli(e.target.value)}
+              placeholder="Buscar comercio o código…"
+              aria-label="Buscar entre mis clientes"
+              style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}
+            />
+            {buscaCli && (
+              <button onClick={() => setBuscaCli('')} aria-label="Limpiar búsqueda"
+                style={sx('width:22px;height:22px;flex:none;border:none;border-radius:var(--r-pill);background:var(--line);display:grid;place-items:center;font-size:12px;color:var(--muted);cursor:pointer')}>✕</button>
+            )}
+          </div>
+          <div style={sx('display:flex;align-items:center;gap:8px;margin-top:8px')}>
+            <button
+              onClick={() => setSoloPendientes((v) => !v)}
+              aria-pressed={soloPendientes}
+              style={{
+                ...sx('border-radius:var(--r-pill);padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer'),
+                background: soloPendientes ? 'var(--primary-tint)' : 'var(--surface2)',
+                border: `1px solid ${soloPendientes ? 'var(--primary)' : 'var(--line)'}`,
+                color: soloPendientes ? 'var(--deep)' : 'var(--muted)',
+              }}
+            >
+              Por visitar {clients.length - done}
+            </button>
+            <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
+              {lista.length === clients.length ? `${clients.length} clientes` : `${lista.length} de ${clients.length}`}
+            </div>
+          </div>
+        </div>
+      )}
+
       {catLoading ? (
         <div style={sx('padding:30px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Cargando clientes…</div>
       ) : clients.length === 0 ? (
@@ -105,8 +172,15 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px')}>Todavía no tenés clientes</div>
           <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>Agregá tu primer comercio con el botón <b>Nuevo</b>. Se marca en el mapa con tu ubicación actual.</div>
         </div>
+      ) : lista.length === 0 ? (
+        <div style={{ ...card, textAlign: 'center', padding: '26px 18px' }}>
+          <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>
+            Ningún comercio coincide con <b>{buscaCli || 'el filtro'}</b>.
+          </div>
+        </div>
       ) : (
-        clients.map((c, i) => {
+        lista.slice(0, tope).map((c) => {
+          const i = c.idx
           const isNext = c.id === nextId
           const pill = c.status === 'visitado' ? ['Visitado', 'var(--success)', 'var(--success-tint)']
             : c.status === 'sin_pedido' ? ['Sin pedido', 'var(--warning)', 'var(--warning-tint)']
@@ -167,6 +241,23 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
             </div>
           )
         })
+      )}
+
+      {lista.length > tope && (
+        <div style={{ ...card, textAlign: 'center', padding: '14px 16px' }}>
+          <div style={sx('font-size:11.5px;color:var(--faint);font-family:var(--font-mono);margin-bottom:8px')}>
+            Mostrando {tope} de {lista.length}
+          </div>
+          <button
+            onClick={() => setTope((t) => t + POR_TANDA)}
+            style={sx('background:var(--primary-tint);border:1px solid var(--primary);color:var(--deep);border-radius:10px;padding:8px 16px;font-size:12.5px;font-weight:600;cursor:pointer')}
+          >
+            Ver {Math.min(POR_TANDA, lista.length - tope)} más
+          </button>
+          <div style={sx('font-size:11px;color:var(--faint);line-height:1.5;margin-top:8px')}>
+            O buscá el comercio arriba: es más rápido que bajar.
+          </div>
+        </div>
       )}
     </div>
   )
