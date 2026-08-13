@@ -215,6 +215,49 @@ export const HUECO_MS = 4 * 60000
  * ⚠️ Esto NO toca los 45.000: el umbral de TIEMPO sigue espejando a `segmentar.ts` y la Edge
  * Function no se toca. Del lado del snap la guarda ya era inmune por construcción — un hop ciego de
  * 3 m aporta ~0 a `fraccionCiega`, que mide LARGO ruteado a ciegas.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * 🔴 RETIRADO EL 13/08/2026 POR DECISIÓN EXPLÍCITA DEL CLIENTE. La constante y todo lo de arriba se
+ * conservan a propósito (regla 24): esto no es código muerto, es la memoria de por qué existió y el
+ * mapa para volver a prenderlo. El corte por hueco dudoso está comentado en `limpiarTrazo`; para
+ * restaurarlo alcanza con descomentar esa rama.
+ *
+ * QUÉ PASÓ. El cliente reportó que el recorrido de Gabriel Tevez "está todo en puntos" y pidió
+ * sacarlo, diciendo que le borra trazos. Se midió antes de tocar nada, sobre su jornada del 13/08:
+ *
+ *   · NO borra recorrido: solo el 0,7 % de sus puntos cae en segmentos de 1 punto (los únicos que
+ *     no se dibujan). Los km tampoco cambian — salen de `puntos`. En eso el diagnóstico era erróneo.
+ *   · PERO la percepción era correcta: su día quedaba partido en **31 segmentos** de ~10 puntos
+ *     contra 4 de Orlando y 3 de Agustin el mismo día, y el **80 % de sus km** caía en los conectores
+ *     punteados. Visualmente es un trazo de puntos, porque los pedazos sólidos son cortos y el
+ *     movimiento ocurre justo en los saltos.
+ *   · La causa de fondo NO es esta guarda: sus puntos están a 32,5 s de mediana y 58,5 s en el p90
+ *     porque los dispara el latido de cortesía de 30 s (su distancia mediana entre puntos es 1,6 m:
+ *     camina, y el filtro de 9 m casi nunca salta). Con la cadencia fijada en 5 s NO cambió nada.
+ *
+ * EFECTO MEDIDO ANTES DE PUBLICARLO, sobre la jornada real del 13/08 (no sintética):
+ *
+ *   Gabriel tevez   32 → 3 segmentos · 3,39 km pasan a línea llena · recta más larga nueva:  237 m
+ *   Javier          16 → 7           · 1,29 km                     ·                         304 m
+ *   Luis Mendoza     9 → 3           · 0,62 km                     ·                         178 m
+ *   Agustin (control) 3 → 1          · 0,11 km                     ·                          55 m
+ *   Orlando (control) 4 → 4          · sin cambios                 ·                           —
+ *
+ * 🩸 LO QUE HAY QUE ESPERAR, y quedó advertido antes de hacerlo: esta guarda entró el 10/08 porque
+ * el mismo cliente reportó que **"el trazo salta calles"**. Sacarla vuelve a dibujar rectas llenas
+ * sobre huecos de hasta `HUECO_MS` (4 min), que es exactamente lo que producía ese síntoma.
+ *
+ * PERO EL RIESGO YA NO ES EL MISMO, y ése es el argumento que hace defendible el cambio: cuando se
+ * puso la guarda, **la recta más larga que tapaba medía 3.839 m**. Hoy la peor mide **237 m**, o sea
+ * 16 veces menos. La razón es que en el medio la cadencia de captura bajó de 30 s a 4-5 s: con
+ * puntos más juntos, un hueco de 45 s ya no esconde media ciudad, esconde media cuadra. La guarda
+ * resolvía un problema que la cadencia venía achicando sola.
+ *
+ * Si el "salta calles" vuelve igual, **la respuesta correcta NO es volver a picar el trazo**: es
+ * acercar los puntos en el TIEMPO —bajarle el latido de cortesía a quien camina, por perfil de
+ * usuario (`db/39`)— para que no haya huecos que tapar. Está identificado y medido: los puntos de
+ * Gabriel están a 32,5 s porque los dispara el keepalive de 30 s, no el movimiento.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
  */
 export const HUECO_DUDOSO_MS = 45000
 
@@ -515,7 +558,14 @@ export function limpiarTrazo(points) {
       if (hueco) {
         if (actual.length) segmentos.push(actual)
         actual = []
-      } else if (dt * 1000 > HUECO_DUDOSO_MS && d >= pisoDeRuido(ult, p)) {
+      // 🔴 CORTE POR HUECO DUDOSO — RETIRADO EL 13/08/2026 A PEDIDO EXPLÍCITO DEL CLIENTE.
+      // Se conserva comentado, con su razonamiento entero, porque no es código muerto sino la
+      // memoria de una decisión (regla 24) y el mapa para volver a prenderlo: descomentar esta rama
+      // lo restaura tal cual estaba. Toda la medición —qué borraba de verdad (0,7 %), qué no
+      // (los km), y qué hay que hacer si vuelve el "salta calles"— está en el 🩸 de
+      // `HUECO_DUDOSO_MS`, arriba. LEER ESO ANTES DE TOCAR ESTO.
+      //
+      // } else if (dt * 1000 > HUECO_DUDOSO_MS && d >= pisoDeRuido(ult, p)) {
         // HUECO DUDOSO: no alcanza para cortar el recorrido, pero tampoco se puede afirmar por dónde
         // pasó. Se cierra la línea llena acá y el segmento se reabre en el punto nuevo.
         //
@@ -532,8 +582,8 @@ export function limpiarTrazo(points) {
         // el 🩸 de `HUECO_DUDOSO_MS`, con los números del 10/08. Usa el piso ADAPTATIVO y no el
         // fijo por el mismo motivo que los km: en un teléfono con 25 m de precisión, 12 metros de
         // "desplazamiento" durante el hueco no son evidencia de que se haya movido a ningún lado.
-        if (actual.length) segmentos.push(actual)
-        actual = []
+      //   if (actual.length) segmentos.push(actual)
+      //   actual = []
       }
     }
 
