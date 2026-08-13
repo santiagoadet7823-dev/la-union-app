@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { App as CapApp } from '@capacitor/app'
 import { supabase, hasSupabase } from '../services/supabase'
-import { primerInstallMs } from '../services/infoApp'
+import { primerInstallMs, modeloDispositivo } from '../services/infoApp'
 import { APP_VERSION } from '../version'
 import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
@@ -53,7 +53,11 @@ const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_ver
   // `_ts` se suben pero NO comparan — son marcas de tiempo que avanzan solas y dispararían un
   // upsert cada 2 minutos, que es justo lo que esta lista existe para evitar (mismo criterio que
   // `red_desde`). Y `alarma_proxima_ts` cambia en cada reprogramación, o sea siempre.
-  'alarma_exacta', 'fgs_bloqueado']
+  'alarma_exacta', 'fgs_bloqueado',
+  // Modelo del teléfono (db/39). Entra en la comparación porque es ESTADO puro: no cambia nunca en
+  // un mismo aparato, así que no dispara upserts, pero hace que el primer latido que lo conozca sí
+  // suba en vez de esperar los 10 min de FORZAR_MS.
+  'modelo']
 
 /**
  * Motivo legible del fallo de GPS. `permiso: 'denegado'` solo decía QUE fallaba, no
@@ -234,12 +238,20 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // estaba escrito para `fcm_token`: "no sé" y "no tiene" son cosas distintas, y omitir deja la
       // columna como estaba en vez de borrarla. Un usuario que solo usa la PWA queda con
       // `app_version` null y sin token, así que la función lo filtra igual (`fcm_token is not null`).
+      //
+      // `modelo` va en este grupo por el mismo motivo, y no es teórico: alguien que abre la PWA desde
+      // el navegador de un Android le escribiría a la fila el modelo de ESE teléfono, que puede no ser
+      // el que trabaja. Se omite si es null (misma lógica que `fcm_token`): "todavía no sé" no pisa
+      // al que ya está — y acá puede ser null para siempre si el WebView reduce la UA (ver
+      // `modeloDispositivo`).
+      const modelo = isNative() ? modeloDispositivo() : null
       const identidad = isNative() ? {
         app_version: APP_VERSION,
         apk_version: apkRef.current,
         instalado_ts: instaladoRef.current,
         notif_permiso: notif,
         bateria_exenta: exenta,
+        ...(modelo ? { modelo } : {}),
       } : {}
       const estado = { cola_pendiente: cola, cuarentena_pendiente: cuar, ...identidad, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...diagArranque, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS

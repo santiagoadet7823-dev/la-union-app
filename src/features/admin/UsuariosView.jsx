@@ -9,6 +9,8 @@ import { panel, FilaTabla, CabeceraTabla } from './ui'
 import { PALETA, colorPorId } from '../../lib/colors'
 import { invalidarPerfilesEquipo } from '../../hooks/usePerfilesEquipo'
 import { invalidarTrackCache } from '../../services/tracking'
+import { normalizarPerfil, resumenPerfil, BASE as GPS_BASE } from '../../services/gpsPerfil'
+import { hoyStr } from '../../lib/format'
 
 /**
  * Gestión de usuarios (RBAC). El admin ve a los usuarios de su empresa + los
@@ -38,13 +40,27 @@ const rolPill = (r) => {
 }
 
 /**
+ * Cadencia que el SERVICIO NATIVO dice tener vigente (`estado_dispositivo.gps_intervalo_ms`).
+ *
+ * 🩸 Es el único testigo de que un perfil de GPS aterrizó de verdad. Lo escribe el propio servicio,
+ * no el panel: si a Gabriel se le pone "5 s fijos" y al día siguiente sigue reportando 30 s, el
+ * override NO llegó y no hay nada que medir. Sin este número, "no funcionó" y "no llegó" se ven
+ * exactamente igual — que es como se perdieron las tres pruebas de constantes anteriores.
+ */
+function cadenciaReportada(estado) {
+  const ms = estado?.gps_intervalo_ms
+  if (typeof ms !== 'number' || ms <= 0) return null
+  return ms % 1000 === 0 ? `${ms / 1000} s` : `${ms} ms`
+}
+
+/**
  * Fila de usuario. DEFINIDA A NIVEL DE MÓDULO (no dentro de UsuariosView): la vista se
  * monta como overlay dentro de SupervisionMovil, que re-renderiza cada 1s (labels "hace
  * Xs"). Si Fila se definiera en el cuerpo del componente, sería un tipo nuevo por render
  * y React remontaría cada fila cada segundo (cerrando los <select> y perdiendo el foco).
  * Con tipo estable, el re-render del padre ya no desmonta las filas.
  */
-function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, categorias, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile, abrirColor }) {
+function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, categorias, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, isMobile, abrirColor, abrirGps, estado }) {
   // Muestra de color del trazo del usuario en el mapa. Solo el superadmin la ve y la edita; para el
   // resto no se renderiza. El color mostrado es el efectivo: el fijado a mano o, si no hay, el del hash.
   const swatch = esSuper && u.activo && u.rol && (
@@ -104,6 +120,27 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
     </label>
   ) : null
 
+  // Perfil de GPS por usuario (db/39). Solo para roles que se trackean y solo para el superadmin: es
+  // una perilla de diagnóstico, no de operación diaria. Muestra el estado efectivo y, al lado, la
+  // cadencia que el TELÉFONO reporta — que es lo único que prueba que el override aterrizó.
+  const hayGps = normalizarPerfil(u.gps_perfil) != null
+  const btnGps = esSuper && esTrackeado && u.activo && u.rol ? (
+    <button
+      type="button"
+      onClick={() => abrirGps(u)}
+      className="lu-press"
+      title="Perfil de GPS de esta persona (cadencia de captura)"
+      style={{
+        ...sx('margin-top:6px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600;cursor:pointer;text-align:left'),
+        border: '1px solid ' + (hayGps ? 'var(--info)' : 'var(--line2)'),
+        background: 'transparent',
+        color: hayGps ? 'var(--info)' : 'var(--muted)',
+      }}
+    >
+      GPS: {resumenPerfil(u.gps_perfil)}{cadenciaReportada(estado) ? ` · reporta ${cadenciaReportada(estado)}` : ''}
+    </button>
+  ) : null
+
   const selRol = (
     <>
       <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
@@ -112,6 +149,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
       </select>
       {selCategoria}
       {chkPermisos}
+      {btnGps}
     </>
   )
   const inpNumero = (
@@ -347,6 +385,170 @@ function ColorTrazoModal({ usuario, onClose, onToast, onGuardado }) {
   )
 }
 
+/**
+ * PERFIL DE GPS POR USUARIO (13/08/2026, db/39). Solo superadmin.
+ *
+ * EL PEDIDO fue "forzar GPS cada 5 s a usuarios específicos desde el panel". Lo que esta pantalla
+ * hace de verdad —y por qué no es solo un campo de segundos— está argumentado en `gpsPerfil.js`:
+ * la cadencia base ya está en 4 s, y a Gabriel y Eduardo lo que les pasa es que caen a los 30 s de
+ * la cadencia "quieto" y no salen más. Lo que sirve es FIJARLA, no bajarla.
+ *
+ * DEFINIDO A NIVEL DE MÓDULO por la misma razón que `Fila`/`ColorTrazoModal`: UsuariosView se monta
+ * dentro de SupervisionMovil, que re-renderiza cada 1s; un tipo nuevo por render lo remontaría y el
+ * form perdería el foco a cada tecla.
+ */
+function GpsPerfilModal({ usuario, estado, onClose, onToast, onGuardado }) {
+  const [f, setF] = useState({ modo: 'auto', intervalo_s: 5, fijar_cadencia: true, min_move_m: '', nota: '' })
+  const [guardando, setGuardando] = useState(false)
+  const open = !!usuario
+  // Retener el último usuario: al cerrar, `usuario` pasa a null y el cuerpo se quedaría sin datos
+  // DURANTE la animación de salida del Overlay (gotcha §7.2 de CLAUDE.md).
+  const vistaRef = useRef(usuario)
+  if (usuario) vistaRef.current = usuario
+  const v = vistaRef.current
+  const estRef = useRef(estado)
+  if (usuario) estRef.current = estado
+  const est = estRef.current
+
+  // Hidratar el form con lo que ya tiene guardado, al abrir sobre CADA usuario (no solo al montar).
+  useEffect(() => {
+    if (!usuario) return
+    const p = normalizarPerfil(usuario.gps_perfil)
+    setF({
+      modo: p?.modo || 'auto',
+      intervalo_s: p?.intervalo_s ?? 5,
+      fijar_cadencia: p ? p.fijar_cadencia : true,
+      min_move_m: p?.min_move_m ?? '',
+      nota: p?.nota || '',
+    })
+    setGuardando(false)
+  }, [usuario])
+
+  const set = (patch) => setF((p) => ({ ...p, ...patch }))
+
+  async function guardarPerfil() {
+    if (!v) return
+    // `auto` se guarda como NULL, no como {"modo":"auto"}: así la columna dice literalmente "esta
+    // persona no tiene override" y la consulta de control (`where gps_perfil is not null`) no miente.
+    const valor = f.modo === 'auto' ? null : normalizarPerfil({
+      modo: f.modo,
+      intervalo_s: Number(f.intervalo_s),
+      fijar_cadencia: f.fijar_cadencia,
+      min_move_m: f.min_move_m === '' ? null : Number(f.min_move_m),
+      nota: f.nota,
+      desde: hoyStr(),
+    })
+    setGuardando(true)
+    const { error } = await supabase.from('perfiles').update({ gps_perfil: valor }).eq('id', v.id)
+    setGuardando(false)
+    if (error) { onToast?.('Error: ' + error.message); return }
+    // El teléfono cachea la config 4 min; sin esto el cambio tardaría en aplicarse (mismo motivo que
+    // en `guardar`, donde se invalida por el horario).
+    invalidarTrackCache()
+    onToast?.(valor
+      ? `GPS de ${v.nombre || 'usuario'}: ${resumenPerfil(valor)}`
+      : `GPS de ${v.nombre || 'usuario'} en automático`)
+    onGuardado?.()
+    onClose?.()
+  }
+
+  const esAuto = f.modo === 'auto'
+  const btnModo = (modo, etiqueta, ayuda) => (
+    <button
+      key={modo}
+      type="button"
+      onClick={() => set({ modo })}
+      className="lu-press"
+      title={ayuda}
+      style={{
+        ...sx('flex:1;padding:9px 8px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer'),
+        border: '1px solid ' + (f.modo === modo ? 'var(--primary)' : 'var(--line2)'),
+        background: f.modo === modo ? 'var(--primary)' : 'transparent',
+        color: f.modo === modo ? 'var(--on-primary)' : 'var(--muted)',
+      }}
+    >{etiqueta}</button>
+  )
+
+  return (
+    <Overlay
+      open={open}
+      onClose={onClose}
+      title="Perfil de GPS"
+      subtitle={v ? `Cadencia de captura de ${v.nombre || 'este usuario'}.` : ''}
+      maxWidth={430}
+      footer={
+        <>
+          <button onClick={onClose} disabled={guardando} className="lu-press" style={{ ...btnGhost, flex: 1, minHeight: 44 }}>Cancelar</button>
+          <button onClick={guardarPerfil} disabled={guardando} className="lu-press" style={{ ...btnPrimary, flex: 1, minHeight: 44 }}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </>
+      }
+    >
+      {/* Lo que el TELÉFONO reporta ahora. Va arriba de todo a propósito: es contra este número que
+          se comprueba, al día siguiente, si el perfil llegó. */}
+      <div style={sx('font-size:11.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;line-height:1.6;margin-bottom:12px')}>
+        <b style={sx('color:var(--text)')}>El teléfono reporta:</b>{' '}
+        cadencia {cadenciaReportada(est) || '—'} · app {est?.app_version || '—'} · {est?.modelo || 'modelo desconocido'}
+        <div style={sx('margin-top:4px;opacity:.85')}>
+          Base de toda la operación: {GPS_BASE.intervaloS} s, {GPS_BASE.rapidoS} s en movimiento, {GPS_BASE.quietoS} s quieto.
+        </div>
+      </div>
+
+      <Field label="Modo">
+        <div style={sx('display:flex;gap:8px')}>
+          {btnModo('auto', 'Automático', 'Lo de hoy: la cadencia se adapta sola a la velocidad y al acelerómetro')}
+          {btnModo('intensivo', 'Intensivo', 'Cadencia fija: ni el acelerómetro ni la velocidad la pueden bajar')}
+          {btnModo('ahorro', 'Ahorro', 'Cadencia fija alta')}
+        </div>
+      </Field>
+
+      {esAuto ? (
+        <div style={sx('font-size:12px;color:var(--muted);line-height:1.6;margin-top:4px')}>
+          Sin cambios: esta persona usa la configuración general. Es lo que tienen todos.
+        </div>
+      ) : (
+        <>
+          <div style={sx('display:flex;gap:10px')}>
+            <div style={sx('flex:1')}>
+              <Field label="Cada cuántos segundos">
+                <input type="number" min="2" max="60" value={f.intervalo_s}
+                  onChange={(e) => set({ intervalo_s: e.target.value })}
+                  style={inputStyle} className="lu-input" />
+              </Field>
+            </div>
+            <div style={sx('width:130px')}>
+              <Field label="Mínimo movimiento">
+                <input type="number" min="9" max="100" placeholder={`${GPS_BASE.minMoveM} m`} value={f.min_move_m}
+                  onChange={(e) => set({ min_move_m: e.target.value })}
+                  style={inputStyle} className="lu-input"
+                  title="Metros que hay que moverse para guardar un punto. Vacío = el general (9 m). Ojo: en un teléfono con precisión de 15-20 m, subirlo puede ayudar más que bajarlo." />
+              </Field>
+            </div>
+          </div>
+
+          <label style={sx('display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;line-height:1.5;margin-top:2px')}>
+            <input type="checkbox" checked={f.fijar_cadencia} onChange={(e) => set({ fijar_cadencia: e.target.checked })} style={sx('margin-top:2px')} />
+            <span>
+              <b style={sx('color:var(--text)')}>Fijar la cadencia</b> — el teléfono captura siempre a ese ritmo, aunque el
+              acelerómetro diga que está quieto. Es lo que destraba a quien se queda pegado en {GPS_BASE.quietoS} s.
+              Destildado, solo cambia la cadencia base y la adaptativa sigue funcionando.
+            </span>
+          </label>
+
+          <Field label="Nota (para acordarse de qué prueba es)">
+            <input type="text" maxLength={120} value={f.nota} onChange={(e) => set({ nota: e.target.value })}
+              style={inputStyle} className="lu-input" placeholder="prueba cadencia fija" />
+          </Field>
+
+          <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:2px')}>
+            Se aplica en unos minutos, sin reinstalar nada. Para confirmar que llegó, mirá mañana que
+            “el teléfono reporta” diga {f.intervalo_s || '—'} s.
+          </div>
+        </>
+      )}
+    </Overlay>
+  )
+}
+
 export default function UsuariosView({ onToast }) {
   const { rol, idEmpresa, user } = useAuth()
   const { isMobile } = useDevice()
@@ -361,12 +563,14 @@ export default function UsuariosView({ onToast }) {
   const [savingId, setSavingId] = useState(null)
   const [crear, setCrear] = useState(false) // modal de alta manual abierto
   const [colorFor, setColorFor] = useState(null) // usuario cuyo color se está editando (solo superadmin)
+  const [gpsFor, setGpsFor] = useState(null) // usuario cuyo perfil de GPS se está editando (solo superadmin)
+  const [estados, setEstados] = useState({}) // id_usuario → fila de estado_dispositivo (lo que reporta el teléfono)
 
   const cargar = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo, permisos')
+      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo, permisos, gps_perfil')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     // Categorías asignadas a cada uno (tabla puente, 1.8.0). Se traen todas de una y se agrupan:
@@ -382,6 +586,14 @@ export default function UsuariosView({ onToast }) {
     // Categorías de rastreo (para asignarlas por usuario). RLS las acota a la empresa (o todas si superadmin).
     const { data: cats } = await supabase.from('categorias_rastreo').select('id, nombre, id_empresa, activo').order('nombre')
     setCategorias((cats || []).filter((c) => c.activo !== false))
+    // Lo que REPORTA cada teléfono. Es el testigo del perfil de GPS: sin esto, "el override no llegó"
+    // y "el override llegó y no sirvió" se ven exactamente igual desde el panel. RLS ya acota
+    // (superadmin ve todo, admin su empresa), así que no hace falta filtrar acá.
+    const { data: est } = await supabase.from('estado_dispositivo')
+      .select('id_usuario, gps_intervalo_ms, modelo, app_version, telemetria_ts, updated_at')
+    const porEstado = {}
+    ;(est || []).forEach((e) => { porEstado[e.id_usuario] = e })
+    setEstados(porEstado)
     setLoading(false)
   }, [esSuper])
 
@@ -448,7 +660,7 @@ export default function UsuariosView({ onToast }) {
   const activos = usuarios.filter((u) => u.activo && u.rol)
 
   // Props comunes para cada Fila (componente de módulo → tipo estable, no remonta por el tick de 1s del padre).
-  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, categorias, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, abrirColor: setColorFor }
+  const filaProps = { setEdit, esSuper, isMobile, empresas, empresaNombre, categorias, rolesDisponibles, savingId, guardar, cambiarEstado, idEmpresa, user, abrirColor: setColorFor, abrirGps: setGpsFor }
 
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
@@ -477,13 +689,13 @@ export default function UsuariosView({ onToast }) {
             {pendientes.length > 0 && (
               <>
                 <div style={sx('padding:10px 10px 4px;font-size:11px;font-weight:600;color:var(--warning)')}>Pendientes de aprobación ({pendientes.length})</div>
-                {pendientes.map((u) => <Fila key={u.id} u={u} esPendiente ed={edits[u.id] || {}} {...filaProps} />)}
+                {pendientes.map((u) => <Fila key={u.id} u={u} esPendiente ed={edits[u.id] || {}} estado={estados[u.id]} {...filaProps} />)}
               </>
             )}
 
             <div style={sx('padding:10px 10px 4px;font-size:11px;font-weight:600;color:var(--muted)')}>Habilitados ({activos.length})</div>
             {activos.length === 0 && <div style={sx('padding:14px 10px;color:var(--faint);font-size:12px')}>Todavía no hay usuarios habilitados.</div>}
-            {activos.map((u) => <Fila key={u.id} u={u} ed={edits[u.id] || {}} {...filaProps} />)}
+            {activos.map((u) => <Fila key={u.id} u={u} ed={edits[u.id] || {}} estado={estados[u.id]} {...filaProps} />)}
           </>
         )}
       </div>
@@ -503,6 +715,16 @@ export default function UsuariosView({ onToast }) {
         <ColorTrazoModal
           usuario={colorFor}
           onClose={() => setColorFor(null)}
+          onToast={onToast}
+          onGuardado={cargar}
+        />
+      )}
+
+      {esSuper && (
+        <GpsPerfilModal
+          usuario={gpsFor}
+          estado={gpsFor ? estados[gpsFor.id] : null}
+          onClose={() => setGpsFor(null)}
           onToast={onToast}
           onGuardado={cargar}
         />

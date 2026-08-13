@@ -8,6 +8,7 @@ import {
   MIN_MOVE_URBANO_M, MIN_MOVE_RUTA_M, VEL_RUTA_MPS, NEAR_LIVE_QUIETO_MS,
   ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS,
 } from './gpsConfig'
+import { paramsDePerfil } from './gpsPerfil'
 
 /**
  * Bridge al uploader GPS NATIVO (Opción B, 24/07/2026). El servicio nativo (UploaderGpsService) captura
@@ -54,6 +55,11 @@ function aMinutos(hhmm) {
  * declaraba 10 s. O sea que la constante existía, se documentaba, y el uploader nativo (que es el
  * que está en la calle) la ignoraba: bajar NEAR_LIVE_MS no hacía absolutamente nada. Los dos únicos
  * llamadores no pasan la opción, así que el default ES el valor real de producción.
+ *
+ * Desde 1.14.0, `cfg.gps` puede traer un PERFIL DE GPS POR USUARIO (db/39) que pisa la cadencia y el
+ * filtro de movimiento de esa persona. Llega gratis: `getTrackConfig` ya lo adosa al mismo `cfg` que
+ * los dos llamadores pasan, y se reempuja en cada refresco de la ventana (cada 4 min), así que un
+ * cambio desde el panel llega al teléfono sin reiniciar nada — igual que el horario.
  */
 export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIVE_MS, userId = null } = {}) {
   if (!isNative() || !INGEST_URL) return
@@ -90,6 +96,12 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
     const ventanas = vs
       .map((v) => `${aMinutos(v.start)}-${aMinutos(v.end)}-${Array.isArray(v.days) && v.days.length ? v.days.join(',') : ''}`)
       .join(';')
+    // Perfil de GPS por usuario (db/39, 13/08/2026). `null` para todo el mundo salvo los que el
+    // superadmin puso en prueba desde Usuarios. Viene adosado al `cfg` por `getTrackConfig`, así que
+    // no hace falta una consulta más ni tocar los llamadores: los dos ya pasan el cfg completo.
+    // Se traduce en `gpsPerfil.js` (whitelist + clamps) y se aplica AL FINAL del objeto, para que
+    // quede claro que es un delta sobre los defaults y no una segunda fuente de verdad (regla 22-ter).
+    const perfilGps = paramsDePerfil(c.gps)
     await UploaderGps.configurar({
       token: tokenCache, url: INGEST_URL, intervaloMs, dueno,
       startMin, endMin, dias, ventanas,
@@ -118,6 +130,9 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       intervaloQuietoMs: NEAR_LIVE_QUIETO_MS,
       accuracyRedMaxM: ACCURACY_RED_MAX_M, silencioMs: SILENCIO_MS,
       repedidoMinMs: REPEDIDO_MIN_MS,
+      // Va último: pisa `intervaloMs` / `intervaloRapidoMs` / `intervaloQuietoMs` / `minMoveM` para
+      // las personas en prueba, y no existe para el resto. Ver `paramsDePerfil`.
+      ...(perfilGps || {}),
     })
     await UploaderGps.iniciar()
     iniciado = true

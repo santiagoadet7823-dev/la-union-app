@@ -17,6 +17,9 @@ let gCache = null
 let gCacheAt = 0
 const uCache = new Map() // userId → { cfg, at }
 const TTL = 4 * 60000
+// Último `gps_perfil` conocido por usuario. Es la red de contención para el caso sin red — ver
+// `cfgGps`, abajo.
+const ultimoGps = new Map() // userId → gps_perfil crudo (o null)
 
 async function cfgGlobal(force = false) {
   if (!force && gCache && Date.now() - gCacheAt < TTL) return gCache
@@ -80,8 +83,36 @@ async function cfgOverride(userId) {
 }
 
 /**
+ * Perfil de GPS del usuario (`perfiles.gps_perfil`, db/39). null = automático, que es lo que tiene
+ * todo el mundo por defecto. Viaja como `cfg.gps` hasta `uploaderNativo`, que lo traduce a
+ * parámetros con `services/gpsPerfil.js` — acá NO se interpreta, solo se transporta.
+ *
+ * Se lee acá y no del `perfil` de AuthContext a propósito: este camino ya tiene refresco periódico
+ * (TTL de 4 min desde usePublishPosition) e invalidación desde el panel (`invalidarTrackCache`, que
+ * UsuariosView ya llama al guardar). Colgado de `perfil`, un cambio del superadmin habría tardado
+ * hasta el próximo `cargarPerfil`, que no tiene periodicidad.
+ *
+ * 🩸 SI LA CONSULTA FALLA, SE CONSERVA EL ÚLTIMO VALOR CONOCIDO — no se cae a "automático". La
+ * diferencia importa justo cuando importa: un corte de datos a media mañana revertiría en silencio
+ * la prueba de esa persona, y la medición del día quedaría contaminada sin que nadie se entere. Un
+ * `null` que SÍ vino de la base sí se honra: así sacar el override desde el panel llega al teléfono.
+ */
+async function cfgGps(userId) {
+  if (!hasSupabase || !userId) return null
+  try {
+    const { data, error } = await supabase.from('perfiles').select('gps_perfil').eq('id', userId).maybeSingle()
+    if (error) throw error
+    const gps = data?.gps_perfil ?? null
+    ultimoGps.set(userId, gps)
+    return gps
+  } catch (_) {
+    return ultimoGps.has(userId) ? ultimoGps.get(userId) : null
+  }
+}
+
+/**
  * Ventana efectiva de rastreo. Con `userId`, aplica el override por categoría si existe;
- * sin él (o sin categoría), devuelve el horario global.
+ * sin él (o sin categoría), devuelve el horario global. Adosa además el perfil de GPS en `cfg.gps`.
  */
 export async function getTrackConfig(userId = null, force = false) {
   if (userId) {
@@ -90,12 +121,23 @@ export async function getTrackConfig(userId = null, force = false) {
     let cfg = null
     try { cfg = await cfgOverride(userId) } catch (_) {}
     if (!cfg) cfg = await cfgGlobal(force)
+    // El perfil de GPS es ORTOGONAL a la ventana horaria, así que se resuelve aparte y se adosa al
+    // final: adentro de `cfgOverride` se perdería para todos los que no tienen categoría de rastreo
+    // propia, que son la mayoría — y son justo las cuatro personas de la prueba.
+    //
+    // ⚠️ El spread NO es cosmético: `cfgGlobal` devuelve el objeto `gCache` COMPARTIDO. Escribirle
+    // `cfg.gps = …` encima le pegaría el perfil de una persona a todas las demás que caigan al
+    // horario global.
+    cfg = { ...cfg, gps: await cfgGps(userId) }
     uCache.set(userId, { cfg, at: Date.now() })
     return cfg
   }
   return cfgGlobal(force)
 }
 
+// `ultimoGps` NO se limpia acá a propósito: no es una caché de lectura sino el respaldo para cuando
+// la consulta falla. Vaciarlo dejaría a un teléfono sin red cayendo a "automático" justo después de
+// una invalidación, que es lo que `cfgGps` existe para evitar. La próxima lectura exitosa lo pisa.
 export function invalidarTrackCache() { gCache = null; uCache.clear() }
 
 /** 'HH:MM' → minuto del día. */
