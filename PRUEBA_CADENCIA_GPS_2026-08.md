@@ -180,3 +180,60 @@ Resultado inmediato: de **12,9 h sin latir** a `app_version 1.14.0` y **14 punto
 **13/08/2026 11:0x** — Gabriel Tevez reporta `gps_intervalo_ms = 5000` (venía de 30.000): el perfil
 de GPS viajó de punta a punta —panel → base → `getTrackConfig` → `configurar()` → SharedPreferences →
 servicio nativo— en un teléfono real en la calle. **El criterio de aceptación del §5 se cumplió.**
+
+---
+
+## 🩸 9. RESULTADO PARCIAL DEL MISMO DÍA: LA CADENCIA NO ES LA PALANCA
+
+Medido a las 14:2x UTC, con el perfil ya aplicado en Gabriel:
+
+| | cadencia PEDIDA | segundos reales entre puntos GUARDADOS |
+|---|---|---|
+| **Gabriel** | **5.000** (perfil aplicado ✅) | **27,5 s** |
+| Eduardo | 10.000 (perfil aún no aterrizó) | 31,0 s |
+| Javier | 4.000 (perfil aún no aterrizó) | 36,1 s |
+| Luis Mendoza | 30.000 (todavía en 1.13.9) | **13,3 s** |
+
+**A Gabriel el perfil de 5 s le llegó y no cambió nada**: sus puntos siguen saliendo cada 27,5 s. Y
+Luis, con la cadencia en 30 s —la más lenta del parque—, guarda cada 13,3 s, porque va en vehículo y
+cada fix supera los 9 m.
+
+Es la confirmación de lo que ya decía `gpsConfig.js` sobre `MIN_MOVE_M` y de la predicción del §4:
+**pedir más seguido no densifica el trazo de quien camina.** Lo que gobierna es el filtro de
+movimiento (9 m) y, cuando ése no salta, el latido de cortesía (`STATIONARY_KEEPALIVE_MS`, 30 s).
+
+### Y de ahí sale el diagnóstico del "todo el trazo en puntos" de Gabriel
+
+El cliente reportó que el recorrido de Gabriel se dibuja punteado y supuso que era la triangulación
+borrándole trazo. **No es la triangulación**: ese día tuvo **0 puntos triangulados** y solo el 4,8 %
+de sus fixes superó los 30 m. Medido sobre la jornada del 13/08 (10:00 UTC en adelante):
+
+| | km del día | km dibujados punteados | dist. mediana entre puntos |
+|---|---|---|---|
+| **Gabriel** | 4,27 | **3,42 — el 80,1 %** | **1,6 m** |
+| Orlando (control) | 20,08 | 0,01 — 0,1 % | 14,6 m |
+| Agustin (control) | 41,78 | 0,05 — 0,1 % | 31,1 m |
+
+Es **`HUECO_DUDOSO_MS`** (45 s, `lib/geo.js`, regla 49): el dibujo deja de afirmar el camino cuando
+entre dos puntos pasa más de eso. Con los puntos de Gabriel a 32,5 s de mediana y **58,5 s en el
+p90**, sus saltos más largos —los que llevan la distancia— caen todos del lado punteado.
+
+Y su distancia mediana entre puntos es **1,6 m**: sus puntos no los dispara el movimiento, los
+dispara el latido de 30 s. Camina, y el filtro de 9 m casi nunca salta.
+
+**La distinción que importa, porque el cliente temía perder recorrido:**
+
+- Los **3,42 km punteados NO se pierden**. Los km salen de `puntos`, no de la línea dibujada. Solo se
+  deja de afirmar *por qué calle* fue — que es honesto: con 58 s entre puntos, la recta cruzaría
+  manzanas por las que nadie pasó.
+- Lo que **sí** queda afuera de los km y del snap son **0,94 km (el 22 %)**: los fixes peores que
+  `ACCURACY_MAX_M`. Eso es pérdida real, y es la precisión del aparato (regla 40).
+
+### Próxima palanca, identificada y DEFERIDA a propósito
+
+Bajarle a Gabriel el latido de cortesía de 30 s a ~20 s pondría todos sus saltos por debajo del corte
+de 45 s y le devolvería la línea llena. `keepAliveMs` **ya viaja al nativo**, así que es solo sumar
+`keepalive_s` a la whitelist de `gpsPerfil.js` y un campo en el modal.
+
+**Se decidió NO hacerlo todavía** (13/08): primero se mide la jornada completa de mañana con la
+cadencia fija. Una variable por vez — que es la regla que este archivo existe para sostener.
