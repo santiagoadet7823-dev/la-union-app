@@ -18,6 +18,82 @@ ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta
 
 Todo en español: código, comentarios, UI y commits.
 
+---
+
+## 🟢 SESIÓN DEL 12/08/2026 (tarde) — Auditoría de GPS + primeros arreglos
+
+**Leer esto primero para retomar.** El informe completo, con la evidencia medida, está en
+**[AUDITORIA_GPS_2026-08.md](AUDITORIA_GPS_2026-08.md)**.
+
+### El veredicto, en tres líneas
+
+Los tres síntomas del cliente —"se pierden ubicaciones", "hay celulares que no mandan", "hay saltos
+ilógicos"— eran **tres fallas distintas**, y **ninguna era la sospechada**. La hipótesis de partida
+(*"la triangulación rompió el pegado a calles"*) acierta el mecanismo y falla el culpable: el carril
+de triangulación aporta **0-50 puntos por día**; los puntos imprecisos los devuelve **FusedLocation**,
+que entrega ubicación de antena sin decirlo y pasa el techo de confianza de 30 m.
+
+Y **no hubo una versión sana**: las filas de snap vacías arrancan el **07/07** y aparecen con todos
+los algos (2, 3, 6, 7, 10). El defecto estaba latente desde julio; lo reveló que el parque empezara a
+entregar fixes ruidosos.
+
+### ✅ En producción, verificado con datos reales
+
+| Qué | Dónde | Verificación |
+|---|---|---|
+| **ALGO 11** — quieto = dibujar crudo, no descartar. Era la causa de que se borraran días enteros | `snap-recorridos` **v16** (`verify_jwt: true`) | El 12/08 pasó a `algo 11` y **0 filas vacías**; Nelson de **2 → 207 bytes** |
+| **P3** — "reportando" sale de la posición, no del latido del JS | `db/36` + `useDiagnosticoEquipo` | Nelson: de *"Sin actividad hoy"* a **"OK · hace 44s"**, leído del DOM |
+| **`gps-no-engancha`** — detecta un GNSS muerto contando fixes ≤ 5 m | `db/37` + el mismo hook | Nelson y Gabriel salen marcados; Javier/Orlando/Agustin no |
+| **P5** — `ultimas_posiciones_compartidas` filtra `accuracy` | `db/35` | `proacl` real verificado, sin PUBLIC ni anon |
+| **P6** — cuentas duplicadas | — | 10 perfiles + 10 logins + 23.945 posiciones eliminados |
+
+⚠️ **Los `db/35-37` están aplicados en la base viva pero el bundle NO está publicado.** El cambio de
+`useDiagnosticoEquipo` vive solo en el working tree: **falta la OTA**.
+
+### 🔴 Lo que NO se puede arreglar desde acá
+
+**Cuatro teléfonos necesitan intervención física** y son la causa principal de lo que ve el cliente:
+
+- **Nelson, Zura, Alejandro, Gabriel** — el GNSS **no engancha**: cero fixes ≤ 5 m en 8 días, sobre
+  miles de puntos. Se ubican por antenas a 15-25 m. Nelson además **se degradó** (el 07/08 tenía
+  82,7 % de fixes buenos y 1,4 m).
+- **Javier es OTRO caso y no hay que confundirlos**: su GNSS engancha perfecto (1,3 m) pero **se le
+  apaga** — 9 huecos de más de 10 min y uno de 37,8. Sospechoso: el solapamiento de sensores (el
+  watcher JS a 1 Hz peleando con el request nativo). Necesita APK.
+
+🩸 **Y hay un círculo que hay que romper:** los teléfonos con el WebView congelado **no pueden bajar
+ni la OTA ni el APK**, porque el auto-updater es JS. Nelson quedó en 1.13.0 y Alejandro en 1.13.1
+mientras el resto llegó a 1.13.8, y `latest_version` ya apuntaba bien. *Los equipos que más necesitan
+el arreglo son estructuralmente los que no lo pueden recibir* — solo se destraba con el cable.
+
+### Pendiente, en orden
+
+1. **Publicar la OTA** con el `useDiagnosticoEquipo` nuevo (build en verde, verificado en pantalla).
+2. **P4** — mostrar en la UI el desglose de `crudos`/`truncados` que el snap ya manda en `_meta`.
+3. **Lote de APK (P7-P10), TODO EN UN SOLO BUILD** para que viaje con la visita física:
+   - **P7** — `UploaderGpsService.java:749` y `:759-762` cuentan **dos veces** el fix retenido. La
+     suma de destinos supera `fix_total` en todos los equipos (Agustin +592). Hasta arreglarlo, la
+     invariante "cada fix tiene destino conocido" **no puede cerrar por definición**.
+   - **P8** — `cola.remove(0)` (`:1005`) descarta los puntos más viejos **sin cuarentena ni
+     telemetría**: la única violación viva de la regla 20.
+   - **P9** — los defaults de Java difieren de producción (`intervalo 15 s`, `minMove 12 m`,
+     `keepAlive 60 s`, `silencio 90 s`).
+   - **P10** — camino de actualización que no dependa del WebView.
+4. **Cruce de empresas sin cerrar**: hay **3 posiciones de `cardixteam@gmail.com` (Prueba SaaS)
+   escritas dentro de LA UNIÓN** el 11/08 21:26. Son 3 puntos de una cuenta de prueba, pero prueban
+   que la guarda de las reglas 11 y 32 **no está sosteniendo**, y `posiciones` no tiene policy de
+   UPDATE ni DELETE: esa fila no se corrige desde la app.
+
+### Dos lecciones de método que costaron algo hoy
+
+- 🩸 **El build verde no prueba nada del DOM.** Un `ReferenceError` del HMR quedó tapado por el
+  `ErrorBoundary` mientras `npm run build` daba EXIT=0. Lo cazó el chequeo del DOM.
+- 🩸 **Un agregado sobre la cola de la distribución miente.** Detectar el GNSS muerto con
+  `min(accuracy) > 8` dejaba pasar a Gabriel, que tiene su mejor fix en 5,8 m y **cero** fixes buenos
+  en mil puntos. Lo que funciona es **contar**, no medir un extremo.
+
+---
+
 ### Publicado — 1.13.8 (12/08/2026) — **El snap borraba recorrido. OTA + PWA**
 
 #### 🔴 "El pegado a calles elimina el trazo" — el cliente tenía razón, y el mecanismo era literal
@@ -848,6 +924,9 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 | **0-bis** | ⏳ **Mandar el push de aviso de 1.13.0** | Los tres canales están publicados pero **nadie avisó a los teléfonos**. Sin el push, los que no se actualizan solos no se enteran | El `net.http_post` a `push-actualizacion` de `CLAUDE.md §3`, con `timeout_milliseconds := 60000`. Lo tiene que correr una persona: lleva la `service_role` key |
 | **0-ter** | 🔴 **Terminar de actualizar 2 teléfonos** | **Eduardo ruiz** nunca se conectó (parece que no le entregaron el equipo) y **Gabriel tevez** no tiene adb remoto | Eduardo: `adb install -r -i com.launion.app` por Tailscale cuando aparezca. Gabriel: por cable cuando venga — y aprovechar para dejarle `adb tcpip 5555`, así deja de depender de una visita. ⚠️ **El `-i` no es opcional**: sin él el equipo no queda como su propio instalador y la próxima tampoco es silenciosa |
 | **0-cuatro** | 🟠 **Alejandro mercado y Zura: APK puesto, app sin abrir** | Tienen 1.13.0 instalado pero el latido sigue viejo. **`estado_dispositivo` lo escribe el JS**, que solo corre con la app abierta — el dashboard los muestra en 1.11.0 aunque el nativo esté actualizado | Abrirles la app por Tailscale (`adb shell monkey -p com.launion.app -c android.intent.category.LAUNCHER 1`) o esperar a que la abran ellos |
+| **A1** | 🔴 **Cuatro teléfonos con el GNSS muerto — es hardware, no código** ([AUDITORIA_GPS_2026-08.md](AUDITORIA_GPS_2026-08.md) §3 H2) | **Zura, Alejandro mercado y Gabriel tevez no produjeron UN SOLO fix de ≤ 5 m** en los 8 días de retención: miles de puntos, cero. Y **Nelson rojas se degradó**: el 07/08 tenía 82,7 % de fixes sub-5 m y mejor fix de 1,4 m; el 11 y 12/08 tiene **0,0 % y su mejor fix del día entero es 16 m**. Mismo aparato, mismo software. El control que cierra el argumento es **Luis Mendoza, que se recuperó solo** (1,1 % el 10/08 → 55,6 % el 12/08) sin que nadie tocara nada. 🩸 **El discriminador es el MEJOR fix del día, no la mediana**: un techo de precisión filtra los fixes malos pero no puede empeorar el mínimo, así que es inmune al cambio de `ACCURACY_CAPTURA_MAX_M`. Mientras esto siga, **ningún umbral arregla nada**: es lo que dispara el borrado del snap y lo que llena el trazo de ruido | Los cuatro equipos en la mano: ubicación en "alta precisión" (`location_mode=3`), prueba a cielo abierto y `dumpsys location` para ver si el GNSS entrega. Si no engancha, **cambiar el equipo** |
+| **A2** | 🔴 **El latido lo escribe el JS, y por eso el que necesita el arreglo no lo puede bajar** (§3 H4) | `estado_dispositivo` sale del WebView y las posiciones del servicio nativo: son dos caminos independientes. **Nelson figura sin latido desde el 11/08 00:51 y subió 1.619 posiciones el 12/08.** El panel dice que no reporta cuando sí reporta, y los avisos al supervisor heredan la mentira. 🩸 **Y el corolario es peor: el auto-updater de OTA también es JS**, así que un WebView congelado tampoco se actualiza — por eso Nelson quedó en 1.13.0 y Alejandro en 1.13.1 mientras el resto llegó a 1.13.8. *Los equipos que más necesitan el arreglo son estructuralmente los que no lo pueden recibir* | **OTA**: que "reportando" salga de la posición más nueva y no del latido — `ingest-posiciones` ya recibe `tel{}` y estampa `telemetria_ts`. **APK**: que el watchdog nativo dispare la descarga de la OTA, sin depender del WebView |
+| **A3** | 🟠 **La telemetría de descartes cuenta dos veces** (§3 H5) | En `UploaderGpsService.java:749` el fix retenido suma `cDescMovimiento++`, y en `:759-762` **ese mismo fix** vuelve a sumar `cGuardados++` al encolarse. La suma de destinos supera `fix_total` en **todos** los equipos (Agustin +592, Javier +138, Orlando +103). O sea que **`fix_desc_movimiento` no significa "descartados" sino "diferidos"**, y todo porcentaje de descarte por movimiento citado en esta bitácora está inflado. Mientras siga así, la invariante "cada fix tiene destino conocido" **no puede cerrar por definición** | **APK**: no sumar `cDescMovimiento` al retener, o descontarlo al encolar. Recién después se puede verificar `fix_total = guardados + descartes` |
 | 1 | **Respaldar el keystore** (§2.1) | Punto único de falla, y se está por mudar de disco | Contraseñas a un gestor + `.keystore` en 2 lugares |
 | 2 | **Cerrar el circuito de recuperación de contraseña** | Está **roto en producción**: el botón manda el mail y no hay pantalla donde poner la nueva. Ver §5 | Vista nueva + handler de `PASSWORD_RECOVERY` |
 | 3 | **Versionar `ingesta_tokens` y `mi_token_ingesta`** | Recrear la base desde `db/` deja al uploader nativo sin poder autenticarse. Y la Edge Function referencia un `db/16_ingesta_tokens.sql` **que no existe** | Migración nueva contra la base viva |
