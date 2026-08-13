@@ -10,13 +10,18 @@
  * `roles`   → quién la ve por ser lo que es.
  * `permiso` → quién la ve por tener un permiso EXTRA, sin importar su rol (`perfiles.permisos`).
  *             Es lo que deja que un vendedor edite el catálogo sin dejar de ser vendedor.
+ *
+ * 🔴 `marketing` (12/08/2026) figura en UN SOLO ítem, y esa es toda su superficie de gestión. No es
+ * un rol "chico de admin": no ve reportes, ni la cartera, ni zonas, ni usuarios, ni el mapa. Si
+ * algún día aparece en una segunda fila de esta tabla, es una decisión de producto — escribirla
+ * acá, no deducirla. Ver `db/38_rol_marketing.sql`.
  */
 export const GESTION_ITEMS = [
   { key: 'reportes', label: 'Reportes', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'clientes', label: 'Clientes', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'duplicados', label: 'Revisar repetidos', roles: ['admin', 'superadmin'] },
   { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin'], permiso: 'catalogo' },
+  { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin', 'marketing'], permiso: 'catalogo' },
   { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },

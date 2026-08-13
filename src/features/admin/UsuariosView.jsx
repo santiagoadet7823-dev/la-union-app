@@ -21,14 +21,19 @@ import { invalidarTrackCache } from '../../services/tracking'
 // nunca un perfil: el dueño de la distribuidora usa `admin`, que ya tenía los mismos permisos de
 // lectura. Si alguien lo vuelve a poner en esta lista, el alta revienta contra el CHECK de la base.
 // Ya se puede asignar desde 1.6.x: el check constraint de perfiles.rol lo acepta (db/20).
-const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin']
+//
+// `marketing` (12/08/2026, `db/38`) es lo contrario de aquel caso: existe para una persona concreta
+// y NO se rastrea por GPS. Va acá y no como permiso porque el permiso `catalogo` sirve para SUMARLE
+// el catálogo a alguien que ya es otra cosa; a esta persona el rol prestado le sobra —con
+// `vendedor` queda encerrada detrás del `GpsGate`, con `encargado` entra al mapa del supervisor.
+const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'marketing', 'admin']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 130px 120px 80px 140px 100px 110px', gap: 10, alignItems: 'center' }
 
 const rolPill = (r) => {
-  const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)' }[r] || 'var(--muted)'
+  const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)', marketing: 'var(--info)' }[r] || 'var(--muted)'
   return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}</span>
 }
 
@@ -82,7 +87,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
   // rol (admin/encargado/superadmin editan catálogo de por sí): ofrecerle "puede editar catálogo"
   // a un admin sugiere que hoy no puede, y sí puede.
   const permisosActuales = ed.permisos ?? (u.permisos || [])
-  const rolYaEditaCatalogo = ['admin', 'encargado', 'superadmin'].includes(rolEfectivo)
+  const rolYaEditaCatalogo = ['admin', 'encargado', 'superadmin', 'marketing'].includes(rolEfectivo)
   const chkPermisos = !rolYaEditaCatalogo && rolEfectivo ? (
     <label style={sx('display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer')}
       title="Deja que esta persona edite productos y suba fotos del catálogo, sin dejar de ser lo que es">

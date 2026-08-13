@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
+import { codigoKey } from '../lib/texto'
 import { uid } from '../lib/uid'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
 import { startPosQueue } from '../services/sync/queue'
@@ -53,6 +54,13 @@ function mapProducto(p) {
     nivel: p.nivel_rentabilidad != null ? Number(p.nivel_rentabilidad) : null,
     oferta: !!p.oferta,
     precioOferta: p.precio_oferta != null ? Number(p.precio_oferta) : null,
+    // `marca` es un EJE DISTINTO de `cat`, no un sinónimo (db/38). Hasta que existió la columna, la
+    // marca se venía colando dentro de la categoría: por eso "Manaos" quedó partido en 5 categorías
+    // por tamaño de envase y 183 productos cayeron en "Otros".
+    marca: p.marca || null,
+    unidadVenta: p.unidad_venta || null,
+    // NULL = vigente, igual que `clientes.archivado_ts` (ver `descontinuado_ts` en db/38).
+    descontinuado: !!p.descontinuado_ts,
   }
 }
 
@@ -186,6 +194,9 @@ export function CatalogProvider({ children }) {
     if ('nivel_rentabilidad' in patch) vista.nivel = patch.nivel_rentabilidad ?? null
     if ('oferta' in patch) vista.oferta = !!patch.oferta
     if ('precio_oferta' in patch) vista.precioOferta = patch.precio_oferta ?? null
+    if ('marca' in patch) vista.marca = patch.marca || null
+    if ('unidad_venta' in patch) vista.unidadVenta = patch.unidad_venta || null
+    if ('descontinuado_ts' in patch) vista.descontinuado = !!patch.descontinuado_ts
     setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, ...vista } : p)).sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id, payload: patch })
     flushMutaciones()
@@ -436,12 +447,31 @@ export function CatalogProvider({ children }) {
    * (solo columnas con dato, no pisa lo vacío); no existe → insert. Sirve para carga inicial y
    * para actualización. Offline-first. Duplicados dentro del lote se saltan.
    *
-   * @param {Array<{codigo?, descripcion, precio_unitario?, peso_kg?, unidades?, categoria?, nivel_rentabilidad?, oferta?, precio_oferta?}>} rows
-   * @returns {{insertados:number, actualizados:number, saltados:number, avisos:string[]}}
+   * El pareo va por `codigoKey()` (ver `lib/texto.js`), no por el string crudo: la lista de precios
+   * del ERP trae `0041` y la base tiene `41`. Sin eso, una actualización de precios entra entera
+   * como productos nuevos sin foto.
+   *
+   * 🩸 `listaCompleta` NO ES UN DETALLE DE UI (12/08/2026). Con la opción prendida, todo producto
+   * con código que NO venga en la planilla se marca `descontinuado_ts` y desaparece del catálogo
+   * del vendedor. Es lo correcto cuando la planilla ES la lista de precios vigente del ERP —los
+   * 368 productos que no vinieron en la del 08/08 salieron de circulación y hoy se le ofrecen al
+   * cliente con precio $0—, y es una catástrofe si alguien sube una planilla de 10 filas para
+   * corregir 10 precios. Por eso viene en `false` y la pantalla lo pide explícito, con el número
+   * de bajas contado ANTES de confirmar.
+   *
+   * Solo alcanza a los que TIENEN código: un producto sin código nunca estuvo en ninguna lista, así
+   * que su ausencia no prueba nada.
+   *
+   * Un producto que vuelve a aparecer se REACTIVA solo (`descontinuado_ts = null`) conservando su
+   * foto y su historial. Ese es todo el argumento de descontinuar en vez de borrar.
+   *
+   * @param {Array<{codigo?, descripcion, precio_unitario?, peso_kg?, unidades?, categoria?, marca?, unidad_venta?, nivel_rentabilidad?, oferta?, precio_oferta?}>} rows
+   * @param {{listaCompleta?: boolean}} [opts]
+   * @returns {{insertados:number, actualizados:number, descontinuados:number, saltados:number, avisos:string[]}}
    */
-  const importProductos = useCallback(async (rows) => {
+  const importProductos = useCallback(async (rows, { listaCompleta = false } = {}) => {
     const porCodigo = new Map()
-    productos.forEach((p) => { const k = (p.codigo || '').trim().toLowerCase(); if (k) porCodigo.set(k, p) })
+    productos.forEach((p) => { const k = codigoKey(p.codigo); if (k) porCodigo.set(k, p) })
     const vistos = new Set()
     const avisos = []
     const nuevos = []
@@ -449,7 +479,7 @@ export function CatalogProvider({ children }) {
     for (const r of rows || []) {
       if (!r.descripcion || !String(r.descripcion).trim()) { avisos.push('Fila sin descripción, se saltó'); continue }
       const cod = (r.codigo || '').trim()
-      const codKey = cod.toLowerCase()
+      const codKey = codigoKey(cod)
       if (codKey && vistos.has(codKey)) { avisos.push(`Código repetido en la planilla, se saltó: ${cod}`); continue }
       if (codKey) vistos.add(codKey)
 
@@ -461,9 +491,13 @@ export function CatalogProvider({ children }) {
         if (r.peso_kg != null && r.peso_kg !== '') patch.peso_kg = Number(r.peso_kg) || 0
         if (r.unidades != null && r.unidades !== '') patch.unidades = Math.round(Number(r.unidades)) || null
         if (r.categoria) patch.categoria = r.categoria
+        if (r.marca) patch.marca = r.marca
+        if (r.unidad_venta) patch.unidad_venta = r.unidad_venta
         if (r.nivel_rentabilidad != null && r.nivel_rentabilidad !== '') patch.nivel_rentabilidad = Number(r.nivel_rentabilidad) || null
         if (r.oferta != null && r.oferta !== '') patch.oferta = !!r.oferta
         if (r.precio_oferta != null && r.precio_oferta !== '') patch.precio_oferta = Number(r.precio_oferta) || null
+        // Volvió a la lista: se reactiva solo, con su foto y su historial intactos.
+        if (existente.descontinuado) patch.descontinuado_ts = null
         if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
         continue
       }
@@ -476,12 +510,31 @@ export function CatalogProvider({ children }) {
         peso_kg: Number(r.peso_kg) || 0,
         unidades: r.unidades ? Math.round(Number(r.unidades)) : null,
         categoria: r.categoria || inferCategoria(String(r.descripcion) || ''),
+        marca: r.marca || null,
+        unidad_venta: r.unidad_venta || null,
         nivel_rentabilidad: r.nivel_rentabilidad ? Number(r.nivel_rentabilidad) : null,
         oferta: !!r.oferta,
         precio_oferta: r.precio_oferta ? Number(r.precio_oferta) : null,
         imagen_url: null,
+        descontinuado_ts: null,
       })
     }
+
+    // Bajas por ausencia. Va DESPUÉS del recorrido completo porque la pregunta es "¿este código
+    // apareció en ALGUNA fila?", no "¿apareció en la que estoy mirando?".
+    let descontinuados = 0
+    if (listaCompleta) {
+      const ahora = new Date().toISOString()
+      for (const p of productos) {
+        const k = codigoKey(p.codigo)
+        if (!k || vistos.has(k) || p.descontinuado) continue
+        updates.push({ id: p.id, patch: { descontinuado_ts: ahora } })
+        descontinuados++
+      }
+      const sinCodigo = productos.filter((p) => !codigoKey(p.codigo)).length
+      if (sinCodigo) avisos.push(`${sinCodigo} producto(s) sin código: quedan vigentes (no se pueden cruzar con la lista)`)
+    }
+
     if (nuevos.length) {
       setProductos((prev) => [...prev, ...nuevos.map(mapProducto)].sort((a, b) => a.name.localeCompare(b.name)))
       for (const row of nuevos) {
@@ -501,6 +554,9 @@ export function CatalogProvider({ children }) {
         if ('nivel_rentabilidad' in q) v.nivel = q.nivel_rentabilidad ?? null
         if ('oferta' in q) v.oferta = !!q.oferta
         if ('precio_oferta' in q) v.precioOferta = q.precio_oferta ?? null
+        if ('marca' in q) v.marca = q.marca || null
+        if ('unidad_venta' in q) v.unidadVenta = q.unidad_venta || null
+        if ('descontinuado_ts' in q) v.descontinuado = !!q.descontinuado_ts
         return { ...p, ...v }
       }).sort((a, b) => a.name.localeCompare(b.name)))
       for (const u of updates) {
@@ -509,7 +565,16 @@ export function CatalogProvider({ children }) {
     }
     if (nuevos.length || updates.length) flushMutaciones()
     const total = rows?.length || 0
-    return { insertados: nuevos.length, actualizados: updates.length, saltados: total - nuevos.length - updates.length, avisos }
+    // `actualizados` cuenta filas de la planilla que pegaron, así que las bajas por ausencia —que
+    // no salen de ninguna fila— se restan para que los tres números sigan sumando el total.
+    const actualizados = updates.length - descontinuados
+    return {
+      insertados: nuevos.length,
+      actualizados,
+      descontinuados,
+      saltados: total - nuevos.length - actualizados,
+      avisos,
+    }
   }, [idEmpresa, productos])
 
   // `clientes` que ve la app = SOLO los vigentes. La inversión es deliberada: hay 8 consumidores
@@ -518,8 +583,18 @@ export function CatalogProvider({ children }) {
   // Con este default, olvidarse es seguro. Quien necesita ver lo archivado lo pide explícito.
   const clientesVigentes = useMemo(() => clientes.filter((c) => !c.archivado), [clientes])
 
+  // Mismo criterio para los productos, y por la misma razón (db/38). El consumidor que importa es
+  // `VisitaCatalogo`: un producto que salió de la lista de precios no se le puede seguir ofreciendo
+  // al comercio con el precio viejo o en $0. Quien necesita ver lo descontinuado —hoy solo la
+  // pantalla de marketing— pide `productosTodos` explícito.
+  //
+  // ⚠️ `importProductos` NO usa esta lista: parea contra el estado completo, porque un producto
+  // descontinuado que vuelve en una lista nueva tiene que RE-ACTIVARSE, no entrar de nuevo como
+  // producto nuevo sin foto.
+  const productosVigentes = useMemo(() => productos.filter((p) => !p.descontinuado), [productos])
+
   return (
-    <CatalogContext.Provider value={{ productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
+    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
       {children}
     </CatalogContext.Provider>
   )

@@ -12,7 +12,11 @@ import { btnPrimario } from '../../lib/botones'
  * (la lógica vive en CatalogContext: addCategoria/updateCategoria/deleteCategoria).
  */
 export default function GestionarCategorias({ onClose, onToast }) {
-  const { categorias, productos, addCategoria, updateCategoria, deleteCategoria } = useCatalog()
+  // `productosTodos` y no `productos`: desde db/38 el contexto entrega solo los VIGENTES, y esta
+  // pantalla toca la categoría de todos. Con la lista filtrada, renombrar una categoría dejaba a
+  // los descontinuados apuntando al nombre viejo y quitarla los dejaba apuntando a una categoría
+  // que ya no existe — y el daño recién se vería el día que un producto vuelve a circulación.
+  const { categorias, productosTodos: productos, addCategoria, updateCategoria, deleteCategoria } = useCatalog()
   const [abierto, setAbierto] = useState(true)
   const [nueva, setNueva] = useState('')
   const [editId, setEditId] = useState(null)

@@ -19,11 +19,16 @@ import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
  */
 const NIVELES = [1, 2, 3, 4]
 
+// Cómo se vende, tal como lo escribe el ERP al final de cada descripción de la lista de precios.
+// Medido sobre la lista del 08/08: UN 308 · FDO 134 · CJ 56 · DISPL 9 · PACK 4 · CJN 3 · BOLSA 2.
+const UNIDADES_VENTA = ['', 'UN', 'FDO', 'CJ', 'DISPL', 'PACK', 'CJN', 'BOLSA']
+const UNIDAD_LABEL = { '': 'Sin definir', UN: 'UN · unidad', FDO: 'FDO · fardo', CJ: 'CJ · caja', DISPL: 'DISPL · display', PACK: 'PACK', CJN: 'CJN · cajón', BOLSA: 'BOLSA' }
+
 const soloNum = (s) => s.replace(/[^\d.]/g, '')
 
 export default function NuevoProducto({ onClose, onToast, producto = null }) {
   const editar = !!producto
-  const { addProducto, updateProducto, categorias } = useCatalog()
+  const { addProducto, updateProducto, categorias, productosTodos } = useCatalog()
   const { idEmpresa } = useAuth()
 
   // Lista del selector: categorías gestionadas por la empresa + 'Otros'. Si la empresa todavía
@@ -36,12 +41,20 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
     ...(producto?.cat ? [producto.cat] : []),
   ]))
 
+  // Marcas ya usadas, para el autocompletado. Es un `datalist` y no un `select`: la marca es texto
+  // libre (una lista nueva puede traer un proveedor que nunca vimos) y encerrarla en un desplegable
+  // obligaría a "gestionar marcas" antes de poder cargar un producto. Sugerir sin obligar evita el
+  // problema que ya tuvo `categoria`: la misma marca escrita de tres formas distintas.
+  const marcasUsadas = Array.from(new Set((productosTodos || []).map((p) => p.marca).filter(Boolean))).sort()
+
   const [descripcion, setDescripcion] = useState(producto?.name || '')
   const [codigo, setCodigo] = useState(producto?.codigo || '')
   const [precio, setPrecio] = useState(producto?.price ? String(producto.price) : '')
   const [peso, setPeso] = useState(producto?.kg ? String(producto.kg) : '')
   const [unidades, setUnidades] = useState(producto?.unidades != null ? String(producto.unidades) : '')
   const [categoria, setCategoria] = useState(producto?.cat || opcionesCat[0] || 'Otros')
+  const [marca, setMarca] = useState(producto?.marca || '')
+  const [unidadVenta, setUnidadVenta] = useState(producto?.unidadVenta || '')
   const [nivel, setNivel] = useState(producto?.nivel || null)
   const [oferta, setOferta] = useState(!!producto?.oferta)
   const [precioOferta, setPrecioOferta] = useState(producto?.precioOferta != null ? String(producto.precioOferta) : '')
@@ -73,6 +86,8 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
       peso_kg: Number(peso) || 0,
       unidades: unidades ? Math.round(Number(unidades)) : null,
       categoria,
+      marca: marca.trim() || null,
+      unidad_venta: unidadVenta || null,
       nivel_rentabilidad: nivel || null,
       oferta,
       precio_oferta: oferta && precioOferta ? Number(precioOferta) : null,
@@ -153,6 +168,19 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
         <Field label="Categoría">
           <select value={categoria} onChange={(e) => setCategoria(e.target.value)} style={inputStyle} className="lu-input">
             {opcionesCat.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+      </div>
+      {/* Marca y unidad de venta: los dos ejes que la lista de precios del ERP sí trae y que hasta
+          db/38 no tenían dónde guardarse — la marca se venía colando dentro de la categoría. */}
+      <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
+        <Field label="Marca / proveedor">
+          <input value={marca} onChange={(e) => setMarca(e.target.value)} list="lu-marcas" placeholder="Ej: MANAOS" style={inputStyle} className="lu-input" />
+          <datalist id="lu-marcas">{marcasUsadas.map((m) => <option key={m} value={m} />)}</datalist>
+        </Field>
+        <Field label="Cómo se vende">
+          <select value={unidadVenta} onChange={(e) => setUnidadVenta(e.target.value)} style={inputStyle} className="lu-input">
+            {UNIDADES_VENTA.map((u) => <option key={u} value={u}>{UNIDAD_LABEL[u]}</option>)}
           </select>
         </Field>
       </div>

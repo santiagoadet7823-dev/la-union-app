@@ -28,6 +28,8 @@ const SupervisionMovil = lazy(() => import('./features/supervision/SupervisionMo
 // Shell de escritorio (PWA/.exe) para los roles de supervisión: sidebar izq + topbar +
 // mapa + métricas. Reemplaza al AppShell+AdminView SOLO en web.
 const SupervisionDesktop = lazy(() => import('./features/supervision/SupervisionDesktop'))
+// Pantalla única del rol `marketing` (db/38): el catálogo y nada más. Va en los tres canales.
+const MarketingView = lazy(() => import('./features/marketing/MarketingView'))
 
 // La supervisión móvil (mapa full-screen) es el diseño nuevo SOLO para la APK nativa.
 // En web/PWA se mantiene el panel actual hasta el rediseño de escritorio (.exe).
@@ -44,7 +46,9 @@ function usarSupervisionMovil() {
  *    vista del vendedor, con GPS) y "Panel" (auditoría). El switch vive en AppShell.
  *  - admin / superadmin → panel de escritorio (AdminView).
  *
- * ⚠️ El `return <AdminView/>` del final es INALCANZABLE: `AuthedApp` ataja a los 5 roles antes de
+ * `marketing` no llega nunca acá: `AuthedApp` lo ataja arriba de todo (db/38).
+ *
+ * ⚠️ El `return <AdminView/>` del final es INALCANZABLE: `AuthedApp` ataja a los 6 roles antes de
  * llegar acá. Está documentado como deuda en CLAUDE.md §8 junto con las 3 pantallas que arrastra.
  */
 function RoleRouter({ vista }) {
@@ -175,6 +179,26 @@ function AuthedApp() {
   const cambiarVista = (v) => {
     try { localStorage.setItem('lu-encargado-vista', v) } catch (_) {}
     setVista(v)
+  }
+
+  // MARKETING — una sola pantalla, la misma en la APK, en la PWA de celular y en la de escritorio.
+  //
+  // Va ANTES de las tres decisiones de abajo y no como un caso más de ellas, porque no comparte
+  // NADA con los otros roles: no tiene mapa, ni equipo, ni jornada, ni `GpsGate` (esta persona no
+  // sale a la calle, ver db/38). Si cayera en el camino normal, `esGestor` y `esEncargado` darían
+  // false en las tres y terminaría en `RoleRouter` → el `return <AdminView/>` inalcanzable, que es
+  // justo la rama muerta que arrastra deuda desde hace meses.
+  //
+  // ⚠️ Va DESPUÉS de los hooks de arriba (`useState` del switch del encargado): un `return` antes
+  // de ellos los saltearía en este rol y rompería el orden de hooks de React.
+  if (rol === 'marketing') {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<Cargando />}>
+          <MarketingView />
+        </Suspense>
+      </ErrorBoundary>
+    )
   }
 
   // Supervisión móvil (full-screen, sin el marco del AppShell). Solo en la APK nativa

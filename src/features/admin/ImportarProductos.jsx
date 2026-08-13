@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { normalizar } from '../../lib/texto'
+import { normalizar, codigoKey } from '../../lib/texto'
 import { useCatalog } from '../../context/CatalogContext'
 import { descargarArchivo } from '../../services/download'
 
@@ -26,23 +26,38 @@ const ALIAS = {
   peso: 'peso_kg', 'peso kg': 'peso_kg', kg: 'peso_kg', kilos: 'peso_kg',
   unidades: 'unidades', 'unidades por bulto': 'unidades', bulto: 'unidades', 'x bulto': 'unidades',
   categoria: 'categoria', rubro: 'categoria',
+  marca: 'marca', proveedor: 'marca',
+  'unidad venta': 'unidad_venta', unidad: 'unidad_venta', 'se vende por': 'unidad_venta', presentacion: 'unidad_venta',
   nivel: 'nivel_rentabilidad', 'nivel rentabilidad': 'nivel_rentabilidad', rentabilidad: 'nivel_rentabilidad',
   oferta: 'oferta', 'precio oferta': 'precio_oferta',
 }
+// `unidad_venta` (UN, FDO, CJ, DISPL, PACK, CJN, BOLSA) se normaliza a MAYÚSCULA y se acepta
+// cualquier otro texto tal cual: el día que aparezca un envase nuevo, la planilla no tiene por qué
+// fallar — para eso está la ficha del producto.
 const norm = normalizar
 const soloNum = (v) => { const s = norm(v).replace(/[^\d.]/g, ''); return s === '' ? null : Number(s) }
 // "sí/si/true/1/x" → true; "no/false/0/vacío" → false.
 const aBool = (v) => /^(si|sí|s|true|1|x|oferta)$/i.test(String(v ?? '').trim())
 
 export default function ImportarProductos({ onClose, onToast }) {
-  const { productos, categorias, importProductos } = useCatalog()
+  // `productosTodos` incluye los descontinuados, y tiene que ser así: uno que vuelve en la lista es
+  // una ACTUALIZACIÓN (se reactiva con su foto), no un producto nuevo. Con la lista de vigentes, la
+  // previsualización lo mostraría como "Nuevo" y el import crearía un duplicado sin foto.
+  const { productosTodos: productos, categorias, importProductos } = useCatalog()
   const fileRef = useRef(null)
   const [parsed, setParsed] = useState(null)
   const [busy, setBusy] = useState(false)
   const [nombreArchivo, setNombreArchivo] = useState('')
+  // 🩸 Arranca en FALSE y así tiene que quedarse. Prendida, todo producto que no venga en la
+  // planilla se da de baja: es lo correcto para la lista de precios completa del ERP y una
+  // catástrofe para una planilla de 10 filas que corrige 10 precios. Ver `importProductos`.
+  const [listaCompleta, setListaCompleta] = useState(false)
 
+  // La llave es `codigoKey` y no el string crudo: la lista del ERP trae `0041` y la base `41`.
+  // Con la comparación literal, la previsualización de la lista del 08/08 mostraba 372 filas
+  // "nuevas" en vez de 325 actualizaciones — y el import las creaba. Ver `lib/texto.js`.
   const existentes = useMemo(
-    () => new Set(productos.map((p) => (p.codigo || '').trim().toLowerCase()).filter(Boolean)),
+    () => new Set(productos.map((p) => codigoKey(p.codigo)).filter(Boolean)),
     [productos],
   )
   const catsValidas = useMemo(
@@ -54,8 +69,8 @@ export default function ImportarProductos({ onClose, onToast }) {
     try {
       const XLSX = await import('xlsx')
       const ejemplo = [
-        { codigo: 'P-001', descripcion: 'Harina 000 1 kg', precio: 850, peso: 1, unidades: 10, categoria: 'Almacén', nivel: 2, oferta: 'no', precio_oferta: '' },
-        { codigo: 'P-002', descripcion: 'Gaseosa Cola 1.5L', precio: 1800, peso: 1.5, unidades: 6, categoria: 'Bebidas', nivel: 3, oferta: 'si', precio_oferta: 1600 },
+        { codigo: '0041', descripcion: 'MANAOS 12X600ML COLA FDO', precio: 9150, peso: 7.2, unidades: 12, categoria: 'Bebidas', marca: 'MANAOS', unidad_venta: 'FDO', nivel: 3, oferta: 'no', precio_oferta: '' },
+        { codigo: '1164', descripcion: 'VIRULANA DEA 45G UN', precio: 450, peso: 0.045, unidades: '', categoria: 'Limpieza', marca: 'DEA', unidad_venta: 'UN', nivel: 2, oferta: 'si', precio_oferta: 390 },
       ]
       const ws = XLSX.utils.json_to_sheet(ejemplo)
       const wb = XLSX.utils.book_new()
@@ -88,7 +103,7 @@ export default function ImportarProductos({ onClose, onToast }) {
         }
         const codigo = String(campo.codigo ?? '').trim()
         const descripcion = String(campo.descripcion ?? '').trim()
-        const codKey = codigo.toLowerCase()
+        const codKey = codigoKey(codigo)
         const categoria = String(campo.categoria ?? '').trim()
         let estado = 'ok'
         if (!descripcion) estado = 'sin-desc'
@@ -102,6 +117,8 @@ export default function ImportarProductos({ onClose, onToast }) {
           peso_kg: soloNum(campo.peso_kg),
           unidades: soloNum(campo.unidades),
           categoria,
+          marca: String(campo.marca ?? '').trim(),
+          unidad_venta: String(campo.unidad_venta ?? '').trim().toUpperCase(),
           catDesconocida: !!(categoria && catsValidas.size && !catsValidas.has(categoria.toLowerCase())),
           nivel_rentabilidad: soloNum(campo.nivel_rentabilidad),
           oferta: campo.oferta === '' || campo.oferta == null ? null : aBool(campo.oferta),
@@ -137,17 +154,20 @@ export default function ImportarProductos({ onClose, onToast }) {
         peso_kg: f.peso_kg,
         unidades: f.unidades,
         categoria: f.categoria || null,
+        marca: f.marca || null,
+        unidad_venta: f.unidad_venta || null,
         nivel_rentabilidad: f.nivel_rentabilidad,
         oferta: f.oferta,
         precio_oferta: f.precio_oferta,
       }))
     if (!rows.length) { onToast?.('No hay filas válidas para importar'); return }
     setBusy(true)
-    const { insertados, actualizados, saltados } = await importProductos(rows)
+    const { insertados, actualizados, descontinuados, saltados } = await importProductos(rows, { listaCompleta })
     setBusy(false)
     const partes = []
     if (insertados) partes.push(`${insertados} nuevo${insertados === 1 ? '' : 's'}`)
     if (actualizados) partes.push(`${actualizados} actualizado${actualizados === 1 ? '' : 's'}`)
+    if (descontinuados) partes.push(`${descontinuados} dado${descontinuados === 1 ? '' : 's'} de baja`)
     if (saltados) partes.push(`${saltados} saltado${saltados === 1 ? '' : 's'}`)
     onToast?.(`Productos: ${partes.join(' · ') || 'sin cambios'}`)
     onClose?.()
@@ -164,6 +184,18 @@ export default function ImportarProductos({ onClose, onToast }) {
   }
 
   const importables = resumen ? (resumen.ok + resumen.update) : 0
+
+  // Cuántos se darían de baja si se confirma con la opción prendida. Se calcula ACÁ y se muestra
+  // ANTES de confirmar: el número es la única forma de que la persona note que tildó la opción con
+  // la planilla equivocada. Mismo criterio que `importProductos` — solo los que tienen código.
+  const bajasSiCompleta = useMemo(() => {
+    if (!parsed) return 0
+    const enPlanilla = new Set(parsed.map((f) => codigoKey(f.codigo)).filter(Boolean))
+    return productos.filter((p) => {
+      const k = codigoKey(p.codigo)
+      return k && !enPlanilla.has(k) && !p.descontinuado
+    }).length
+  }, [parsed, productos])
 
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', display: 'flex', flexDirection: 'column', background: 'var(--bg-solid)' }}>
@@ -200,7 +232,8 @@ export default function ImportarProductos({ onClose, onToast }) {
         </div>
 
         <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.5')}>
-          Columnas: <b>codigo</b>, <b>descripcion</b>, <b>precio</b>, <b>peso</b>, <b>unidades</b>, <b>categoria</b>, <b>nivel</b> (1–4, rentabilidad), <b>oferta</b> (si/no) y <b>precio_oferta</b>. Solo <b>descripcion</b> es obligatoria.
+          Columnas: <b>codigo</b>, <b>descripcion</b>, <b>precio</b>, <b>peso</b>, <b>unidades</b>, <b>categoria</b>, <b>marca</b>, <b>unidad_venta</b> (UN/FDO/CJ…), <b>nivel</b> (1–4, rentabilidad), <b>oferta</b> (si/no) y <b>precio_oferta</b>. Solo <b>descripcion</b> es obligatoria.<br />
+          Los <b>ceros de adelante del código no importan</b>: <b>0041</b> y <b>41</b> son el mismo producto.
         </div>
 
         {busy && <div style={sx('padding:20px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Procesando…</div>}
@@ -212,7 +245,27 @@ export default function ImportarProductos({ onClose, onToast }) {
               {resumen.update > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--info)', background: 'var(--info-tint)' }}>{resumen.update} a actualizar</span>}
               {resumen.dup > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{resumen.dup} repetidos</span>}
               {resumen['sin-desc'] > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--danger)', background: 'var(--danger-tint)' }}>{resumen['sin-desc']} sin descripción</span>}
+              {listaCompleta && bajasSiCompleta > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{bajasSiCompleta} se dan de baja</span>}
             </div>
+
+            {/* La opción destructiva. Va DESPUÉS del resumen y con el número a la vista, no como un
+                tilde suelto arriba: lo que tiene que decidir la persona no es "¿es la lista
+                completa?" sino "¿estoy de acuerdo con dar de baja estos N productos?". */}
+            <label style={{
+              ...sx('display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:12px;cursor:pointer;font-size:12px;line-height:1.5'),
+              border: `1px solid ${listaCompleta ? 'var(--warning)' : 'var(--line)'}`,
+              background: listaCompleta ? 'var(--warning-tint)' : 'var(--surface)',
+            }}>
+              <input type="checkbox" checked={listaCompleta} disabled={busy} onChange={(e) => setListaCompleta(e.target.checked)} style={{ marginTop: 2, flex: 'none' }} />
+              <span>
+                <b style={sx('color:var(--text)')}>Esta planilla es la lista completa vigente</b>
+                <span style={sx('display:block;color:var(--muted);margin-top:2px')}>
+                  {listaCompleta
+                    ? <>Se van a dar de baja <b style={{ color: 'var(--warning)' }}>{bajasSiCompleta} producto{bajasSiCompleta === 1 ? '' : 's'}</b> que no figuran en la planilla. Conservan su foto y su código, y vuelven solos si reaparecen en una lista futura.</>
+                    : <>Tildala solo si estás subiendo la lista de precios entera. Los productos que no vengan se sacan del catálogo del vendedor.</>}
+                </span>
+              </span>
+            </label>
 
             <div style={sx('border:1px solid var(--line);border-radius:12px;overflow:hidden')}>
               <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 90px 110px 120px', gap: 8, ...sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>

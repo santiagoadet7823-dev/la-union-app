@@ -26,6 +26,37 @@ export function normalizar(s) {
 }
 
 /**
+ * Clave canónica de un CÓDIGO de producto, para comparar. Minúsculas, sin espacios ni separadores,
+ * y **sin ceros a la izquierda**.
+ *
+ * 🩸 POR QUÉ EXISTE (12/08/2026). El ERP de la distribuidora emite los códigos con 4 dígitos y ceros
+ * adelante (`0041`); la base los tiene pelados (`41`), porque así salieron de la extracción del PDF
+ * viejo. Los tres lugares que parean por código lo hacían con un `String.trim().toLowerCase()` a
+ * secas, así que `"0041" !== "41"`.
+ *
+ * Medido con esta función sobre los datos reales (529 códigos de la lista del 08/08 contra los 693
+ * de la base): **325 actualizan · 204 son nuevos · 368 quedan sin lista**. Con la comparación
+ * literal cruzaban solo **157** —los códigos que ya vienen de 4 dígitos, sin ceros que agregar— así
+ * que importar esa lista habría creado **372 productos duplicados sin foto**, y 168 de los que ya
+ * tenían foto habrían quedado con el precio viejo y un gemelo al lado. La falla es peor que un
+ * error: es parcial, así que a simple vista el import "funcionaba".
+ *
+ * El caso de 3 dígitos es el que lo hace invisible: `0041` vs `41` no cruza, pero `1678` vs `1678`
+ * sí. Un pareo por código que anda con la mitad del catálogo no es un pareo.
+ *
+ * El código se sigue GUARDANDO y MOSTRANDO tal como lo emite el ERP — esto es solo la llave de
+ * comparación. Es la misma idea que `normalizar()` ya aplica a los encabezados de las planillas.
+ *
+ * El `|| cod` final es para el código que es todo ceros: `'0000'` no puede colapsar a `''`, o dos
+ * productos distintos sin código quedarían pareados entre sí.
+ */
+export function codigoKey(cod) {
+  const s = (cod == null ? '' : String(cod)).trim().toLowerCase().replace(/\s/g, '')
+  if (!s) return ''
+  return s.replace(/^0+/, '') || s
+}
+
+/**
  * Clave INDEPENDIENTE DEL ORDEN de las palabras: los tokens normalizados, ordenados alfabéticamente.
  *
  * Es la pieza que resuelve el caso del pedido: "ADET SANTIAGO" y "SANTIAGO ADET" producen la misma

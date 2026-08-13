@@ -24,15 +24,21 @@ const cors = {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 
-// 'propietario' se sumó el 29/07/2026. Faltaba desde que el rol existe: el CHECK de la base lo
-// acepta (db/20), `UsuariosView` lo ofrece en el desplegable y tiene su propia pantalla construida
-// (`PropietarioMovil`), pero crear uno desde el modal devolvía `rol-no-permitido` — el rol era
-// inalcanzable por el único camino que la UI ofrece.
+// 🩸 'propietario' VIVIÓ ACÁ ENTRE EL 29/07/2026 Y EL 08/08/2026, y se quitó junto con el rol
+// entero (db/31). Historia corta: el rol se creó para el dueño de la distribuidora, se le construyó
+// pantalla propia y se lo sumó a esta lista para que fuera dable de alta... y nunca lo usó nadie —
+// 0 perfiles en la base al día que se borró. El dueño usa `admin`, que ya tenía exactamente los
+// mismos permisos de lectura en las 8 policies donde aparecían los dos.
 //
-// Va en ROLES_ADMIN y no solo en ROLES_SUPER a propósito: el propietario es el DUEÑO de esa
-// distribuidora y es SOLO LECTURA, así que un admin dándole de alta a su propio dueño no escala
-// privilegios — está creando un rol menos poderoso que el suyo.
-const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'admin', 'propietario']
+// Si alguien lo vuelve a agregar acá sin tocar el CHECK de `perfiles.rol`, el alta revienta con un
+// 500 opaco: la función crea el usuario en auth.users, el UPDATE del perfil falla contra el CHECK,
+// y el rollback borra la cuenta. Se vería como "no se puede crear el usuario" sin más pista.
+//
+// 'marketing' (12/08/2026, db/38) SÍ tiene su CHECK puesto — se aplicó contra la base viva ANTES
+// de desplegar esta versión, justamente para no caer en ese 500 opaco. Va en ROLES_ADMIN y no solo
+// en ROLES_SUPER porque no escala privilegios: es un rol MENOS poderoso que el de quien lo crea
+// (una sola pantalla, el catálogo; ni recorridos, ni cartera, ni usuarios).
+const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'marketing', 'admin']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

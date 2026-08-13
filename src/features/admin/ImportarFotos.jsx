@@ -2,6 +2,9 @@ import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useCatalog } from '../../context/CatalogContext'
 import { useAuth } from '../../context/AuthContext'
+import { useDevice } from '../../context/DeviceContext'
+import { codigoKey } from '../../lib/texto'
+import GuiaFotos from '../marketing/GuiaFotos'
 import { subirImagenProducto } from '../../services/data/productoImagen'
 
 /**
@@ -22,12 +25,21 @@ import { subirImagenProducto } from '../../services/data/productoImagen'
 const EXT_OK = /\.(png|jpe?g|webp|gif|bmp)$/i
 const CONCURRENCIA = 4 // subidas en paralelo: suficiente para ir rápido sin ahogar el móvil
 
-/** "1057.png" → "1057" (sin extensión, sin espacios, en minúscula). */
-const codigoDeArchivo = (nombre) => nombre.replace(/\.[^.]+$/, '').trim().toLowerCase()
+/**
+ * "1057.png" → "1057" (sin extensión, y por `codigoKey` sin espacios, en minúscula y sin ceros a
+ * la izquierda). Lo último es lo que hace que `0041.png` —el nombre natural si la persona copia el
+ * código de la lista de precios, que los emite con 4 dígitos— encuentre al producto `41`.
+ */
+const codigoDeArchivo = (nombre) => codigoKey(nombre.replace(/\.[^.]+$/, ''))
 
 export default function ImportarFotos({ onClose, onToast }) {
-  const { productos, updateProducto } = useCatalog()
+  // `productosTodos` y no `productos`: un producto DESCONTINUADO sigue teniendo código y foto, y si
+  // no estuviera en el mapa de pareo su archivo aparecería como "sin producto" — mandando a
+  // renombrarlo o a crear un duplicado.
+  const { productosTodos, updateProducto } = useCatalog()
+  const productos = productosTodos
   const { idEmpresa } = useAuth()
+  const { isMobile } = useDevice()
   const fileRef = useRef(null)
   const carpetaRef = useRef(null)
   const cancelRef = useRef(false)
@@ -159,22 +171,30 @@ export default function ImportarFotos({ onClose, onToast }) {
         <div style={sx('border:1px solid var(--line);border-radius:12px;background:var(--info-tint);padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.55')}>
           <b style={sx('color:var(--text)')}>Cómo funciona</b><br />
           • Elegí muchas fotos de una (o la carpeta entera). El archivo <b>1057.png</b> va al producto con <b>código 1057</b>.<br />
-          • Cada foto se <b>achica y comprime</b> antes de subir (igual que al cargarla a mano), así el catálogo entero entra de sobra en el plan gratis.<br />
+          • Los <b>ceros de adelante no importan</b>: <b>0041.png</b> y <b>41.png</b> van los dos al código <b>0041</b>.<br />
+          • Cada foto se <b>recorta a cuadrado sobre fondo blanco</b> y se comprime antes de subir, así el catálogo entero entra de sobra en el plan gratis.<br />
           • Las fotos de códigos que <b>no existen</b> en el catálogo se saltan: importá primero la planilla.
         </div>
+
+        {/* La spec completa, en el momento en que sirve. Sin el prompt de IA: acá la persona ya
+            tiene los archivos hechos, y lo que necesita es verificar antes de tocar Subir. */}
+        <GuiaFotos compacta />
 
         <div style={sx('display:flex;gap:10px;flex-wrap:wrap;align-items:center')}>
           <button onClick={() => fileRef.current?.click()} disabled={subiendo} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21V9M7 14l5-5 5 5M5 3h14" /></svg>
             Elegir fotos
           </button>
-          <button onClick={() => carpetaRef.current?.click()} disabled={subiendo} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg>
-            Elegir carpeta
-          </button>
+          {/* webkitdirectory NO existe en Android: el botón abría el selector y volvía con cero
+              archivos, que se lee como "la app está rota" y no como "esto acá no se puede". En vez
+              de dejarlo fallando en silencio, en el celular se dice dónde sí se puede hacer. */}
+          {!isMobile && (
+            <button onClick={() => carpetaRef.current?.click()} disabled={subiendo} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer')}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg>
+              Elegir carpeta
+            </button>
+          )}
           <input ref={fileRef} type="file" accept="image/*" multiple onChange={elegir} style={{ display: 'none' }} />
-          {/* webkitdirectory: solo Chrome/Edge de escritorio. Por eso el botón de archivos sueltos
-              es el principal — en el APK es el único que funciona. */}
           <input ref={carpetaRef} type="file" multiple webkitdirectory="" directory="" onChange={elegir} style={{ display: 'none' }} />
           {items && <span style={sx('align-self:center;font-size:12px;color:var(--muted);font-family:var(--font-mono)')}>{items.length} archivos</span>}
         </div>

@@ -7,18 +7,44 @@ import { supabase } from '../supabase'
  * 1 GB de Storage aparte), y guardamos solo la URL pública en la fila. La URL absoluta
  * de Storage además es inmune al doble base path del APK (`/la-union-app/` vs `./`).
  *
- * Antes de subir, comprimimos en el cliente (~800 px lado mayor, ~72 %) para que cada
- * imagen pese ~50-100 KB: así el egress del plan free no se dispara y el 1 GB alcanza
- * para miles de productos.
+ * Antes de subir, comprimimos en el cliente (cuadrado de hasta 800 px, ~72 %) para que
+ * cada imagen pese ~50-100 KB: así el egress del plan free no se dispara y el 1 GB alcanza
+ * para miles de productos. Medido sobre las 626 fotos cargadas: 20 KB de promedio, 88 KB la
+ * más pesada.
+ *
+ * La salida es SIEMPRE cuadrada y con fondo blanco — las dos cosas por un bug distinto, los dos
+ * explicados en `comprimirImagen`. Aplica también a los avatares, que se muestran en círculo.
  */
 
 const MAX_LADO = 800   // px del lado mayor tras redimensionar
 const CALIDAD = 0.72   // calidad de encode (0..1)
+const FONDO = '#ffffff' // relleno del lienzo cuadrado. Ver los dos comentarios de abajo.
 
 /**
- * Comprime y redimensiona un File de imagen a un Blob liviano.
+ * Comprime y redimensiona un File de imagen a un Blob liviano **CUADRADO**.
  * Intenta WebP; si el WebView viejo no sabe encodearlo, cae a JPEG (ambos soportados
  * en los buckets). Devuelve { blob, ext, tipo }.
+ *
+ * 🩸 POR QUÉ CUADRADO (12/08/2026). La tarjeta del vendedor mete la foto en una caja cuadrada con
+ * RECORTE (`padding-top:100%` + `object-fit:cover`, `VisitaCatalogo.jsx`), así que una imagen
+ * vertical pierde arriba y abajo. Hasta hoy esto conservaba la proporción del original y no lo
+ * cuadraba nadie: con las 626 fotos que vinieron del PDF no molestaba —ya venían cuadradas— pero
+ * marketing va a generar las que faltan con IA, y **el default de todos los generadores es
+ * vertical** (1024×1536). El producto quedaba decapitado y el error solo se ve mirando la grilla
+ * foto por foto.
+ * Se centra sobre un lienzo cuadrado en vez de recortar porque recortar es exactamente lo que
+ * queremos evitar, y en vez de deformar porque una botella estirada se ve peor que con aire al
+ * costado. La guía le sigue pidiendo 1:1 a la persona (`GUIA_MARKETING_CATALOGO.md`): esto es la
+ * red de contención para cuando alguien no la lea, no el permiso para ignorarla.
+ * ⚠️ Una imagen que YA es cuadrada sale idéntica a como salía antes: mismo lado, misma escala,
+ * `dx = dy = 0`. Este cambio solo toca a las que hoy se recortan.
+ *
+ * 🩸 Y POR QUÉ SE PINTA EL FONDO. Un canvas nuevo es TRANSPARENTE, y el camino de respaldo a JPEG
+ * (WebViews viejos del parque, más abajo) no tiene canal alfa: lo transparente se encodea NEGRO.
+ * Hoy no muerde porque ninguna de las fotos cargadas tiene alfa, pero un PNG con fondo transparente
+ * es la salida natural de un generador de imágenes al que le pedís un producto recortado — o sea,
+ * exactamente lo que va a subir marketing. Con el letterbox además hace falta igual: sin relleno,
+ * las bandas de una imagen vertical serían transparentes (y negras en el fallback).
  */
 export function comprimirImagen(file, maxLado = MAX_LADO, calidad = CALIDAD) {
   return new Promise((resolve, reject) => {
@@ -26,14 +52,19 @@ export function comprimirImagen(file, maxLado = MAX_LADO, calidad = CALIDAD) {
     const img = new Image()
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const escala = Math.min(1, maxLado / Math.max(img.width, img.height))
+      // Lado del cuadrado: el lado mayor del original, con techo en `maxLado`. El `min` evita
+      // AGRANDAR una imagen chica — subirla a 800 no le agrega detalle, solo peso.
+      const lado = Math.max(1, Math.round(Math.min(maxLado, Math.max(img.width, img.height))))
+      const escala = lado / Math.max(img.width, img.height)
       const w = Math.max(1, Math.round(img.width * escala))
       const h = Math.max(1, Math.round(img.height * escala))
       const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
+      canvas.width = lado
+      canvas.height = lado
       const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, 0, 0, w, h)
+      ctx.fillStyle = FONDO
+      ctx.fillRect(0, 0, lado, lado)
+      ctx.drawImage(img, Math.round((lado - w) / 2), Math.round((lado - h) / 2), w, h)
 
       const entregar = (blob, tipo, ext) => {
         if (blob) resolve({ blob, tipo, ext })

@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos, hoyStr } from '../../../lib/format'
+import { useAuth } from '../../../context/AuthContext'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useDevice } from '../../../context/DeviceContext'
 import { panel, label10, EmptyState, FilaTabla, CabeceraTabla } from '../ui'
@@ -47,16 +48,46 @@ function PrecioCelda({ p }) {
   )
 }
 
-/** Pestaña "Catálogo": ABM de los productos reales de la distribuidora. */
-export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast }) {
-  const { productos, loading: catLoading, deleteProducto } = useCatalog()
+/**
+ * Pestaña "Catálogo": ABM de los productos reales de la distribuidora.
+ *
+ * 🔴 GATE PROPIO (12/08/2026). Hasta hoy esta pantalla no comprobaba nada: el único control era la
+ * lista del menú que la abre (`lib/gestion.js`). Eso alcanzaba mientras la montaban tres hosts que
+ * ya filtraban, pero es un contrato implícito — el cuarto host que la monte sin acordarse expone
+ * Eliminar, Importar y Cargar fotos a cualquiera. El gate real sigue siendo RLS (`productos_wr`),
+ * así que esto no es la seguridad: es no ofrecer botones que van a fallar.
+ *
+ * props:
+ *   - filtroPedido  {f, nonce} | null — filtro pedido desde afuera (el tablero de marketing).
+ *                   Lleva `nonce` porque tocar dos veces el mismo contador tiene que volver a
+ *                   aplicarlo; sin el sello, la prop no cambia y el efecto no corre (regla 41).
+ */
+export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast, filtroPedido = null }) {
+  const { rol, permisos } = useAuth()
+  // `productosTodos` y no `productos`: esta pantalla es la única desde donde se puede volver a
+  // poner en circulación algo dado de baja, así que necesita poder verlo.
+  const { productosTodos, loading: catLoading, deleteProducto, updateProducto } = useCatalog()
   const { isMobile } = useDevice()
   const [confirmDel, setConfirmDel] = useState(null) // id con confirmación de borrado pendiente
   const [importOpen, setImportOpen] = useState(false)
   const [fotosOpen, setFotosOpen] = useState(false)
   const [catsOpen, setCatsOpen] = useState(false)
   const [busqueda, setBusqueda] = useState('')
-  const [filtro, setFiltro] = useState('todos') // todos | sin-foto | sin-precio
+  const [filtro, setFiltro] = useState('todos') // todos | sin-foto | sin-precio | sin-marca | descontinuados
+
+  const puedeEditar = ['admin', 'encargado', 'superadmin', 'marketing'].includes(rol)
+    || (Array.isArray(permisos) && permisos.includes('catalogo'))
+
+  useEffect(() => {
+    if (filtroPedido?.f) setFiltro(filtroPedido.f)
+  }, [filtroPedido])
+
+  // Los descontinuados quedan FUERA salvo que se los pida: son el estado excepcional, y mezclarlos
+  // con el catálogo vivo haría que "sin foto" cuente productos que ya no se venden.
+  const productos = useMemo(
+    () => (filtro === 'descontinuados' ? productosTodos.filter((p) => p.descontinuado) : productosTodos.filter((p) => !p.descontinuado)),
+    [productosTodos, filtro],
+  )
 
   // Con ~700 productos la lista sola es inusable: sin buscador no se llega a editar uno, y
   // los que quedaron sin foto (o sin precio) son imposibles de encontrar a ojo.
@@ -65,15 +96,22 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     return productos.filter((p) => {
       if (filtro === 'sin-foto' && p.imagen) return false
       if (filtro === 'sin-precio' && p.price) return false
+      if (filtro === 'sin-marca' && p.marca) return false
       if (!q) return true
       return (p.name || '').toLowerCase().includes(q)
         || (p.codigo || '').toLowerCase().includes(q)
         || (p.cat || '').toLowerCase().includes(q)
+        || (p.marca || '').toLowerCase().includes(q)
     })
   }, [productos, busqueda, filtro])
 
-  const sinFoto = useMemo(() => productos.filter((p) => !p.imagen).length, [productos])
-  const sinPrecio = useMemo(() => productos.filter((p) => !p.price).length, [productos])
+  // Los contadores salen SIEMPRE de los vigentes, aunque el filtro activo sea "descontinuados":
+  // son el trabajo pendiente del catálogo vivo, no del listado que se está mirando.
+  const vigentes = useMemo(() => productosTodos.filter((p) => !p.descontinuado), [productosTodos])
+  const sinFoto = useMemo(() => vigentes.filter((p) => !p.imagen).length, [vigentes])
+  const sinPrecio = useMemo(() => vigentes.filter((p) => !p.price).length, [vigentes])
+  const sinMarca = useMemo(() => vigentes.filter((p) => !p.marca).length, [vigentes])
+  const deBaja = useMemo(() => productosTodos.filter((p) => p.descontinuado).length, [productosTodos])
 
   /**
    * Exporta el catálogo vivo a .xlsx con LAS MISMAS columnas que acepta "Importar planilla".
@@ -82,24 +120,32 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
    * PARCIAL, así que las celdas que dejes vacías no borran lo que el producto ya tenía.
    *
    * La foto NO va en la planilla (vive en Storage, se carga con "Cargar fotos").
+   *
+   * Baja los VIGENTES, no lo que el filtro esté mostrando: si bajara lo filtrado, exportar mirando
+   * "Sin foto" y volver a subir con "lista completa" daría de baja el resto del catálogo. Y no baja
+   * los descontinuados porque reimportar esa planilla los resucitaría a todos.
    */
   async function exportarCatalogo() {
-    if (!productos.length) { onToast?.('El catálogo está vacío'); return }
+    if (!vigentes.length) { onToast?.('El catálogo está vacío'); return }
     try {
       const XLSX = await import('xlsx')
-      const filas = productos.map((p) => ({
+      const filas = vigentes.map((p) => ({
         codigo: p.codigo || '',
         descripcion: p.name || '',
         precio: p.price || '',
         peso: p.kg || '',
         unidades: p.unidades != null ? p.unidades : '',
         categoria: p.cat || '',
+        marca: p.marca || '',
+        unidad_venta: p.unidadVenta || '',
         nivel: p.nivel != null ? p.nivel : '',
         oferta: p.oferta ? 'si' : 'no',
         precio_oferta: p.precioOferta != null ? p.precioOferta : '',
       }))
       const ws = XLSX.utils.json_to_sheet(filas)
-      ws['!cols'] = [{ wch: 10 }, { wch: 44 }, { wch: 10 }, { wch: 8 }, { wch: 9 }, { wch: 18 }, { wch: 7 }, { wch: 7 }, { wch: 12 }]
+      // Un ancho por columna, en el mismo orden que `filas`. Si se agrega una columna arriba y acá
+      // no, todas las siguientes quedan con el ancho de la anterior.
+      ws['!cols'] = [{ wch: 10 }, { wch: 44 }, { wch: 10 }, { wch: 8 }, { wch: 9 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 7 }, { wch: 7 }, { wch: 12 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Productos')
       const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
@@ -107,7 +153,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
       await descargarArchivo({ filename: `catalogo-${hoyStr()}.xlsx`, blob: new Blob([buf], { type: mime }), mime })
       // Un producto sin código no se puede reimportar sobre sí mismo (el upsert es por código):
       // volvería a entrar como producto nuevo. Avisamos para que se los complete antes.
-      const sinCodigo = productos.filter((p) => !p.codigo).length
+      const sinCodigo = vigentes.filter((p) => !p.codigo).length
       onToast?.(sinCodigo
         ? `Planilla descargada · ojo: ${sinCodigo} sin código (no se pueden reimportar)`
         : `Planilla descargada · ${filas.length} productos`)
@@ -122,9 +168,27 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     onToast?.(`Producto "${p.name}" eliminado`)
   }
 
+  // Vuelta a circulación a mano. Existe porque la reactivación automática solo ocurre cuando el
+  // producto REAPARECE en una lista importada, y a veces la baja fue un error de la planilla.
+  async function reactivar(p) {
+    await updateProducto(p.id, { descontinuado_ts: null })
+    onToast?.(`"${p.name}" vuelve al catálogo`)
+  }
+
   const btnIcono = sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:9px;cursor:pointer;background:transparent')
 
   function Acciones({ p }) {
+    // Sin permiso de escritura no se dibuja ninguna acción: RLS las rechazaría igual, pero el
+    // error llegaría lejos del toque (las mutaciones van por la write queue) y se leería como que
+    // la app no anda.
+    if (!puedeEditar) return null
+    if (p.descontinuado) {
+      return (
+        <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
+          <button onClick={() => reactivar(p)} style={sx('height:34px;padding:0 11px;border:1px solid var(--line2);border-radius:9px;background:transparent;color:var(--deep);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap')}>Reactivar</button>
+        </div>
+      )
+    }
     if (confirmDel === p.id) {
       return (
         <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
@@ -153,21 +217,27 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
             Catálogo · {visibles.length === productos.length ? `${productos.length} productos` : `${visibles.length} de ${productos.length}`}
           </div>
           <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
-            <button onClick={() => setCatsOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h18M3 12h18M3 17h18" /></svg>Categorías
-            </button>
+            {puedeEditar && (
+              <button onClick={() => setCatsOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h18M3 12h18M3 17h18" /></svg>Categorías
+              </button>
+            )}
             <button onClick={exportarCatalogo} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>Descargar planilla
             </button>
-            <button onClick={() => setImportOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21V9M7 14l5-5 5 5M5 3h14" /></svg>Importar planilla
-            </button>
-            <button onClick={() => setFotosOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>Cargar fotos
-            </button>
-            <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo producto
-            </button>
+            {/* Todo lo que ESCRIBE queda detrás del gate. Descargar la planilla no: es lectura de lo
+                que la pantalla ya está mostrando. */}
+            {puedeEditar && <>
+              <button onClick={() => setImportOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21V9M7 14l5-5 5 5M5 3h14" /></svg>Importar planilla
+              </button>
+              <button onClick={() => setFotosOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>Cargar fotos
+              </button>
+              <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo producto
+              </button>
+            </>}
           </div>
         </div>
         {catLoading ? (
@@ -184,9 +254,11 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
                 style={sx('flex:1;min-width:220px;height:36px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box')}
               />
               {[
-                { k: 'todos', t: `Todos (${productos.length})` },
+                { k: 'todos', t: `Todos (${vigentes.length})` },
                 { k: 'sin-foto', t: `Sin foto (${sinFoto})` },
                 { k: 'sin-precio', t: `Sin precio (${sinPrecio})` },
+                { k: 'sin-marca', t: `Sin marca (${sinMarca})` },
+                ...(deBaja ? [{ k: 'descontinuados', t: `De baja (${deBaja})` }] : []),
               ].map(({ k, t }) => (
                 <button key={k} onClick={() => setFiltro(k)} style={{
                   ...sx('height:36px;padding:0 12px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap'),
@@ -212,8 +284,14 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
                 celdas={[
                   { label: 'Foto', contenido: <Thumb src={p.imagen} /> },
                   { label: 'Código', contenido: p.codigo || '—', estilo: sx('font-family:var(--font-mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
+                  // La MARCA va acá adentro y no en una columna propia: es un dato de identificación
+                  // que se lee junto al nombre, y una novena columna dejaría la tabla sin aire.
                   { label: 'Descripción', titulo: true, contenido: (
-                    <span>{p.name}{p.oferta && <span style={sx('margin-left:7px;font-size:9.5px;font-weight:700;color:var(--warning);border:1px solid var(--warning);border-radius:99px;padding:1px 6px;vertical-align:middle')}>OFERTA</span>}</span>
+                    <span>
+                      {p.marca && <span style={sx('margin-right:7px;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--surface2);border-radius:99px;padding:2px 7px;vertical-align:middle')}>{p.marca}</span>}
+                      {p.name}
+                      {p.oferta && <span style={sx('margin-left:7px;font-size:9.5px;font-weight:700;color:var(--warning);border:1px solid var(--warning);border-radius:99px;padding:1px 6px;vertical-align:middle')}>OFERTA</span>}
+                    </span>
                   ), estilo: sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
                   { label: 'Categoría', contenido: p.cat, estilo: sx('color:var(--muted)') },
                   { label: 'Precio', contenido: <PrecioCelda p={p} /> },

@@ -54,9 +54,16 @@ de `App.jsx` lo consultan. Desactivar una empresa no tiene efecto, aunque la UI 
 
 ### Roles
 
-`superadmin` · `admin` · `encargado` · `vendedor` · `repartidor`
+`superadmin` · `admin` · `encargado` · `vendedor` · `repartidor` · `marketing`
 
 `encargado` es dual: se lo trackea por GPS **y** supervisa.
+
+`marketing` (12/08/2026, `db/38`) es el único que **no se trackea**: es la persona a cargo del
+catálogo —precios, fotos, productos, códigos— y no sale a la calle. Tiene UNA pantalla
+(`features/marketing/MarketingView.jsx`), la misma en los tres canales, y figura en **una sola fila**
+de `GESTION_ITEMS`. No ve recorridos: ninguna policy de `posiciones`, `recorridos_snap`,
+`estado_dispositivo`, `visitas`, `alertas_equipo`, `rutas` ni `ubicaciones_compartidas` lo menciona,
+y eso es una decisión de privacidad, no un olvido.
 
 > 🩸 **`propietario` se eliminó el 10/08/2026 (`db/31`).** Existió del 27/07 al 10/08 y **nunca tuvo
 > un solo perfil**: era un rol entero —CHECK, 8 policies RLS, 1 RPC y media docena de listas de UI—
@@ -73,6 +80,18 @@ de `App.jsx` lo consultan. Desactivar una empresa no tiene efecto, aunque la UI 
 | `vendedor` / `repartidor` | `VendedorView`/`RepartidorView` + `GpsGate` | idem | idem |
 | `encargado` | `SupervisionMovil` (Panel) · `VendedorView` (Mi jornada) | `SupervisionDesktop` | `SupervisionDesktop` |
 | `admin` / `superadmin` | `SupervisionMovil` | **`PanelDireccion`** | `SupervisionDesktop` |
+| `marketing` | `MarketingView` | `MarketingView` | `MarketingView` |
+
+> 🩸 **Leer esta tabla ANTES de diagnosticar "al rol X no le aparece Y".** El 12/08/2026 se reportó
+> que "el perfil admin parece un encargado sin jornada de vendedor": es exactamente lo que dice la
+> fila de `admin` — en la APK y en la PC cae en las pantallas de supervisión, y `PanelDireccion` (la
+> que heredó de `propietario`, con los números) **solo aparece en web y con pantalla de celular**.
+> No es un bug; es `decidirPanelDireccion`. En el mismo reporte se dijo que no salían los reportes
+> PDF, y **eso no se reprodujo**: verificado en el navegador con rol admin, "Reportes" está en el
+> menú y la vista renderiza con Excel y PDF. Ojo con el falso positivo que despista: un
+> `permission denied for function` en desarrollo suele ser la sesión vencida (la llamada sale como
+> `anon`), no una policy — comprobarlo con `has_function_privilege('authenticated', …)` antes de
+> tocar un grant.
 
 El corte celular/PC lo da `useDevice().isMobile` (ancho + puntero + userAgent, con override manual
 en Mi cuenta). ⚠️ **El override vive en `localStorage['lu-device']` y es pegajoso**: si alguien eligió
@@ -84,6 +103,14 @@ lo que la persona *es*, va por **`perfiles.permisos text[]`** (`db/23`), no por 
 vendedor con `'catalogo'` sigue siendo vendedor —conserva GPS, jornada y su lugar en el mapa— y
 además edita el catálogo. La tabla de quién ve qué pantalla de gestión vive en
 [`src/lib/gestion.js`](src/lib/gestion.js).
+
+> **Y la regla de cuándo SÍ va un rol nuevo, que es la otra mitad.** `permisos` sirve para SUMARLE
+> algo a alguien que ya es otra cosa. Cuando el puesto no encaja en ningún rol, el rol prestado se da
+> vuelta y muerde: a la persona de marketing, `vendedor` la encerraba detrás del `GpsGate` y
+> `encargado` la ponía en el mapa del supervisor y en los avisos de "sin reportar" todos los días.
+> El criterio no es "¿qué puede hacer?" sino **"¿la app la tiene que rastrear?"**. Ver el encabezado
+> de [`db/38_rol_marketing.sql`](db/38_rol_marketing.sql), que explica por qué esto no contradice a
+> `db/23`.
 
 ---
 
@@ -639,7 +666,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. **1.13.8** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.8; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
+Hay varios números que conviven. **1.13.9** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.13.9; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -647,10 +674,10 @@ Hay varios números que conviven. **1.13.8** es OTA-solo (JS): `APP_VERSION` y e
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.8` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](src/version.js) | `1.13.9` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.13.0` | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `32` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.8` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.13.9` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.13.1 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
@@ -785,10 +812,19 @@ Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle t�
   siga así, la geolocalización de la cartera no puede avanzar sola. Los 3 autoasignados se
   desasignaron el 08/08 (quedaron sus ubicaciones); decidir si el gate correcto es la ZONA
   (`clientes.id_zona` → `zonas.id_vendedor`) en vez de la asignación directa.
-- 🟠 **Cuentas de perfil DUPLICADAS**: al 08/08/2026 hay 5 pares con el mismo nombre y distinta
-  mayúscula (`Orlando Chavez`/`Orlando chavez`, `Gabriel tevez`/`Gabriel Tevez`, `Luis Mendoza`×2,
-  `Nelson rojas`/`Nelson Ismael Rojas`, `Agustin Vazquez`/`Agustin Vasquez`). La gemela que no
-  rastrea figura "no reportó" para siempre en el informe de jornada. Se limpia en `Usuarios`.
+- ✅ **Cuentas de perfil DUPLICADAS — LIMPIADO el 12/08/2026.** Eran 5 pares con el mismo nombre y
+  distinta mayúscula, y **no era el mismo correo en dos teléfonos**: eran dos cuentas por persona —
+  la vieja con el correo **personal** del empleado y la nueva corporativa (`launionvendedorN@`),
+  todas creadas el 07/08 con el recambio del parque. Convivieron un día y las dos escribieron, por
+  eso el 08/08 el recorrido de Orlando y de Agustin aparece partido en dos mitades incompletas.
+  Se eliminaron **10 perfiles + 10 logins** (criterio: se conserva solo lo que tiene `launion` en el
+  correo, más el superadmin). Detalle en [AUDITORIA_GPS_2026-08.md](AUDITORIA_GPS_2026-08.md) §3 H6.
+  > 🩸 **Y la lección de esquema que dejó: `posiciones.id_usuario` es `NO ACTION`.** Borrar a una
+  > persona **exige borrar antes su recorrido** — acá costó 23.945 posiciones, el 37 % de la tabla,
+  > irreversible (`posiciones` no tiene policy de DELETE ni backup). Si alguna vez hay que dar de
+  > baja a alguien **conservando** su historial, el único camino es `activo=false`. Y ojo con
+  > `estado_dispositivo` y `recorridos_snap`: **no tienen FK a `perfiles`**, así que no se van solas
+  > y hay que limpiarlas a mano o quedan huérfanas.
 - 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
   pueden usar el mismo código de cliente. **Con 2 empresas vivas en la base (04/08/2026) ya dejó de ser
   hipotético.**
