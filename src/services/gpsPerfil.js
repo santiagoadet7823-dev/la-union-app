@@ -53,12 +53,38 @@ const MIN_MOVE_MIN = 9
 const MIN_MOVE_MAX = 100
 
 /** Modos válidos. Cualquier otra cosa cae a 'auto' (= sin override). */
-export const MODOS = ['auto', 'intensivo', 'ahorro']
+export const MODOS = ['auto', 'intensivo', 'ahorro', 'simple']
+
+/**
+ * 🩸 MODO SIMPLE (13/08/2026) — apaga TODA la maquinaria adaptativa para esa persona.
+ *
+ * EL PEDIDO, textual: *"lo de sumar parámetros para hacerlo dinámico al encendido del gps se está
+ * rompiendo, lo ideal de momento sería poner todo cada 5 segundos y empezar a trabajar de nuevo,
+ * como si fuese un rollback"*, más *"nada de triangular porque está rompiendo todo"*.
+ *
+ * Qué apaga, y por qué cada cosa:
+ *   · CADENCIA ADAPTATIVA → las tres iguales. Ni la velocidad ni Activity Recognition la mueven.
+ *   · DISTANCIA POR MODO  → `minMove` igual en pie/urbano/ruta. Se deja de decidir cuánto guardar
+ *     según a qué velocidad cree el teléfono que va.
+ *   · TRIANGULACIÓN       → `silencioMs` a 24 h, o sea que el carril de red no se enciende nunca.
+ *     Medido el 13/08: le metió a Javier 16 puntos de ~100 m de precisión, que valen para "por acá
+ *     anduvo" y para nada más, y son los que pican el trazo en tramos punteados sueltos.
+ *
+ * ⚠️ LO QUE **NO** ARREGLA, y quedó dicho antes de aplicarlo: el problema grande de Javier ese día
+ * fueron **dos tramos de ruta de 25,7 y 21,1 km sin UN SOLO punto**. Eso no fue un filtro: su
+ * `fix_desc_salto` del día es **0** y el latido de cortesía guarda cada 30 s aunque no te muevas, así
+ * que si hubiera llegado un fix habría ~56 puntos en esos 28 minutos. Hay cero. **El chip no entregó
+ * nada** (`gps_silencio_max_ms`: 62 min). Ningún cambio de filtro recupera eso: es captura.
+ *
+ * ⚠️ Y la cola YA funcionaba: `cola_pendiente` 1 y `cuarentena_nativa` 0 ese mismo día. El uploader
+ * nativo encola en el teléfono y sube al recuperar red desde 1.8.0. No había nada que restaurar.
+ */
+const SIN_TRIANGULAR_MS = 86400000  // 24 h: el carril de red nunca llega a encenderse
 
 // Cadencia por defecto de cada modo, si el perfil no trae `intervalo_s`. 5 s para intensivo es
 // literalmente lo que pidió el cliente; 20 s para ahorro queda de reserva por si alguna vez aparece
 // un caso de batería (hoy no lo hay: la batería está explícitamente descartada como criterio).
-const INTERVALO_POR_MODO = { intensivo: 5, ahorro: 20 }
+const INTERVALO_POR_MODO = { intensivo: 5, ahorro: 20, simple: 5 }
 
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n))
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -77,14 +103,21 @@ export function normalizarPerfil(raw) {
   if (modo === 'auto') return null
 
   const intervaloS = clamp(num(raw.intervalo_s) ?? INTERVALO_POR_MODO[modo], INTERVALO_S_MIN, INTERVALO_S_MAX)
-  const minMove = num(raw.min_move_m)
+  // En `simple` el piso de 9 m es el DEFAULT, no una opción que haya que acordarse de poner: es lo
+  // único de la maquinaria de filtrado que se conserva, y se conserva porque por debajo de 9 m entra
+  // el ruido del propio GPS y el que está parado deja racimos de jitter (ver el clamp, arriba).
+  const minMove = num(raw.min_move_m) ?? (modo === 'simple' ? MIN_MOVE_M : null)
   return {
     modo,
     intervalo_s: intervaloS,
     // Fijar la cadencia es el punto de todo esto, así que el default es `true`. Se admite `false`
     // explícito para el caso "solo bajame la base y dejá la adaptativa como está", que es la lectura
     // más literal del pedido y sirve para separar las dos hipótesis si hiciera falta.
-    fijar_cadencia: raw.fijar_cadencia !== false,
+    //
+    // En `simple` NO se admite: el modo entero existe para que no quede nada dinámico, y un
+    // `fijar_cadencia:false` ahí dejaría la adaptativa a medias — un perfil que dice una cosa y hace
+    // otra. Si alguien quiere esa combinación, el modo que la expresa es `intensivo`.
+    fijar_cadencia: modo === 'simple' ? true : raw.fijar_cadencia !== false,
     min_move_m: minMove == null ? null : clamp(minMove, MIN_MOVE_MIN, MIN_MOVE_MAX),
     // Metadatos: no son parámetros, viajan solo para que el panel pueda mostrar de qué prueba se
     // trata y desde cuándo. Se recortan para que nadie meta un texto de 10 KB en el JSON.
@@ -125,6 +158,17 @@ export function paramsDePerfil(raw) {
     // mide el salto imposible, no un filtro de guardado: subirlo a 30 m dejaría de auditar todos los
     // saltos menores a 30 m. Comparten número por casualidad, no por definición.
   }
+  if (p.modo === 'simple') {
+    // Las TRES bandas de distancia iguales: se deja de decidir cuánto guardar según a qué velocidad
+    // cree el teléfono que va. Es la otra mitad de "nada dinámico" — con solo igualar las cadencias,
+    // `minMoveDelModo` seguiría saltando entre 9, 15 y 50 m según `modoMovimiento`.
+    out.minMoveUrbanoM = p.min_move_m
+    out.minMoveRutaM = p.min_move_m
+    // Triangulación apagada: el carril de red se enciende tras `silencioMs` sin fix de GPS, así que
+    // con 24 h no llega nunca. Es un `int` en el plugin (cabe de sobra) y NO borra nada de lo ya
+    // guardado: solo deja de agregar puntos de red nuevos.
+    out.silencioMs = SIN_TRIANGULAR_MS
+  }
   return out
 }
 
@@ -132,9 +176,10 @@ export function paramsDePerfil(raw) {
 export function resumenPerfil(raw) {
   const p = normalizarPerfil(raw)
   if (!p) return 'Automático'
-  const etiqueta = p.modo === 'intensivo' ? 'Intensivo' : 'Ahorro'
+  const etiqueta = { intensivo: 'Intensivo', ahorro: 'Ahorro', simple: 'Simple' }[p.modo] || p.modo
   const cadencia = p.fijar_cadencia ? `${p.intervalo_s} s fijos` : `${p.intervalo_s} s base`
-  return p.min_move_m != null ? `${etiqueta} · ${cadencia} · ${p.min_move_m} m` : `${etiqueta} · ${cadencia}`
+  const cola = p.modo === 'simple' ? ' · sin triangular' : ''
+  return (p.min_move_m != null ? `${etiqueta} · ${cadencia} · ${p.min_move_m} m` : `${etiqueta} · ${cadencia}`) + cola
 }
 
 /**

@@ -494,12 +494,21 @@ function GpsPerfilModal({ usuario, estado, onClose, onToast, onGuardado }) {
       </div>
 
       <Field label="Modo">
-        <div style={sx('display:flex;gap:8px')}>
+        <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
           {btnModo('auto', 'Automático', 'Lo de hoy: la cadencia se adapta sola a la velocidad y al acelerómetro')}
-          {btnModo('intensivo', 'Intensivo', 'Cadencia fija: ni el acelerómetro ni la velocidad la pueden bajar')}
+          {btnModo('simple', 'Simple', 'Nada dinámico: cadencia fija, misma distancia mínima en pie/calle/ruta, y sin triangular por antenas')}
+          {btnModo('intensivo', 'Intensivo', 'Cadencia fija, pero conserva la distancia por modo y la triangulación')}
           {btnModo('ahorro', 'Ahorro', 'Cadencia fija alta')}
         </div>
       </Field>
+      {f.modo === 'simple' && (
+        <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.6;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:10px')}>
+          Apaga toda la parte que decide sola: la cadencia no cambia con la velocidad, la distancia mínima
+          es la misma caminando que en ruta, y <b style={sx('color:var(--text)')}>no se ubica por antenas</b> cuando
+          el GPS se calla. Se conserva el piso de {GPS_BASE.minMoveM} m — por debajo de eso es ruido del
+          propio GPS, no desplazamiento.
+        </div>
+      )}
 
       {esAuto ? (
         <div style={sx('font-size:12px;color:var(--muted);line-height:1.6;margin-top:4px')}>
