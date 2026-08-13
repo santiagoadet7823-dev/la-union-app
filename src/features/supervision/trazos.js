@@ -196,6 +196,30 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     if (aprox.length) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.6, dashArray: '2 6', lineas: aprox })
     // Los conectores solo tienen sentido sobre el crudo: la rama snap trae los segmentos que
     // decidió OSRM, que no se corresponden con los huecos de captura.
+    //
+    // 🩸 CONECTORES SÓLIDOS DESDE 1.14.3 (13/08/2026), A PEDIDO EXPLÍCITO DEL CLIENTE: *"subí para
+    // que dejen de aparecer los huecos o zonas punteadas, la ruta debe ser un trazo casi prolijo
+    // porque no hay edificios que obstruyan la señal"*.
+    //
+    // POR QUÉ SE CAMBIA ACÁ Y NO SUBIENDO `HUECO_MS`/`HUECO_M`, que era lo primero que pedía el
+    // cliente y lo que yo iba a hacer. Los umbrales parten los SEGMENTOS, y los segmentos los
+    // consume algo más: `features/reportes/informe.js` saca los "huecos de señal" de los bordes
+    // entre segmentos (`huecosDeSenal`). Subir los umbrales habría hecho desaparecer del informe el
+    // silencio de 28 minutos de la ruta de Javier — o sea, habría borrado la medición del problema
+    // que estamos persiguiendo, para que el mapa se viera lindo. El punteado nunca estuvo en los
+    // datos: lo dibujaba esta línea. Cambiando SOLO el estilo, el mapa queda continuo y el modelo
+    // sigue diciendo la verdad: `segmentos`, `puntos`, los km, el informe y el snap no se enteran.
+    //
+    // ⚠️ Lo que esto SÍ hace, y hay que saberlo: une con una recta llena dos puntos separados por un
+    // hueco. En la ruta es razonable (25 km entre pueblos, sin calles paralelas con las que
+    // confundirse, que es el caso que motivó el pedido). En el pueblo una recta sobre un hueco largo
+    // puede cruzar manzanas por las que nadie pasó — es exactamente el "salta calles" del 10/08, y
+    // vuelve a ser posible. La red de contención que queda es el filtro de salto imposible
+    // (`MAX_SPEED_MPS`, 45 m/s), que sí sigue vivo y descarta los teleports de verdad.
+    //
+    // Los `aproximados` (triangulados) NO se tocan: siguen punteados y finos. Esos no son un hueco
+    // sino datos de ±100 m, y dibujarlos llenos sería afirmar una precisión que no existe. Además
+    // dejan de generarse solos: el modo `simple` apaga la triangulación (ver `gpsPerfil.js`).
     if (!usable) {
       const conectores = []
       for (let i = 1; i < lineas.length; i++) {
@@ -203,7 +227,7 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
         const b = lineas[i]
         conectores.push([a[a.length - 1], b[0]])
       }
-      if (conectores.length) piezas.push({ id: t.id, color: t.color, weight: 2, opacity: opacity * 0.5, dashArray: '3 7', lineas: conectores })
+      if (conectores.length) piezas.push({ id: t.id, color: t.color, weight, opacity, lineas: conectores })
     }
     return piezas
   })
