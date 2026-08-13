@@ -237,3 +237,56 @@ de 45 s y le devolvería la línea llena. `keepAliveMs` **ya viaja al nativo**, 
 
 **Se decidió NO hacerlo todavía** (13/08): primero se mide la jornada completa de mañana con la
 cadencia fija. Una variable por vez — que es la regla que este archivo existe para sostener.
+
+---
+
+## 🔴 10. LA PRUEBA CAMBIÓ DE FORMA ESA MISMA TARDE (13/08, 1.14.2)
+
+⚠️ **Leer esto antes de interpretar los números de mañana**: a partir de 1.14.2 los cuatro NO están
+en `intensivo` (solo cadencia) sino en **`simple`**, que apaga tres cosas a la vez —cadencia
+adaptativa, distancia por modo y triangulación—. **Ya no se mide una variable, se mide un paquete.**
+Se hace igual porque el cliente lo pidió explícitamente y porque la evidencia de abajo mostró que la
+cadencia sola no alcanzaba; pero si mañana algo mejora, **no se va a poder atribuir a una causa**.
+
+### El reporte del cliente, y qué mostró la medición
+
+Reportó que el GPS se apaga sin internet, que Javier hizo dos tramos de ruta sin marcar nada, y que
+al volver al pueblo **las ubicaciones se subían y se borraban** por superar una guarda de salto.
+
+**La mitad del diagnóstico es correcta y la otra mitad no**, y la diferencia decide dónde buscar:
+
+| | |
+|---|---|
+| Tramo de ida (09:02) | **28 min · 25,7 km · CERO puntos** |
+| Tramo de vuelta (14:00) | **26 min · 21,1 km · CERO puntos** |
+| `fix_desc_salto` del día | **0** — no se descartó ni un punto por salto |
+| `cuarentena_nativa` / `cola_pendiente` | 0 / 1 — nada trabado, nada aislado |
+| `gps_silencio_max_ms` | **62 minutos** |
+
+**La prueba que lo cierra**: el latido de cortesía guarda un punto cada 30 s *aunque no haya
+movimiento*. Si en esos 28 minutos hubiera llegado **un solo fix**, habría ~56 puntos. Hay cero.
+Entonces no es que se capturó y se filtró: **el chip no entregó nada**. Es un problema de CAPTURA, y
+**ningún cambio de filtro, de guarda ni de dibujo lo va a recuperar**.
+
+Y la cola ya hacía lo que se pedía restaurar: el uploader nativo encola en el teléfono y sube al
+recuperar red desde 1.8.0 — por eso `cola_pendiente` es 1 y no 3.000.
+
+### Lo que SÍ era cierto del reporte
+
+La triangulación le metió a Javier **16 puntos de ~100 m de precisión** ese día. Valen para "por acá
+anduvo" y para nada más, y son los que pican el trazo en tramos punteados sueltos. Por eso `simple`
+la apaga.
+
+### 🔴 Lo que queda ABIERTO y es lo importante
+
+**Por qué el chip deja de entregar en la ruta.** Hipótesis a distinguir, ninguna medida todavía:
+
+1. **A-GPS sin datos**: sin internet el teléfono no refresca las efemérides, y recuperar lock a
+   50 km/h sin asistencia puede tardar minutos. Encaja con que falle *en ruta* y ande *en el pueblo*.
+2. **El servicio muere o se congela** en el trayecto (Doze, OEM killer) y revive al llegar. Se
+   distingue mirando si `fix_total` avanzó durante el hueco.
+3. **Pérdida de lock por velocidad/geometría** en un chip que ya es malo (Javier: 174 fixes sub-5 m
+   en 2.353).
+
+La forma de separarlas es `logcat` sobre el teléfono durante un viaje real, o comparar `fix_total`
+antes y después del tramo. **No se resuelve con constantes.**
