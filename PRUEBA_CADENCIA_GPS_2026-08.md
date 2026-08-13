@@ -82,6 +82,15 @@ Esto es lo que hace falsificable la prueba.
 | **Gabriel, Eduardo** | Dejan de reportar 30.000 y pasan a 5.000. Los huecos > 60 s caen fuerte (8,8 % y 5,7 %). | El escalón de 30 s era la causa: queda puesto | Queda descartada la cadencia; el problema es el chip |
 | **Javier, Luis** | **Poco cambio.** Ya corrían a 4 s; su limitante es la precisión | Hay algo que no vimos: volver a medir | Confirma hardware → la prueba decisiva es **cambiarles el teléfono con alguien sano por un día**, no otra constante |
 | **Todos** | Los fixes < 5 m **no** suben. La cadencia no fabrica satélites | Esperado | Sorpresa, hay que investigar |
+
+> ⚠️ **"Clavados en 30 s" es una afirmación sobre la MEDIANA DE 3 DÍAS, no sobre una foto.** Un
+> `select` instantáneo de `gps_intervalo_ms` agarra a cualquiera en la cadencia lenta: el 13/08 a las
+> 14:12 UTC, **Orlando —el mejor del parque— reportaba 30.000** y Agustin 2.000. Lo que los separa no
+> es tocar los 30 s, es cuánto tiempo se quedan ahí: la mediana entre puntos guardados es de 32,4 s
+> en Gabriel contra 5,0 s en Orlando.
+> Y refuerza la predicción de esta misma tabla: **Orlando produce trazos perfectos incluso a 30 s**,
+> porque su precisión mediana es 1,6 m. Un fix cada 30 s que cae donde tiene que caer vale más que
+> uno cada 5 s con 20 m de error. Si la cadencia fija no alcanza, es esto lo que lo explica.
 | **Controles** | Orlando y Agustin no cambian (no se les tocó nada) | Confirma que el cambio es acotado | Algo se publicó de más |
 
 ---
