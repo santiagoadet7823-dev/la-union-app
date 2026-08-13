@@ -98,6 +98,18 @@ where p.gps_perfil is not null;
 
 Tiene que decir `gps_intervalo_ms = 5000`. Si Gabriel sigue en 30.000, el override no aterrizó.
 
+> ⚠️ **Un perfil nuevo NO se aplica en el mismo instante, y hay que saber por qué antes de declarar
+> que falló.** El servicio nativo lee `K_INTERVALO` de prefs en tres momentos y en ninguno más:
+> al ARRANCAR (`UploaderGpsService:824`), en la transición rápido→lento (`:407`, `:908`) y cuando
+> Activity Recognition avisa "quieto" (`:413`). Si el servicio ya estaba corriendo cuando llegó el
+> `configurar()`, sigue con la cadencia vieja hasta la primera de esas transiciones.
+> Medido el 13/08: Gabriel pasó a 5.000 a los pocos minutos; Eduardo, cuyo servicio se levantó
+> **antes** de que el JS empujara el perfil, seguía reportando 10.000 (el default del Java) un cuarto
+> de hora después.
+> **Para la medición de una jornada completa da igual**: desde 1.11.0 el servicio PAUSA y se reanuda
+> en el borde de la ventana, y al reanudarse relee prefs — o sea que mañana todos arrancan en 5.000
+> desde el primer minuto. Solo importa si se quiere ver el efecto el mismo día.
+
 **Después: ¿sirvió?** La misma consulta que produjo la tabla del §2, corriendo sobre los días nuevos.
 Métricas: **huecos > 60 s**, **dt p50**, **puntos/día**, **fixes < 5 m**.
 
@@ -116,7 +128,46 @@ veces (H5 de `AUDITORIA_GPS_2026-08.md`).
   ver `INVENTARIO_TELEFONOS.md`). Si no se destraba, la prueba corre con **tres** personas, y su
   falta de mejora **no** cuenta como evidencia en contra.
 - **El modelo del teléfono puede venir null.** `estado_dispositivo.modelo` se llena parseando la UA
-  del WebView, y Android aplica *UA reduction* (manda `K` en vez del modelo). Si queda null en todo
-  el parque, la reducción está activa y el dato hay que sacarlo por el camino nativo
-  (`Build.MODEL`/`Build.MANUFACTURER`) en el próximo APK. Sin modelo, la hipótesis "son todos
-  Samsung A07" sigue sin poder probarse ni descartarse.
+  del WebView, y Android aplica *UA reduction* (manda `K` en vez del modelo). ✅ **Verificado el
+  13/08: la reducción NO está activa** — los primeros dos teléfonos que tomaron 1.14.0 reportaron
+  `SM-A075M` y `SM-A065M`. El dato sirve.
+
+---
+
+## 🩸 7. LA HIPÓTESIS DEL MODELO ESTÁ REFUTADA (13/08/2026)
+
+El cliente sospechaba que los cuatro que fallan eran los Samsung A07. **No lo son**, y conviene
+dejarlo escrito para que nadie vuelva a comprar hardware por esta teoría.
+
+Cruzando `INVENTARIO_TELEFONOS.md` con la medición del §2:
+
+| Modelo | Funcionan bien | Fallan |
+|---|---|---|
+| **A07** (`SM-A075M`) | **Orlando chavez** — el mejor del parque (0,3 % de huecos, acc 1,6 m) | Gabriel, Nelson, Javier, Zura, Alejandro |
+| **A06** (`SM-A065M`) | **Agustin Vasquez** — el otro mejor (0,2 %, acc 1,6 m) | Luis Mendoza, Eduardo Ruiz |
+
+**Cada familia tiene un teléfono impecable y varios malos.** El modelo no separa los dos grupos, así
+que la diferencia no es el modelo — es el chip/antena de la unidad concreta, o algo de su
+configuración que todavía no medimos. Confirmado con `ro.product.model` por adb sobre el equipo de
+Eduardo (`SM-A065M`) y con la columna nueva sobre el de Gabriel (`SM-A075M`).
+
+**Corolario:** la prueba decisiva sigue siendo **cruzar dos teléfonos entre personas por un día** —
+si el problema viaja con el aparato es hardware, si se queda con la persona es la ruta o el uso.
+
+---
+
+## 8. Bitácora
+
+**13/08/2026 11:05** — Eduardo Ruiz destrabado por Tailscale (`vendedor-6`, `100.94.191.76`).
+Causa raíz medida, no supuesta: **`installerPackageName=null`**, así que Android le negaba
+`USER_ACTION_NOT_REQUIRED` y *todo* intento de auto-actualización caía en un diálogo que nadie
+tocaba. Se reinstaló el APK publicado (hash idéntico al build local) con `adb install -r -i
+com.launion.app`, que además **gana el privilegio para la próxima**: `installerPackageName` quedó en
+`com.launion.app`. Los tres permisos (`ACCESS_FINE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`,
+`POST_NOTIFICATIONS`) y la exención de batería sobrevivieron al `-r`, y la sesión también: el
+`UploaderGpsService` levantó en foreground sin pasar de nuevo por el gate de GPS.
+Resultado inmediato: de **12,9 h sin latir** a `app_version 1.14.0` y **14 puntos en 10 minutos**.
+
+**13/08/2026 11:0x** — Gabriel Tevez reporta `gps_intervalo_ms = 5000` (venía de 30.000): el perfil
+de GPS viajó de punta a punta —panel → base → `getTrackConfig` → `configurar()` → SharedPreferences →
+servicio nativo— en un teléfono real en la calle. **El criterio de aceptación del §5 se cumplió.**
