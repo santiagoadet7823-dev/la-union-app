@@ -34,9 +34,12 @@ const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const grid = { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 130px 120px 80px 140px 100px 110px', gap: 10, alignItems: 'center' }
 
-const rolPill = (r) => {
+// El nivel (db/40) se muestra PEGADO al rol y no como una columna aparte: no es un dato de la
+// persona, es una aclaración de qué significa "encargado" en su caso. Sin marca = alcance normal.
+const rolPill = (r, nivel) => {
   const c = { superadmin: 'var(--info)', admin: 'var(--primary)', encargado: 'var(--primary)', vendedor: 'var(--success)', repartidor: 'var(--warning)', marketing: 'var(--info)' }[r] || 'var(--muted)'
-  return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}</span>
+  const general = r === 'encargado' && (nivel ?? 0) >= 2
+  return <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: c, background: 'var(--surface2)', border: '1px solid var(--line)' }} title={general ? 'Ve a todo el equipo, incluidos los otros encargados' : undefined}><span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: c }} />{r || '—'}{general && <span style={sx('font-weight:500;opacity:.75')}>· todo el equipo</span>}</span>
 }
 
 /**
@@ -141,12 +144,35 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
     </button>
   ) : null
 
+  // JERARQUÍA ENTRE ENCARGADOS (13/08/2026, db/40). Aparece SOLO en el rol `encargado` porque es el
+  // único donde el nivel hace algo: admin y superadmin ven su empresa entera por su propia rama de
+  // las policies, y a un vendedor no lo mira ningún par.
+  //
+  // Se ofrecen dos opciones y no un número, porque el número no dice nada solo: lo que el supervisor
+  // necesita decidir es "¿este ve a los otros encargados o no?". El 0 de la base se dibuja como 1 —
+  // `ids_a_mi_cargo()` los trata igual, justamente para que un encargado recién creado no quede
+  // ciego por un campo sin tocar.
+  const nivelActual = ed.nivel ?? (u.nivel ?? 0)
+  const selNivel = rolEfectivo === 'encargado' ? (
+    <select
+      value={nivelActual >= 2 ? 2 : 1}
+      onChange={(e) => setEdit(u.id, { nivel: Number(e.target.value) })}
+      style={{ ...selectStyle, marginTop: 4 }}
+      className="lu-input"
+      title="Qué parte del equipo ve esta persona. Los encargados del mismo alcance NO se ven entre sí."
+    >
+      <option value={1}>Alcance: los vendedores</option>
+      <option value={2}>Alcance: todo el equipo</option>
+    </select>
+  ) : null
+
   const selRol = (
     <>
       <select value={ed.rol || u.rol || ''} onChange={(e) => setEdit(u.id, { rol: e.target.value })} style={selectStyle} className="lu-input">
         <option value="">Sin rol…</option>
         {rolesDisponibles.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
+      {selNivel}
       {selCategoria}
       {chkPermisos}
       {btnGps}
@@ -191,7 +217,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
         { label: 'Rol', contenido: selRol },
         { label: 'Código', contenido: inpNumero },
         { label: 'Empresa', contenido: celdaEmpresa },
-        { label: 'Estado', contenido: u.activo && u.rol ? rolPill(u.rol) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span> },
+        { label: 'Estado', contenido: u.activo && u.rol ? rolPill(u.rol, u.nivel) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span> },
       ]}
     />
   )
@@ -579,7 +605,7 @@ export default function UsuariosView({ onToast }) {
     setLoading(true)
     const { data } = await supabase
       .from('perfiles')
-      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo, permisos, gps_perfil')
+      .select('id, nombre, email, telefono, rol, activo, id_empresa, numero, color_trazo, id_categoria_rastreo, permisos, gps_perfil, nivel')
       .order('activo', { ascending: true })
       .order('created_at', { ascending: true })
     // Categorías asignadas a cada uno (tabla puente, 1.8.0). Se traen todas de una y se agrupan:
@@ -631,10 +657,15 @@ export default function UsuariosView({ onToast }) {
     // guardado sería una promesa muda para el día en que a esa persona la bajen a vendedor.
     const yaEdita = ['admin', 'encargado', 'superadmin'].includes(nuevoRol)
     const nuevosPermisos = yaEdita ? [] : (ed.permisos ?? (u.permisos || []))
+    // Nivel jerárquico (db/40). Se GUARDA EN CERO para todo el que no sea encargado, y eso no es
+    // prolijidad: `ids_a_mi_cargo()` compara el nivel de la PERSONA MIRADA, así que un nivel 2
+    // olvidado en alguien a quien bajaron a vendedor lo volvería invisible en el mapa para los
+    // encargados de alcance normal. El campo tiene que morir con el rol que lo justificaba.
+    const nuevoNivel = nuevoRol === 'encargado' ? Number(ed.nivel ?? u.nivel ?? 0) : 0
     setSavingId(u.id)
     const { error } = await supabase
       .from('perfiles')
-      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero, id_categoria_rastreo: nuevaCat, permisos: nuevosPermisos })
+      .update({ rol: nuevoRol, activo: true, id_empresa: nuevaEmpresa, numero: nuevoNumero, id_categoria_rastreo: nuevaCat, permisos: nuevosPermisos, nivel: nuevoNivel })
       .eq('id', u.id)
     if (error) { setSavingId(null); onToast?.('Error: ' + error.message); return }
     // Sincronizar la tabla puente: borrar lo que se destildó, insertar lo que se marcó. Se hace
@@ -651,6 +682,9 @@ export default function UsuariosView({ onToast }) {
     }
     // El teléfono cachea su ventana 4 min; sin esto, un cambio de horario tardaría en aplicarse.
     invalidarTrackCache()
+    // Y la caché del plantel (TTL 1 min), porque el nivel cambia QUIÉN aparece en el mapa: sin esto
+    // el cambio de alcance se ve recién al minuto siguiente, que se lee como "no guardó".
+    invalidarPerfilesEquipo()
     setSavingId(null)
     onToast?.(`${u.nombre || u.email} habilitado como ${nuevoRol}`)
     cargar()
