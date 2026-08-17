@@ -1,11 +1,19 @@
 # HANDOFF — DisT-At
 
-> **07/08/2026 · `APP_VERSION 1.11.0`.** Escrito para retomar el proyecto **en otra máquina y en una
-> sesión nueva, sin memoria previa.** Si estás leyendo esto en la PC nueva: empezá por §2.
+> **Actualizado el 17/08/2026 · `APP_VERSION 1.14.5` · APK 1.13.0.** Escrito para retomar el proyecto
+> **en otra máquina y en una sesión nueva, sin memoria previa.** Si estás leyendo esto en la PC nueva:
+> empezá por §2.
 >
 > Complementarios: [CLAUDE.md](CLAUDE.md) (reglas operativas — leerlo entero antes de tocar código) ·
 > [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) (arquitectura y deuda técnica) ·
 > [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) (qué es cada archivo de la carpeta).
+
+> 🟣 **17/08/2026 — SE FRENAN LAS FEATURES.** De acá en adelante: deuda técnica y sacarle la marca
+> del cliente al producto. **Empezá por la sección del 17/08**, que está abajo de §1 — el cuerpo de
+> este documento todavía habla como si el repo fuera de un solo cliente y viviera en la raíz.
+>
+> ⚠️ **El SDK de Flutter quedó instalado en `C:\src\flutter`** (3.47.0 stable) de la evaluación que
+> se descartó el mismo día. **No lo usa nada**: se puede borrar y recuperar ~3 GB.
 
 ---
 
@@ -17,6 +25,194 @@ cobra por abono P2P — **no hay pasarela de pago en la app**; la palanca es `em
 ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta).
 
 Todo en español: código, comentarios, UI y commits.
+
+---
+
+## 🟣 SESIÓN DEL 17/08/2026 — Alto de features. Se descarta Flutter y se despersonaliza el producto
+
+**La decisión de hoy, textual:** *"paremos acá y conservamos lo que tenemos, vamos a ir corrigiendo la
+deuda técnica y quitar todo rastro de La Unión en Google consola y demás"*. O sea: **nada nuevo entra**.
+Lo que sigue son las tres cosas que quedan sobre la mesa —lo que hay que conservar, lo que hay que
+medir y lo que hay que despersonalizar— en el orden en que conviene hacerlas.
+
+---
+
+### 1. Lo que cambió hoy
+
+| Qué | Estado |
+|---|---|
+| **`web/`**: el cliente React pasó de la raíz a `web/` con `git mv` — **244 renombres**, el historial se conserva (`git log --follow` sigue andando) | ✅ Commiteado, **sin push** |
+| **19 documentos + `deploy.yml` + los 2 scripts de release** reescritos para la estructura nueva | ✅ Commiteado |
+| 🗑️ **`flutter/` — descartado el mismo día que nació** | Borrado del repo. El fuente quedó en **`../flutter-descartado-2026-08-17.zip`** (69 archivos, 238 KB) |
+
+**Por qué se descartó Flutter:** se evaluó migrar el APK a `com.distat.app` para sacarse el WebView de
+encima (y con él una familia de bugs ya pagados: tablets con Chrome 79 en negro, `plugin-legacy`,
+`rAF` que no corre oculto). Se frenó al decidir que el trabajo pasa a ser deuda técnica: **un segundo
+cliente duplica cada regla que hoy ya vive en 3 y 4 runtimes**, y no arregla ni la seguridad (vive en
+Supabase, que no se migra) ni la precisión del GPS (se degradó a nivel de chip). El análisis completo
+—incluido lo que la migración sí resolvía— está en el `README.md` de ese zip. **No volver a proponerlo
+sin leerlo.**
+
+⚠️ Y quedó instalado el **SDK de Flutter en `C:\src\flutter`** (~3 GB) que ya no usa nada.
+
+**Nada de esto está en GitHub:** `main` está 0 adelante / 0 atrás de `origin/main`. El commit es local;
+lo que sube es `git push`, y pushear a `main` dispara el deploy de la PWA.
+
+⚠️ **Las tres trampas del monorepo** (las tres silenciosas, están en [CLAUDE.md §1](CLAUDE.md)):
+`npm`/`vite`/`cap`/`gradle` se corren desde `web/` · un patrón de `.gitignore` que arranca con `/` es
+relativo a la RAÍZ y las reglas del keystore necesitaron el prefijo `web/` (**y este repo es
+público**) · `defaults.run.working-directory` no afecta a las actions, por eso
+`upload-pages-artifact` lleva `web/dist` completo.
+
+**Estado congelado:** `APP_VERSION 1.14.5` · `app_config`: `latest_version` y `bundle_version` en
+**1.14.5**, `min_version` **1.13.0** · el parque corre APK **1.13.0** (salvo julii Adet, en 1.6.6).
+
+---
+
+### 2. La calibración de GPS (5 s / 2 s): qué dicen los números del **17/08**
+
+**El veredicto honesto: la cadencia llega donde el chip entrega, y no fabrica precisión.** Medido hoy
+sobre `posiciones`, mediana del delta entre puntos consecutivos por persona:
+
+| Persona | Perfil | Cadencia entregada (p50) | `accuracy` p50 | Fixes ≤ 5 m | Puntos |
+|---|---|---|---|---|---|
+| **Agustin** | `auto` | **2,0 s** | **1,9 m** | 4.067 / 4.406 | 4.406 |
+| **Orlando** | `auto` | **2,0 s** | **1,5 m** | 2.642 / 3.086 | 3.086 |
+| **Javier** | simple 5 s | 6,3 s ✅ | 36,2 m | 72 / 1.947 | 1.947 |
+| **Eduardo** | simple 5 s | 6,6 s ✅ | 39,6 m | 559 / 1.488 | 1.488 |
+| **Luis** | simple 5 s | 11,7 s ⚠️ | 4,3 m | 701 / 1.330 | 1.330 |
+| **Gabriel** | simple 5 s | **30,0 s** 🔴 | 15,8 m | **0** / 1.014 | 1.014 |
+| Nelson | `auto` | 5,4 s | 21,0 m | **0** / 2.392 | 2.392 |
+| Zura | `auto` | 6,4 s | 58,8 m | 4 / 1.490 | 1.490 |
+| Alejandro | `auto` | 31,8 s | 27,9 m | 1 / 1.002 | 1.002 |
+
+**Lo que sí está probado:**
+
+- **Los 2 s del carril rápido funcionan y son el techo del sistema**: Agustin y Orlando, en `auto`,
+  entregan 2,0 s con 1,5-1,9 m. No hace falta perfil para eso — el adaptativo los pone ahí solo.
+- **El perfil de 5 s llega al teléfono**: Javier y Eduardo entregan 6,3 y 6,6 s contra los 30 s de
+  antes. El camino `panel → perfiles.gps_perfil → configurar() → prefs → servicio nativo` **cierra**.
+- **Y no toca la precisión, como estaba dicho de antemano**: Javier corre a 6,3 s con 36 m de error.
+  Pedir más seguido no mejora el fix, solo lo pide más seguido (regla 42).
+
+**Lo que el número de Luis explica, y hay que tener presente antes de tocar nada:** pidió 5 s y
+entrega 11,7 s **con el chip sano** (4,3 m). No es que no llegue la cadencia: es que **manda
+`MIN_MOVE_M` (9 m)**, y caminando despacio uno de cada dos fixes no cruza el umbral y se descarta.
+La palanca de densidad caminando es la distancia, no el intervalo.
+
+#### 🔴 Lo que falta probar: los teléfonos con GPS degradado
+
+**Y hay un caso que ya empezó a contestar solo, en contra:** *Gabriel está configurado a 5 s y entrega
+30 s* — o sea, exactamente la cadencia del latido de cortesía, que es lo que queda cuando **no hay
+nada más que guardar**. Con 0 fixes ≤ 5 m en 1.014 puntos, el candidato es captura, no filtro.
+
+⚠️ **Pero no se puede afirmar todavía, y la razón es la trampa de siempre:** la telemetría de Gabriel
+(`estado_dispositivo`) es del **14/08 21:12** y sus puntos son de hoy. Eso significa que **el WebView
+no está corriendo y el servicio nativo sí** — el patrón A2. El perfil viaja por `configurar()`, que es
+JS: un teléfono con el WebView congelado **no recibe el perfil nuevo y nadie se entera**, porque el
+panel muestra el valor viejo que él mismo reportó.
+
+**Protocolo para la prueba, en orden:**
+
+1. **Antes de concluir nada, mirar `updated_at`/`ts` de `estado_dispositivo`.** Si la telemetría no
+   es del día, el perfil que muestra el panel es una foto vieja: no prueba qué corre en el teléfono.
+2. Los cuatro a probar son los del GNSS que no engancha (§ A1): **Gabriel, Nelson, Zura, Alejandro**.
+   Hoy **solo Gabriel tiene perfil**; a los otros tres hay que ponérselo desde el panel.
+3. **Para Gabriel el ajuste útil es `min_move_m` HACIA ARRIBA, no hacia abajo** — su `accuracy` p50 es
+   15,8 m, o sea que el piso de 9 m está **por debajo de su propio ruido** y cada fix "se movió"
+   estando parado. El rango del clamp llega a 100 justamente por esto (`gpsPerfil.js`).
+4. **Criterio falsable, escrito antes de mirar:** si con el perfil aplicado y confirmado por
+   telemetría del día la cadencia entregada **no baja de ~10 s**, la cadencia no es la palanca para
+   ese teléfono — es captura, y lo que lo cierra es el cable o el recambio del equipo (§ A1), no una
+   constante.
+
+La consulta que produjo la tabla de arriba (pegar en el SQL editor de Supabase):
+
+```sql
+with p as (
+  select pos.id_usuario, per.nombre, per.gps_perfil is not null as perfil,
+         (pos.ts at time zone 'America/Argentina/Buenos_Aires')::date as dia, pos.accuracy,
+         extract(epoch from (pos.ts - lag(pos.ts) over (
+           partition by pos.id_usuario, (pos.ts at time zone 'America/Argentina/Buenos_Aires')::date
+           order by pos.ts))) as dt
+  from posiciones pos join perfiles per on per.id = pos.id_usuario
+  where pos.ts >= now() - interval '3 days'
+)
+select nombre, perfil, dia, count(*) puntos,
+       round(percentile_cont(0.5) within group (order by dt)::numeric,1) dt_p50,
+       round(percentile_cont(0.5) within group (order by accuracy)::numeric,1) acc_p50,
+       count(*) filter (where accuracy <= 5) fixes_buenos
+from p group by 1,2,3 order by dia desc, nombre;
+```
+
+⚠️ Al leer los contadores de `estado_dispositivo` en la misma sesión: **`fix_desc_movimiento` cuenta
+dos veces** el fix retenido (§ A3), así que todo porcentaje de descarte por movimiento está inflado.
+
+---
+
+### 3. 🧹 Sacar "LA UNIÓN" de todo — el plan, en tres olas
+
+**El principio que ordena todo esto:** *LA UNIÓN es un **cliente** (una fila en `empresas`), no la
+marca.* El producto se llama **DisT-At**. Lo que se saca es el nombre del cliente de la identidad del
+**producto**; los datos del tenant —la empresa, sus clientes, sus usuarios, sus recorridos— **no se
+tocan**. El inventario de abajo está verificado contra el repo y las consolas el 17/08/2026.
+
+#### Ola 1 — Consolas. Gratis, sin release, sin riesgo. **Esto es lo que hacés a mano**
+
+| # | Dónde | Qué pasa hoy | Qué hacer | Riesgo |
+|---|---|---|---|---|
+| **1** | **Google Cloud, proyecto `253436593980`** | Es el proyecto que emite el **Client ID de OAuth** `253436593980-9em17…` (`web/capacitor.config.ts:28`, `AuthContext.jsx:82`) — **el nombre de su pantalla de consentimiento es el que ven los 9 teléfonos al entrar con Google**. Es **otro** proyecto que el de Firebase (`720290370372`), y casi seguro el que `GUIA_API_KEY_GOOGLE_MAPS.md:31` manda a crear como **"LA UNION App"** | Ubicarlo por número en el **Resource Manager** (`console.cloud.google.com/cloud-resource-manager`), y renombrar **dos** cosas: el proyecto (*IAM y administración → Configuración*) y la **pantalla de consentimiento de OAuth** (*APIs y servicios → Pantalla de consentimiento → Nombre de la aplicación*) → `DisT-At` | 🟢 Nulo: el nombre visible no es el ID. **Los scopes son `profile`/`email` (no sensibles), así que no dispara re-verificación** |
+| **2** | Mismo proyecto — **API key de Maps** | Google Maps es **código muerto** en este repo (el port está sin consumidores y `VITE_GOOGLE_MAPS_API_KEY` no la lee nadie) | Confirmar que ninguna app la use y **borrarla**. Es superficie de ataque y factura potencial, gratis de eliminar | 🟢 |
+| **3** | **Firebase `gestor-local-celulares`** | El **project ID ya es neutro**. Revisar solo el *nombre visible* en *Configuración del proyecto → General* | Si dice LA UNIÓN, renombrar. **El project ID NO se toca** (rompe `google-services.json` y el FCM de los 9 teléfonos) | 🟢 |
+| **4** | **Supabase `la-union-pwa`** (ref `lqhtxivednffpiicnbog`) | El nombre del proyecto en el dashboard | Renombrar a `distat` en *Settings → General*. **La URL de la API sale del `ref`, no del nombre**: no se rompe absolutamente nada | 🟢 |
+| **5** | **Perfil `pc oficina la union`** (fila de `perfiles`) | Es **dato del cliente**, no marca del producto | Si molesta, se renombra desde el panel de usuarios: es solo un `nombre` | 🟢 |
+
+#### Ola 2 — Cuesta un release. Ordenada, porque el orden importa
+
+| # | Qué | Por qué no es gratis | Orden obligatorio |
+|---|---|---|---|
+| **6** | **Renombrar el repo** `santiagoadet7823-dev/la-union-app` → `distat-app` | Se lleva puesta la URL de Pages (`/la-union-app/` → `/distat-app/`, que está en `web/vite.config.js:15` y en la regla 1) **y** las URLs de los Releases, que son el CDN del `.apk` y del `bundle.zip`. GitHub deja redirecciones, así que los teléfonos viejos siguen bajando — pero **apoyar el auto-updater en un redirect es exactamente el tipo de cosa que falla en silencio** | (1) renombrar el repo → (2) `base: '/distat-app/'` en `vite.config.js` → (3) `REPO` en `scripts/apk-release.sh` y `ota-release.sh` → (4) push a `main` y verificar que Pages sirve → (5) `update app_config set apk_url=…, bundle_url=…` con las URLs nuevas → (6) publicar una OTA y **verificar en un teléfono real que baja** |
+| **6-bis** | ⚠️ **La PWA instalada en el iPhone del dueño se rompe con el rename** | Cambia el path del origen: para el navegador es **otra app** (otro service worker, otro `localStorage`). El ícono del escritorio queda apuntando a una URL que redirige | Avisarle antes, y que la vuelva a agregar a la pantalla de inicio |
+| **7** | **Strings sueltos en código** | Ninguno rompe nada, todos son de una línea | `snap-recorridos/index.ts:112` (User-Agent `'la-union-app/1.0 (Distribuidora LA UNION)'`) · `.claude/launch.json:5` (`la-union-dev`) · `localStorage['launion-theme']` (⚠️ cambiarla **resetea el tema** de todos: decidir si vale) · el nombre del `.apk` en el próximo release (`la-union-1.13.0.apk` → `distat-…`) |
+| **8** | **Docs** | `GUIA_API_KEY_GOOGLE_MAPS.md` está **obsoleta entera** (nada del código lee esa variable) y es la que manda a crear el proyecto "LA UNION App" | Borrarla, no corregirla. El resto de las menciones son históricas y **se quedan**: son la memoria del proyecto (regla 24) |
+
+#### Ola 3 — Lo que **no se puede** sacar del cliente actual, y cuándo se paga
+
+| Qué | Por qué no se toca | Cuándo se cierra |
+|---|---|---|
+| 🔴 **`com.launion.app`** — `applicationId`, paquete Java, `custom_url_scheme`, la app Android dentro de Firebase, la restricción del cliente OAuth de Android, el `installerPackageName` y el `-i com.launion.app` de la instalación silenciosa | **Cambiar el applicationId no es un rename: es una app NUEVA.** Los 9 teléfonos quedarían con **dos apps instaladas**; la vieja sigue subiendo con su token (regla 19-bis) y sus datos locales —cola, cuarentena, sesión— **no viajan**; y el auto-updater **no puede actualizar de un package a otro**. Sale caro y sale mal | 🔴 **Sin fecha.** Era lo único que el cliente Flutter (`com.distat.app`) cerraba de una, y Flutter se descartó. **Mientras la app instalada sea la de Capacitor, `com.launion.app` se queda** — es identidad técnica, no marca visible: el usuario ve `DisT-At` (`strings.xml`), el package solo aparece en `adb` y en las consolas |
+| 🔴 **Las 9 cuentas `launionvendedorN@gmail.com`** | Gmail **no se renombra**. Solo se sacan creando cuentas nuevas y migrando | **Coincide con el recambio de usuarios ya decidido** (07/08: *"cada teléfono va a tener un usuario nuevo"*). ⚠️ **El orden es obligatorio** (pendiente 4-quater): verificar `app_version ≥ 1.8.0` → actualizar si no → **cerrar sesión DESDE la app** (el `signOut` es el que borra el token; apagar el teléfono NO alcanza) → recién ahí entrar con la cuenta nueva. Si se saltea, los puntos quedan a nombre de quien no estaba, en una tabla sin UPDATE ni DELETE: **incorregible**. Y ojo: la limpieza de duplicados del 12/08 usó como criterio *"se conserva lo que tiene `launion` en el correo"* — con el dominio nuevo ese criterio deja de servir |
+| ⚪ **`launion.keystore` y el alias `launion`** | El nombre del archivo y del alias son **internos y no se ven desde afuera**. Cambiar la llave rompe **toda** actualización futura (§2.1) | **Nunca. Se quedan así.** |
+| ⚠️ **La carpeta local `propuesta LA UNION/`** | 🩸 La memoria de Claude Code y la config del proyecto cuelgan de una clave **derivada de la ruta** (`C--Users-Gaston-Desktop-propuesta-LA-UNION`). Renombrar la carpeta **sin** renombrar también `~/.claude/projects/<clave>` **pierde el índice de memoria y los settings del proyecto** | Si se renombra, se renombran **las dos** en el mismo movimiento |
+
+#### 🔴 Lo que NO hay que hacer, dicho explícitamente
+
+- **No BORRAR el proyecto de Google Cloud `253436593980`.** Se lleva puesto el Client ID de OAuth, y
+  con él el **login con Google de los 9 teléfonos** y el proveedor de Google en Supabase Auth.
+  **Renombrar ≠ borrar**, y acá solo se renombra.
+- **No cambiar el `applicationId` del cliente Capacitor** (Ola 3).
+- **No cambiar el project ID de Firebase** ni el `ref` de Supabase: los dos son inmutables y los dos
+  están cableados en clientes que hoy corren en la calle.
+- **La empresa LA UNIÓN en la base no se toca.** Es el cliente, y despersonalizar el producto no
+  significa borrarle el nombre al que paga.
+
+---
+
+### 4. La deuda técnica, en el orden en que conviene pagarla
+
+El detalle de cada ítem está en **§4 Pendientes** (más abajo) y en
+[INFORME_AUDITORIA.md §8](INFORME_AUDITORIA.md). Lo que agrega esta sección es el **orden**, que sale
+de agrupar por *qué hace falta desplegar*:
+
+| Bloque | Qué entra | Por qué juntos |
+|---|---|---|
+| **A — Base y consola** (sin release) | #16 protección de contraseñas filtradas · #14 rotar la key de Stadia · #3 versionar `ingesta_tokens` + `mi_token_ingesta` · #11 `UNIQUE (id_empresa, codigo)` en `clientes` · #13 las 4 columnas sin versionar | Ninguno necesita bundle. Se hacen y se verifican con un `select` el mismo día. **#3 es el más urgente de todos: sin él, una base recreada desde `db/` no puede recibir una sola posición** |
+| **B — Una sola OTA** | #12 decidir `AdminView` (borrar 2 vistas, rescatar `ReplayJornada`) · #9 el copy de `PermisoSiemprePrompt` · #18 unificar `getAccessToken` (copiado 3 veces) · #10 `build:apk` con `CAP_BUILD=1` adentro · #15 config de ESLint y sacar el `\|\| true` · #17 sanear docs | Todo JS/docs. Un solo bundle, una sola verificación en el emulador. ⚠️ **Verificar en el DOM, no en el build**: `npm run build` da EXIT=0 con un `ReferenceError` que el `ErrorBoundary` tapa |
+| **C — El próximo APK, TODO en un solo build** | P7 el doble conteo de la telemetría · P8 `cola.remove(0)` sin cuarentena (**la única violación viva de la regla 20**) · P9 los defaults de Java que difieren de producción · P10 actualización que no dependa del WebView · 4-ter la ventana de horario por FCM | Un APK cuesta una visita física o una ventana de Tailscale por equipo. Se junta todo o no se junta nada |
+
+> ✅ **La decisión que condicionaba el bloque C ya está tomada (17/08/2026): se descarta Flutter.**
+> Las 5 tareas son nativas y ahora tienen **un solo destino**: `web/android/app/src/main/java/`.
+> Se escriben una vez y no hay que elegir cliente.
 
 ---
 
@@ -507,7 +703,7 @@ fallo. Se confirma mirando `estado_dispositivo.app_version` a la mañana siguien
 | | |
 |---|---|
 | Versión publicada | **1.13.0** en los TRES canales. `app_config`: `latest_version` = `min_version` = `bundle_version` = `1.13.0`, con `apk_url` y `bundle_url` al release `ota-1.13.0`. PWA: commit `3cae911` en `main`, workflow **success** |
-| Versión en el código | **1.13.0** — `src/version.js`, `versionName` 1.13.0 / `versionCode 32`. Alineados |
+| Versión en el código | **1.13.0** — `web/src/version.js`, `versionName` 1.13.0 / `versionCode 32`. Alineados |
 | ⏳ **Único paso sin hacer** | **El push de aviso a los teléfonos.** Es el `net.http_post` a `push-actualizacion` de `CLAUDE.md §3` (con `timeout_milliseconds := 60000`). No se mandó porque el header lleva la `service_role` key y no se transcriben credenciales |
 | Rastreo | 08:00–23:55, Lunes a Sábado, alertas de equipo activas |
 | Parque | 9 teléfonos. **7 con el APK 1.13.0**; faltan Eduardo ruiz (nunca conectó — parece que no le entregaron el equipo) y Gabriel tevez (sin adb remoto, tiene que venir por cable) |
@@ -612,7 +808,7 @@ web + celular; resuelve el caso del dueño entrando por PWA desde su iPhone).
 |---|---|---|
 | **PWA** (GitHub Pages) | `git push origin main` → workflow | Web de escritorio |
 | **OTA** (Capgo self-hosted) | `bash scripts/ota-release.sh <v>` + UPDATE en `app_config` | Cualquier cambio de JS/CSS/React en el APK |
-| **APK** (GitHub Releases) | `bash scripts/apk-release.sh <v>` + `apk_url`/`min_version` | **Obligatorio** si tocaste `.java`, el manifest o `capacitor.config.ts` |
+| **APK** (GitHub Releases) | `bash scripts/apk-release.sh <v>` + `apk_url`/`min_version` | **Obligatorio** si tocaste `.java`, el manifest o `web/capacitor.config.ts` |
 
 > ⚠️ Publicar una OTA **no** actualiza la PWA, y pushear a `main` **no** actualiza el APK. Al publicar
 > un APK nuevo, publicar **también** la misma versión como OTA.
@@ -641,7 +837,7 @@ Estado real: **`android/keystore.properties` es la única copia de `storePasswor
 Antes de copiar nada:
 
 1. Abrir `android/keystore.properties` y pasar las tres credenciales a un **gestor de contraseñas**.
-2. Copiar `android/app/launion.keystore` a **dos** lugares privados distintos (no un repo público).
+2. Copiar `web/android/app/launion.keystore` a **dos** lugares privados distintos (no un repo público).
 3. En la máquina nueva, **probar que firma** (`assembleRelease`) antes de dar la mudanza por terminada.
 
 ### 2.2 Los archivos que se pierden si solo clonás el repo
@@ -651,7 +847,7 @@ La carpeta raíz `propuesta LA UNION/` **no es un repositorio git** — el repo 
 
 | Archivo | Consecuencia si se pierde | ¿Se puede recuperar? |
 |---|---|---|
-| `android/app/launion.keystore` | **Catastrófico** (§2.1) | ❌ Nunca |
+| `web/android/app/launion.keystore` | **Catastrófico** (§2.1) | ❌ Nunca |
 | `android/keystore.properties` | Igual de grave: sin las contraseñas el `.keystore` es inútil | ❌ Solo desde un gestor |
 | `la-union-app/.env.local` | No arranca `npm run dev` contra el backend real | ✅ Desde `.env.production` + panel de Supabase |
 | Toda la raíz `propuesta LA UNION/` | 6 briefs de diseño, 2 mockups, 3 handoffs del diseñador, 2 carpetas de diagramas, `plan.md` | ❌ Solo copia física |
@@ -660,8 +856,8 @@ La carpeta raíz `propuesta LA UNION/` **no es un repositorio git** — el repo 
 | `android/local.properties` | Gradle no encuentra el SDK | ✅ Se regenera al abrir en Android Studio |
 
 **Sí viajan en el repo** (verificado con `git ls-files`): `.env.production`,
-`android/app/google-services.json`, `package-lock.json`, `patches/*.patch`, **`.claude/skills/**`**,
-todo `db/`, todo `supabase/functions/`, todo `src/` y los `.md` de documentación.
+`web/android/app/google-services.json`, `package-lock.json`, `web/patches/*.patch`, **`.claude/skills/**`**,
+todo `db/`, todo `supabase/functions/`, todo `web/src/` y los `.md` de documentación.
 
 Comando para chequear antes de copiar:
 
@@ -671,8 +867,8 @@ ls -la la-union-app/.env.local la-union-app/android/keystore.properties la-union
 
 ### 2.3 Lo que NO hace falta copiar (~645 MB)
 
-`node_modules/` (530 MB) · `android/build/` + `android/app/build/` (105 MB) ·
-`android/capacitor-cordova-android-plugins/` · `android/app/src/main/assets/public/` · `dist/` ·
+`node_modules/` (530 MB) · `android/build/` + `web/android/app/build/` (105 MB) ·
+`android/capacitor-cordova-android-plugins/` · `web/android/app/src/main/assets/public/` · `dist/` ·
 `bundle.zip` · `graphify-out/` · `.idea/` · `android/local.properties`. Todo se regenera.
 
 ---
@@ -754,7 +950,7 @@ Están **duplicadas a propósito**:
 > ⚠️ **Traducir siempre, nunca copiar el stack.** La app **no usa Tailwind** (está instalado y sin
 > consumidores) ni librerías de animación. Las skills van a proponer `framer-motion`, `tailwind` y
 > `shadcn/ui` por defecto. Tomar de ellas el **criterio** (curvas, duraciones, jerarquía, espaciado) y
-> traducirlo a lo que el repo usa: CSS vars de `src/index.css`, keyframes `lu-*`, `sx()` y estilos
+> traducirlo a lo que el repo usa: CSS vars de `web/src/index.css`, keyframes `lu-*`, `sx()` y estilos
 > inline.
 >
 > Y `/impeccable init` escribe `PRODUCT.md` y `DESIGN.md` en la raíz — **no correrlo sin avisar**.
@@ -781,9 +977,9 @@ Ninguna credencial se transcribe acá (regla 25 del repo: referenciar por ubicac
 |---|---|---|---|
 | **GitHub** | `santiagoadet7823-dev/la-union-app` | Código, PWA en Pages, y los **Releases que hacen de CDN** para el bundle OTA y el `.apk` | `gh auth` (keyring de la máquina) |
 | **Supabase** | proyecto `lqhtxivednffpiicnbog`, cuenta `cardixteam@gmail.com` | Postgres, Auth, Storage, Realtime, 6 Edge Functions, 4 crons | `.env.production` (anon, pública) · service role y `FCM_SERVICE_ACCOUNT` como secrets de Edge Functions |
-| **Firebase / FCM** | proyecto `gestor-local-celulares` | Push a los teléfonos | `android/app/google-services.json` (commiteado, es config de cliente) + la cuenta de servicio en Supabase |
-| **Google Cloud** | Client ID Web de OAuth | Login con Google (nativo y web) | `capacitor.config.ts` y `AuthContext.jsx` — público por diseño |
-| **Stadia Maps** | — | Capas de mapa Oscuro y Satélite | ⚠️ **Hardcodeada** en `src/services/maps/basemap.js`. Si vence, la app **no se rompe**: se queda con OSM |
+| **Firebase / FCM** | proyecto `gestor-local-celulares` | Push a los teléfonos | `web/android/app/google-services.json` (commiteado, es config de cliente) + la cuenta de servicio en Supabase |
+| **Google Cloud** | Client ID Web de OAuth | Login con Google (nativo y web) | `web/capacitor.config.ts` y `AuthContext.jsx` — público por diseño |
+| **Stadia Maps** | — | Capas de mapa Oscuro y Satélite | ⚠️ **Hardcodeada** en `web/src/services/maps/basemap.js`. Si vence, la app **no se rompe**: se queda con OSM |
 | **OSRM público** | `router.project-osrm.org` + FOSSGIS | Ruteo y snap a calles | **Sin cuenta, sin key, sin SLA** |
 
 ### 3.6 Primer arranque, en orden
@@ -795,7 +991,7 @@ npm install                    # el postinstall aplica patch-package solo
 npm run dev                    # verificar la web en :5173
 ```
 
-Después, para el APK: abrir `android/` una vez en Android Studio (genera `local.properties`), y:
+Después, para el APK: abrir `web/android/` una vez en Android Studio (genera `local.properties`), y:
 
 ```bash
 CAP_BUILD=1 npm run build && npx cap sync android
@@ -828,7 +1024,7 @@ ahorran tiempo, porque son caminos que ya se recorrieron:
 | Corte del dibujo a 45 s (`HUECO_DUDOSO_MS`) | `lib/geo.js` | ✅ verificado con el código real |
 | Piso de ruido en los km (`kmDePuntos`, único lugar del front) | `lib/geo.js` + `db/32` | ✅ aplicado |
 | Ancla que no persigue al ruido | `UploaderGpsService.java` | ✅ en 7 de 9 teléfonos — **sin medir** |
-| PWA en iPhone (metas `apple-mobile-web-app-*`) | `index.html` | ✅ |
+| PWA en iPhone (metas `apple-mobile-web-app-*`) | `web/index.html` | ✅ |
 | 🔴 **Piso de distancia en el corte por hueco dudoso** — el corte de 45 s disparaba sobre saltos que no recorrieron nada y dejaba el trazo hecho confeti | `lib/geo.js` (`limpiarTrazo`) | ⏳ **hecho y verificado, SIN PUBLICAR** (sale por OTA, es JS puro) |
 | 🔴 **Piso de ruido ADAPTATIVO por incertidumbre, con ancla** — el piso era 9 m fijo para todos; ahora es `max(9, 0,75·√(σ₁²+σ₂²))` medido contra un ancla que acumula | `lib/geo.js` (`pisoDeRuido`, `kmDePuntos`) | ⏳ **hecho y verificado, SIN PUBLICAR** |
 | 🔴 **Filtro de PINCHOS** — el fix que se va 40-90 m y vuelve; el filtro de salto no los ve porque mide velocidad | `lib/geo.js` (`marcarPinchos`) | ⏳ **hecho y verificado, SIN PUBLICAR** |
@@ -983,7 +1179,7 @@ de tocarla.
 
 ### 5.1 Lo que hay hoy
 
-`src/features/auth/LoginView.jsx` (357 L), diseño v1.4:
+`web/src/features/auth/LoginView.jsx` (357 L), diseño v1.4:
 
 - **Google, en dos formas**: la tarjeta "Continuar como X" (última cuenta usada en el teléfono) y el
   botón blanco estándar. **Es el camino real**: 13 de 14 usuarios de producción entran por acá, y por
@@ -995,7 +1191,7 @@ de tocarla.
   detalle técnico plegable con `authError`/`authStatus`/versión.
 
 `AuthContext.jsx` sostiene: login nativo por `idToken` (`GoogleAuth.initialize()` es obligatorio antes
-de `signIn()`, si no crashea), OAuth web con la página puente `public/oauth.html` (un 302 del servidor a
+de `signIn()`, si no crashea), OAuth web con la página puente `web/public/oauth.html` (un 302 del servidor a
 un esquema custom el navegador no lo respeta, así que el salto lo hace el cliente), caché de sesión y de
 perfil offline-first, y un `signOut` que **primero** llama a `cerrarSesionUploader()` (§ regla del token
 nativo) y recién al final a `supabase.auth.signOut()`.
@@ -1014,7 +1210,7 @@ nativo) y recién al final a `supabase.auth.signOut()`.
 
 | | |
 |---|---|
-| 🔴 **Recuperar contraseña no cierra** | El botón existe, la hoja pide el email y `resetPasswordForEmail` manda el mail. Pero **no hay ninguna pantalla donde poner la contraseña nueva**: cero `updateUser` y cero manejo del evento `PASSWORD_RECOVERY` en todo `src/` (verificado por grep). La persona hace clic en el mail, la PWA le crea sesión y entra a la app — con la contraseña vieja intacta y sin lugar donde cambiarla |
+| 🔴 **Recuperar contraseña no cierra** | El botón existe, la hoja pide el email y `resetPasswordForEmail` manda el mail. Pero **no hay ninguna pantalla donde poner la contraseña nueva**: cero `updateUser` y cero manejo del evento `PASSWORD_RECOVERY` en todo `web/src/` (verificado por grep). La persona hace clic en el mail, la PWA le crea sesión y entra a la app — con la contraseña vieja intacta y sin lugar donde cambiarla |
 | 🟠 **El `redirectTo` no vuelve al APK** | Usa `window.location.origin + BASE_URL`, que en el APK es el origin del WebView. El OAuth sí lo resolvió (con `oauth.html`); la recuperación no |
 | 🟠 **El copy promete algo que no pasa** | La hoja "Solicitar acceso" dice *"tu pedido le llega al administrador"*. **No le llega nada**: no hay notificación de cuenta pendiente. El admin se entera solo si mira la lista de usuarios |
 
@@ -1047,7 +1243,7 @@ limit bajo).
 | # | Tarea | Esfuerzo | Toca |
 |---|---|---|---|
 | 1 | **Pantalla "poner contraseña nueva"** (`PASSWORD_RECOVERY` + `updateUser`) | S | `AuthContext.jsx` + vista nueva en `features/auth/` |
-| 2 | **Arreglar el `redirectTo`** para el APK + cargar las Redirect URLs en el panel | S | `AuthContext.jsx`, patrón de `public/oauth.html` |
+| 2 | **Arreglar el `redirectTo`** para el APK + cargar las Redirect URLs en el panel | S | `AuthContext.jsx`, patrón de `web/public/oauth.html` |
 | 3 | **Links a T&C y privacidad** en el pie del login y en `PendienteView` | XS | `LoginView.jsx` (bloque "¿Todavía no tenés acceso?"), `PendienteView.jsx` |
 | 4 | **Modo "invitar por mail"** en `crear-usuario` (`inviteUserByEmail`) | M | Edge Function + `UsuariosView` — deja de dictar contraseñas por WhatsApp |
 | 5 | **Formulario "Solicitar acceso"** completo: tabla + RLS + endpoint anónimo con rate limit + aviso al admin + estado "solicitud enviada" | M-L | `LoginView`, `PendienteView`, migración nueva, Edge Function nueva |
@@ -1323,7 +1519,7 @@ Knox Manage.
 |---|---|
 | **`ACCESS_BACKGROUND_LOCATION` en app privada** | 🟡 La política contempla exención para apps distribuidas solo por managed Google Play. ⚠️ **VERIFICAR en el formulario de declaración de Play Console.** Si no aplica: revisión de permisos, justificación escrita, política de privacidad publicada y **video demostrativo** — lo que §6 ya anticipa. Y hoy los dos documentos de [`legal/`](legal/) están **en borrador y sin publicar** |
 | **`SCHEDULE_EXACT_ALARM`** | ✅ No es problema. Play restringe `USE_EXACT_ALARM`, no este. El manifest ya eligió bien |
-| 🩸 **`targetSdk`** | ⚠️ **El costo escondido, y probablemente el más caro.** `android/app/build.gradle` tiene un `resolutionStrategy` fijando `androidx.work` en 2.9.1 con este comentario: *"El plugin OTA (capgo) arrastra androidx.work 2.10 que exige compileSdk 35. Fijamos una versión compatible con compileSdk 34 para no tener que subir el SDK"*. Publicar en Play desarma esa decisión y arrastra el plugin OTA |
+| 🩸 **`targetSdk`** | ⚠️ **El costo escondido, y probablemente el más caro.** `web/android/app/build.gradle` tiene un `resolutionStrategy` fijando `androidx.work` en 2.9.1 con este comentario: *"El plugin OTA (capgo) arrastra androidx.work 2.10 que exige compileSdk 35. Fijamos una versión compatible con compileSdk 34 para no tener que subir el SDK"*. Publicar en Play desarma esa decisión y arrastra el plugin OTA |
 | **Política de privacidad** | Obligatoria sí o sí. Pero ya hace falta igual por el OAuth de Google y por la Ley 25.326 (§6): **esto se paga con o sin Play** |
 | **Firma** | Play App Signing implicaría que Google pase a tener la llave. Mejora el backup pero cambia el modelo de confianza de §2.1 — se decide a propósito, no de refilón |
 
@@ -1477,7 +1673,7 @@ adb shell dumpsys power | grep -i -A10 wake            # el PARTIAL_WAKE_LOCK de
 adb shell dumpsys batterystats --charged com.launion.app
 ```
 
-`src/services/gpsConfig.js` dice textualmente *"cuánto cuesta en batería hay que medirlo en un
+`web/src/services/gpsConfig.js` dice textualmente *"cuánto cuesta en batería hay que medirlo en un
 teléfono real"*. **Esta es esa oportunidad y no vuelve.** El número que salga es el que permite
 decidir si `NEAR_LIVE_MS` puede volver a bajar de 10 s — decisión que ya se tomó y se revirtió dos
 veces a ciegas.
@@ -1622,7 +1818,7 @@ ni otros dispositivos: sólo apunta a nodos ADB de Samsung **presentes** que no 
 
 **Lo que es correcto:** falta un registro de quirks, y sobre todo falta la **precondición**. Hoy no se
 guarda marca, modelo ni versión de Android en ningún lado (cero `Build.MANUFACTURER`/`MODEL`/`BRAND`
-en todo `android/`, ninguna columna en `estado_dispositivo`). Se mide el **síntoma** del OEM agresivo
+en todo `web/android/`, ninguna columna en `estado_dispositivo`). Se mide el **síntoma** del OEM agresivo
 —`fgs_bloqueado`, `bateria_exenta`, `gps_silencio_max_ms`— y **nunca la identidad del OEM**. Por eso
 "los OEM agresivos" es folklore del proyecto y no un `select`.
 
@@ -1776,7 +1972,7 @@ verificación del arranque de 1.11.0 sin esperar al día siguiente (Fase 5).
 
 | # | Cambio | Canal | Esfuerzo | Nota |
 |---|---|---|---|---|
-| 1 | 🔴 **Registrar marca/modelo/API level en `estado_dispositivo`** | **OTA** | S | La precondición de todo lo demás. Se puede empezar **hoy, sin APK**: el WebView pone modelo y versión en `navigator.userAgent` (`Linux; Android 15; SM-A075F`) y `capacitor.config.ts` **no** pisa el UA (verificado). Se parsea en JS, se agrega al objeto `identidad` de `useEstadoDispositivo.js` (que ya omite todo en web, criterio correcto) + `db/31`. **Empieza a recolectar sobre los 9 teléfonos actuales**, lo que hace legible retroactivamente todo `db/29`/`db/30`. Después, en el próximo APK, sustituir el UA por `Build.*` reales vía `InfoAppPlugin`, sin tocar el esquema. ⚠️ **NO instalar `@capacitor/device` para esto**: sería una dep nueva y un APK obligatorio por un dato que el UA ya da |
+| 1 | 🔴 **Registrar marca/modelo/API level en `estado_dispositivo`** | **OTA** | S | La precondición de todo lo demás. Se puede empezar **hoy, sin APK**: el WebView pone modelo y versión en `navigator.userAgent` (`Linux; Android 15; SM-A075F`) y `web/capacitor.config.ts` **no** pisa el UA (verificado). Se parsea en JS, se agrega al objeto `identidad` de `useEstadoDispositivo.js` (que ya omite todo en web, criterio correcto) + `db/31`. **Empieza a recolectar sobre los 9 teléfonos actuales**, lo que hace legible retroactivamente todo `db/29`/`db/30`. Después, en el próximo APK, sustituir el UA por `Build.*` reales vía `InfoAppPlugin`, sin tocar el esquema. ⚠️ **NO instalar `@capacitor/device` para esto**: sería una dep nueva y un APK obligatorio por un dato que el UA ya da |
 | 2 | 🔴 **Corregir el copy de `PermisoSiemprePrompt.jsx`** | **OTA** | XS | Hoy dice "En Xiaomi, Huawei y similares" y va a ser falso para todo el parque nuevo. El cambio más barato del documento y el único que le habla al usuario final |
 | 3 | 🟠 **`PackageInstaller` + `UPDATE_PACKAGES_WITHOUT_USER_ACTION`** | APK | M | **Decidido** (7.4). De 3-4 toques a cero. Reemplaza `lanzarInstalador` en `ApkUpdaterPlugin.java:121-130`. ⚠️ Verificar en el A07 con la Fase 8 antes de invertir. 🟢 Device Owner lo vuelve redundante → decidir 7.2 primero |
 | 4 | 🟡 **Unos `Log.w` de diagnóstico** en `AlarmReceiver` / `UploaderGpsService` | APK | XS | Habilita la Fase 5. Hoy `logcat` no dice nada de la app. Va en el mismo APK que #3 |
@@ -1814,7 +2010,7 @@ No son tareas: son decisiones pendientes.
   el 07/08 en un SM-A075M. No está roto —Android mantiene compatibilidad hacia atrás— pero la brecha
   es de **dos versiones mayores** y sigue creciendo: cada release nueva de Android aplica los
   *behavior changes* de `targetSdk 35` y `36` como opt-in que este proyecto no tomó. Subirlo está
-  bloqueado por una decisión deliberada: `android/app/build.gradle` fija `androidx.work` en 2.9.1
+  bloqueado por una decisión deliberada: `web/android/app/build.gradle` fija `androidx.work` en 2.9.1
   porque el plugin OTA de Capgo arrastra 2.10, que exige `compileSdk 35`. **Desatar ese nudo es
   trabajo real y conviene planificarlo antes de que lo fuerce un bug en la calle.**
 - **Cero tests, cero lint efectivo.** Cada release se verifica a mano o en la calle.

@@ -4,23 +4,43 @@ dist-ssr
 *.local
 .DS_Store
 
-# Capacitor native builds
+# Capacitor native builds (cliente React → web/)
 # Ignore SELECTIVO: el código nativo escrito a mano (BatteryOptimizationPlugin.java,
 # MainActivity.java, AndroidManifest.xml, build.gradle) NO lo regenera `cap add android`,
 # así que debe quedar versionado. Solo ignoramos artefactos de build, config local y el
 # keystore (el repo es público → las llaves de firma nunca se versionan).
-/android/build
-/android/.gradle
-/android/app/build
-/android/app/release
-/android/local.properties
-/android/keystore.properties
-/android/app/*.keystore
-/android/.idea
-/android/*.iml
-/android/app/*.iml
-/android/capacitor-cordova-android-plugins
-/ios
+#
+# ⚠️ Las rutas llevan el prefijo `web/` desde la reestructuración a monorepo (17/08/2026).
+# Un patrón que arranca con `/` es relativo a la RAÍZ del repo, no al archivo: sin el
+# prefijo estas reglas dejan de aplicar en silencio y el `.gitignore` sigue pareciendo
+# correcto. Las de arriba (`node_modules`, `dist`, `bundle.zip`) no llevan `/`, así que
+# matchean en cualquier nivel y no hubo que tocarlas.
+/web/android/build
+/web/android/.gradle
+/web/android/app/build
+/web/android/app/release
+/web/android/local.properties
+/web/android/keystore.properties
+/web/android/app/*.keystore
+/web/android/.idea
+/web/android/*.iml
+/web/android/app/*.iml
+/web/android/capacitor-cordova-android-plugins
+/web/ios
+
+# Flutter (cliente DisT-At → flutter/)
+#
+# Acá va SOLO lo que los .gitignore propios de Flutter no cubren. `flutter create` genera dos
+# —`flutter/.gitignore` (build, .dart_tool, .idea, *.iml) y `flutter/android/.gitignore`
+# (local.properties, **/*.keystore, **/*.jks, key.properties)— y git los aplica en cascada.
+# Repetir sus reglas acá no protege más: crea dos lugares donde buscar cuál manda, y el día que
+# alguien afloje una, la otra la sigue tapando y el cambio parece no tener efecto.
+#
+# La única regla que hace falta sumar es la del archivo de contraseñas de firma. Flutter espera
+# `key.properties` (y ese ya está cubierto), pero este proyecto usa el nombre del cliente React,
+# `keystore.properties`, para que los dos APK se firmen con el mismo procedimiento.
+# 🔴 El repo es público: si esta línea se cae, se publican las contraseñas del keystore.
+/flutter/android/keystore.properties
 
 # Editor
 .vscode/*

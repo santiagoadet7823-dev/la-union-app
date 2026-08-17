@@ -15,6 +15,11 @@
 # ============================================================================
 set -euo pipefail
 
+# Ver la nota de ota-release.sh: el cliente React vive en `web/` desde el 17/08/2026 y este
+# script sigue en `scripts/` de la raíz. Sin este `cd`, la ruta del APK de abajo no resuelve
+# y el script aborta con "No encuentro el APK firmado" aunque el APK esté compilado.
+cd "$(dirname "${BASH_SOURCE[0]}")/../web"
+
 VER="${1:-}"
 if [ -z "$VER" ]; then
   echo "Uso: bash scripts/apk-release.sh <version>   (ej: 1.6.0)"

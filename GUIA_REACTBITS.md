@@ -17,7 +17,7 @@ del footer; React Bits es MIT). React 18/19 — compatible con este repo (React 
 
 1. **Este repo NO usa Tailwind** (está instalado y sin consumidores, ver CLAUDE.md §7). → Usar
    siempre el sabor **`JS + CSS`**, nunca el de Tailwind. Y traducir los colores/espaciados a los
-   **tokens de `src/index.css`** (`--r-*`, `--sp-*`, `--fs-*`, `--z-*`), no a literales.
+   **tokens de `web/src/index.css`** (`--r-*`, `--sp-*`, `--fs-*`, `--z-*`), no a literales.
 2. **No hay librerías de animación** (ni framer-motion, ni GSAP). El estándar de motion son los
    **keyframes `lu-*` + `sx()` inline** (CLAUDE.md §7 y skill `/review-animations`). → Muchos
    componentes de reactbits dependen de **GSAP** o **motion/framer-motion** por debajo. Antes de
@@ -42,7 +42,7 @@ del footer; React Bits es MIT). React 18/19 — compatible con este repo (React 
 | **Dock** / **GooeyNav** / **PillNav** / **CardNav** | components | Chrome de navegación de **`SupervisionDesktop`** (PWA PC) | CSS/motion* | 🟡 mejor solo PWA |
 | **Masonry** / **Carousel** / **CircularGallery** / **BounceCards** | components | Vitrina de **ofertas**/productos destacados en el catálogo | CSS/motion* | 🟡 evaluar peso |
 | **ClickSpark** / **Magnet** / **GlareHover** | animations | Microinteracciones en botones (sutil, sin romper el estándar de <300ms) | CSS puro | ✅ con moderación |
-| **GlassSurface** / **FluidGlass** | components | OJO: el repo **ya tiene** `src/lib/glass.js`. `glass-surface` usa filtros SVG (displacement) → **riesgo de compat en WebView viejo**. Solo PWA desktop | SVG filter | ❌ APK / 🟡 PWA |
+| **GlassSurface** / **FluidGlass** | components | OJO: el repo **ya tiene** `web/src/lib/glass.js`. `glass-surface` usa filtros SVG (displacement) → **riesgo de compat en WebView viejo**. Solo PWA desktop | SVG filter | ❌ APK / 🟡 PWA |
 | **ElasticSlider** | components | Control deslizante más lindo (si algún día hay uno) | motion* | 🟡 |
 
 \* *"motion*"* = verificar si el componente trae `framer-motion`/`motion` o GSAP al copiarlo. Si sí:
@@ -59,9 +59,9 @@ exactamente el efecto que se espera en un tablero de métricas. **Primer candida
 2. Abrir el archivo y **mirar los imports**: ¿trae `gsap`, `framer-motion`/`motion`, `three`, `ogl`,
    `@react-three/*`? Si es WebGL → descartar para APK. Si es GSAP/motion → reescribir con `lu-*` o
    decidir la dep.
-3. Reemplazar colores/tamaños/z-index por **tokens de `src/index.css`**. Nada de literales.
+3. Reemplazar colores/tamaños/z-index por **tokens de `web/src/index.css`**. Nada de literales.
 4. Estilos: pasar a `sx()` inline o CSS var, según el patrón del repo. Overlays SIEMPRE por
-   `src/components/Overlay.jsx`.
+   `web/src/components/Overlay.jsx`.
 5. Correr `/review-animations` sobre el resultado (curvas, <300ms, solo `transform`/`opacity`).
 6. Verificar en un WebView viejo (o al menos con `build.target:'es2015'` + plugin-legacy activos).
    Los efectos que dependan de `backdrop-filter` van envueltos en `@supports`.

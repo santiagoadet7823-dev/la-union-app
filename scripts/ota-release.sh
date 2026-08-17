@@ -7,6 +7,12 @@
 # ============================================================================
 set -euo pipefail
 
+# El cliente React vive en `web/` desde la reestructuración a monorepo (17/08/2026), pero este
+# script quedó en `scripts/` de la raíz porque CLAUDE.md §3 documenta esa ruta. Nos paramos en
+# `web/` explícitamente para que las rutas relativas de abajo (`dist`, `package.json`) sigan
+# resolviendo, y para que el script ande igual desde donde sea que lo invoquen.
+cd "$(dirname "${BASH_SOURCE[0]}")/../web"
+
 VER="${1:-}"
 if [ -z "$VER" ]; then
   echo "Uso: bash scripts/ota-release.sh <version>   (ej: 1.3.0)"

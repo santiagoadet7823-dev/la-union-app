@@ -20,20 +20,20 @@ install date = **nativo `firstInstallTime`** ✔.
 
 ## 0. Estado actual medido (no asumido)
 
-- **Subida de posiciones:** el filtro/encolado/subida vive en `src/services/geolocation/tracker.js`
+- **Subida de posiciones:** el filtro/encolado/subida vive en `web/src/services/geolocation/tracker.js`
   → `procesarFix()`, invocado SÍNCRONO desde el callback nativo (sobrevive a Doze). Hoy:
-  - Emite si `movió ≥ MIN_MOVE_M (10 m)` **o** `keepAlive ≥ KEEPALIVE_MS (90 s)` — [tracker.js:137-139](src/services/geolocation/tracker.js#L137).
-  - `enqueue` nunca se throttlea; el **flush** se agrupa a `FLUSH_THROTTLE_MS (15 s)` — [tracker.js:163](src/services/geolocation/tracker.js#L163).
-  - Constantes en [gpsConfig.js](src/services/gpsConfig.js).
+  - Emite si `movió ≥ MIN_MOVE_M (10 m)` **o** `keepAlive ≥ KEEPALIVE_MS (90 s)` — [tracker.js:137-139](web/src/services/geolocation/tracker.js#L137).
+  - `enqueue` nunca se throttlea; el **flush** se agrupa a `FLUSH_THROTTLE_MS (15 s)` — [tracker.js:163](web/src/services/geolocation/tracker.js#L163).
+  - Constantes en [gpsConfig.js](web/src/services/gpsConfig.js).
 - **Adquisición del chip:** el plugin adquiere a ~1 Hz en movimiento; la máquina de estados
-  ([estados.js](src/services/geolocation/estados.js)) estira a **90 s cuando confirma "quieto"**
+  ([estados.js](web/src/services/geolocation/estados.js)) estira a **90 s cuando confirma "quieto"**
   (`PRESET_QUIETO.interval`). El piso de adquisición no se toca desde JS ([[bateria-plugin-gps-piso]]).
 - **Ventana horaria: YA EXISTE.** `app_config` tiene `track_start`/`track_end`/`track_enabled`
   (hoy `track_start=00:30`, `track_end=00:00`, `track_enabled=true`). La consume
-  [tracking.js](src/services/tracking.js) (`getTrackConfig`/`dentroDeHorario`) y la aplica
-  [usePublishPosition.js:61-79](src/hooks/usePublishPosition.js#L61): **apaga/prende el sensor** por
+  [tracking.js](web/src/services/tracking.js) (`getTrackConfig`/`dentroDeHorario`) y la aplica
+  [usePublishPosition.js:61-79](web/src/hooks/usePublishPosition.js#L61): **apaga/prende el sensor** por
   horario y se recalibra en el borde. La edita el superadmin en
-  [EmpresasView.jsx](src/features/admin/EmpresasView.jsx). **NO tiene día-de-semana todavía.**
+  [EmpresasView.jsx](web/src/features/admin/EmpresasView.jsx). **NO tiene día-de-semana todavía.**
 - **`pg_cron` disponible** (el cron `push-heartbeat-30min` ya corre) → sirve para la poda (§1.3).
 
 ---
@@ -91,7 +91,7 @@ Migración nueva `db/13_retencion_posiciones.sql` (archivo nuevo, aplicar en viv
   `db/14_instalado_ts.sql`, archivo nuevo). La reporta el latido, igual que `apk_version`:
   capturar una vez en `useEstadoDispositivo.js` (junto al `apkRef` ya agregado) y sumarla a `CAMPOS`
   y al objeto `estado`.
-- **UI:** en [EstadoEquipo.jsx](src/features/supervision/components/EstadoEquipo.jsx) mostrar
+- **UI:** en [EstadoEquipo.jsx](web/src/features/supervision/components/EstadoEquipo.jsx) mostrar
   "instalada hace X" (formato relativo). Ya es el lugar que ven superadmin/admin/encargado.
 
 > Si se quisiera algo por OTA sin esperar el APK: guardar el **primer arranque** en `persistence`
@@ -126,7 +126,7 @@ Hoy `dentroDeHorario` solo mira hora. Sumar **Lun–Sáb**:
 - Agregar día-de-semana a la config de rastreo. **Confirmar primero dónde vive** la ventana
   (`app_config` global vs por empresa — EmpresasView la edita) antes de agregar la columna/campo
   (ej. `track_days` = bitmask o CSV `1,2,3,4,5,6`).
-- Extender `dentroDeHorario(cfg)` en [tracking.js](src/services/tracking.js) para chequear el día con
+- Extender `dentroDeHorario(cfg)` en [tracking.js](web/src/services/tracking.js) para chequear el día con
   hora **local** (regla 23: nunca UTC; el día de la semana también cambia con el offset).
 - UI en EmpresasView para elegir los días.
 

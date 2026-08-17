@@ -349,7 +349,19 @@ body {
    `#lu-informe` se saca de su lugar y se planta en la página con `position:absolute`, en vez de
    ocultar sus ancestros uno por uno. Es la única forma que funciona acá: el informe vive dentro de
    `GestionHost`, que es `position:fixed` con `overflow` — un contenedor así imprime SOLO su primera
-   pantalla y recorta el resto, sin importar qué se le diga a los hijos. */
+   pantalla y recorta el resto, sin importar qué se le diga a los hijos.
+
+   🩸 13/08/2026 — ESTA HOJA SOLA IMPRIMÍA UNA PÁGINA EN BLANCO, y lo hizo desde el día que se
+   escribió (1.12.0). El motivo está en la línea de abajo: `body > *:not(#lu-informe)` da por
+   sentado que el informe CUELGA DE `<body>`, y no cuelga. React monta en `<div id="root">`, así que
+   la cadena real es `#lu-informe < main < div < div < #root`. El único hijo de `<body>` es `#root`
+   — que no es `#lu-informe` — así que la regla lo ocultaba ENTERO, con el informe adentro. Medido:
+   el informe pasa de 900x458 a 0x0 y la página queda con 0 caracteres de texto.
+
+   El selector NO se arregló acá. Se hizo verdad su premisa: `exportarInforme.js` mueve el nodo a
+   `<body>` mientras dura la impresión y lo devuelve a su lugar al terminar. El porqué de elegir eso
+   antes que un selector más listo (`:has()`, o neutralizar los ancestros uno por uno) está en ese
+   archivo — resumen: `:has()` no existe en los WebView viejos que este parque todavía tiene. */
 @media print {
   @page { margin: 14mm; }
 

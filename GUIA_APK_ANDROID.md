@@ -75,7 +75,7 @@ CAP_BUILD=1 npm run build   # (si no lo corriste recién)
 npx cap sync android
 ```
 
-- `cap add android` crea la carpeta `android/` (solo la primera vez).
+- `cap add android` crea la carpeta `web/android/` (solo la primera vez).
 - `cap sync` copia tu `dist/` adentro y actualiza los plugins nativos.
 
 ---
@@ -130,7 +130,7 @@ com.launion.app://auth
 ### 5.3 — Código: redirect por deep link + captura del retorno
 Estos cambios hay que hacerlos **una vez** en el código (avisame y te los aplico yo). Resumen:
 
-**a) `src/context/AuthContext.jsx`** — que el `redirectTo` use el deep link cuando corre en nativo:
+**a) `web/src/context/AuthContext.jsx`** — que el `redirectTo` use el deep link cuando corre en nativo:
 
 ```js
 import { Capacitor } from '@capacitor/core'
@@ -169,7 +169,7 @@ useEffect(() => {
 
 ## 6) GPS en segundo plano (recorrido con pantalla bloqueada)
 
-El puerto ya está preparado en `src/services/geolocation/index.js` (función `watchNative`). Para activarlo de verdad, se reemplaza el fallback por el plugin:
+El puerto ya está preparado en `web/src/services/geolocation/index.js` (función `watchNative`). Para activarlo de verdad, se reemplaza el fallback por el plugin:
 
 ```js
 import { registerPlugin } from '@capacitor/core'
@@ -202,7 +202,7 @@ Después de cualquier cambio de código: `CAP_BUILD=1 npm run build && npx cap s
 ---
 
 ## 7) Ícono y nombre de la app
-- Nombre: ya es **DisT-At** (definido en `capacitor.config.ts`).
+- Nombre: ya es **DisT-At** (definido en `web/capacitor.config.ts`).
 - Ícono: en Android Studio → click derecho en `app` → *New → Image Asset* → elegí el logo → *Next → Finish*. Genera todos los tamaños.
 
 ---
@@ -216,7 +216,7 @@ keytool -genkey -v -keystore launion.keystore -alias launion -keyalg RSA -keysiz
 ```
 
 - Te va a pedir una **contraseña** (anotala) y algunos datos (nombre, organización, etc.).
-- Se genera el archivo `launion.keystore`. Movelo a `android/app/`.
+- Se genera el archivo `launion.keystore`. Movelo a `web/android/app/`.
 
 > `keytool` viene con el JDK. Si no lo encuentra, usá el que trae Android Studio:
 > `"C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -genkey ...`
@@ -234,7 +234,7 @@ keytool -genkey -v -keystore launion.keystore -alias launion -keyalg RSA -keysiz
    ```
    > ⚠️ No subas este archivo ni el `.keystore` a GitHub. Agregalos a `.gitignore`.
 
-2. Editá `android/app/build.gradle`. Arriba de `android {`, agregá:
+2. Editá `web/android/app/build.gradle`. Arriba de `android {`, agregá:
    ```gradle
    def keystoreProperties = new Properties()
    def keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -266,7 +266,7 @@ keytool -genkey -v -keystore launion.keystore -alias launion -keyalg RSA -keysiz
 
 ## 10) Compilar el APK firmado
 
-Desde la carpeta `android/`:
+Desde la carpeta `web/android/`:
 
 - **Windows:**
   ```bash
@@ -315,7 +315,7 @@ Y volvés a repartir el nuevo `app-release.apk`.
 | El login de Google no vuelve a la app | Falta el `intent-filter` (paso 5.1) o la Redirect URL `com.launion.app://auth` en Supabase (paso 5.2). |
 | El GPS se corta con la pantalla apagada | Falta el permiso "Permitir siempre" y/o los permisos de foreground service (paso 4), o no activaste `watchNative` (paso 6). |
 | `gradlew` no ejecuta | Usá `./gradlew` en Git Bash o `gradlew.bat` en CMD; verificá JDK 17. |
-| `lintVitalAnalyzeRelease` FAILED / `Already disposed: MessageBus` | Bug de lint con JDK nuevo (21/25). Ya está desactivado con `lint { checkReleaseBuilds false }` en `android/app/build.gradle`. No es un error de la app. |
+| `lintVitalAnalyzeRelease` FAILED / `Already disposed: MessageBus` | Bug de lint con JDK nuevo (21/25). Ya está desactivado con `lint { checkReleaseBuilds false }` en `web/android/app/build.gradle`. No es un error de la app. |
 | `Unsupported class file major version 69` | Tu `JAVA_HOME` apunta a JDK 25 (incompatible con Gradle 8.2.1). Usá el JBR de Android Studio: compilá con `./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Android\Android Studio\jbr"` (o seteá `JAVA_HOME` a ese JBR). |
 | `Keystore file ... not found` | La ruta en `android/keystore.properties` → `storeFile` debe ser **`launion.keystore`** (relativa al módulo `app`, donde está el archivo), no `app/launion.keystore`. |
 | Google marca "app no verificada" | Es normal en apps propias sin verificación de marca. Se puede continuar; para quitarlo hay que verificar la app en Google Cloud (opcional). |

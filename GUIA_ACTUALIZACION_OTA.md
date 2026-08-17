@@ -12,7 +12,7 @@ La app se actualiza **sola, sin reinstalar el APK**, para casi todos los cambios
    **descarga y aplica** el bundle y se recarga con lo nuevo. Sin reinstalar.
 
 Motor: `@capgo/capacitor-updater` (modo self-hosted, `autoUpdate:false`). Código en
-`src/services/ota.js` y `src/components/UpdatePrompt.jsx`.
+`web/src/services/ota.js` y `web/src/components/UpdatePrompt.jsx`.
 
 ## Publicar una actualización (2 pasos)
 

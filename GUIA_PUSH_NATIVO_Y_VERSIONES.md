@@ -79,7 +79,7 @@ reenvío al JS y el manejo de token, y le sumamos el trabajo nativo.
 
 ### A.3 Diseño propuesto — y la decisión que hay que tomar
 
-Crear `android/app/src/main/java/com/launion/app/LaUnionMessagingService.java`:
+Crear `web/android/app/src/main/java/com/launion/app/LaUnionMessagingService.java`:
 
 ```java
 package com.launion.app;
@@ -129,7 +129,7 @@ tres caminos, de más a menos realista:
 - **Opción 1 (recomendada) — re-armar el GPS nativo.** Que el servicio se asegure de que el
   *foreground service* de ubicación siga vivo (el tracker). Es lo de mayor valor real: mantener el
   GPS capturando cuando el SO lo mató "suave". **Verificar primero** si el plugin de
-  background-geolocation (ver `patches/` y `src/services/geolocation/`) expone forma de re-arrancar
+  background-geolocation (ver `web/patches/` y `web/src/services/geolocation/`) expone forma de re-arrancar
   la captura desde nativo sin abrir la Activity. Si exige abrir `MainActivity`, ojo: Android 12+
   **bloquea** el arranque de Activity desde background salvo excepciones.
 - **Opción 2 — latido nativo directo a Supabase.** POST HTTPS (OkHttp) a `estado_dispositivo`
@@ -162,8 +162,8 @@ primero. **No** dejar el `notification` en la función: el watchdog es data-only
 
 ### A.6 Archivos y build (Tarea A)
 
-- **Nuevo:** `android/app/src/main/java/com/launion/app/LaUnionMessagingService.java`
-- **Editar:** `android/app/src/main/AndroidManifest.xml` (el `<service>` de arriba)
+- **Nuevo:** `web/android/app/src/main/java/com/launion/app/LaUnionMessagingService.java`
+- **Editar:** `web/android/app/src/main/AndroidManifest.xml` (el `<service>` de arriba)
 - `MainActivity.java` **no** se toca (un `FirebaseMessagingService` no se registra como plugin).
 - **Es cambio NATIVO → APK nuevo** (regla §6 de CLAUDE.md). Publicar **APK + la misma versión como
   OTA**. Subir `versionCode`, `versionName`, `APP_VERSION` y `app_config` (hoy están desfasados:
@@ -185,7 +185,7 @@ primero. **No** dejar el `notification` en la función: el watchdog es data-only
 
 ### B.1 Estado actual
 
-- `estado_dispositivo.app_version` = la versión **JS/OTA** (`APP_VERSION` de `src/version.js`), la
+- `estado_dispositivo.app_version` = la versión **JS/OTA** (`APP_VERSION` de `web/src/version.js`), la
   sube el latido en cada envío (`useEstadoDispositivo.js`). **Esta es la versión OTA.**
 - La versión **nativa del APK** (`versionName`) **NO** se reporta a la base, pero es obtenible en el
   cliente con `@capacitor/app`: `CapApp.getInfo().then(i => i.version)`. Ya se usa así en
@@ -209,14 +209,14 @@ aplicar contra la base viva por el MCP (`apply_migration`), no asumir desde el `
 alter table public.estado_dispositivo add column if not exists apk_version text;
 ```
 
-**2. `src/hooks/useEstadoDispositivo.js`:**
+**2. `web/src/hooks/useEstadoDispositivo.js`:**
 - Capturar la versión nativa una vez (guardada en un `ref`), guarda con `isNative()`:
   `import { App as CapApp } from '@capacitor/app'` → `CapApp.getInfo().then(i => apkRef.current = i?.version)`.
   En web/PWA `getInfo` no aplica → queda `null` (correcto, la PWA no tiene APK).
 - Agregar `'apk_version'` al array `CAMPOS` (línea ~27) y meterlo en el objeto `estado` (línea ~112):
   `const estado = { app_version: APP_VERSION, apk_version: apkRef.current || null, ... }`.
 
-**3. Mostrarlo en el panel** — `src/features/supervision/components/EstadoEquipo.jsx`:
+**3. Mostrarlo en el panel** — `web/src/features/supervision/components/EstadoEquipo.jsx`:
 - Agregar `app_version, apk_version` al `.select(...)` (línea ~41).
 - Renderizar una línea chica por usuario: `OTA 1.5.43 · APK 1.5.42`. Resaltar en ámbar si
   `apk_version < 1.5.42` (sin push) o si `app_version` está por debajo de
@@ -228,8 +228,8 @@ alter table public.estado_dispositivo add column if not exists apk_version text;
 ### B.3 Archivos y despliegue (Tarea B)
 
 - `db/11_apk_version.sql` (nuevo) + aplicar en vivo.
-- `src/hooks/useEstadoDispositivo.js`
-- `src/features/supervision/components/EstadoEquipo.jsx`
+- `web/src/hooks/useEstadoDispositivo.js`
+- `web/src/features/supervision/components/EstadoEquipo.jsx`
 - **Es JS + DB → sale por OTA + PWA, SIN APK nuevo.** (Para que un equipo reporte su `apk_version`
   necesita correr el JS nuevo, que la OTA le entrega.)
 
@@ -240,7 +240,7 @@ alter table public.estado_dispositivo add column if not exists apk_version text;
 ### C.1 Estado actual
 
 El color de cada usuario en el mapa (marcador en vivo, etiqueta y reproducción de jornada) sale de
-**un solo punto**: `colorPorId(id)` en `src/lib/colors.js`. Es determinístico — hashea el `id` y lo
+**un solo punto**: `colorPorId(id)` en `web/src/lib/colors.js`. Es determinístico — hashea el `id` y lo
 mapea a una paleta fija de 10 colores. Se llama desde 7 lugares (MapaOperativo, RecorridosView,
 ReplayJornada, EstadoEquipo, dwells, SupervisionDesktop/Movil, PropietarioView). Hoy **no se puede
 elegir**: dos usuarios pueden caer en el mismo color y no hay forma de diferenciarlos a mano.
@@ -265,7 +265,7 @@ alter table public.perfiles add column if not exists color_trazo text;
 de UPDATE que permita a `es_superadmin()` tocar `color_trazo`. No aflojar el resto de columnas.
 Consultar la base viva, no los `.sql` (regla 5).
 
-**2. `src/lib/colors.js`** — override en memoria + resolver:
+**2. `web/src/lib/colors.js`** — override en memoria + resolver:
 
 ```js
 const overrides = new Map()   // id -> '#RRGGBB' elegido a mano
@@ -285,13 +285,13 @@ export function colorPorId(id) {
 }
 ```
 
-**3. `src/hooks/usePerfilesEquipo.js`** — traer la columna e hidratar el override:
+**3. `web/src/hooks/usePerfilesEquipo.js`** — traer la columna e hidratar el override:
 - Agregar `color_trazo` al `.select('id, nombre, rol, color_trazo')`.
 - Al resolver, llamar `hydrateColores(data)` (import de `lib/colors`), así el override queda
   disponible para todos los call sites que hoy solo pasan `id`.
 
 **4. UI (solo superadmin)** — un selector de color por usuario. Lugar recomendado:
-`src/features/admin/UsuariosView.jsx` (el ABM de usuarios), una muestra de color + popover con la
+`web/src/features/admin/UsuariosView.jsx` (el ABM de usuarios), una muestra de color + popover con la
 PALETA de 10 + opción "auto" (setea `color_trazo = null`). Gatear con `rol === 'superadmin'` de
 `useAuth()` — el control **no se renderiza** para nadie más.
 - Guardar: `update perfiles set color_trazo = ... where id = <usuario>`. Ver cómo hace UsuariosView
@@ -305,7 +305,7 @@ PALETA de 10 + opción "auto" (setea `color_trazo = null`). Gatear con `rol === 
 ### C.3 Archivos y despliegue (Tarea C)
 
 - `db/12_color_trazo.sql` (nuevo) + policy de UPDATE para superadmin, aplicar en vivo.
-- `src/lib/colors.js`, `src/hooks/usePerfilesEquipo.js`, `src/features/admin/UsuariosView.jsx`.
+- `web/src/lib/colors.js`, `web/src/hooks/usePerfilesEquipo.js`, `web/src/features/admin/UsuariosView.jsx`.
 - **JS + DB → OTA + PWA, sin APK.** Se puede juntar con la Tarea B en el mismo release.
 
 ---

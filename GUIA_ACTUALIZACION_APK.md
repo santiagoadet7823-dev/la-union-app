@@ -5,7 +5,7 @@ equipo, sin pasar el archivo a mano. Disponible desde la versión **1.6.0** (la 
 updater adentro).
 
 > **Antes que nada — respaldá el keystore.** Todo esto depende de firmar el APK con
-> `android/app/launion.keystore` y sus contraseñas (`android/keystore.properties`). Si perdés el
+> `web/android/app/launion.keystore` y sus contraseñas (`android/keystore.properties`). Si perdés el
 > archivo **o** las contraseñas, no podés volver a publicar ninguna actualización nativa (ver §5).
 > Backup en un gestor de contraseñas + 2 lugares privados, hoy.
 
@@ -18,7 +18,7 @@ Son **dos canales distintos**. Elegí el más liviano que sirva:
 | Tu cambio es… | Canal | Cómo |
 |---|---|---|
 | JS / CSS / React, una pantalla, un texto, un arreglo de lógica | **OTA** (liviano, silencioso, sin reinstalar) | `bash scripts/ota-release.sh <ver>` |
-| Un plugin nativo, un permiso del manifest, código en `android/`, `capacitor.config.ts` | **APK nuevo** (esta guía) | pasos de abajo |
+| Un plugin nativo, un permiso del manifest, código en `web/android/`, `web/capacitor.config.ts` | **APK nuevo** (esta guía) | pasos de abajo |
 
 La **OTA** actualiza solo el contenido web y se aplica sola sin que el usuario instale nada. El **APK
 nuevo** es para lo que la OTA no puede tocar (lo nativo): ahí sí hay que reinstalar, y para eso está
@@ -53,10 +53,10 @@ Supongamos que vas a sacar la **1.6.1**.
 
 Editá **dos** archivos:
 
-- `android/app/build.gradle`:
+- `web/android/app/build.gradle`:
   - `versionCode` → subilo en **1** (ej. de `20` a `21`). Es un entero, siempre para arriba.
   - `versionName` → la versión legible (ej. `"1.6.1"`).
-- `src/version.js`:
+- `web/src/version.js`:
   - `APP_VERSION` → la misma (`'1.6.1'`).
 
 ### Paso 2 — Compilar el APK firmado
@@ -69,7 +69,7 @@ CAP_BUILD=1 npm run build && npx cap sync android && cd android && ./gradlew ass
 
 - El `CAP_BUILD=1` es **obligatorio** (sin eso el APK arranca en pantalla blanca).
 - El `-Dorg.gradle.java.home=...` evita el error `Unsupported class file major version`.
-- El APK queda en: `android/app/build/outputs/apk/release/app-release.apk`
+- El APK queda en: `web/android/app/build/outputs/apk/release/app-release.apk`
 
 ### Paso 3 — Publicar el APK en GitHub Releases
 
@@ -147,7 +147,7 @@ de "bajar" es publicar una versión **más nueva** con el arreglo (Android no in
 Android obliga a que **cada actualización esté firmada con la misma llave** que la app ya instalada.
 Como esta app **no** está en Play Store, no hay ningún respaldo de Google.
 
-Si perdés `android/app/launion.keystore` **o** las contraseñas de `keystore.properties`:
+Si perdés `web/android/app/launion.keystore` **o** las contraseñas de `keystore.properties`:
 
 - La OTA (contenido web) **sigue funcionando**.
 - Pero **ningún APK nuevo** se puede instalar como actualización. La única salida sería hacer que

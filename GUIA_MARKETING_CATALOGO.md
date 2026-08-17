@@ -74,8 +74,8 @@ Es lo único que conecta la foto con el producto. **El nombre del archivo es el 
 |---|---|---|
 | `0041.png` | `manaos cola.png` | La app busca por código, no por nombre. |
 | `0041.png` | `0041 manaos.png` | Todo lo que no sea el código sobra. |
-| `0041.png` | `0041 (1).png` | El `(1)` que agrega Windows al descargar dos veces rompe el nombre. |
-| `0041.png` | `IMG_20260812.png` | Es el nombre que pone la cámara. Hay que renombrarlo. |
+| `0041.png` | `0041 (1).png`    | El `(1)` que agrega Windows al descargar dos veces rompe el nombre. |
+| `0041.png` | `IMG_20260812.png`| Es el nombre que pone la cámara. Hay que renombrarlo. |
 
 `0041.png` y `41.png` funcionan los dos: la app ignora los ceros de adelante. Pero **usá el código
 tal como figura en la lista de precios** (con los ceros), así lo podés copiar y pegar sin pensar.

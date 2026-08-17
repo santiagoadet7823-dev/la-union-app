@@ -1,6 +1,6 @@
 # Informe de auditoría — DisT-At (PWA + APK Android)
 
-> **Revisión 3 · 04/08/2026 · `APP_VERSION 1.10.0`** ([src/version.js](src/version.js) · `versionCode 28`).
+> **Revisión 3 · 04/08/2026 · `APP_VERSION 1.10.0`** ([src/version.js](web/src/version.js) · `versionCode 28`).
 > Revisiones anteriores: 18/07/2026 (sobre 1.5.25) y 27/07/2026 (sobre 1.6.3). El historial está en git.
 > Repo: `santiagoadet7823-dev/la-union-app`.
 > Documento de **referencia**. Las reglas operativas del día a día están en [CLAUDE.md](CLAUDE.md);
@@ -45,7 +45,7 @@ calle. Un mismo código React se despliega por **tres** caminos independientes:
 | **APK** | Android/Capacitor | `scripts/apk-release.sh` → Release + `app_config.apk_url`; el teléfono se reinstala solo si su versión < `min_version` | `./` |
 
 La rev. 2 solo conocía los dos primeros. El tercero existe desde 1.6.0 y **es el único camino para
-cualquier cambio nativo** (los `.java`, el manifest, `capacitor.config.ts`).
+cualquier cambio nativo** (los `.java`, el manifest, `web/capacitor.config.ts`).
 
 Backend: **Supabase** (Postgres + RLS + Auth Google + Realtime + **6 Edge Functions** + `pg_cron` +
 `pg_net`). Notificaciones: **FCM** (proyecto Firebase propio). Mapas: **Leaflet sobre OSM** con dos
@@ -81,7 +81,7 @@ las sincroniza. Es la deuda estructural más silenciosa del proyecto.
 
 | # | Riesgo | Impacto | Prioridad |
 |---|---|---|---|
-| 1 | **El keystore de firma y sus contraseñas viven en un solo disco.** `android/app/launion.keystore` + `android/keystore.properties`, ambos fuera de git. ⚠️ **`.claude/keystore.md` NO es un respaldo**: es el volcado de la sesión de `keytool` con los campos del DN — **las contraseñas no están ahí** | Se pierde → ningún APK nuevo se instala como actualización sobre los teléfonos que ya la tienen. Habría que desinstalar+reinstalar uno por uno, perdiendo cola, cuarentena y sesión | 🔴 Crítica · **agravado por la mudanza de PC** |
+| 1 | **El keystore de firma y sus contraseñas viven en un solo disco.** `web/android/app/launion.keystore` + `android/keystore.properties`, ambos fuera de git. ⚠️ **`.claude/keystore.md` NO es un respaldo**: es el volcado de la sesión de `keytool` con los campos del DN — **las contraseñas no están ahí** | Se pierde → ningún APK nuevo se instala como actualización sobre los teléfonos que ya la tienen. Habría que desinstalar+reinstalar uno por uno, perdiendo cola, cuarentena y sesión | 🔴 Crítica · **agravado por la mudanza de PC** |
 | 2 | **La ventana de rastreo está en tres lugares sin sincronizar**: `dentroDeHorario()` (JS), `dentroDeVentana()` (Java) y `en_ventana` (SQL de `vigilancia_equipo`) | Tocar una sin las otras no rompe nada visible: hace que los avisos al supervisor **mientan en silencio** | 🔴 Alta |
 | 3 | **Objetos vivos que ningún `.sql` versiona** — y creciendo. Confirmado hoy contra la base: `posiciones.bateria`, `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, la tabla `ingesta_tokens`, la RPC `mi_token_ingesta`, `ubicaciones_compartidas`, `ultimas_posiciones_compartidas` | Recrear la base desde `db/` produce una base **incompleta** con la que el uploader nativo no puede autenticarse | 🔴 Alta |
 | 4 | `npm run build` sin `CAP_BUILD=1` → APK en pantalla blanca, **sin ninguna protección** | Release roto que se detecta recién en el teléfono | 🟠 Media-alta · **vigente desde la rev. 1** |
@@ -98,21 +98,21 @@ constraint (cerrado por `db/20`).
 ### Stack
 
 - **React 19.2** + **Vite 7** + ESM puro. **Tailwind 4 instalado y sin usar** (cero utilidades en
-  `src/`): el sistema visual real son las CSS custom properties de `src/index.css`.
+  `web/src/`): el sistema visual real son las CSS custom properties de `web/src/index.css`.
 - **`@vitejs/plugin-legacy` + `terser` + `build.target: 'es2015'`** — no es cosmético: es la defensa
   contra las tablets con WebView Chrome 79 que arrancaban en pantalla negra. Ver `.browserslistrc`.
 - **Capacitor 6.2**. Plugins: background-geolocation (parcheado), sqlite, filesystem, share, browser,
   app, google-auth, **push-notifications**, **splash-screen**, **status-bar**, capgo/capacitor-updater.
 - **Leaflet 1.9** para todos los mapas, **sin React-Leaflet**: la instancia se maneja a mano.
 - **@supabase/supabase-js 2.110**. `papaparse` + `xlsx` (lazy) para importación.
-- `qrcode` figura en `package.json` y **no tiene un solo import en `src/`**: el QR se genera en nativo
+- `qrcode` figura en `package.json` y **no tiene un solo import en `web/src/`**: el QR se genera en nativo
   con ZXing (`QrPlugin.java`). Es peso muerto del lockfile.
 
 ### Ruteo: no hay router
 
 No existe `react-router`. La navegación es **renderizado condicional por rol + plataforma**.
 
-Orden real de decisión en `AuthedApp` ([src/App.jsx](src/App.jsx)):
+Orden real de decisión en `AuthedApp` ([src/App.jsx](web/src/App.jsx)):
 
 ```
 1. rol === 'propietario'          → PropietarioMovil        (APK y PWA: el dueño usa el celular)
@@ -185,7 +185,7 @@ con reintento) → `!aprobado` (`PendienteView`) → app. `aprobado = activo && 
 | `CatalogContext` | `productos`, `clientes`, `zonas`, `categorias`. Offline-first, mutaciones optimistas por write queue. Arranca **ambas colas** |
 | `GpsContext` | Un único watch para roles móviles (`vendedor\|repartidor\|encargado`) + heartbeat + push + alarma + chequeo de update |
 | `DeviceContext` | `'mobile' \| 'desktop'` compartido |
-| `ThemeContext` | dark/light, clave `launion-theme` (la misma del script anti-FOUC de `index.html`) |
+| `ThemeContext` | dark/light, clave `launion-theme` (la misma del script anti-FOUC de `web/index.html`) |
 
 ### Mapa de features
 
@@ -201,7 +201,7 @@ con reintento) → `!aprobado` (`PendienteView`) → app. `aprobado = activo && 
 
 Compartido entre las dos supervisiones (regla 31, y existe porque **ya divergieron dos veces**):
 `dwells.js`, `trazos.js`, `animarPin.js` y `components/{BurbujasEquipo,EstadoEquipo,RailMapa,TarjetaPin}`.
-La tabla de quién ve qué pantalla de gestión vive en **`src/lib/gestion.js`** — un solo lugar desde el
+La tabla de quién ve qué pantalla de gestión vive en **`web/src/lib/gestion.js`** — un solo lugar desde el
 28/07 (cierra el hallazgo #8 de la rev. 2).
 
 ---
@@ -213,7 +213,7 @@ La tabla de quién ve qué pantalla de gestión vive en **`src/lib/gestion.js`**
 - Manifest: nombre `DisT-At`, `standalone`, `portrait`, tema `#0C0C0C`, íconos 192/512 + maskable.
 - Workbox: `globPatterns` sobre js/css/html/svg/png/ico/csv/woff2. **Sin `runtimeCaching`** — los tiles
   y las llamadas a Supabase no pasan por el SW; el offline lo resuelven las colas.
-- `index.html` tiene un **script anti-FOUC inline** que lee el tema de localStorage y setea
+- `web/index.html` tiene un **script anti-FOUC inline** que lee el tema de localStorage y setea
   `data-theme` antes del primer render, más un gate de "actualizá el WebView".
 - **Deploy**: `.github/workflows/deploy.yml` — push a `main` o manual → Node 20 → `npm ci` →
   `npm run build` (**sin** `CAP_BUILD`, base `/la-union-app/`) → Pages. **Es el único CI del proyecto.**
@@ -227,7 +227,7 @@ La tabla de quién ve qué pantalla de gestión vive en **`src/lib/gestion.js`**
 
 ### Configuración Capacitor
 
-`capacitor.config.ts`: `appId com.launion.app`, `appName DisT-At`, `webDir dist`. **Sin bloque
+`web/capacitor.config.ts`: `appId com.launion.app`, `appName DisT-At`, `webDir dist`. **Sin bloque
 `server`**. Comentario explícito: **no** activar `android.useLegacyBridge` — rompe el pipeline de
 publicación de posiciones. Plugins configurados: `CapacitorUpdater { autoUpdate: false }` (OTA manual),
 `GoogleAuth` (client ID web), `BackgroundGeolocation` (vacío, se configura en los call sites),
@@ -236,7 +236,7 @@ publicación de posiciones. Plugins configurados: `CapacitorUpdater { autoUpdate
 
 ### Los 14 archivos nativos propios
 
-En `android/app/src/main/java/com/launion/app/`. **Escritos a mano, no se regeneran.** `MainActivity`
+En `web/android/app/src/main/java/com/launion/app/`. **Escritos a mano, no se regeneran.** `MainActivity`
 registra **7** plugins antes de `super.onCreate()`.
 
 | Archivo | L | Qué hace |
@@ -287,7 +287,7 @@ avisos es nuevo y no se reusó "actualizaciones".
 
 ### El patch de background-geolocation
 
-`patches/@capacitor-community+background-geolocation+1.2.26.patch` (14 KB), aplicado por
+`web/patches/@capacitor-community+background-geolocation+1.2.26.patch` (14 KB), aplicado por
 `patch-package` en `postinstall`. Cuatro cosas, todas necesarias:
 
 1. **Expone `interval` / `maxWaitTime` / `priority` a JS.** Upstream hardcodeaba 1 Hz y
@@ -307,7 +307,7 @@ Relevancia hoy: el patch gobierna la **PWA** y el camino JS. El APK captura por 
 
 ### Build y firma
 
-`android/app/build.gradle`: `versionCode 28`, `versionName "1.10.0"`. `minSdk 23 / compile 34 /
+`web/android/app/build.gradle`: `versionCode 28`, `versionName "1.10.0"`. `minSdk 23 / compile 34 /
 target 34` (desde `variables.gradle`). Firma release desde `android/keystore.properties` (gitignored),
 keystore `launion.keystore`. Lint desactivado en release porque AGP lint crashea con JDKs nuevos.
 
@@ -332,7 +332,7 @@ scripts/ota-release.sh <versión>          scripts/apk-release.sh <versión>
 > El zip va con **Python**, no con `Compress-Archive` de PowerShell: PowerShell escribe separadores
 > `\` y el unzip de Android no lo acepta.
 
-En el teléfono, `src/services/ota.js`: `otaCheck()` compara `app_config` contra
+En el teléfono, `web/src/services/ota.js`: `otaCheck()` compara `app_config` contra
 `CapacitorUpdater.current()`; `otaDownload()` descarga y hace `next()`; `otaReload()` aplica y
 reinicia. **`otaReady()` → `notifyAppReady()` se llama en `main.jsx`**: si eso falla, Capgo revierte.
 
@@ -497,7 +497,7 @@ silencio. Costó dos rebuilds del APK persiguiendo un bug que estaba en la base.
 | `app_config` | Singleton: versiones, `apk_url`, `bundle_url`, ventana de rastreo (`track_*`), alertas, teléfono de soporte |
 | `app_config_historial` | Auditoría de cambios de `app_config` |
 | `recorridos_snap` | Caché de la Edge Function, unique (id_usuario, fecha) |
-| `pedidos` / `pedido_items` | 🟢 **Sin consumidor en `src/` y 0 filas.** Superficie muerta |
+| `pedidos` / `pedido_items` | 🟢 **Sin consumidor en `web/src/` y 0 filas.** Superficie muerta |
 
 `*` = vivo pero **sin versionar en ningún `.sql`**.
 
@@ -575,7 +575,7 @@ que la persona *es*, va por **`perfiles.permisos text[]`**, no por un rol nuevo:
 `'catalogo'` sigue siendo vendedor —conserva GPS, jornada y su lugar en el mapa— y además edita el
 catálogo. `encargado` sigue siendo dual: se lo trackea **y** supervisa.
 
-Gating en cuatro capas: DB (RLS, autoritativa) → `decidirSupervisionMovil()` → **`src/lib/gestion.js`**
+Gating en cuatro capas: DB (RLS, autoritativa) → `decidirSupervisionMovil()` → **`web/src/lib/gestion.js`**
 (un solo lugar) → reglas de negocio (un cliente creado por rol móvil nace `activo = false`).
 
 ### Seguridad SQL — tres reglas y un incidente
@@ -642,19 +642,19 @@ explícito. Con **2 empresas** en la base, esto dejó de ser hipotético.
 
 | Credencial | Dónde vive | ¿Pública por diseño? | Riesgo real | Rotación |
 |---|---|---|---|---|
-| **Keystore de firma** | `android/app/launion.keystore` + `android/keystore.properties` (ambos gitignored) | **NO — secreto crítico** | **Máximo. Si se pierde el archivo *o* las contraseñas, no se puede volver a actualizar el APK. Nunca** | **Imposible.** Ver §7.1 |
+| **Keystore de firma** | `web/android/app/launion.keystore` + `android/keystore.properties` (ambos gitignored) | **NO — secreto crítico** | **Máximo. Si se pierde el archivo *o* las contraseñas, no se puede volver a actualizar el APK. Nunca** | **Imposible.** Ver §7.1 |
 | **`FCM_SERVICE_ACCOUNT`** | Secret de Supabase Edge Functions | **NO — clave privada de cuenta de servicio de Google** | **Alto.** Permite mandar push a todo el parque en nombre de la app | Consola de Google Cloud |
 | **`SUPABASE_SERVICE_ROLE_KEY`** | Secret de Edge Functions (`Deno.env`) | **NO** | **Alto**: saltea RLS por completo | Panel de Supabase |
 | **Supabase anon** | `.env.local`, `.env.production` | Sí — publishable, la protección es RLS | Bajo (mientras RLS esté sana) | Panel de Supabase |
-| **Google OAuth Web Client ID** | `capacitor.config.ts`, `AuthContext.jsx` | Sí, público por diseño | Nulo | GCP |
-| **`google-services.json`** | `android/app/`, **commiteado a propósito** | Sí — config de cliente Android, viaja dentro del APK | Bajo: está restringida por package + SHA de firma | Consola de Firebase |
-| **Stadia Maps** | `src/services/maps/basemap.js` — **hardcodeada y commiteada** | Clave de navegador (va al bundle igual), protegida por dominios | **Bajo-medio.** Si vence, solo dejan de cargar Oscuro y Satélite; OSM sigue | Ver §7.2 |
+| **Google OAuth Web Client ID** | `web/capacitor.config.ts`, `AuthContext.jsx` | Sí, público por diseño | Nulo | GCP |
+| **`google-services.json`** | `web/android/app/`, **commiteado a propósito** | Sí — config de cliente Android, viaja dentro del APK | Bajo: está restringida por package + SHA de firma | Consola de Firebase |
+| **Stadia Maps** | `web/src/services/maps/basemap.js` — **hardcodeada y commiteada** | Clave de navegador (va al bundle igual), protegida por dominios | **Bajo-medio.** Si vence, solo dejan de cargar Oscuro y Satélite; OSM sigue | Ver §7.2 |
 | `VITE_GOOGLE_MAPS_API_KEY` | `.env.local` | — | **Ninguno: nadie la lee.** Google Maps es código muerto | Se puede borrar |
 
 > ⚠️ **Dos credenciales están hardcodeadas en el código, no en `.env`.** No asumir que todos los
 > secretos viven en variables de entorno.
 
-**Higiene verificada (04/08):** grep de `service_role`, `SERVICE_ROLE` y prefijos de JWT sobre `src/`,
+**Higiene verificada (04/08):** grep de `service_role`, `SERVICE_ROLE` y prefijos de JWT sobre `web/src/`,
 `scripts/` y `.github/` da **un solo hit, y es un comentario**. Las funciones leen el service role de
 `Deno.env`.
 
@@ -675,7 +675,7 @@ en la máquina nueva que `assembleRelease` firma antes de dar la mudanza por ter
 
 ### 7.2 La key de mapas
 
-**No hay ninguna key de Google Maps en uso.** `src/services/maps/index.js` declara que el port quedó
+**No hay ninguna key de Google Maps en uso.** `web/src/services/maps/index.js` declara que el port quedó
 fuera de uso; del módulo solo sobrevive `CENTRO_DEFECTO` (Las Lajitas, Anta, Salta).
 `GUIA_API_KEY_GOOGLE_MAPS.md` está obsoleta y `README.md` menciona un componente `GoogleMap` que **no
 existe**.
@@ -695,7 +695,7 @@ que considerar quemada.
 
 ### 7.3 Servicios sin key en camino crítico
 
-`src/services/routing/index.js` usa el **servidor demo público de OSRM** para `/route`, `/trip` (TSP) y
+`web/src/services/routing/index.js` usa el **servidor demo público de OSRM** para `/route`, `/trip` (TSP) y
 `/match`. Sin key, sin SLA, con política de uso justo. La Edge Function usa FOSSGIS, otro host — pero
 ahora con **dos perfiles** (`routed-foot` y `routed-car`), así que la dependencia de hosts públicos
 gratuitos **creció**. El comentario del módulo señala que es **el único punto de swap**.
@@ -715,7 +715,7 @@ gratuitos **creció**. El comentario del módulo señala que es **el único punt
 | 5 | `npm run build` sin `CAP_BUILD=1` → pantalla blanca | 🔴 **Vigente**: sigue sin existir `build:apk` |
 | 6 | Docs obsoletas | 🔴 **Vigente**: `README.md`, `GUIA_APK_ANDROID.md` y `GUIA_API_KEY_GOOGLE_MAPS.md` sin sanear |
 | 7 | `lint` que nunca falla; cero tests | 🔴 **Vigente y peor**: además **no hay archivo de config de ESLint** en el repo |
-| 8 | Tabla de permisos de menú duplicada | ✅ **Resuelto**: extraída a `src/lib/gestion.js` (28/07) |
+| 8 | Tabla de permisos de menú duplicada | ✅ **Resuelto**: extraída a `web/src/lib/gestion.js` (28/07) |
 | 9 | OSRM demo público en camino crítico | 🔴 **Vigente y con más superficie** (§7.3) |
 | 10 | `pedidos`/`pedido_items`/`firmas` con RLS pero sin consumidor | 🔴 **Vigente**: 0 filas, y `firmas_ins` sigue `to authenticated` sin alcance |
 | 11 | Key de Stadia commiteada | 🔴 **Vigente**: ni movida ni rotada |

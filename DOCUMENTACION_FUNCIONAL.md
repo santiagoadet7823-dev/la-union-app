@@ -26,8 +26,8 @@ producto y condiciona todo lo demás.
 | ⛔ **CÓDIGO MUERTO** (sin ruta de acceso) | `tabs/RuteoTab.jsx` (no lo importa nadie) · `vendedor/tabs/PerfilTab.jsx` (no está en la bottom-nav de `VendedorView.jsx:52`) · `AdminView` y `MapaOperativo` (solo alcanzables por un fallback que ningún rol activa) |
 
 > **Nota sobre `PerfilTab`:** está muerto, pero **eso no deja al vendedor sin "Mi cuenta"**.
-> `AppShell` envuelve toda la vista del vendedor y del repartidor ([App.jsx:168-178](src/App.jsx#L168))
-> y monta `MiCuenta` en su topbar ([AppShell.jsx:6](src/components/AppShell.jsx#L6)). El menú de
+> `AppShell` envuelve toda la vista del vendedor y del repartidor ([App.jsx:168-178](web/src/App.jsx#L168))
+> y monta `MiCuenta` en su topbar ([AppShell.jsx:6](web/src/components/AppShell.jsx#L6)). El menú de
 > cuenta —Mi perfil, tema, cerrar sesión— **sí está disponible**. `PerfilTab` es una segunda
 > implementación de lo mismo que quedó sin conectar.
 
@@ -54,9 +54,9 @@ Sin rol o inactivo → PendienteView, con botones "Ya me aprobaron — reintenta
 El perfil se cachea. Si hay caché se usa ya y se revalida en segundo plano. **Si la red falla pero
 hay caché, no se marca error**: es preferible entrar con el perfil viejo que dejar a un vendedor sin
 GPS al abrir la app sin señal. Al cerrar sesión la caché se borra, para que no se filtre a otra
-cuenta en el mismo teléfono ([AuthContext.jsx:194](src/context/AuthContext.jsx#L194)).
+cuenta en el mismo teléfono ([AuthContext.jsx:194](web/src/context/AuthContext.jsx#L194)).
 
-### Quién ve qué — `decidirSupervisionMovil()` en [App.jsx:102](src/App.jsx#L102)
+### Quién ve qué — `decidirSupervisionMovil()` en [App.jsx:102](web/src/App.jsx#L102)
 
 Es el **único lugar del sistema** que sabe esta regla.
 
@@ -168,7 +168,7 @@ Su único aporte real al sistema hoy es su posición y su latido de salud.
 
 Es el único rol que **se trackea y supervisa al mismo tiempo**:
 
-- **Se trackea**: entra en `esMovil` ([GpsContext.jsx:19](src/context/GpsContext.jsx#L19)), así que
+- **Se trackea**: entra en `esMovil` ([GpsContext.jsx:19](web/src/context/GpsContext.jsx#L19)), así que
   publica posición aunque esté en modo "Panel".
 - **Supervisa**: accede a Clientes, Zonas, Catálogo, Faltante y Consultas. **No** a Usuarios ni a
   Empresas.

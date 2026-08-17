@@ -32,7 +32,7 @@ npm run preview
 ## 3. Desplegar como PWA (hosting estático)
 El `dist/` se sirve en cualquier hosting (Netlify, Vercel, GitHub Pages, etc.).
 - Para **GitHub Pages en subruta** (`usuario.github.io/repo/`): cambiar `base: './'`
-  por `base: '/repo/'` en [vite.config.js](vite.config.js).
+  por `base: '/repo/'` en [vite.config.js](web/vite.config.js).
 
 ## 4. Compilar la app híbrida (Android / iOS) con Capacitor
 ```bash
@@ -43,7 +43,7 @@ npm run cap:android      # sync + abre Android Studio
 npm run cap:ios          # sync + abre Xcode
 ```
 Permisos nativos a declarar (ver plan):
-- **Android** (`android/app/src/main/AndroidManifest.xml`): `ACCESS_FINE_LOCATION`,
+- **Android** (`web/android/app/src/main/AndroidManifest.xml`): `ACCESS_FINE_LOCATION`,
   `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`.
 - **iOS** (`ios/App/App/Info.plist`): `NSLocationAlwaysAndWhenInUseUsageDescription`,
   `UIBackgroundModes → location`.
@@ -77,7 +77,7 @@ src/
   + Route Optimization) se cambia el componente `LeafletMap` por `GoogleMap` (ya incluido)
   y se agrega la key — ver [GUIA_API_KEY_GOOGLE_MAPS.md](GUIA_API_KEY_GOOGLE_MAPS.md).
 - **Datos:** las vistas corren con datos demo coherentes; el catálogo real (Las Lajitas)
-  ya se lee de `public/data/*.csv` vía `CatalogContext` y el store compartido
+  ya se lee de `web/public/data/*.csv` vía `CatalogContext` y el store compartido
   (`VentasContext`) está listo para conectar el flujo en vivo Vendedor→Admin→Repartidor.
 - **Faltante de stock:** `features/reportes/faltanteStock.js` implementa la comparación
   Generados vs Entregados (función pura); el Repartidor la alimenta al declarar cantidades.

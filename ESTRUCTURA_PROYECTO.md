@@ -6,6 +6,16 @@
 > Para qué sirve: saber qué conservar al migrar de máquina, y qué mover a un archivo secundario.
 > Pendientes y entorno: [HANDOFF.md](HANDOFF.md) · Arquitectura: [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md).
 
+> 🩸 **DESACTUALIZADO EN UN PUNTO IMPORTANTE (17/08/2026): el repo pasó a ser un MONOREPO.**
+> Todo lo que este documento describe como si colgara de la raíz del repo —`src/`, `android/`,
+> `public/`, `patches/`, `package.json`, `vite.config.js`, `capacitor.config.ts`— **ahora vive bajo
+> `web/`**. Las rutas citadas acá ya se corrigieron, pero el relevamiento en sí (qué archivo es cada
+> cosa, qué conservar) sigue siendo del 04/08.
+>
+> Lo que **no** se movió y sigue en la raíz: `db/`, `supabase/`, `scripts/`, `legal/` y los `.md`.
+>
+> La estructura vigente está en [CLAUDE.md §1](CLAUDE.md).
+
 ## Lo primero que hay que entender
 
 **El repo git existe SOLO dentro de `la-union-app/`** (`origin: github.com/santiagoadet7823-dev/la-union-app`,
@@ -50,7 +60,7 @@ propuesta LA UNION/            ← ❌ sin git
 | Archivo | Qué es | Estado |
 |---|---|---|
 | `MOCKUP_LOGIN_v1.4.html` (32 KB) | Mockup navegable del ingreso + animación, con los tokens reales | 🟡 Superado por el código (`LoginView.jsx`). Referencia visual |
-| `MOCKUP_UXUI_VENDEDOR_REPARTIDOR.html` (33 KB) | Mockup Vendedor + Repartidor con los tokens de `src/index.css` | 🟡 Vendedor implementado; **Repartidor no** |
+| `MOCKUP_UXUI_VENDEDOR_REPARTIDOR.html` (33 KB) | Mockup Vendedor + Repartidor con los tokens de `web/src/index.css` | 🟡 Vendedor implementado; **Repartidor no** |
 
 ### 1.3 Resto de la raíz
 
@@ -98,9 +108,9 @@ propuesta LA UNION/            ← ❌ sin git
 | Archivo | Qué hace |
 |---|---|
 | `package.json` | `distat-app`. Scripts (`dev`, `build`, `lint`, `cap:*`, `postinstall: patch-package`), 17 deps y 13 devDeps. ⚠️ **No hay `build:apk`** — el `CAP_BUILD=1` va a mano |
-| `vite.config.js` | `base` conmutable (`/la-union-app/` para Pages vs `./` con `CAP_BUILD=1`), **`build.target: 'es2015'`** a propósito (tablets con WebView Chrome 79), `define global`, VitePWA (`registerType: 'prompt'`) + plugin-legacy |
-| `capacitor.config.ts` | `appId com.launion.app`, `webDir dist`. CapacitorUpdater (`autoUpdate: false`), GoogleAuth, BackgroundGeolocation, SQLite, SplashScreen. **Sin bloque `server`** |
-| `index.html` | Entry: fuentes, **bootstrap anti-FOUC del tema**, `theme-color #0C0C0C`, gate de "actualizá el WebView" |
+| `web/vite.config.js` | `base` conmutable (`/la-union-app/` para Pages vs `./` con `CAP_BUILD=1`), **`build.target: 'es2015'`** a propósito (tablets con WebView Chrome 79), `define global`, VitePWA (`registerType: 'prompt'`) + plugin-legacy |
+| `web/capacitor.config.ts` | `appId com.launion.app`, `webDir dist`. CapacitorUpdater (`autoUpdate: false`), GoogleAuth, BackgroundGeolocation, SQLite, SplashScreen. **Sin bloque `server`** |
+| `web/index.html` | Entry: fuentes, **bootstrap anti-FOUC del tema**, `theme-color #0C0C0C`, gate de "actualizá el WebView" |
 | `.browserslistrc` | **Piso de compatibilidad único**: Chrome ≥79, medido por `adb logcat` en una tablet real. Documenta por qué |
 | `.gitignore` | Muy comentado. Ignora `.claude/*` pero **exceptúa `skills/`** a propósito |
 | `.env.example` / `.env.production` / `.env.local` | Plantilla / versionado (anon key, pública) / 🔴 **fuera de git**. Los tres tienen sets distintos de variables |
@@ -150,7 +160,7 @@ propuesta LA UNION/            ← ❌ sin git
 | `PhoneFrame.jsx` | 50 | Marco de teléfono para previsualizar vistas móviles en escritorio |
 | `Isotipo.jsx` | 40 | Isotipo en **vector** (hace falta para animarlo trazo a trazo) |
 | `form.jsx` | 35 | `Field` + `inputStyle` compartidos |
-| `Logo.jsx` | 16 | Sirve `public/logo.png` respetando `BASE_URL` (doble base path) |
+| `Logo.jsx` | 16 | Sirve `web/public/logo.png` respetando `BASE_URL` (doble base path) |
 
 ### 3.3 `context/` (6)
 
@@ -383,7 +393,7 @@ El detalle de qué hace cada migración está en [INFORME_AUDITORIA.md §6](INFO
 `apk-release.sh` (56 L) — publica el `.apk` en un Release y da la URL + el SQL del auto-update.
 Ambos requieren **Git Bash** y `gh` logueado.
 
-### 4.4 `android/` — ~1 MB artesanal dentro de 156 MB
+### 4.4 `web/android/` — ~1 MB artesanal dentro de 156 MB
 
 **🟢 ARTESANAL — no se regenera con `cap add android`** (versionado, salvo lo marcado):
 
@@ -422,8 +432,8 @@ los dos tests de ejemplo de Capacitor (versionados pero inútiles: **no hay test
 
 | Ruta | Qué es |
 |---|---|
-| `patches/@capacitor-community+background-geolocation+1.2.26.patch` (14 KB) | 🟢 **Esencial.** 4 cambios, todos necesarios. **Sin él el GPS no se configura desde JS.** Se aplica solo en `postinstall` |
-| `public/` (125 KB) | Íconos de marca y PWA, `oauth.html` (página puente del OAuth web), `data/*.csv` (semillas de importación) |
+| `web/patches/@capacitor-community+background-geolocation+1.2.26.patch` (14 KB) | 🟢 **Esencial.** 4 cambios, todos necesarios. **Sin él el GPS no se configura desde JS.** Se aplica solo en `postinstall` |
+| `web/public/` (125 KB) | Íconos de marca y PWA, `oauth.html` (página puente del OAuth web), `data/*.csv` (semillas de importación) |
 | `.claude/skills/` (156 archivos, 4,4 MB) | Las 8 skills de diseño, **versionadas a propósito** (`.gitignore` exceptúa `skills/`). ⚠️ Hay `__pycache__/*.pyc` versionados: ruido inofensivo |
 | `.claude/launch.json` | Config de preview (gitignoreada) |
 | `trabajo diseñador ui ux/` (2,1 MB) | Handoff **v2 (13/07)** del diseñador. **Gitignoreado.** Superado por el v3 de la raíz |
@@ -440,13 +450,13 @@ Sin esto no compila, no se publica, o se pierde conocimiento.
 |---|---|
 | Código fuente | `la-union-app/src/**` (142 archivos) |
 | Nativo artesanal | `la-union-app/android/` **excepto** `build/`, `app/build/`, `.gradle/`, `.idea/`, `capacitor-cordova-android-plugins/`, `app/src/main/assets/public/` |
-| 🔴 Secretos de firma | `android/app/launion.keystore`, `android/keystore.properties`, y `../.claude/keystore.md` |
+| 🔴 Secretos de firma | `web/android/app/launion.keystore`, `android/keystore.properties`, y `../.claude/keystore.md` |
 | 🔴 Entorno local | `la-union-app/.env.local` |
 | Backend | `supabase/functions/**` · `db/**` |
-| Build y config | `package.json`, `package-lock.json`, `vite.config.js`, `capacitor.config.ts`, `index.html`, `.browserslistrc`, `.gitignore`, `.env.example`, `.env.production` |
-| Parche | `patches/*.patch` |
+| Build y config | `package.json`, `package-lock.json`, `web/vite.config.js`, `web/capacitor.config.ts`, `web/index.html`, `.browserslistrc`, `.gitignore`, `.env.example`, `.env.production` |
+| Parche | `web/patches/*.patch` |
 | Automatización | `scripts/*.sh` · `.github/workflows/deploy.yml` |
-| Assets servidos | `public/**` |
+| Assets servidos | `web/public/**` |
 | Documentación viva | `CLAUDE.md`, `HANDOFF.md`, `INFORME_AUDITORIA.md`, `ESTRUCTURA_PROYECTO.md`, `PLAN_SAAS.md`, `DOCUMENTACION_FUNCIONAL.md`, las 4 `GUIA_*` vivas, `legal/**`, `db/00_LEER_PRIMERO.md`, `db/historico/LEER_ANTES_DE_TOCAR.md` |
 | Skills | `la-union-app/.claude/skills/**` |
 | Historial | `la-union-app/.git/` (o reclonar) |
@@ -496,9 +506,9 @@ propuesta LA UNION/
 | Ruta | Tamaño | Se regenera con |
 |---|---|---|
 | `node_modules/` | 530 MB | `npm install` |
-| `android/build/` + `android/app/build/` | 105 MB | `gradlew assembleRelease` |
+| `android/build/` + `web/android/app/build/` | 105 MB | `gradlew assembleRelease` |
 | `android/capacitor-cordova-android-plugins/` | 5,6 MB | `npx cap sync android` |
-| `android/app/src/main/assets/public/` | 3,7 MB | `npx cap sync android` |
+| `web/android/app/src/main/assets/public/` | 3,7 MB | `npx cap sync android` |
 | `dist/` | 3,7 MB | `npm run build` |
 | `bundle.zip` | 1,2 MB | `scripts/ota-release.sh` |
 | `graphify-out/` | 833 KB | Artefacto de una auditoría del 16/07 — descartable |

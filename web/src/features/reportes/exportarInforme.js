@@ -90,6 +90,67 @@ export async function exportarExcel(informe, nombres = {}) {
 }
 
 /**
+ * Cuelga `#lu-informe` de `<body>` mientras dura la impresión y devuelve cómo restituirlo.
+ *
+ * 🩸 SIN ESTO EL PDF SALE EN BLANCO, y salía así desde 1.12.0. La hoja `@media print` oculta todo
+ * con `body > *:not(#lu-informe)`, un selector que da por sentado que el informe es hijo directo de
+ * `<body>`. No lo es: React monta en `<div id="root">` y la cadena real es
+ * `#lu-informe < main < div < div < #root`. El único hijo de `<body>` es `#root`, que no es
+ * `#lu-informe`, así que la regla lo ocultaba entero — informe incluido. Medido en el navegador: el
+ * informe pasa de 900x458 a 0x0 y no queda un solo carácter de texto en la página.
+ *
+ * POR QUÉ MOVER EL NODO Y NO ARREGLAR EL SELECTOR. Las dos alternativas de CSS fallan por motivos
+ * concretos, no por gusto:
+ *
+ *  · `:not(:has(#lu-informe))` sería lo elegante, pero `:has()` llegó en Chrome 105 y este parque
+ *    todavía tiene WebView de Chrome 79 (hay un gate de compatibilidad en `index.html` justamente
+ *    por eso). El informe dejaría de imprimirse en los equipos más viejos, que son los que menos
+ *    forma tienen de darse cuenta.
+ *  · Neutralizar los ancestros a mano (`position:static`, `overflow:visible`) obliga a enumerar una
+ *    cadena que cambia según la pantalla desde donde se abra el informe. Se rompe en silencio la
+ *    próxima vez que alguien meta un contenedor en el medio.
+ *
+ * Moviendo el nodo, la premisa del selector pasa a ser cierta y la hoja de impresión funciona tal
+ * como está escrita. El informe no tiene mapa vivo que se rompa al mudarlo: `MapaRecorrido` deja un
+ * `<img>` con la ruta ya rasterizada.
+ *
+ * Se deja una marca de comentario en el lugar original y se restituye con `replaceChild`, para que
+ * el nodo vuelva EXACTAMENTE donde estaba: React conserva la misma referencia y no se entera.
+ */
+function moverInformeABody() {
+  const el = document.getElementById('lu-informe')
+  if (!el || el.parentNode === document.body) return () => {}
+  const marca = document.createComment('lu-informe')
+  el.parentNode.insertBefore(marca, el)
+  document.body.appendChild(el)
+  return () => { if (marca.parentNode) marca.parentNode.replaceChild(el, marca) }
+}
+
+/**
+ * Deja el informe listo para imprimirse, venga la orden de donde venga.
+ *
+ * Se engancha a `beforeprint`/`afterprint` y no solo al botón porque **Ctrl+P es la otra mitad del
+ * caso**: quien tiene el informe en pantalla lo imprime con el atajo del navegador tanto como con
+ * el botón, y por ese camino no pasa `imprimirInforme()`. Un arreglo que solo cubriera el botón
+ * dejaría el PDF en blanco para la mitad de las veces que se usa.
+ *
+ * Devuelve la función de limpieza: la monta `ReportesView` mientras la vista está viva, así los
+ * listeners no quedan dando vueltas en pantallas donde `#lu-informe` ni existe.
+ */
+export function montarImpresionInforme() {
+  let restaurar = () => {}
+  const antes = () => { restaurar = moverInformeABody() }
+  const despues = () => { restaurar(); restaurar = () => {} }
+  window.addEventListener('beforeprint', antes)
+  window.addEventListener('afterprint', despues)
+  return () => {
+    window.removeEventListener('beforeprint', antes)
+    window.removeEventListener('afterprint', despues)
+    restaurar()
+  }
+}
+
+/**
  * El informe como PDF.
  *
  * 🩸 POR QUÉ IMPRIMIR Y NO GENERAR. La alternativa evidente era `jsPDF`, y se descartó por dos
@@ -111,9 +172,15 @@ export async function exportarExcel(informe, nombres = {}) {
  */
 export async function imprimirInforme() {
   if (!isNative()) {
+    // El nodo lo mueve el listener de `beforeprint` (ver `montarImpresionInforme`), que además
+    // cubre el Ctrl+P del navegador. Acá no hace falta tocar nada.
     window.print()
     return
   }
+  // En la APK sí hay que moverlo a mano: `PrintManager` renderiza el WebView con media `print`,
+  // pero NO dispara `beforeprint` — es una API de Android, no del documento. Si esto se sacara, el
+  // PDF nativo volvería a salir en blanco aunque el de la web funcione.
+  const restaurar = moverInformeABody()
   try {
     const { registerPlugin } = await import('@capacitor/core')
     const Impresion = registerPlugin('Impresion')
@@ -124,5 +191,9 @@ export async function imprimirInforme() {
     // botón que no hace nada y no dice nada es peor que un botón que falla.
     console.warn('[informe] sin plugin de impresión nativo', e)
     alert('Este teléfono todavía no puede generar el PDF. Actualizá la app, o exportá el Excel.')
+  } finally {
+    // En `finally` y no después del `await`: si el plugin falla, el informe tiene que volver a su
+    // lugar igual. Si no, la pantalla queda rota hasta recargar y el error se ve como dos bugs.
+    restaurar()
   }
 }

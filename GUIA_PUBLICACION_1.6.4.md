@@ -1,7 +1,7 @@
 # Guía de publicación — 1.6.4 (tanda premium)
 
-> Versiones alineadas: `APP_VERSION 1.6.4` (`src/version.js`), `versionName "1.6.4"` /
-> `versionCode 22` (`android/app/build.gradle`). Migraciones DB `16`–`21` **ya aplicadas en producción**.
+> Versiones alineadas: `APP_VERSION 1.6.4` (`web/src/version.js`), `versionName "1.6.4"` /
+> `versionCode 22` (`web/android/app/build.gradle`). Migraciones DB `16`–`21` **ya aplicadas en producción**.
 
 Hay **tres** canales independientes. La mayoría de las features salen por OTA + PWA; la
 **notificación nativa de actualización** y la **ventana de alarma 6–24** necesitan el **APK nuevo**.

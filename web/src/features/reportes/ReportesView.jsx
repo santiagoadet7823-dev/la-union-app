@@ -11,7 +11,7 @@ import CurvaBateria from './components/CurvaBateria'
 import TablaParadas from './components/TablaParadas'
 import SaludDato from './components/SaludDato'
 import MapaRecorrido from './components/MapaRecorrido'
-import { exportarExcel, imprimirInforme } from './exportarInforme'
+import { exportarExcel, imprimirInforme, montarImpresionInforme } from './exportarInforme'
 
 /**
  * Informe de jornada: el día del equipo en una pantalla que se lee, se imprime y se exporta.
@@ -104,6 +104,12 @@ export default function ReportesView({
 
   const persona = sel ? informe.porUsuario.find((u) => u.id === sel) : null
   useEffect(() => { setParadaSel(null) }, [sel, fecha])
+
+  // Sin esto el PDF sale EN BLANCO: la hoja `@media print` oculta todo lo que cuelga de `<body>` y
+  // que no sea `#lu-informe`, pero `#lu-informe` vive dentro de `#root`, así que se ocultaba con el
+  // resto. El listener lo muda a `<body>` mientras dura la impresión. El porqué largo —y por qué no
+  // se arregló el selector— está en `exportarInforme.js`.
+  useEffect(() => montarImpresionInforme(), [])
 
   return (
     <div id="lu-informe" style={sx('padding:14px 14px 28px;max-width:900px;margin:0 auto;display:grid;gap:14px')}>

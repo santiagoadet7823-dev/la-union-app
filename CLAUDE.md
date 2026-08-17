@@ -30,8 +30,39 @@ Documentos complementarios:
 
 ## 1. Qué es esto
 
-**DisT-At** (`com.launion.app`) — SaaS logístico multi-tenant de seguimiento GPS de equipos en calle.
+**DisT-At** — SaaS logístico multi-tenant de seguimiento GPS de equipos en calle.
 React + Vite + Capacitor + Supabase. Todo en **español**: código, comentarios, UI, commits.
+
+### 🩸 Estructura: MONOREPO desde el 17/08/2026
+
+El cliente React vive bajo **`web/`**. La reestructuración se hizo con `git mv` (244 renombres), así
+que el historial de cada archivo se conserva y `git log --follow` sigue andando.
+
+| Carpeta | Qué es | Estado |
+|---|---|---|
+| **`web/`** | Cliente React + Vite + Capacitor. **Era la raíz hasta el 17/08/2026.** | Vivo, en producción — **es el único cliente** |
+| `db/` · `supabase/` | Migraciones y Edge Functions | Raíz, compartidos |
+| `scripts/` · `legal/` · `*.md` | Operativos y documentación | Raíz |
+
+> 🩸 **`flutter/` se DESCARTÓ el 17/08/2026, el mismo día que nació.** Se evaluó migrar el APK a
+> Flutter (`com.distat.app`) por la fluidez de la UI; se frenó al decidir que el trabajo pasa a ser
+> deuda técnica. El fuente quedó comprimido **fuera del repo**, en
+> `../flutter-descartado-2026-08-17.zip` (69 archivos, incluido el análisis de por qué migrar y por
+> qué no). **No volver a proponerlo sin leer ese README primero.**
+
+**Por qué compartidos y no duplicados:** el modo de falla más caro de este proyecto es la misma regla
+escrita en varios runtimes que nadie sincroniza — la ventana de rastreo ya vive **3 veces** (regla 36)
+y el techo de precisión **4** (regla 18-bis). Un segundo cliente multiplicaría cada una. Por eso el
+cálculo pesado se muda al servidor y los umbrales se **generan** desde un archivo único.
+
+> ⚠️ **Tres trampas de la reestructuración, las tres silenciosas:**
+> 1. **Comandos**: `npm`/`vite`/`cap`/`gradle` se corren desde `web/`, no desde la raíz (§3).
+> 2. **`.gitignore`**: un patrón que arranca con `/` es relativo a la RAÍZ. Las reglas del keystore y
+>    de los artefactos nativos necesitaron el prefijo `web/`; sin él dejan de aplicar **sin avisar**,
+>    y este repo es público. Las que no llevan `/` (`node_modules`, `dist`, `bundle.zip`) matchean en
+>    cualquier nivel y no se tocaron.
+> 3. **`deploy.yml`**: `defaults.run.working-directory` NO afecta a las actions (`uses:`), solo a los
+>    `run:` — por eso `upload-pages-artifact` lleva la ruta completa `web/dist`.
 
 ### Dos canales de despliegue INDEPENDIENTES
 
@@ -102,7 +133,7 @@ Por eso `PanelDireccion` pasa `showDeviceToggle` a `MiCuenta` — sin eso quedar
 lo que la persona *es*, va por **`perfiles.permisos text[]`** (`db/23`), no por un rol nuevo: un
 vendedor con `'catalogo'` sigue siendo vendedor —conserva GPS, jornada y su lugar en el mapa— y
 además edita el catálogo. La tabla de quién ve qué pantalla de gestión vive en
-[`src/lib/gestion.js`](src/lib/gestion.js).
+[`web/src/lib/gestion.js`](web/src/lib/gestion.js).
 
 > **Y la regla de cuándo SÍ va un rol nuevo, que es la otra mitad.** `permisos` sirve para SUMARLE
 > algo a alguien que ya es otra cosa. Cuando el puesto no encaja en ningún rol, el rol prestado se da
@@ -122,12 +153,12 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 
 1. **`CAP_BUILD=1` es obligatorio en cualquier build destinado al APK o a una OTA.** Sin eso, Vite
    compila con base `/la-union-app/` y el APK arranca en **pantalla blanca**
-   ([vite.config.js:14](vite.config.js#L14)). `npm run build` a secas es el build de la PWA.
-2. **No tocar `notifyAppReady()` en [main.jsx:9-13](src/main.jsx#L9).** Si no se llama, Capgo revierte
+   ([vite.config.js:14](web/vite.config.js#L14)). `npm run build` a secas es el build de la PWA.
+2. **No tocar `notifyAppReady()` en [main.jsx:9-13](web/src/main.jsx#L9).** Si no se llama, Capgo revierte
    el bundle OTA.
-3. **No regenerar `android/` con `npx cap add android`.** Pisa los tres plugins nativos escritos a
+3. **No regenerar `web/android/` con `npx cap add android`.** Pisa los tres plugins nativos escritos a
    mano y los permisos del manifest.
-4. **No activar `android.useLegacyBridge`** ([capacitor.config.ts:7-9](capacitor.config.ts#L7)). Rompe
+4. **No activar `android.useLegacyBridge`** ([capacitor.config.ts:7-9](web/capacitor.config.ts#L7)). Rompe
    el pipeline de publicación de posiciones.
 
 ### Base de datos
@@ -174,11 +205,11 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 
 12. **No gatear las colas con `navigator.onLine`.** El WebView de la APK reporta offline estando
     conectado y eso bloqueaba **todas** las subidas. El comentario que lo explica está en
-    [`sync/queue.js`](src/services/sync/queue.js), dentro de `flushPosiciones` — buscar
+    [`sync/queue.js`](web/src/services/sync/queue.js), dentro de `flushPosiciones` — buscar
     `navigator.onLine`, no ir por número de línea (la referencia vieja, `:66-69`, hoy apunta al bloque
     de desborde).
 13. **`updateWatcher` NO mergea opciones.** Pasar siempre el spread completo de
-    `OPCIONES_GPS_MOVIMIENTO` ([geolocation/index.js:87-91](src/services/geolocation/index.js#L87)).
+    `OPCIONES_GPS_MOVIMIENTO` ([geolocation/index.js:87-91](web/src/services/geolocation/index.js#L87)).
 14. **No convertir `tracker.js` en hook/componente React.** Es un módulo con estado a nivel de módulo
     a propósito: el callback nativo dispara con React congelado en Doze.
 15. **No mover la persistencia de posiciones a un `useEffect`.** Ese fue exactamente el bug de "el GPS
@@ -403,7 +434,7 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     actualización vale eso. El cartel sobrevive **solo para lo que sí necesita una persona**: el
     diálogo del instalador de Android, el permiso de "instalar apps desconocidas" y los errores de
     descarga.
-    ⚠️ **`autoUpdate` de Capgo sigue en `false` y así debe quedar** (`capacitor.config.ts`): ese flag
+    ⚠️ **`autoUpdate` de Capgo sigue en `false` y así debe quedar** (`web/capacitor.config.ts`): ese flag
     descarga desde el backend de Capgo, y este proyecto es self-hosted contra `app_config`.
     ⚠️ **La red de contención es `notifyAppReady()`** (regla 2): si un bundle no llega a llamarlo,
     Capgo revierte. Eso cubre un bundle que revienta al arrancar — **no** uno que arranca bien y
@@ -488,7 +519,7 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 
 ### Navegación nativa
 
-26. **El botón ATRÁS de Android se maneja con la pila de [`services/atras.js`](src/services/atras.js),
+26. **El botón ATRÁS de Android se maneja con la pila de [`services/atras.js`](web/src/services/atras.js),
     nunca con un listener suelto.** Cada overlay apila su cierre al abrirse y lo desapila al
     cerrarse; el atrás ejecuta el de más arriba. Sin el listener registrado, Capacitor aplica su
     default — y como **esta app no tiene router, nunca hay historial**, así que el atrás cerraba la
@@ -501,7 +532,7 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 
 23. **NUNCA `new Date().toISOString().slice(0, 10)`.** Devuelve UTC; Salta es UTC−3, así que de 21:00
     a 24:00 daba **mañana** y Supervisión mostraba el mapa vacío todas las noches. Usar **`hoyStr()`**
-    de [src/lib/format.js:45](src/lib/format.js#L45).
+    de [src/lib/format.js:45](web/src/lib/format.js#L45).
 
 43. **Si hace falta probar la app, se prueba — no se le pide al usuario que lo haga.** El emulador de
     Android está instalado (§3); si no está corriendo, se levanta. Sirve para lo que se ve y se
@@ -544,7 +575,16 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
 
 ## 3. Comandos
 
+> 🩸 **MONOREPO desde el 17/08/2026: TODO lo de npm/vite/cap/gradle se corre desde `web/`.**
+> El cliente React se movió a `web/` (ver §1). Un `npm run build`
+> desde la raíz falla con *"Could not read package.json"*; lo peligroso es el `cd android` suelto,
+> que desde la raíz no encuentra nada y manda a perseguir un problema de Gradle que no existe.
+> Los scripts de `scripts/` son la excepción: se paran solos en `web/` y se invocan desde la raíz.
+
 ```bash
+# ── Desde web/ ────────────────────────────────────────────────────────────────
+cd web
+
 # Desarrollo
 npm install                    # postinstall aplica patch-package automáticamente
 npm run dev                    # Vite en :5173
@@ -560,9 +600,11 @@ set CAP_BUILD=1&& npm run build              # CMD
 # APK completo
 CAP_BUILD=1 npm run build && npx cap sync android
 cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Android\Android Studio\jbr"
-# → android/app/build/outputs/apk/release/app-release.apk
+# → web/android/app/build/outputs/apk/release/app-release.apk
 
-# Release OTA (solo APK; requiere gh CLI logueado y Git Bash)
+# ── Desde la RAÍZ del repo ────────────────────────────────────────────────────
+# Release OTA (solo APK; requiere gh CLI logueado y Git Bash).
+# El script hace su propio `cd ../web`, así que se llama desde la raíz y no desde web/.
 bash scripts/ota-release.sh 1.5.26
 # luego, en Supabase:
 # update public.app_config set bundle_version='1.5.26', bundle_url='<url>', latest_version='1.5.26', updated_at=now();
@@ -609,64 +651,64 @@ adb shell dumpsys notification --noredact | grep -i channel   # en qué canal ca
 
 | Ruta | Qué hay |
 |---|---|
-| `src/App.jsx` | Ruteo por rol+plataforma. **`decidirSupervisionMovil()` y `decidirPanelDireccion()` son el único lugar que sabe esta regla** |
-| `src/context/` | Auth, Catalog (+ arranca las colas), Gps, Device, Theme |
-| `src/features/supervision/` | `SupervisionMovil` (APK, full-screen) y `SupervisionDesktop` (PWA/PC) |
-| `src/features/direccion/` | `PanelDireccion` — admin/superadmin en web+celular (el dueño desde su iPhone) |
-| `src/features/{vendedor,repartidor,admin,auth,catalog,perfil,movil}/` | Vistas por rol |
-| `src/services/geolocation/` | 🔴 **Zona peligrosa.** `tracker.js`, `estados.js`, `index.js`, `dwell.js` |
-| `src/services/sync/` | 🔴 **Zona peligrosa.** `queue.js` (posiciones), `writeQueue.js` (catálogo), `realtime.js` |
-| `src/services/persistence/` | Puerto localStorage (web) / SQLite (nativo), con timeouts y fallback |
-| `src/services/{supabase,ota,tracking,battery,download,recorridos}.js` | Servicios sueltos |
-| `src/services/{maps,routing,report}/` | Basemaps (Stadia/OSM), OSRM, export PNG |
-| `src/lib/` | `format.js` (**`hoyStr`**), `sx.js`, `glass.js`, `colors.js`, `uid.js` |
-| `src/hooks/` | `usePublishPosition`, `useRecorridosDelDia`, `useEquipoEnVivo`, `useEstadoDispositivo`… |
+| `web/src/App.jsx` | Ruteo por rol+plataforma. **`decidirSupervisionMovil()` y `decidirPanelDireccion()` son el único lugar que sabe esta regla** |
+| `web/src/context/` | Auth, Catalog (+ arranca las colas), Gps, Device, Theme |
+| `web/src/features/supervision/` | `SupervisionMovil` (APK, full-screen) y `SupervisionDesktop` (PWA/PC) |
+| `web/src/features/direccion/` | `PanelDireccion` — admin/superadmin en web+celular (el dueño desde su iPhone) |
+| `web/src/features/{vendedor,repartidor,admin,auth,catalog,perfil,movil}/` | Vistas por rol |
+| `web/src/services/geolocation/` | 🔴 **Zona peligrosa.** `tracker.js`, `estados.js`, `index.js`, `dwell.js` |
+| `web/src/services/sync/` | 🔴 **Zona peligrosa.** `queue.js` (posiciones), `writeQueue.js` (catálogo), `realtime.js` |
+| `web/src/services/persistence/` | Puerto localStorage (web) / SQLite (nativo), con timeouts y fallback |
+| `web/src/services/{supabase,ota,tracking,battery,download,recorridos}.js` | Servicios sueltos |
+| `web/src/services/{maps,routing,report}/` | Basemaps (Stadia/OSM), OSRM, export PNG |
+| `web/src/lib/` | `format.js` (**`hoyStr`**), `sx.js`, `glass.js`, `colors.js`, `uid.js` |
+| `web/src/hooks/` | `usePublishPosition`, `useRecorridosDelDia`, `useEquipoEnVivo`, `useEstadoDispositivo`… |
 | `db/` | ⚠️ Histórico, **no** fuente de verdad. Leer `00_LEER_PRIMERO.md` |
 | `supabase/functions/snap-recorridos/` | Edge Function: recorridos pegados a calles (OSRM **foot**) |
-| `android/app/src/main/java/com/launion/app/` | 3 plugins nativos escritos a mano |
-| `patches/` | Patch de background-geolocation (4 cambios, todos necesarios) |
+| `web/android/app/src/main/java/com/launion/app/` | **17 clases** nativas escritas a mano: 9 plugins de Capacitor + `UploaderGpsService` (1.452 LOC) + `VentanaRastreo` + 4 receivers + `LaUnionApp` + `MainActivity` |
+| `web/patches/` | Patch de background-geolocation (4 cambios, todos necesarios) |
 
 ### Dónde tocar para…
 
 | Quiero… | Ir a |
 |---|---|
-| Agregar una vista o cambiar quién ve qué | `src/App.jsx` (`decidirSupervisionMovil` / `decidirPanelDireccion`) + **`src/lib/gestion.js`** (`GESTION_ITEMS`) + **`features/supervision/components/DespachoGestion.jsx`** — el despacho estaba copiado en las dos supervisiones y se unificó el 10/08/2026, antes de que `PanelDireccion` lo volviera una tercera copia (regla 31) |
-| Dar una capacidad extra a alguien sin cambiarle el rol | `perfiles.permisos` + el campo `permiso` de la fila en `src/lib/gestion.js` + la policy correspondiente (ver `db/23_perfiles_permisos.sql`) |
+| Agregar una vista o cambiar quién ve qué | `web/src/App.jsx` (`decidirSupervisionMovil` / `decidirPanelDireccion`) + **`web/src/lib/gestion.js`** (`GESTION_ITEMS`) + **`features/supervision/components/DespachoGestion.jsx`** — el despacho estaba copiado en las dos supervisiones y se unificó el 10/08/2026, antes de que `PanelDireccion` lo volviera una tercera copia (regla 31) |
+| Dar una capacidad extra a alguien sin cambiarle el rol | `perfiles.permisos` + el campo `permiso` de la fila en `web/src/lib/gestion.js` + la policy correspondiente (ver `db/23_perfiles_permisos.sql`) |
 | Agregar un campo a cliente/producto | Migración en la base viva + `mapCliente`/`mapProducto` en `CatalogContext.jsx:18-48` + el form correspondiente |
-| Agregar un tipo de mutación offline | `src/services/sync/writeQueue.js` — la op debe ser **idempotente** en reintento |
-| Cambiar la frecuencia/precisión del GPS | `src/services/gpsConfig.js` (constantes) y `geolocation/estados.js` (presets). Leer antes las reglas 11 y 16 |
-| Cambiar el proveedor de ruteo | `src/services/routing/index.js` — es el único punto de swap, por diseño |
-| Agregar una capa de mapa | `src/services/maps/basemap.js` |
-| Hacer un modal, sheet o cualquier overlay | **`src/components/Overlay.jsx`** — nunca escribir uno a mano (ver §7) |
-| Un radio, tamaño de fuente, espaciado o z-index | Tokens de `src/index.css` (`--r-*`, `--fs-*`, `--sp-*`, `--z-*`). **Nunca un literal** |
-| Cambiar cuándo aparece el aviso de actualización | `src/components/UpdatePrompt.jsx` (web y nativo se bifurcan ahí) |
+| Agregar un tipo de mutación offline | `web/src/services/sync/writeQueue.js` — la op debe ser **idempotente** en reintento |
+| Cambiar la frecuencia/precisión del GPS | `web/src/services/gpsConfig.js` (constantes) y `geolocation/estados.js` (presets). Leer antes las reglas 11 y 16 |
+| Cambiar el proveedor de ruteo | `web/src/services/routing/index.js` — es el único punto de swap, por diseño |
+| Agregar una capa de mapa | `web/src/services/maps/basemap.js` |
+| Hacer un modal, sheet o cualquier overlay | **`web/src/components/Overlay.jsx`** — nunca escribir uno a mano (ver §7) |
+| Un radio, tamaño de fuente, espaciado o z-index | Tokens de `web/src/index.css` (`--r-*`, `--fs-*`, `--sp-*`, `--z-*`). **Nunca un literal** |
+| Cambiar cuándo aparece el aviso de actualización | `web/src/components/UpdatePrompt.jsx` (web y nativo se bifurcan ahí) |
 
 ---
 
 ## 5. Zonas peligrosas
 
-**`src/services/geolocation/`** — Cada guarda existe por un bug de campo. Antes de cambiar algo acá,
+**`web/src/services/geolocation/`** — Cada guarda existe por un bug de campo. Antes de cambiar algo acá,
 leer los comentarios del archivo completo. El GPS **no se apaga nunca en reposo** (`estados.js:15-29`
 explica por qué); el plugin tiene un piso de adquisición que no se toca desde JS.
 
-**`src/services/sync/`** — Idempotencia y reintentos. Las dos colas cortan al primer lote fallido y no
+**`web/src/services/sync/`** — Idempotencia y reintentos. Las dos colas cortan al primer lote fallido y no
 pierden nada. El trigger de `visibilitychange` es el despertar crítico: los WebViews en background
 congelan timers y eventos `online`.
 
 **`db/`** — Ver reglas 5 a 9. Toda migración nueva va contra la base viva y se versiona como archivo
 **nuevo** con número siguiente; **no** editar los existentes.
 
-**`android/`** — Los tres `.java` propios, el manifest y el patch son artesanales. `cap sync` es
+**`web/android/`** — Los tres `.java` propios, el manifest y el patch son artesanales. `cap sync` es
 seguro; `cap add` no.
 
-**`src/services/supabase.js`** — Tiene un `lock` custom que reemplaza `navigator.locks` porque el
+**`web/src/services/supabase.js`** — Tiene un `lock` custom que reemplaza `navigator.locks` porque el
 WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). No revertir.
 
 ---
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. **1.14.4** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.14.4; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
+Hay varios números que conviven. **1.14.5** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.14.5; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -674,10 +716,10 @@ Hay varios números que conviven. **1.14.4** es OTA-solo (JS): `APP_VERSION` y e
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](src/version.js) | `1.14.4` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](android/app/build.gradle) | `1.13.0` | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](android/app/build.gradle) | `32` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.14.4` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.14.5` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.13.0` | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `32` | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.14.5` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.14.0 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
@@ -708,8 +750,8 @@ Hay varios números que conviven. **1.14.4** es OTA-solo (JS): `APP_VERSION` y e
 | JS/CSS/React, lógica, vistas | ✅ | |
 | Plugin nativo nuevo o actualizado | | ✅ |
 | Cambio de permisos del manifest | | ✅ |
-| Cambio en `capacitor.config.ts` | | ✅ |
-| Código en `android/app/src/main/java/` | | ✅ |
+| Cambio en `web/capacitor.config.ts` | | ✅ |
+| Código en `web/android/app/src/main/java/` | | ✅ |
 
 > Al publicar un APK nuevo, publicar **también** la misma versión como OTA, para los que ya lo tienen
 > instalado. Con el auto-updater (1.6.0+), la reinstalación del APK ya no es manual: ver
@@ -723,20 +765,20 @@ Hay varios números que conviven. **1.14.4** es OTA-solo (JS): `APP_VERSION` y e
 - **Los comentarios explican el *porqué*, no el qué.** Si se agrega una guarda defensiva, documentar
   qué bug la motivó y cuándo. Es el estándar del repo y hay que sostenerlo.
 - **Sin router.** Renderizado condicional, ver §4.
-- **Estilos**: `sx()` de `src/lib/sx.js` (convierte CSS string a objeto de estilo, para portar
-  mockups del diseñador 1:1) + `glassSurface()` / `glassBlur` de `src/lib/glass.js` para los
-  controles flotantes. **Tailwind 4 está instalado pero NO se usa** (cero utilidades en `src/`): el
-  sistema visual real son las CSS custom properties de `src/index.css`. No empezar a mezclar clases
+- **Estilos**: `sx()` de `web/src/lib/sx.js` (convierte CSS string a objeto de estilo, para portar
+  mockups del diseñador 1:1) + `glassSurface()` / `glassBlur` de `web/src/lib/glass.js` para los
+  controles flotantes. **Tailwind 4 está instalado pero NO se usa** (cero utilidades en `web/src/`): el
+  sistema visual real son las CSS custom properties de `web/src/index.css`. No empezar a mezclar clases
   de Tailwind sin decidirlo explícitamente.
 - **Tokens, siempre.** Radios `--r-sm|md|lg|xl|pill`, tipografía `--fs-2xs…--fs-xl`, espaciado
   `--sp-1…--sp-6`, apilamiento `--z-map|chrome|popover|sheet|screen|modal|toast`. Antes de esto
   había 11 radios sueltos, 15 tamaños de fuente en decimales arbitrarios y 9 escalas de z-index que
   colisionaban entre sí. **Un z-index literal es un bug esperando pasar.**
-- **Overlays**: todos salen de [`src/components/Overlay.jsx`](src/components/Overlay.jsx)
+- **Overlays**: todos salen de [`web/src/components/Overlay.jsx`](web/src/components/Overlay.jsx)
   (`variant="modal" | "sheet"`, más `contained` / `glass` / `dismissible`). Trae animación de entrada
   **y de salida**, Escape, scroll-lock con contador, ARIA, foco inicial y header/footer fijos con
   scroll solo en el cuerpo. **No escribir un overlay a mano.** Formularios: `Field` + `inputStyle` de
-  `src/components/form.jsx` y los estilos de `src/lib/botones.js`.
+  `web/src/components/form.jsx` y los estilos de `web/src/lib/botones.js`.
 
   Dos gotchas del patrón, ambos costaron un bug real (19/07/2026):
 
@@ -749,7 +791,7 @@ Hay varios números que conviven. **1.14.4** es OTA-solo (JS): `APP_VERSION` y e
      abre el overlay (`deliveries.find(d => d.id === modal)`), ese valor se vuelve `undefined` en el
      mismo frame en que se cierra y el cuerpo revienta. Retener el último valor en un ref — ver
      `mdView` en `RepartidorView.jsx`.
-- **Animación**: keyframes `lu-*` de `src/index.css`, sin librerías. Entradas con
+- **Animación**: keyframes `lu-*` de `web/src/index.css`, sin librerías. Entradas con
   `cubic-bezier(.23,1,.32,1)` (o la curva de drawer `cubic-bezier(.32,.72,0,1)` para sheets),
   siempre <300 ms y **solo sobre `transform` y `opacity`**. Las salidas usan la **misma** curva con
   menos duración — nunca `ease-in`. El estándar sale de la skill `/review-animations` (§9).
@@ -766,7 +808,7 @@ Hay varios números que conviven. **1.14.4** es OTA-solo (JS): `APP_VERSION` y e
 Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle técnico, en
 [INFORME_AUDITORIA.md §8-9](INFORME_AUDITORIA.md). Los urgentes:
 
-- 🔴 **Backup del keystore** (`android/app/launion.keystore` + las contraseñas de `keystore.properties`)
+- 🔴 **Backup del keystore** (`web/android/app/launion.keystore` + las contraseñas de `keystore.properties`)
   fuera de la máquina. **Punto único de falla.** Android exige que toda actualización esté firmada con
   la MISMA llave que la app instalada; no estamos en Play Store, así que no hay respaldo de Google que
   valga. Si se pierde el archivo **o** se olvidan las contraseñas (`storePassword`/`keyPassword`/`keyAlias`):
@@ -838,7 +880,7 @@ Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle t�
   Las dos primeras son las que autentican al uploader nativo: **sin ellas una base recreada desde `db/`
   no puede recibir una sola posición.** Peor: el encabezado de `ingest-posiciones` cita un
   `db/16_ingesta_tokens.sql` **que no existe** (`db/16` es `visitas`).
-- 🟠 **Key de Stadia** hardcodeada en `src/services/maps/basemap.js:13` — mover a `VITE_STADIA_KEY` y
+- 🟠 **Key de Stadia** hardcodeada en `web/src/services/maps/basemap.js:13` — mover a `VITE_STADIA_KEY` y
   rotar. **No es Google Maps**: Google Maps es código muerto y `GUIA_API_KEY_GOOGLE_MAPS.md` está
   obsoleta. Si la key de Stadia vence, la app **no se rompe**: se queda con OSM y se ocultan las capas
   Oscuro y Satélite. Ver [INFORME_AUDITORIA.md §7.1](INFORME_AUDITORIA.md).
@@ -885,7 +927,7 @@ Están instaladas en **`.claude/skills/`** (versionadas: `.gitignore:34-36` igno
 
 > ⚠️ La app **no usa Tailwind** (está instalado y sin consumidores) ni librerías de animación. Las
 > skills van a proponer `framer-motion`, `tailwind` y `shadcn/ui` por defecto: **traducir siempre a
-> lo que el repo usa de verdad** — CSS vars en `src/index.css`, keyframes `lu-*`, `sx()` y estilos
+> lo que el repo usa de verdad** — CSS vars en `web/src/index.css`, keyframes `lu-*`, `sx()` y estilos
 > inline (§7). Tomar de las skills el *criterio* (curvas, duraciones, jerarquía, espaciado), no el
 > stack.
 
@@ -912,7 +954,7 @@ Están instaladas en **`.claude/skills/`** (versionadas: `.gitignore:34-36` igno
 
 #### emilkowalski (6 skills)
 - **Repo:** https://github.com/emilkowalski/skills — el oficial de Emil Kowalski.
-- **Para qué:** la autoridad de motion del repo. `src/index.css:164-166` ya lo cita por nombre: el
+- **Para qué:** la autoridad de motion del repo. `web/src/index.css:164-166` ya lo cita por nombre: el
   estándar de animación del proyecto sale de acá.
 - **Cómo se usa:**
   - `/review-animations` — revisa motion contra el estándar. **`disable-model-invocation: true`**:

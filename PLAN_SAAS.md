@@ -16,14 +16,14 @@ tablas de datos, y las reglas del servidor (RLS) lo aplican. En la base viva hay
 | **Distribuidora LA UNIÓN** | 0 | 0 | creada por error, vacía |
 
 Lo que **no** existe es cómo pararse sobre otra empresa: `idEmpresa` sale del perfil
-([AuthContext.jsx:205](src/context/AuthContext.jsx#L205)) y es **inmutable en runtime**. No hay
+([AuthContext.jsx:205](web/src/context/AuthContext.jsx#L205)) y es **inmutable en runtime**. No hay
 selector, ni override, ni parámetro de URL. Crear la segunda empresa y no ver nada es el
 comportamiento esperado del diseño actual.
 
 ### Los cuatro problemas reales
 
 1. **`empresas.activo` no gatea nada.** Se escribe, se muestra como chip, y **ninguna** regla RLS ni
-   la puerta de entrada de [App.jsx:182-197](src/App.jsx#L182) lo consultan. Desactivar una empresa
+   la puerta de entrada de [App.jsx:182-197](web/src/App.jsx#L182) lo consultan. Desactivar una empresa
    hoy no tiene ningún efecto. **La palanca de cobro del negocio está desconectada.**
 2. **8-10 queries del frontend no filtran por `id_empresa`** y se apoyan en un RLS que para
    superadmin no filtra. Con un segundo tenant poblado, **mezclan datos de ambos**. Dos de esas
@@ -467,13 +467,13 @@ funcionando** durante la transición.
 
 ### Canal de despliegue
 
-**Nada de este plan requiere APK nuevo.** Todo es JS/SQL: cero cambios en `android/`,
-`capacitor.config.ts`, plugins nativos o permisos.
+**Nada de este plan requiere APK nuevo.** Todo es JS/SQL: cero cambios en `web/android/`,
+`web/capacitor.config.ts`, plugins nativos o permisos.
 
 Recordatorios (CLAUDE.md §3 y §6):
 - `CAP_BUILD=1` antes de cualquier OTA, o pantalla blanca.
 - Publicar OTA **no** actualiza la PWA. Las fases 1 y 7 tocan ambos canales → **dos acciones**.
-- Bumpear `src/version.js` en cada OTA.
+- Bumpear `web/src/version.js` en cada OTA.
 
 ---
 
