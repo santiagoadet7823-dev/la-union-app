@@ -109,6 +109,25 @@ export const ACC_GPS_MAX = 30
 export const HUECO_CIEGO_MS = 45000   // más de 45 s sin un fix: lo que pasó en el medio no se sabe
 export const CIEGO_MAX_FRAC = 0.35    // si más de un tercio del largo es ciego, no hay qué reconstruir
 
+/**
+ * 🩸 DÓNDE **NO** ESTABA EL PROBLEMA DE "VA POR EL CAMPO EN VEZ DE POR LA RUTA" (17/08/2026).
+ *
+ * El caso: un vendedor cuyo chip deja de entregar en el mismo corredor todos los días — medido sobre
+ * 5 días, **7 tramos de entre 21 y 27 km con CERO puntos**, de 26 a 41 minutos cada uno. El cliente
+ * lo reportó así: *"no puede estar en González y aparecer en Lajitas, debió ir por la ruta"*.
+ *
+ * La hipótesis natural es que esos tramos entran acá como `run` ciego y `CIEGO_MAX_FRAC` los rechaza,
+ * así que bastaría con relajar la guarda para tramos largos de vehículo. **Se probó con el código
+ * real contra el día real y es FALSA:** un hueco de 27 minutos supera `GAP_MS`, así que `splitGaps`
+ * corta ahí y los 25 km **nunca son parte de ningún segmento** — son el borde ENTRE dos. Los 2.073
+ * puntos de ese día producen 2 tramos ciegos, de 1,8 y 1,1 km: relajar este umbral no habría tocado
+ * ni uno de los 7.
+ *
+ * Lo que dibuja la recta a campo traviesa es el CONECTOR entre segmentos, y se arregla ruteándolo —
+ * ver `CONECTOR_MIN_M` en `index.ts`. Esto queda anotado para que nadie vuelva a gastar la tarde
+ * acá: la guarda de tramo ciego no tiene nada que ver con los huecos largos.
+ */
+
 /** Racimo: puntos a menos de esto y dentro de esta ventana son "el mismo lugar" (ver promediarRacimos). */
 export const RACIMO_R = 12
 export const RACIMO_MS = 120000

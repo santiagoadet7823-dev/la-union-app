@@ -445,6 +445,7 @@ function GpsPerfilModal({ usuario, estado, onClose, onToast, onGuardado }) {
       intervalo_s: p?.intervalo_s ?? 5,
       fijar_cadencia: p ? p.fijar_cadencia : true,
       min_move_m: p?.min_move_m ?? '',
+      silencio_s: p?.silencio_s ?? '',
       nota: p?.nota || '',
     })
     setGuardando(false)
@@ -461,6 +462,10 @@ function GpsPerfilModal({ usuario, estado, onClose, onToast, onGuardado }) {
       intervalo_s: Number(f.intervalo_s),
       fijar_cadencia: f.fijar_cadencia,
       min_move_m: f.min_move_m === '' ? null : Number(f.min_move_m),
+      // ⚠️ Este campo tiene que estar acá aunque el form no lo muestre para todos los modos: el
+      // objeto se REARMA entero en cada guardado, así que una clave que el form no lleve se pierde
+      // en silencio la próxima vez que alguien abra y guarde este perfil.
+      silencio_s: f.silencio_s === '' ? null : Number(f.silencio_s),
       nota: f.nota,
       desde: hoyStr(),
     })
@@ -530,9 +535,10 @@ function GpsPerfilModal({ usuario, estado, onClose, onToast, onGuardado }) {
       {f.modo === 'simple' && (
         <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.6;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:10px')}>
           Apaga toda la parte que decide sola: la cadencia no cambia con la velocidad, la distancia mínima
-          es la misma caminando que en ruta, y <b style={sx('color:var(--text)')}>no se ubica por antenas</b> cuando
-          el GPS se calla. Se conserva el piso de {GPS_BASE.minMoveM} m — por debajo de eso es ruido del
-          propio GPS, no desplazamiento.
+          es la misma caminando que en ruta, y {f.silencio_s === ''
+            ? <><b style={sx('color:var(--text)')}>no se ubica por antenas</b> cuando el GPS se calla</>
+            : <>—salvo el respaldo que le pusiste abajo— no se ubica por antenas</>}. Se conserva el piso
+          de {GPS_BASE.minMoveM} m — por debajo de eso es ruido del propio GPS, no desplazamiento.
         </div>
       )}
 
@@ -568,6 +574,25 @@ function GpsPerfilModal({ usuario, estado, onClose, onToast, onGuardado }) {
               Destildado, solo cambia la cadencia base y la adaptativa sigue funcionando.
             </span>
           </label>
+
+          {/* 🩸 17/08/2026 — el que destraba a los teléfonos con el GNSS degradado. Medido sobre 5
+              días de Javier: 7 tramos de 21 a 27 km con CERO puntos, porque su chip deja de entregar
+              y el `modo simple` le tenía el respaldo apagado. No es falta de internet: otro vendedor
+              graba ese mismo corredor con 3.621 puntos a 1,5 m. */}
+          <Field label="Respaldo por antenas (segundos de silencio del GPS)">
+            <input type="number" min="150" max="900" step="30"
+              placeholder={f.modo === 'simple' ? 'apagado' : `${GPS_BASE.silencioS} s (el general)`}
+              value={f.silencio_s}
+              onChange={(e) => set({ silencio_s: e.target.value })}
+              style={inputStyle} className="lu-input"
+              title="Cuánto tiene que callarse el GPS antes de ubicar por antenas y WiFi. Esos puntos se dibujan punteados y no suman kilómetros." />
+            <div style={sx('font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px')}>
+              Tapa los tramos donde el chip <b style={sx('color:var(--text)')}>deja de entregar</b>: se dibujan
+              punteados y no suman kilómetros. <b style={sx('color:var(--text)')}>Cuanto más alto, mejor</b> — con
+              150 s se enciende por hipos del GPS y pica el trazo en decenas de tramitos sueltos.
+              Para un teléfono que se apaga por minutos en ruta, 300.
+            </div>
+          </Field>
 
           <Field label="Nota (para acordarse de qué prueba es)">
             <input type="text" maxLength={120} value={f.nota} onChange={(e) => set({ nota: e.target.value })}

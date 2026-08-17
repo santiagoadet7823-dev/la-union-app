@@ -1,5 +1,5 @@
 import {
-  NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, NEAR_LIVE_QUIETO_MS, MIN_MOVE_M,
+  NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, NEAR_LIVE_QUIETO_MS, MIN_MOVE_M, SILENCIO_MS,
 } from './gpsConfig'
 
 /**
@@ -52,6 +52,30 @@ const INTERVALO_S_MAX = 60
 const MIN_MOVE_MIN = 9
 const MIN_MOVE_MAX = 100
 
+/**
+ * 🩸 SILENCIO DEL CARRIL DE RESPALDO, POR PERSONA (17/08/2026). Es lo que destraba a los teléfonos
+ * con el GNSS degradado, y nació de un hallazgo incómodo: **el `modo: simple` les apagaba la única
+ * red que podía taparlos** (ver `SIN_TRIANGULAR_MS`, abajo).
+ *
+ * El caso, medido sobre 5 días de Javier: **7 tramos de entre 21 y 27 km con CERO puntos**, de 26 a
+ * 41 minutos cada uno, siempre el mismo corredor. No es el filtro de movimiento (a 50 km/h cualquier
+ * fix supera los 50 m y se guarda: cero puntos ⇒ no llegó ni un fix) ni la falta de internet
+ * (**Orlando graba el medio de ese mismo corredor con 3.621 puntos a 1,5 m**, y 1,5 m es GNSS puro,
+ * que no usa internet). Es su chip: en ese corredor Javier promedia **46,9 m** contra los 1,5 de
+ * Orlando. Su propio servicio registró un silencio de **38,8 min** — estuvo despierto y no le llegó
+ * nada.
+ *
+ * Piso = `SILENCIO_MS` (el default de producción): por debajo del valor global no tiene sentido, y
+ * bajarlo es justo lo que se midió mal el 12/08 — con 150 s el respaldo se encendía por HIPOS y le
+ * metió a Javier 170 puntos triangulados en **46 tramos punteados sueltos**, que es el "muchos
+ * puntos y no trazos" que reportó el cliente.
+ *
+ * Techo de 900 s (15 min) porque más que eso ya no tapa nada: el respaldo llegaría cuando el tramo
+ * de ruta prácticamente terminó, y un punto suelto al final no dice por dónde fue.
+ */
+const SILENCIO_S_MIN = SILENCIO_MS / 1000   // 150 s
+const SILENCIO_S_MAX = 900                  // 15 min
+
 /** Modos válidos. Cualquier otra cosa cae a 'auto' (= sin override). */
 export const MODOS = ['auto', 'intensivo', 'ahorro', 'simple']
 
@@ -67,6 +91,9 @@ export const MODOS = ['auto', 'intensivo', 'ahorro', 'simple']
  *   · DISTANCIA POR MODO  → `minMove` igual en pie/urbano/ruta. Se deja de decidir cuánto guardar
  *     según a qué velocidad cree el teléfono que va.
  *   · TRIANGULACIÓN       → `silencioMs` a 24 h, o sea que el carril de red no se enciende nunca.
+ *     ⚠️ **Desde el 17/08/2026 esto se puede revertir por persona con `silencio_s`**, y para los
+ *     teléfonos con el GNSS degradado hay que hacerlo: apagarles el respaldo es dejarlos sin nada
+ *     durante los 25 km en que su chip no entrega. Ver el 🩸 de `SILENCIO_S_MIN`.
  *     Medido el 13/08: le metió a Javier 16 puntos de ~100 m de precisión, que valen para "por acá
  *     anduvo" y para nada más, y son los que pican el trazo en tramos punteados sueltos.
  *
@@ -119,6 +146,10 @@ export function normalizarPerfil(raw) {
     // otra. Si alguien quiere esa combinación, el modo que la expresa es `intensivo`.
     fijar_cadencia: modo === 'simple' ? true : raw.fijar_cadencia !== false,
     min_move_m: minMove == null ? null : clamp(minMove, MIN_MOVE_MIN, MIN_MOVE_MAX),
+    // `null` = "lo decide el modo" (que en `simple` significa apagado). Un valor explícito GANA
+    // sobre el default del modo — ver `paramsDePerfil`. Es lo que permite la combinación que hasta
+    // hoy no se podía expresar: cadencia fija SIN nada dinámico, pero CON respaldo en los apagones.
+    silencio_s: num(raw.silencio_s) == null ? null : clamp(num(raw.silencio_s), SILENCIO_S_MIN, SILENCIO_S_MAX),
     // Metadatos: no son parámetros, viajan solo para que el panel pueda mostrar de qué prueba se
     // trata y desde cuándo. Se recortan para que nadie meta un texto de 10 KB en el JSON.
     nota: typeof raw.nota === 'string' ? raw.nota.slice(0, 120) : null,
@@ -169,6 +200,14 @@ export function paramsDePerfil(raw) {
     // guardado: solo deja de agregar puntos de red nuevos.
     out.silencioMs = SIN_TRIANGULAR_MS
   }
+  // 🩸 VA DESPUÉS DEL BLOQUE DE `simple` A PROPÓSITO: un `silencio_s` explícito PISA el apagado del
+  // modo. Sin este orden, la combinación que hace falta para los teléfonos degradados —cadencia
+  // fija, nada dinámico, pero CON respaldo cuando el chip se apaga 30 minutos— sería inexpresable, y
+  // el modo que se les puso para estabilizarlos sería justo el que los deja sin red de contención.
+  //
+  // Que el orden importe es frágil, así que queda dicho: si alguien agrega otro default por modo,
+  // los overrides explícitos siguen yendo al final.
+  if (p.silencio_s != null) out.silencioMs = p.silencio_s * 1000
   return out
 }
 
@@ -178,7 +217,12 @@ export function resumenPerfil(raw) {
   if (!p) return 'Automático'
   const etiqueta = { intensivo: 'Intensivo', ahorro: 'Ahorro', simple: 'Simple' }[p.modo] || p.modo
   const cadencia = p.fijar_cadencia ? `${p.intervalo_s} s fijos` : `${p.intervalo_s} s base`
-  const cola = p.modo === 'simple' ? ' · sin triangular' : ''
+  // El respaldo explícito se muestra SIEMPRE, y pisa el "sin triangular" del modo: si el panel dijera
+  // "sin triangular" mientras el teléfono tiene el carril encendido, el próximo diagnóstico arranca
+  // con una mentira. Es el mismo error que el latido del JS (leer el panel en vez del dato).
+  const cola = p.silencio_s != null
+    ? ` · respaldo ${p.silencio_s} s`
+    : (p.modo === 'simple' ? ' · sin triangular' : '')
   return (p.min_move_m != null ? `${etiqueta} · ${cadencia} · ${p.min_move_m} m` : `${etiqueta} · ${cadencia}`) + cola
 }
 
@@ -206,4 +250,5 @@ export const BASE = {
   rapidoS: NEAR_LIVE_RAPIDO_MS / 1000,
   quietoS: NEAR_LIVE_QUIETO_MS / 1000,
   minMoveM: MIN_MOVE_M,
+  silencioS: SILENCIO_MS / 1000,
 }

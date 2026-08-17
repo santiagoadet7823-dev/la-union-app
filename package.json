@@ -1,0 +1,16 @@
+{
+  "name": "distat",
+  "private": true,
+  "description": "Raíz del monorepo. El cliente real vive en web/ — esto solo delega.",
+  "scripts": {
+    "dev": "cd web && npm run dev"
+  },
+  "comentarios": [
+    "🩸 ACÁ NO VA UN SCRIPT `build`, Y ES A PROPÓSITO (17/08/2026).",
+    "Un `npm run build` que funcione desde la raíz es una trampa: el build de la PWA y el del APK son",
+    "el MISMO comando con `CAP_BUILD=1` de diferencia (regla 1), y sin esa variable el APK arranca en",
+    "pantalla blanca. Que desde la raíz falle con 'Missing script' es la señal correcta: recordá que",
+    "los comandos se corren desde web/. Solo `dev` está acá, porque no puede romper nada publicado.",
+    "Este archivo tampoco declara dependencias: no instales nada en la raíz."
+  ]
+}

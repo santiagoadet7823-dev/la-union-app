@@ -45,7 +45,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 // La geometría (cortes por hueco y por modo, adelgazado, longitudes) vive en ./segmentar.ts, que se
 // puede probar sin levantar Deno ni Supabase. Acá queda lo que necesita red: auth, consultas y OSRM.
 import {
-  type P, CIEGO_MAX_FRAC, GAP_MS, cap, firmaRun, fraccionCiega, isStationary, ms, pathLenLL,
+  type P, CIEGO_MAX_FRAC, GAP_MS, cap, firmaRun, fraccionCiega, hav, isStationary, ms, pathLenLL,
   promediarRacimos, segLenP, soloGps, splitGaps, splitModo, thin,
 } from './segmentar.ts'
 
@@ -83,7 +83,10 @@ const OSRM_CAR = 'https://routing.openstreetmap.de/routed-car/route/v1/driving'
 // ⚠️ ALGO 11 (12/08/2026): sube porque los tramos QUIETOS ya no se descartan (ver el 🩸 abajo). Sin
 // subirlo, los días ya cacheados seguirían devolviendo la geometría vieja —con los segmentos
 // faltantes— y el arreglo no se vería hasta el día siguiente.
-const ALGO = 11          // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
+// ⚠️ ALGO 12 (17/08/2026): los conectores de hueco largo ahora se rutean (ver CONECTOR_MIN_M). Sube
+// por el mismo motivo: los días ya cacheados no tienen esa pieza, y sin invalidar el cache el
+// arreglo no se vería en NINGÚN día anterior — que son justo los que el cliente mira.
+const ALGO = 12          // versión del algoritmo; sube al cambiar la lógica → invalida el cache viejo
 const MIN_RUN_M = 80      // m: por debajo no vale una consulta a un host donado (era 150: una vuelta
                           // manzana de reparto entraba abajo de ese número y quedaba cruda)
 const MAX_RUTEOS = 40     // techo de consultas OSRM por invocación (ver el comentario de abajo)
@@ -98,6 +101,29 @@ const MAX_RUTEOS = 40     // techo de consultas OSRM por invocación (ver el com
  * el lugar correcto. Esta guarda es la red para cuando `splitModo` se equivocó de motor. */
 const MAX_DETOUR_PIE = 1.5
 const MAX_DETOUR_AUTO = 1.8
+/* 🩸 Y EL DEL CONECTOR ES MÁS ESTRICTO QUE LOS DOS (17/08/2026). Un conector se compara contra una
+ * RECTA de dos puntos, o sea la distancia más corta que existe entre ellos: cualquier camino real es
+ * más largo por definición, así que el ×1,8 de auto —pensado contra un rastro observado— acá dejaría
+ * pasar casi todo.
+ *
+ * Este número ES la prueba de que hay UN SOLO camino, y por eso el umbral vale lo que valen sus
+ * mediciones. Los 7 tramos mudos reales, consultados contra el mismo host que usa el snap:
+ *   17/08 16:22 ×1,042 · 17/08 09:08 ×1,036 · 15/08 19:20 ×1,106 · 15/08 11:52 ×1,008
+ *   14/08 12:31 ×1,043 · 13/08 13:34 ×1,039 · 13/08 08:34 ×1,042
+ * Y los 4 conectores que el pipeline real elige del día del 17/08: ×1,036 · ×1,005 · ×1,018 · ×1,042.
+ * Todos por debajo de 1,11: la ruta mide casi exactamente lo que la recta, que es la firma de que no
+ * hay otro camino. El ×1,25 los acepta con margen y rechaza cualquier caso donde OSRM tenga que dar
+ * una vuelta grande para unir las puntas — que es justo cuando no se puede afirmar por dónde fue. */
+const MAX_DETOUR_CONECTOR = 1.25
+/* Conector de hueco largo: cuándo se rutea la recta que une dos segmentos. Los tres números están
+ * elegidos para que en el PUEBLO no se active nunca — ver el 🩸 del bloque que los usa.
+ *   · 5 km: un hueco urbano no llega ni cerca; el más largo del pueblo medido es de ~1 km.
+ *   · 90 min: más que eso ya no es "iba viajando", es un teléfono apagado media tarde.
+ *   · 8 m/s (29 km/h) de velocidad implícita: por debajo no se puede afirmar que fue en vehículo por
+ *     una ruta, y a pie 5 km en 90 min da 0,9 m/s, muy lejos del umbral. */
+const CONECTOR_MIN_M = 5000
+const CONECTOR_MAX_MS = 90 * 60000
+const CONECTOR_VEL_MIN_MPS = 8
 /* 🩸 LA GUARDA DE LARGO ERA UN PROXY, Y DEJÓ DE HACER FALTA (ALGO 10, 04/08/2026). Estaba en 4.000 m
  * con el argumento "4 km no se hacen a pie, sea cual sea la velocidad media" — o sea, era una forma
  * indirecta de cazar un VEHÍCULO mal clasificado como peatón, en la época en que la clasificación se
@@ -223,6 +249,7 @@ Deno.serve(async (req) => {
     // como "salió todo bien" cuando en realidad quedaron tramos sin pegar a la calle.
     const crudos = { corto: 0, largoPeaton: 0, creciendo: 0, presupuesto: 0, osrm: 0, detour: 0, ciego: 0, quieto: 0 }
     let autos = 0, pies = 0   // tramos enviados a cada motor
+    let conectados = 0        // conectores de hueco largo que se rutearon por calle (ver el 🩸 abajo)
     let triangulados = 0      // puntos apartados por venir de red y no de GPS
     // 🩸 LA MEDIDA QUE DECIDE SI ESTO SIRVE. Sin el cociente pegado/crudo, "se ve más pegado a la
     // calle" es una impresión — y el 03/08/2026 la impresión decía que estaba bien mientras el snap
@@ -244,8 +271,14 @@ Deno.serve(async (req) => {
       const piezas: { f: string; g: number[][] }[] = []
       const mio = (km[id] ||= { crudo: 0, pegado: 0 })
       let osrmMiss = false
+      // Bordes entre segmentos consecutivos: el ÚLTIMO punto de uno y el PRIMERO del siguiente. Es
+      // lo que el front une con una recta llena (`trazos.js`, conectores), y lo que se rutea abajo.
+      const bordes: [P, P][] = []
+      let finAnterior: P | null = null
       for (const seg of splitGaps(pts)) {
         if (seg.length < 2) continue
+        if (finAnterior) bordes.push([finAnterior, seg[0]])
+        finAnterior = seg[seg.length - 1]
         /* 🩸 QUIETO SIGNIFICA "NO RUTEAR", NO "NO DIBUJAR" (12/08/2026).
          *
          * Hasta hoy acá había un `continue` que **descartaba el segmento entero**. Como el front usa
@@ -304,6 +337,14 @@ Deno.serve(async (req) => {
           // TIEMPO y no de distancia — ver HUECO_CIEGO_MS, y por qué la mediana en metros no servía.
           // Va ANTES del presupuesto a propósito: no gastar una consulta en un tramo que igual se
           // iba a rechazar, así el presupuesto queda para los que sí se pueden reconstruir.
+          //
+          // ⚠️ Se probó relajar esta guarda para tramos largos de vehículo, pensando que era acá donde
+          // se perdía la ruta de González a Lajitas. **Medido con el código real sobre el día real:
+          // no es acá.** Un hueco de 27 min supera `GAP_MS`, así que el tramo mudo ni siquiera es
+          // parte de un `run` — es el borde ENTRE dos segmentos, y se arregla ruteando el CONECTOR
+          // (ver el 🩸 más abajo). Los 2.073 puntos de Javier del 17/08 dan 2 tramos ciegos, de 1,8 y
+          // 1,1 km: ninguna relajación de este umbral los habría tocado. Queda anotado para que nadie
+          // vuelva a intentarlo por acá.
           if (fraccionCiega(run.pts) > CIEGO_MAX_FRAC) { usarCrudo('ciego'); continue }
           if (ruteos >= MAX_RUTEOS) { truncados++; usarCrudo('presupuesto'); continue }
 
@@ -321,6 +362,52 @@ Deno.serve(async (req) => {
           mio.crudo += lenM; mio.pegado += pathLenLL(g)
           piezas.push({ f, g })
         }
+      }
+
+      /* 🩸 EL CONECTOR TAMBIÉN VA POR LA RUTA (17/08/2026) — y es ACÁ, no en la guarda de tramo
+       * ciego, donde vivía el problema que reportó el cliente.
+       *
+       * El reporte, textual: *"no puede estar en González y aparecer en Lajitas, debió ir por la
+       * ruta"*. La primera hipótesis fue que el tramo mudo entraba como un `run` ciego y la guarda lo
+       * rechazaba. **Se probó con el código real contra el día real y es FALSA**: un hueco de 27 min
+       * supera `GAP_MS`, así que `splitGaps` corta ahí y los 25 km **nunca son parte de ningún
+       * segmento** — son el borde ENTRE dos. `fraccionCiega` no los ve porque no están adentro de
+       * nada. De los 2.073 puntos de Javier del 17/08 salen 2 tramos ciegos, de 1,8 y 1,1 km.
+       *
+       * Lo que dibuja la línea a campo traviesa es el CONECTOR del front (`trazos.js`), que es
+       * sólido desde 1.14.3 —a pedido explícito— y une las dos puntas con una recta.
+       *
+       * Entonces se rutea el conector, con las tres condiciones que lo hacen honesto:
+       *   · largo ≥ CONECTOR_MIN_M — en el pueblo NO se activa: ahí una recta corta sobre un hueco
+       *     es menos mentira que inventar una calle de una grilla donde todas son plausibles;
+       *   · velocidad implícita de vehículo y hueco de menos de 90 min — un teléfono apagado media
+       *     tarde no autoriza a afirmar que fue por ningún lado;
+       *   · y la prueba de que hay UN SOLO camino: la ruta no puede medir más de MAX_DETOUR_CONECTOR
+       *     veces la recta. Medido sobre los 7 tramos mudos reales: entre ×1,008 y ×1,106.
+       *
+       * Los km: se suma la RECTA al crudo y la RUTA al pegado. Las dos describen el mismo
+       * desplazamiento, así que el cociente pegado/crudo —la medida que dice si el snap está
+       * inventando— sigue significando lo mismo. Sumar solo el pegado lo inflaría.
+       */
+      for (const [a, b] of bordes) {
+        const recta = hav(a, b)
+        if (recta < CONECTOR_MIN_M) continue
+        const dt = ms(b) - ms(a)
+        if (!Number.isFinite(dt) || dt <= 0 || dt > CONECTOR_MAX_MS) continue
+        if (recta / (dt / 1000) < CONECTOR_VEL_MIN_MPS) continue
+        const f = firmaRun([a, b])
+        const previo = porFirma.get(f)
+        if (previo) { mio.crudo += recta; mio.pegado += pathLenLL(previo); piezas.push({ f, g: previo }); continue }
+        if (ruteos >= MAX_RUTEOS) { truncados++; continue }
+        ruteos++
+        const g = await routeSeg([a, b], OSRM_CAR)
+        if (!g) { osrmMiss = true; continue }
+        // Sin la holgura de +50 m que usan los otros: sobre 25 km no cambia nada, y acá el número ES
+        // la prueba de unicidad del camino, no una tolerancia de dibujo.
+        if (pathLenLL(g) > MAX_DETOUR_CONECTOR * recta) { crudos.ciego++; continue }
+        conectados++
+        mio.crudo += recta; mio.pegado += pathLenLL(g)
+        piezas.push({ f, g })
       }
 
       recorridos.push({ id_usuario: id, geometrias: piezas.map((p) => p.g) })
@@ -343,7 +430,7 @@ Deno.serve(async (req) => {
     // Redondeados a metros para no mandar 14 decimales.
     const r2 = (n: number) => Math.round(n)
     return json({
-      recorridos, ruteos, truncados, autos, pies, crudos, triangulados,
+      recorridos, ruteos, truncados, autos, pies, conectados, crudos, triangulados,
       km: Object.fromEntries(Object.entries(km).map(([k, v]) => [k, { crudo: r2(v.crudo), pegado: r2(v.pegado) }])),
     })
   } catch (e) {
