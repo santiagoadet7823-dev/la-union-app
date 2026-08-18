@@ -22,6 +22,14 @@ fi
 REPO="santiagoadet7823-dev/la-union-app"
 TAG="ota-$VER"
 
+# 🩸 `dist/` SE BORRA ANTES DE COMPILAR (18/08/2026). El bundle de 1.14.7 salió con **200 archivos
+# y 1,99 MB** contra los 110 y 1,25 MB del siguiente: se habían colado los assets de un build
+# anterior que se cortó a la mitad. No rompe nada —el `index.html` apunta a los hashes nuevos— pero
+# son ~750 KB de peso muerto que los nueve teléfonos bajan por datos móviles, y no hay forma de
+# notarlo mirando: el zip se arma con lo que haya en `dist`, sin preguntar de cuándo es.
+echo "→ Limpiando dist/ (que no queden restos de un build anterior)…"
+rm -rf dist
+
 echo "→ Compilando el contenido web (CAP_BUILD)…"
 CAP_BUILD=1 npm run build
 
