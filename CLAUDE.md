@@ -734,11 +734,11 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.18.0` ⚠️ **sin publicar** | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.18.0` ⚠️ **sin publicar** | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `36` ⚠️ **sin publicar** | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.17.1` ✅ publicado (1.18.0 está en el árbol, **sin publicar**) | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.14.0 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.18.0` ✅ publicado | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.18.0` ✅ publicado | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `36` ✅ publicado | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.18.0` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | `1.18.0` ✅ publicado (18/08/2026 — los 9 equipos reinstalan solos) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la

@@ -4,13 +4,14 @@
 levanta la red, la tablet escanea el QR, se une y trae el catálogo de 529 productos. Lo que sigue
 son mejoras y una decisión de producto, no arreglos para que arranque.
 
-Publicado: **OTA + PWA 1.17.1** · en el árbol y **sin publicar**: **APK 1.18.0** (versionCode 36),
-instalado a mano en la tablet de prueba. `min_version` **sigue en 1.13.0 a propósito** — el parque
-no se toca hasta que esto salga a la calle.
+Publicado: **APK 1.18.0** (versionCode 36) · **OTA + PWA 1.18.0** · `min_version` **subido a
+1.18.0 el 18/08/2026**: los 9 equipos reinstalan solos (misma firma, no pierden datos locales).
 
-> 🩸 **Lo nativo de 1.18.0 NO llega a nadie hasta que se suba `min_version`.** Eso incluye el
-> arreglo de la notificación del GPS, que no es de la vidriera pero viaja en el mismo APK. Subir
-> `min_version` reinstala los 9 equipos (misma firma, no pierden datos locales).
+> 🩸 **Se subió `min_version` por el arreglo de la notificación del GPS**, que no es de la vidriera
+> pero viaja en el mismo APK y no llegaba de ninguna otra forma. O sea que **la vidriera salió a la
+> calle antes de estar medida**: en los 9 teléfonos el botón existe, pero el catálogo no tiene fotos
+> y nadie corrió todavía "Preparar catálogo". No es un problema —degrada a una grilla sin
+> imágenes— pero conviene saberlo antes de que alguien la abra delante de un cliente.
 
 > Este documento es SOLO de la vidriera. Lo demás del proyecto sigue en
 > [HANDOFF.md](HANDOFF.md) y [CLAUDE.md](CLAUDE.md).
