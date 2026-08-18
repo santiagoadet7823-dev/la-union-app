@@ -50,7 +50,7 @@ export default function EspejoTablet({ productos, comercio, onSumar, onCerrar })
         const r = await abrirVidriera({ productos, comercio })
         if (cancel || !vivo.current) return
         setRed(r)
-        const texto = textoQr(r, comercio)
+        const texto = textoQr(r)
         if (Capacitor.isPluginAvailable('Qr')) {
           const { dataUrl } = await Qr.generar({ text: texto, size: 720 })
           if (cancel || !vivo.current) return
@@ -74,7 +74,9 @@ export default function EspejoTablet({ productos, comercio, onSumar, onCerrar })
       if (!vivo.current || !t?.id) return
       const p = productos.find((x) => x.id === t.id)
       if (!p) return
-      setAviso(p)
+      // La cantidad la propone la tablet; un APK viejo no la manda y cae en 1.
+      const cant = Math.max(1, Math.min(999, Number(t.cantidad) || 1))
+      setAviso({ ...p, _cant: cant })
       setMirados((m) => (m.some((x) => x.id === p.id) ? m : [...m, p]))
       // El cartel se va solo: si el cliente toca cinco cosas seguidas, el vendedor no puede quedar
       // cerrando carteles a mano mientras habla.
@@ -90,7 +92,7 @@ export default function EspejoTablet({ productos, comercio, onSumar, onCerrar })
   }, [fase, productos])
 
   const sumar = useCallback((p) => {
-    onSumar?.(p)
+    onSumar?.(p, p._cant || 1)
     setAviso(null)
   }, [onSumar])
 
@@ -151,12 +153,13 @@ export default function EspejoTablet({ productos, comercio, onSumar, onCerrar })
                 <div style={sx('flex:1;min-width:0')}>
                   <div style={{ ...sx('font-size:13px;font-weight:500;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{aviso.name}</div>
                   <div style={sx('font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--deep);margin-top:2px')}>
+                    {aviso._cant > 1 && <span style={sx('color:var(--muted);font-weight:600')}>{aviso._cant} × </span>}
                     {fmtPesos(aviso.oferta && aviso.precioOferta != null ? aviso.precioOferta : aviso.price)}
                   </div>
                 </div>
               </div>
               <div style={sx('display:flex;gap:8px;margin-top:11px')}>
-                <button className="lu-press" onClick={() => sumar(aviso)} style={{ ...btnPrimario, flex: 1, minHeight: 44 }}>Sumar al carrito</button>
+                <button className="lu-press" onClick={() => sumar(aviso)} style={{ ...btnPrimario, flex: 1, minHeight: 44 }}>Sumar {aviso._cant > 1 ? `${aviso._cant} al carrito` : 'al carrito'}</button>
                 <button className="lu-press" onClick={() => setAviso(null)} style={{ ...btnSecundario, minHeight: 44, padding: '0 16px' }}>Después</button>
               </div>
             </div>

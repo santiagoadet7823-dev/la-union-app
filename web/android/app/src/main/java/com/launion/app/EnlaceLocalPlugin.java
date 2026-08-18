@@ -9,6 +9,7 @@ import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.util.Base64;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -332,13 +333,24 @@ public class EnlaceLocalPlugin extends Plugin {
         return null;
     }
 
-    /** 32 bytes de `SecureRandom` en hexadecimal. Vive lo que dura la visita. */
+    /**
+     * Token de sesión: 16 bytes de `SecureRandom` en base64url, o sea **22 caracteres**.
+     *
+     * 🩸 Eran 32 bytes en hexadecimal (64 caracteres) hasta el 19/08/2026, y se achicó por una razón
+     * de campo: el token es más de la mitad del QR, y un QR largo necesita módulos más chicos — que
+     * es justo lo que la cámara sin autofoco de la tablet no resuelve. El cliente reportó fallas de
+     * escaneo y ésta era nuestra mitad del problema.
+     *
+     * 128 bits siguen siendo de sobra: la sesión vive lo que dura una visita, sobre una red local
+     * sin salida a internet, y el servidor compara en tiempo constante. Adivinarlo no es una
+     * amenaza realista; que no se pueda escanear, sí lo era.
+     *
+     * Sin relleno ni caracteres raros: `+` y `/` tendrían que ir escapados en la URL de cada pedido.
+     */
     private static String nuevoToken() {
-        byte[] b = new byte[32];
+        byte[] b = new byte[16];
         new SecureRandom().nextBytes(b);
-        StringBuilder sb = new StringBuilder(64);
-        for (byte x : b) sb.append(Character.forDigit((x >> 4) & 0xF, 16)).append(Character.forDigit(x & 0xF, 16));
-        return sb.toString();
+        return Base64.encodeToString(b, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
     }
 
     /**

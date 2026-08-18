@@ -3,6 +3,7 @@ import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Search } from '../../../components/icons'
 import { card } from '../ui'
+import CarritoSheet from '../CarritoSheet'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import { disponible as vidrieraDisponible } from '../../../services/vidriera'
 
@@ -18,6 +19,7 @@ const rentColor = (nivel) => (nivel >= 1 && nivel <= 4 ? `var(--rent-${nivel})` 
 export default function VisitaCatalogo({ j }) {
   // Vidriera: el QR que la tablet del cliente escanea. Solo en la APK con los plugins nativos.
   const [vidriera, setVidriera] = useState(false)
+  const [verCarrito, setVerCarrito] = useState(false)
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
   const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
 
@@ -181,20 +183,46 @@ export default function VisitaCatalogo({ j }) {
         )}
       </div>
 
+      {verCarrito && (
+        <CarritoSheet
+          productos={PRODUCTS} cart={cart} addCart={addCart}
+          cartCount={cartCount} cartKg={cartKg} cartTotal={cartTotal}
+          onCerrar={() => setVerCarrito(false)}
+          onConfirmar={() => {
+            const total = cartTotal
+            setVerCarrito(false)
+            endVisit('visitado', { monto: total })
+            showToast(`Pedido confirmado · ${fmtPesos(total)}`)
+          }}
+        />
+      )}
+
       {vidriera && (
         <EspejoTablet
           productos={PRODUCTS}
           comercio={visitC}
-          onSumar={(p) => { addCart(p.id, 1); showToast(`${p.name} sumado al pedido`) }}
+          onSumar={(p, n = 1) => { addCart(p.id, n); showToast(`${n > 1 ? n + ' × ' : ''}${p.name} sumado al pedido`) }}
           onCerrar={() => setVidriera(false)}
         />
       )}
 
       {cartCount > 0 && (
         <div style={sx('position:absolute;left:12px;right:12px;bottom:80px;background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow-lg);padding:12px 14px;z-index:5')}>
-          <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+          {/* 🩸 La barra ABRE el pedido (19/08/2026). Antes solo informaba: para cambiar una
+              cantidad había que volver a buscar el producto entre 529, y para saber qué llevaba el
+              cliente, acordarse. Con la vidriera andando se nota enseguida — el comercio señala
+              cinco cosas seguidas y hay que repasarlas antes de cerrar. */}
+          <div
+            onClick={() => setVerCarrito(true)}
+            className="lu-press"
+            role="button"
+            style={sx('display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;cursor:pointer')}
+          >
             <div style={sx('font-size:12px;color:var(--muted)')}>{cartCount} ítems · {cartKg.toFixed(1).replace('.', ',')} kg</div>
-            <div style={sx('font-size:18px;font-weight:600;color:var(--text)')}>{fmtPesos(cartTotal)}</div>
+            <div style={sx('display:flex;align-items:center;gap:7px')}>
+              <span style={sx('font-size:18px;font-weight:600;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+            </div>
           </div>
           {visitC ? (
             <button

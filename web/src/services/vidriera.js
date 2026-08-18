@@ -27,6 +27,18 @@ export function disponible() {
 }
 
 /**
+ * Huella corta y estable de una URL de foto. No es criptográfica y no necesita serlo: solo tiene que
+ * cambiar cuando cambia la URL. Se usa como parte del NOMBRE del archivo en la tablet, así que va en
+ * base 36 y sin caracteres raros.
+ */
+function versionFoto(url) {
+  let h = 0
+  const s = String(url)
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0 }
+  return Math.abs(h).toString(36)
+}
+
+/**
  * 🔴 EL SNAPSHOT QUE VE EL CLIENTE. Es la frontera de privacidad del catálogo y por eso es una
  * función pura, exportada y probada aparte: lo que no esté acá, no existe del otro lado.
  *
@@ -78,6 +90,12 @@ export function snapshotCatalogo(productos, comercio) {
       kg: Number(p.kg) || 0,
       unidadVenta: p.unidadVenta || null,
       foto: !!p.imagen,
+      // 🩸 VERSION de la foto (19/08/2026). La tablet guarda cada imagen con este sufijo en el
+      // nombre del archivo, así que "¿la tengo?" y "¿cambió?" son la MISMA pregunta: si el archivo
+      // existe, está al día. Sale de la URL, que ya cambia sola cuando marketing reemplaza la foto
+      // (`subirImagenProducto` le pega un `?v=<timestamp>`), así que no hay que inventar un hash
+      // del contenido ni una columna nueva.
+      fotoV: p.imagen ? versionFoto(p.imagen) : null,
     })),
     orden,
   }
@@ -113,10 +131,23 @@ export async function cerrarVidriera() {
 }
 
 /**
- * El contenido del QR. Texto plano y corto a propósito: cuanto más largo, más denso el código y más
- * le cuesta leerlo a la cámara de una tablet barata con poca luz de comercio.
+ * El contenido del QR.
+ *
+ * 🩸 SE ACHICÓ A LA MITAD (19/08/2026). En la primera prueba real el cliente reportó que **la cámara
+ * de la tablet no enfoca bien y falla el escaneo**, y la mitad de ese problema era nuestra: el
+ * código llevaba ~185 caracteres y le tocaba una versión de QR alta, o sea módulos chiquitos — que
+ * es exactamente lo que un lente barato sin buen autofoco no resuelve.
+ *
+ * Se sacó lo que estaba de más:
+ *  · `c` y `n` (id y nombre del comercio) — **venían duplicados**: el snapshot del catálogo ya los
+ *    trae en `comercio`, así que la tablet los tiene un segundo después de conectarse.
+ *  · el token pasó de 64 caracteres hexadecimales a 22 en base64url. Siguen siendo **128 bits** de
+ *    entropía para una sesión que vive lo que dura una visita, en una red local, contra un servidor
+ *    que compara en tiempo constante. Nadie va a adivinarlo en veinte minutos.
+ *
+ * Queda en ~100 caracteres: baja varias versiones de QR y los módulos se ven casi al doble.
  */
-export function textoQr(red, comercio) {
+export function textoQr(red) {
   return JSON.stringify({
     v: PROTOCOLO,
     s: red.ssid,
@@ -124,8 +155,6 @@ export function textoQr(red, comercio) {
     i: red.ip,
     p: red.puerto,
     t: red.token,
-    c: comercio?.id || null,
-    n: comercio?.name || '',
   })
 }
 

@@ -212,6 +212,7 @@ public class EnlaceTabletPlugin extends Plugin {
     public void bajarFoto(final PluginCall call) {
         final String url = call.getString("url");
         final String id = call.getString("id");
+        final boolean forzar = Boolean.TRUE.equals(call.getBoolean("forzar", false));
         if (url == null || id == null) { call.reject("Faltan url o id."); return; }
         ejecutor().execute(new Runnable() {
             @Override public void run() {
@@ -222,6 +223,27 @@ public class EnlaceTabletPlugin extends Plugin {
                     // una ruta de archivo y no se construye con texto de la red sin mirarlo.
                     if (!id.matches("[A-Za-z0-9_-]{1,64}")) throw new Exception("id inválido");
                     File f = new File(dir, id);
+
+                    // 🩸 SE BAJA UNA SOLA VEZ (19/08/2026, pedido del cliente tras la primera prueba
+                    // real). El `id` que llega ya incluye la VERSIÓN de la foto (`<producto>_<v>`,
+                    // ver `snapshotCatalogo`), así que la existencia del archivo responde las dos
+                    // preguntas de una: si está, es la foto correcta y está al día. Cuando marketing
+                    // reemplaza una imagen cambia la URL, cambia la versión, cambia el nombre — y
+                    // esa sola se vuelve a bajar.
+                    //
+                    // Sin esto, el catálogo entero (~20 MB) viajaba en CADA visita: batería y
+                    // segundos delante del cliente por algo que no cambió.
+                    //
+                    // Se mira `length() > 0` y no solo `isFile()`: una descarga cortada por la mitad
+                    // deja el archivo creado y vacío, y ése hay que volver a pedirlo.
+                    if (!forzar && f.isFile() && f.length() > 0) {
+                        JSObject cache = new JSObject();
+                        cache.put("ruta", f.getAbsolutePath());
+                        cache.put("cache", true);
+                        call.resolve(cache);
+                        return;
+                    }
+
                     byte[] datos = bytes(url);
                     OutputStream os = new FileOutputStream(f);
                     try { os.write(datos); } finally { os.close(); }

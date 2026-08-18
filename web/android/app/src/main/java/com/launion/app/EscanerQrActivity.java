@@ -81,6 +81,14 @@ public class EscanerQrActivity extends AppCompatActivity {
         // eso es la diferencia entre "lee al instante" y "hay que quedarse quieto tres segundos".
         Map<DecodeHintType, Object> pistas = new EnumMap<>(DecodeHintType.class);
         pistas.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(BarcodeFormat.QR_CODE));
+        // 🩸 TRY_HARDER (19/08/2026). El cliente reportó que la cámara de la tablet no enfoca bien y
+        // el escaneo falla. Esta bandera hace que ZXing pruebe más rotaciones y binarizaciones por
+        // frame: cuesta CPU, y es exactamente el gasto que corresponde acá — el equipo está QUIETO
+        // sobre un mostrador apuntando a una pantalla, no siguiendo un código en movimiento, así que
+        // sobra tiempo entre frames y lo que falta es tolerancia al desenfoque.
+        // La otra mitad del arreglo no está acá: el QR pasó de 213 a 105 caracteres (ver `textoQr`),
+        // que baja varias versiones de QR y agranda los módulos.
+        pistas.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
         lector.setHints(pistas);
 
         FrameLayout raiz = new FrameLayout(this);

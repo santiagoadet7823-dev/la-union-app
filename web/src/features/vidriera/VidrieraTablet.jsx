@@ -30,8 +30,20 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   const orden = catalogo?.orden || []
   const [fotos, setFotos] = useState({})    // { [id]: url | null }
   const [tocado, setTocado] = useState(null) // id del último tocado (para el acuse)
+  /**
+   * 🩸 CANTIDADES (19/08/2026). En la primera prueba real el cliente podía señalar el producto pero
+   * no decir CUÁNTOS, así que el vendedor tenía que preguntarlo en voz alta — justo la fricción que
+   * la tablet venía a sacar. El número vive acá y viaja con el toque.
+   *
+   * Es una PROPUESTA, no el pedido: el cartel del celular la muestra y el vendedor confirma. Por eso
+   * la tarjeta no dice "agregado" sino "se lo mostramos".
+   */
+  const [cant, setCant] = useState({}) // { [id]: n }
   const vivo = useRef(true)
   const pedidas = useRef(new Set())
+  // Lo prende el botón "Actualizar fotos": vuelve a pedirlas aunque el archivo esté.
+  const forzarRef = useRef(false)
+  const [refrescando, setRefrescando] = useState(false)
 
   useEffect(() => () => { vivo.current = false; desconectar() }, [])
 
@@ -51,7 +63,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         const p = conFoto.shift()
         if (!p || pedidas.current.has(p.id)) continue
         pedidas.current.add(p.id)
-        const url = await fotoDe(sesion, p.id)
+        const url = await fotoDe(sesion, p.id, p.fotoV, forzarRef.current)
         if (cancelado || !vivo.current) return
         setFotos((f) => ({ ...f, [p.id]: url }))
       }
@@ -59,7 +71,26 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     Promise.all(Array.from({ length: FOTOS_A_LA_VEZ }, obrero))
     return () => { cancelado = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogo])
+  }, [catalogo, refrescando])
+
+  /**
+   * Volver a pedir TODAS las fotos. No hace falta en el uso normal —cada una se baja una sola vez y
+   * se reconoce por su versión—, pero sí cuando una descarga quedó cortada por la mitad y el
+   * producto se quedó sin imagen. Es el botón, no un automatismo: son ~20 MB.
+   */
+  const actualizarFotos = useCallback(() => {
+    forzarRef.current = true
+    pedidas.current = new Set()
+    setFotos({})
+    setRefrescando((v) => !v)
+    setTimeout(() => { forzarRef.current = false }, 1000)
+  }, [])
+
+  // El stepper no manda nada: solo prepara el número. Se manda al tocar la tarjeta.
+  const mover = useCallback((e, id, d) => {
+    e.stopPropagation() // sin esto, tocar el + también dispararía el envío de la tarjeta
+    setCant((c) => ({ ...c, [id]: Math.max(1, Math.min(999, (c[id] || 1) + d)) }))
+  }, [])
 
   const alTocar = useCallback(async (p) => {
     // El acuse se muestra ANTES de que el envío termine: el cliente tiene que sentir que su toque
@@ -67,8 +98,8 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     setTocado(p.id)
     setTimeout(() => { if (vivo.current) setTocado((t) => (t === p.id ? null : t)) }, 1800)
     try { if (navigator.vibrate) navigator.vibrate(18) } catch (_) { /* sin motor de vibración */ }
-    await tocar(sesion, p)
-  }, [sesion])
+    await tocar(sesion, p, cant[p.id] || 1)
+  }, [sesion, cant])
 
   return (
     <div style={sx('min-height:100vh;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}>
@@ -81,6 +112,10 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         </div>
         <div style={sx('display:flex;align-items:center;gap:14px')}>
           <div style={sx('font-family:var(--font-mono);font-size:12px;color:var(--faint)')}>{lista.length} productos</div>
+          <button onClick={actualizarFotos} className="lu-press" title="Volver a bajar las fotos"
+            style={sx('min-height:40px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer')}>
+            Actualizar fotos
+          </button>
           {onSalir && (
             <button onClick={onSalir} className="lu-press"
               style={sx('min-height:40px;padding:0 14px;border-radius:var(--r-md);border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer')}>
@@ -130,6 +165,20 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
                   {acusado && (
                     <div className="lu-rise" style={sx('position:absolute;left:8px;right:8px;bottom:8px;padding:7px 10px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-size:11.5px;font-weight:600;text-align:center')}>
                       Listo, se lo mostramos
+                    </div>
+                  )}
+                  {/* Cuántos quiere. Toques grandes: esto lo usa un comerciante de pie, con una
+                      mano, sobre una tablet apoyada en el mostrador. */}
+                  {!acusado && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={sx('position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px;border-radius:12px;background:var(--glass-strong);border:1px solid var(--line)')}
+                    >
+                      <button onClick={(e) => mover(e, p.id, -1)} className="lu-press"
+                        style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:transparent;color:var(--muted);font-size:21px;cursor:pointer;user-select:none')}>−</button>
+                      <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:700')}>{cant[p.id] || 1}</span>
+                      <button onClick={(e) => mover(e, p.id, 1)} className="lu-press"
+                        style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:20px;cursor:pointer;user-select:none')}>+</button>
                     </div>
                   )}
                 </div>

@@ -42,7 +42,9 @@ export async function escanear() {
       : 'El celular del vendedor tiene una versión vieja de la app.')
   }
   if (!d.s || !d.k || !d.i || !d.p || !d.t) throw new Error('El código está incompleto.')
-  return { ssid: d.s, clave: d.k, ip: d.i, puerto: d.p, token: d.t, comercio: { id: d.c, nombre: d.n || '' } }
+  // El comercio NO viaja en el QR: viene en el snapshot del catálogo, un segundo después. Sacarlo de
+  // acá fue lo que permitió achicar el código a la mitad — ver el 🩸 de `textoQr`.
+  return { ssid: d.s, clave: d.k, ip: d.i, puerto: d.p, token: d.t }
 }
 
 const base = (s) => `http://${s.ip}:${s.puerto}`
@@ -60,24 +62,49 @@ export async function pedirCatalogo(sesion) {
 }
 
 /**
- * Baja la foto de un producto y devuelve una URL que el `<img>` puede usar.
+ * La foto de un producto, como URL que un `<img>` puede usar.
+ *
+ * 🩸 SE BAJA UNA SOLA VEZ (19/08/2026, a pedido del cliente tras la primera prueba). El archivo se
+ * guarda como `<id>_<version>`, así que "¿ya la tengo?" y "¿sigue siendo la misma?" son la misma
+ * pregunta: si el archivo existe, está al día. Cuando marketing reemplaza una foto cambia la URL,
+ * cambia la versión, cambia el nombre del archivo y esa —solo esa— se vuelve a bajar.
+ *
+ * El catálogo completo son ~20 MB; bajarlo en cada visita sería regalar batería y tiempo delante
+ * del cliente por algo que no cambió.
+ *
+ * `forzar` lo usa el botón "Actualizar fotos": vuelve a pedirla aunque esté, para el caso de una
+ * descarga que quedó cortada por la mitad.
+ *
  * Devuelve null si falla: un producto sin foto se dibuja igual, con su marco vacío.
  */
-export async function fotoDe(sesion, id) {
+export async function fotoDe(sesion, id, version, forzar = false) {
   try {
-    const { ruta } = await EnlaceTablet.bajarFoto({ url: conToken(sesion, `/foto/${id}`), id })
+    const { ruta } = await EnlaceTablet.bajarFoto({
+      url: conToken(sesion, `/foto/${id}`),
+      id: version ? `${id}_${version}` : id,
+      forzar,
+    })
     return Capacitor.convertFileSrc(ruta)
   } catch (_) {
     return null
   }
 }
 
-/** El cliente tocó un producto. Es best-effort: si se cortó el enlace, no se le rompe la pantalla. */
-export async function tocar(sesion, producto) {
+/**
+ * El cliente señaló un producto, con la CANTIDAD que quiere.
+ *
+ * 🩸 La cantidad viaja desde el 19/08/2026, a pedido del cliente después de la primera prueba real:
+ * sin ella el vendedor recibía "quiere esto" y tenía que preguntar cuántos en voz alta, que es
+ * justo la fricción que la tablet venía a sacar. **Sigue siendo una PROPUESTA**: el cartel del
+ * celular la muestra y el vendedor confirma. El pedido es suyo.
+ *
+ * Es best-effort: si se cortó el enlace no se le rompe la pantalla al cliente.
+ */
+export async function tocar(sesion, producto, cantidad = 1) {
   try {
     await EnlaceTablet.enviar({
       url: conToken(sesion, '/toque'),
-      cuerpo: JSON.stringify({ id: producto.id, nombre: producto.nombre, ts: Date.now() }),
+      cuerpo: JSON.stringify({ id: producto.id, nombre: producto.nombre, cantidad, ts: Date.now() }),
     })
     return true
   } catch (_) {
