@@ -312,6 +312,10 @@ velocidad o porque muere el GPS estando sin señal de internet."* **No era ningu
   **×1,25** la recta — la prueba de que hay un solo camino. Sobre el día real: **29 conectores → 4
   ruteados** (los 4 viajes en ruta, ratios ×1,005 a ×1,042) y **25 quedan rectos** (todos urbanos,
   el mayor de 0,82 km).
+  **Verificado en producción** (v17, `verify_jwt` true) sobre el 17/08: los 10 usuarios recalculados
+  con `algo 12`, **Javier 5 conectores y Eduardo 2**, y **0 en los otros ocho** — los que trabajan en
+  el pueblo. Los km no se inflan: Javier 117 → 120,6 (×1,03), Eduardo 66,2 → 67,5 (×1,02).
+  (Javier dio 5 y no los 4 del harness porque aquella copia de sus puntos era de las 20:15.)
 - **`gpsPerfil.js`** — clave nueva `silencio_s` [150, 900] que **pisa el apagado de la triangulación
   del modo simple**. Los teléfonos con el GNSS degradado tenían apagada la única red que podía
   taparlos. Campo nuevo en el panel de Usuarios.
