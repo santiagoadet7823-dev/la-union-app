@@ -570,6 +570,24 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     proyecto. Si se refactoriza el código que explican, migrar el comentario.
 25. **No transcribir valores de credenciales** en docs, commits, issues ni respuestas. Referenciar por
     ubicación (`archivo:línea`).
+51. 🔴 **El destructuring de props va ARRIBA de los hooks, y un build verde no prueba nada de esto.**
+    (18/08/2026.) En 1.17.0 la sesión de vidriera se mudó a `VisitaCatalogo` y la llamada quedó tres
+    líneas por ENCIMA del `const { PRODUCTS, visitC, … } = j` que la alimenta. `PRODUCTS` es un
+    `const` del mismo scope: cae en la zona muerta temporal y tira **`ReferenceError: Cannot access
+    'PRODUCTS' before initialization` en cada render** — el `ErrorBoundary` de `App.jsx` se comía la
+    pantalla de toma de pedido entera. **Vite compiló verde**: no hay análisis de TDZ en el build, y
+    `npm run lint` es `eslint . || true` sobre un repo que ni siquiera tiene config de ESLint, así
+    que tampoco. El bug viajó a `app_config` como OTA, y desde 1.12.1 la OTA **se aplica sola**
+    (regla 48): la red de contención de `notifyAppReady()` no cubre un bundle que arranca bien y
+    revienta adentro, que es exactamente este caso.
+    **Cómo se caza**: ESLint con `no-use-before-define` (`variables: true`). Barrido del 18/08 sobre
+    `src/`: 66 avisos, 65 de ellos el patrón inofensivo —constantes de estilo declaradas al pie del
+    archivo y usadas dentro del JSX, que se evalúa mucho después— y uno solo real. **El criterio que
+    los separa es CUÁNDO corre el uso**: dentro de un callback o del JSX es tarde y no hay TDZ; en el
+    cuerpo del componente, arriba de la declaración, es sincrónico y revienta.
+    **Cómo se verifica un arreglo así sin sesión**: renderizar el componente con `createRoot` en un
+    módulo de prueba efímero y comparar la excepción antes y después. Llamarlo a mano NO sirve —
+    `useState` tira "Invalid hook call" primero y tapa el `ReferenceError`.
 
 ---
 
@@ -716,10 +734,10 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.17.0` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.17.1` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.16.0` | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `35` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.17.0` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.17.1` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.14.0 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

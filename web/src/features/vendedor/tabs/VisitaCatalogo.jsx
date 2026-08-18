@@ -18,14 +18,22 @@ const rentColor = (nivel) => (nivel >= 1 && nivel <= 4 ? `var(--rent-${nivel})` 
  * renglones, precio, unidades y marco de color por rentabilidad), y la barra de carrito.
  */
 export default function VisitaCatalogo({ j }) {
-  // 🩸 LA SESIÓN DE VIDRIERA VIVE ACÁ, no en la ventana del QR (19/08/2026). Cerrar esa ventana ya
+  // 🩸 EL DESTRUCTURING DE `j` VA ANTES QUE LOS HOOKS (18/08/2026). En 1.17.0 quedó tres líneas
+  // ABAJO de la llamada a `useVidriera`, que lo usa: `PRODUCTS` es un `const` del mismo scope, así
+  // que caía en la zona muerta temporal y la pestaña reventaba con "Cannot access 'PRODUCTS' before
+  // initialization" en CADA render — el ErrorBoundary de `App.jsx` se comía la pantalla de toma de
+  // pedido, con el bundle ya publicado por OTA (que se aplica sola desde 1.12.1, regla 48).
+  // El build daba verde: Vite no detecta TDZ. Si mañana un hook nuevo necesita otro campo de `j`,
+  // ya lo tiene arriba; no hay motivo para volver a bajar esta línea.
+  // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
+  const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
+
+  // 🩸 LA SESIÓN DE VIDRIERA VIVE ACÁ, no en la ventana del QR (18/08/2026). Cerrar esa ventana ya
   // no desconecta la tablet: el vendedor vuelve a su catálogo, ve el cartel de lo que el cliente
   // toca y el enlace sigue vivo hasta que aprieta "Cerrar vidriera" o termina la visita.
   const [verQr, setVerQr] = useState(false)
   const vid = useVidriera({ productos: PRODUCTS, comercio: visitC })
   const [verCarrito, setVerCarrito] = useState(false)
-  // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
-  const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
 
   const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]
   const hayOfertas = PRODUCTS.some((p) => p.oferta)
