@@ -290,6 +290,43 @@ el arreglo son estructuralmente los que no lo pueden recibir* — solo se destra
 
 ---
 
+### Publicado — 1.14.8 (18/08/2026) — **Se retira el pegado a calles, y los botones apagados avisan que existen**
+
+#### 🔴 El botón "Calles" se fue, y el pegado de TRAMOS con él
+
+Pedido del cliente, textual: *"los usuarios que actualmente son encargados no entienden el
+funcionamiento, deberíamos quitarlo porque se confunde con tantas cosas"* y, sobre el pegado en sí,
+*"hay trazos que toman caminos que nunca recorrió, así que lo ideal es sacarlo y borrar, porque hay
+teléfonos que son muy fieles a la ubicación que envían"*.
+
+**Tiene respaldo en lo medido**: Orlando y Agustin trabajan con p90 de 1,9 y 5,0 m. Sobre un rastro
+así, OSRM solo puede agregar error — reencamina entre waypoints y elige el camino más corto, que no
+es necesariamente el que se hizo.
+
+⚠️ **Lo que SÍ se conservó es el CONECTOR de los huecos largos** (el de 1.14.6). Son dos mecanismos
+distintos y por suerte quedaron separados el día anterior: el pegado de tramos reencamina lo
+observado; el conector solo une dos puntas que **no tienen nada en el medio**, y solo cuando hay un
+único camino posible (ruta/recta ≤ ×1,25). Sin él volvía la recta a campo traviesa de González a
+Lajitas, que es lo que el mismo cliente pidió arreglar el día anterior.
+
+Y para que no se pisen, el conector recto **se saltea donde ya hay uno ruteado** (se emparejan por
+las puntas con 50 m de tolerancia: el ruteo arranca en el punto encajado a la calle, no en el dato).
+
+**Para volver a prenderlo**: `snapped[t.id]` sigue llegando de la Edge Function y `cubreElRecorrido`
+sigue escrita con su calibración. Son tres líneas y el botón.
+
+#### Las paradas arrancan apagadas, y los botones lo dicen
+
+`dwellOn` pasa a `false` en las dos supervisiones: `calcularDwells` cuesta **~250 ms por
+persona-día** —unos 2,5 s de hilo principal con el equipo completo— y se pagaba siempre, incluso
+cuando lo que se quiere ver es dónde está la gente ahora.
+
+Un botón apagado, sin texto y con un ícono, es indistinguible de uno que no hace nada. Por eso
+`components/PistaBoton.jsx` (nuevo): una etiqueta que aparece al abrir, **late 3 veces con `lu-blink`
+y se va sola a los 4,2 s**. Va en "Paradas" y en "Seguir", en el rail (a la izquierda) y en la barra
+de chips de Desktop (arriba). No recuerda si ya se mostró — el pedido es *cada vez*, y con razón: el
+problema no es que no se enteraron una vez, es que no lo tienen incorporado.
+
 ### Publicado — 1.14.7 (18/08/2026) — **Burbujas de parada, fotos huérfanas y exportación honesta**
 
 #### 1. Burbujas de parada en pantalla completa

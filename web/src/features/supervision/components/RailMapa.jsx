@@ -1,6 +1,7 @@
 import { glassBlur } from '../../../lib/glass'
 import { hoyStr } from '../../../lib/format'
 import BtnInmersivo from '../../../components/BtnInmersivo'
+import PistaBoton from '../../../components/PistaBoton'
 
 /**
  * Rail vertical de controles del mapa (abajo a la derecha).
@@ -34,8 +35,7 @@ export default function RailMapa({
   fecha, esHoy = true, isDark = false, dateRef, onAbrirFecha, onCambiarFecha,
   // Capas
   hayTrazos = false,
-  snapOn = false, onSnap,
-  dwellOn = true, onDwell,
+  dwellOn = false, onDwell,
   showClientes = false, clientesCount = 0, onClientes,
   // Centrar / seguir
   seguirActivo = false, puedeSeguir = false, onSeguir, nombreSeguido = null,
@@ -99,34 +99,36 @@ export default function RailMapa({
           la persona está ahora y se queda pegado a ella. Un arrastre del mapa lo suelta
           (LeafletMap escucha `dragstart`), que es lo que hace que no se sienta una jaula. */}
       {onSeguir && (
-        <RailBtn
-          on={seguirActivo} color="var(--primary)" onClick={onSeguir}
-          dim={!puedeSeguir && !seguirActivo}
-          title={seguirActivo
-            ? `Siguiendo a ${nombreSeguido || 'el móvil'} · tocá para soltar`
-            : (puedeSeguir ? `Centrar en la última posición${nombreSeguido ? ' de ' + nombreSeguido : ''} y seguirla` : 'Sin posición para centrar')}
-        >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3.2" />
-            <path d="M12 2v3.2M12 18.8V22M22 12h-3.2M5.2 12H2" />
-            <circle cx="12" cy="12" r="8" />
-          </svg>
-        </RailBtn>
+        <PistaBoton texto="Seguir">
+          <RailBtn
+            on={seguirActivo} color="var(--primary)" onClick={onSeguir}
+            dim={!puedeSeguir && !seguirActivo}
+            title={seguirActivo
+              ? `Siguiendo a ${nombreSeguido || 'el móvil'} · tocá para soltar`
+              : (puedeSeguir ? `Seguir al móvil como en Google Maps: la cámara va detrás${nombreSeguido ? ' de ' + nombreSeguido : ''}` : 'Sin posición para centrar')}
+          >
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M12 2v3.2M12 18.8V22M22 12h-3.2M5.2 12H2" />
+              <circle cx="12" cy="12" r="8" />
+            </svg>
+          </RailBtn>
+        </PistaBoton>
       )}
 
-      {/* Pegar el trazo a las calles (solo tiene sentido si hay recorridos dibujados). */}
-      {hayTrazos && onSnap && (
-        <RailBtn on={snapOn} color="var(--primary)" onClick={onSnap} title="Por defecto se muestra el rastro real (GPS). Activá para pegar el trazo a las calles.">
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h6M9 6a3 3 0 1 0-6 0c0 2 3 5 3 5M9 6c0 2-3 5-3 5m9-5a3 3 0 1 1 6 0c0 2-3 5-3 5m-3-5c0 2 3 5 3 5M6 18h12" /></svg>
-        </RailBtn>
-      )}
+      {/* 🩸 El botón de "Calles" (pegado a calles) se retiró el 18/08/2026, a pedido del cliente:
+          *"los encargados no entienden el funcionamiento… se confunde con tantas cosas"*, y el
+          pegado en sí inventaba caminos en teléfonos que reportan bien. Ver `trazos.js`. */}
 
-      {/* Carteles de permanencia ("permaneció 5 min acá"). Encendidos por defecto; con muchos
-          recorridos cargados ensucian el mapa, así que se pueden apagar. */}
+      {/* Carteles de permanencia ("permaneció 5 min acá"). APAGADOS por defecto desde el 18/08/2026
+          —detectarlos cuesta ~250 ms por persona-día y frena la carga del mapa—, así que el botón
+          lleva una pista que late unos segundos al abrir para que se sepa que está. */}
       {hayTrazos && onDwell && (
-        <RailBtn on={dwellOn} color="var(--primary)" onClick={onDwell} title={dwellOn ? 'Ocultar paradas (permanencia)' : 'Mostrar paradas (permanencia)'}>
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 1.9" /></svg>
-        </RailBtn>
+        <PistaBoton texto="Paradas">
+          <RailBtn on={dwellOn} color="var(--primary)" onClick={onDwell} title={dwellOn ? 'Ocultar paradas (permanencia)' : 'Mostrar paradas: dónde estuvo detenido más de 3 minutos'}>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 1.9" /></svg>
+          </RailBtn>
+        </PistaBoton>
       )}
 
       {/* Clientes geolocalizados (capa de contexto). Independiente de los recorridos. */}

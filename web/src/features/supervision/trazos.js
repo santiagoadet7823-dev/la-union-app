@@ -130,9 +130,9 @@ function cubreElRecorrido(segs, segmentosCrudos) {
 /**
  * Geometría final para `<LeafletMap trails={...}>`.
  *
- * - `snapOn` → geometría pegada a calles (OSRM, Edge Function); si no hay, cae al crudo.
- * - El crudo se SIMPLIFICA para dibujar (RDP): km y paradas siguen sobre los puntos densos.
- *   La rama snap ya viene simplificada por OSRM y no se re-toca.
+ * - El trazo es SIEMPRE el crudo, simplificado para dibujar (RDP): km y paradas siguen sobre los
+ *   puntos densos. El pegado a calles de los TRAMOS se retiró el 18/08/2026 — ver el 🩸 adentro.
+ * - De la Edge Function solo se usa `_conectores`: la ruta de los huecos largos.
  * - Con una persona enfocada, su trazo va nítido (0.95, más grueso) y el resto muy tenue (0.12)
  *   pero visible; sin foco, todos con la opacidad de siempre. El enfocado se dibuja ÚLTIMO para
  *   que los tenues no lo tapen.
@@ -156,7 +156,10 @@ function cubreElRecorrido(segs, segmentosCrudos) {
  *
  * **No cambia ni un pixel de lo que se dibuja**: son exactamente las mismas líneas, agrupadas.
  */
-export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId = null }) {
+// `snapOn` ya no se recibe: el pegado de tramos se retiró y los conectores van siempre. Se deja el
+// parámetro fuera a propósito y no como ignorado, para que un llamador que todavía lo pase falle en
+// la revisión en vez de creer que sigue teniendo un interruptor.
+export function construirLeaflet({ trails, snapped = {}, focoId = null }) {
   const out = trails.flatMap((t) => {
     const enfocado = focoId && t.id === focoId
     const opacity = !focoId ? 0.85 : (enfocado ? 0.95 : 0.12)
@@ -179,16 +182,28 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     // guarda es la RED DE CONTENCIÓN, y se queda para siempre: el snap es un servicio remoto con su
     // propio cache y sus propias guardas, y ninguna de ellas puede tener licencia para borrar
     // kilómetros del recorrido. Si lo pegado cubre bastante menos que el crudo, se dibuja el crudo.
-    const segs = snapOn ? snapped[t.id] : null
-    // ⚠️ Los conectores NO entran a `cubreElRecorrido`: agregan largo sin contraparte cruda y
-    // apagarían la guarda. Por eso viajan en su propia propiedad (ver `services/recorridos.js`).
-    const conectoresRuteados = snapOn ? snapped?._conectores?.[t.id] : null
-    const usable = segs && segs.length && cubreElRecorrido(segs, t.segmentos)
-    const lineas = usable
-      ? segs.filter((s) => s?.length >= 2)
-      // OJO: `(s) => simplificarTrazo(s)` y no `.map(simplificarTrazo)` — map pasa el ÍNDICE como
-      // segundo argumento y ahí sería `epsilonM`, o sea una tolerancia distinta por segmento.
-      : (t.segmentos || []).map((s) => simplificarTrazo(s)).filter((s) => s.length >= 2)
+    /* 🩸 EL PEGADO DE TRAMOS SE RETIRÓ (18/08/2026), A PEDIDO EXPLÍCITO DEL CLIENTE.
+     *
+     * Textual: *"hay trazos que toman caminos que nunca recorrió, así que lo ideal es sacarlo y
+     * borrar, porque hay teléfonos que son muy fieles a la ubicación que envían"*. Y tiene razón
+     * medida: Orlando y Agustin trabajan con p90 de 1,9 y 5,0 m de precisión, y sobre un rastro así
+     * el ruteo solo puede AGREGAR error — OSRM reencamina entre waypoints y elige el camino más
+     * corto, que no siempre es el que se hizo. El botón "Calles" además se retiró de la interfaz:
+     * los encargados no entendían qué prendía y lo confundían con otras cosas.
+     *
+     * Lo que SÍ se conserva es el CONECTOR de los huecos largos, que es otro mecanismo (existe
+     * separado desde 1.14.6, justamente por esto): cuando el teléfono se calla 27 minutos y
+     * reaparece a 25 km, la recta a campo traviesa es imposible y la ruta es la única lectura
+     * honesta. Eso se validó con el cociente ruta/recta (×1,008 a ×1,106 en los 7 casos reales) y no
+     * reencamina nada de lo observado — solo une dos puntas que no tienen nada en el medio.
+     *
+     * Para volver a prenderlo: `snapped[t.id]` sigue llegando de la Edge Function y
+     * `cubreElRecorrido` sigue escrita más arriba con su calibración. Son tres líneas y el botón.
+     */
+    const conectoresRuteados = snapped?._conectores?.[t.id] || null
+    // OJO: `(s) => simplificarTrazo(s)` y no `.map(simplificarTrazo)` — map pasa el ÍNDICE como
+    // segundo argumento y ahí sería `epsilonM`, o sea una tolerancia distinta por segmento.
+    const lineas = (t.segmentos || []).map((s) => simplificarTrazo(s)).filter((s) => s.length >= 2)
     const piezas = []
     if (lineas.length) piezas.push({ id: t.id, color: t.color, opacity, weight, lineas })
     // 🩸 TRAMOS APROXIMADOS (1.9.0): lo que el teléfono triangula por antenas y WiFi cuando el GPS
@@ -231,18 +246,29 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     // `_conectores` (y solo si esa ruta mide menos de ×1,25 la recta, que es la prueba de que hay un
     // solo camino posible). En el pueblo no se activa nunca: ahí la recta corta sigue siendo menos
     // mentira que inventar una calle.
-    if (usable && conectoresRuteados?.length) {
+    // El conector RUTEADO de los huecos largos (ver el 🩸 de arriba). Se dibuja siempre que la Edge
+    // Function lo haya devuelto: es independiente del pegado de tramos, que se retiró.
+    if (conectoresRuteados?.length) {
       piezas.push({ id: t.id, color: t.color, weight, opacity, lineas: conectoresRuteados })
     }
-    if (!usable) {
-      const conectores = []
-      for (let i = 1; i < lineas.length; i++) {
-        const a = lineas[i - 1]
-        const b = lineas[i]
-        conectores.push([a[a.length - 1], b[0]])
-      }
-      if (conectores.length) piezas.push({ id: t.id, color: t.color, weight, opacity, lineas: conectores })
+    // Y la recta para el resto de los huecos — los cortos, que son la enorme mayoría. Se saltean los
+    // que YA tienen conector ruteado: dibujar los dos deja una recta a campo traviesa por encima de
+    // la ruta real, que es justo lo que se vino a sacar. Se emparejan por las puntas, con la
+    // tolerancia de un hop (`GAP_M`/16): el ruteo arranca y termina en el punto encajado a la
+    // calle, a metros del dato, así que comparar por igualdad exacta no serviría.
+    const conectores = []
+    for (let i = 1; i < lineas.length; i++) {
+      const a = lineas[i - 1]
+      const b = lineas[i]
+      const desde = a[a.length - 1]
+      const hasta = b[0]
+      const yaRuteado = (conectoresRuteados || []).some((g) => {
+        if (!g || g.length < 2) return false
+        return distanciaMetros(g[0], desde) < 50 && distanciaMetros(g[g.length - 1], hasta) < 50
+      })
+      if (!yaRuteado) conectores.push([desde, hasta])
     }
+    if (conectores.length) piezas.push({ id: t.id, color: t.color, weight, opacity, lineas: conectores })
     return piezas
   })
   if (focoId) out.sort((a, b) => (a.id === focoId ? 1 : 0) - (b.id === focoId ? 1 : 0))

@@ -17,6 +17,7 @@ import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
 import AlertasEquipo from '../../components/AlertasEquipo'
 import SelectorEmpresa from '../../components/SelectorEmpresa'
+import PistaBoton from '../../components/PistaBoton'
 import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
@@ -74,7 +75,16 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   const [view, setView] = useState('mapa') // 'mapa' | 'dash' | <clave de gestión>
   const [filter, setFilter] = useState(null) // null | 'v' | 'r'
-  const [dwellOn, setDwellOn] = useState(true) // carteles de permanencia sobre el mapa (default: encendidos)
+  /* 🩸 LAS PARADAS ARRANCAN APAGADAS (18/08/2026), y es por velocidad, no por gusto.
+   *
+   * `calcularDwells` corre el detector de paradas sobre la jornada de CADA persona: ~250 ms por
+   * persona-día, o sea unos 2,5 s de hilo principal con el equipo completo, justo mientras el mapa
+   * se está pintando. Encendido por defecto, eso se paga SIEMPRE — incluso cuando el que abre
+   * quiere ver dónde está la gente ahora y no dónde estuvo.
+   *
+   * Como el botón deja de estar prendido, hay que decir que existe: `RailMapa` muestra una etiqueta
+   * al lado que late unos segundos y se va (ver `PistaRail`). */
+  const [dwellOn, setDwellOn] = useState(false)
   const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [pinId, setPinId] = useState(null)
   const [foco, setFoco] = useState(null)       // { id, nonce } — usuario a enfocar en el mapa
@@ -83,7 +93,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [snapped, setSnapped] = useState({}) // { id: [{lat,lng}] } pegado a calles
-  const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin sidebar ni topbar
@@ -298,8 +307,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // IIFE suelta que se recalculaba una vez por segundo con el tick de "hace Xs"). El `useMemo`
   // sigue siendo obligatorio por ese mismo tick.
   const leafletTrails = useMemo(
-    () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
-    [trails, snapOn, snapped, foco]
+    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null }),
+    [trails, snapped, foco]
   )
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, el MISMO que usa Movil). El
   // `useMemo` es obligatorio por el tick de "hace Xs", que re-renderiza esto una vez por segundo.
@@ -522,19 +531,17 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
                       {!esHoy && <span onClick={() => cambiarFecha(hoyStr())} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
                     </div>
-                    {/* Toggle "Calles" */}
-                    {trails.length > 0 && (
-                      <div onClick={() => setSnapOn((v) => !v)} title="Por defecto se muestra el rastro real (GPS). Activá para pegar el trazo a las calles." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: snapOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${snapOn ? 'transparent' : 'var(--line)'}`, color: snapOn ? '#fff' : 'var(--muted)' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h6M9 6a3 3 0 1 0-6 0c0 2 3 5 3 5M9 6c0 2-3 5-3 5m9-5a3 3 0 1 1 6 0c0 2-3 5-3 5m-3-5c0 2 3 5 3 5M6 18h12" /></svg>
-                        <span style={{ fontSize: 12, fontWeight: 600 }}>Calles</span>
-                      </div>
-                    )}
+                    {/* 🩸 El toggle "Calles" se retiró el 18/08/2026. Los encargados no entendían qué
+                        prendía y lo confundían con otros controles, y el pegado de tramos en sí
+                        dejó de aplicarse (ver el 🩸 de `trazos.js`). */}
                     {/* Toggle "Paradas" (carteles de permanencia) */}
                     {trails.length > 0 && (
+                      <PistaBoton texto="Paradas" lado="arriba">
                       <div onClick={() => setDwellOn((v) => !v)} title="Muestra un cartel donde la persona estuvo detenida más de 3 minutos, con el tiempo y la batería del equipo." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: dwellOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${dwellOn ? 'transparent' : 'var(--line)'}`, color: dwellOn ? '#fff' : 'var(--muted)' }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Paradas</span>
                       </div>
+                      </PistaBoton>
                     )}
                     {/* Toggle "Clientes" (capa de comercios geolocalizados) */}
                     <div onClick={() => setShowClientes((v) => !v)} title="Muestra los clientes geolocalizados de la cartera como puntos en el mapa." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: showClientes ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${showClientes ? 'transparent' : 'var(--line)'}`, color: showClientes ? '#fff' : 'var(--muted)' }}>
@@ -544,6 +551,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Centrar y SEGUIR la última posición. Es el segundo zoom: tocar una burbuja
                         encuadra todo el recorrido; esto va a donde está ahora y se queda pegado.
                         Arrastrar el mapa lo suelta (LeafletMap escucha `dragstart`). */}
+                    <PistaBoton texto="Seguir" lado="arriba">
                     <div
                       onClick={alternarSeguir}
                       title={seguirId
@@ -554,6 +562,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M12 2v3.2M12 18.8V22M22 12h-3.2M5.2 12H2" /><circle cx="12" cy="12" r="8" /></svg>
                       <span style={{ fontSize: 12, fontWeight: 600 }}>{seguirId ? 'Siguiendo' : 'Centrar'}</span>
                     </div>
+                    </PistaBoton>
                     {/* Campanita de avisos del equipo. En esta pantalla NO es un complemento del
                         push: es el único canal. Una PWA de escritorio no recibe FCM, así que sin
                         esto el admin que trabaja en la PC no se entera de nada. */}
@@ -636,8 +645,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         onAbrirFecha={abrirFecha}
                         onCambiarFecha={cambiarFecha}
                         hayTrazos={trails.length > 0}
-                        snapOn={snapOn}
-                        onSnap={() => setSnapOn((v) => !v)}
                         dwellOn={dwellOn}
                         onDwell={() => setDwellOn((v) => !v)}
                         showClientes={showClientes}

@@ -101,8 +101,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // (ALGO 8) el snap ya cubre el día entero y no solo las caminatas, así que el trazo que se abre
   // es el que sigue la calle. Apagarlo devuelve el rastro crudo en un toque, y sigue siendo el que
   // hay que mirar para discutir un dato: el pegado es una reconstrucción plausible, no la medición.
-  const [snapOn, setSnapOn] = useState(true)
-  const [dwellOn, setDwellOn] = useState(true)   // carteles de permanencia sobre el mapa (default: encendidos)
+  /* 🩸 APAGADAS POR DEFECTO (18/08/2026): `calcularDwells` cuesta ~250 ms por persona-día y con el
+     equipo entero son ~2,5 s de hilo principal mientras el mapa se pinta. Ver SupervisionDesktop. */
+  const [dwellOn, setDwellOn] = useState(false)
   // Cartel de parada AMPLIADO (índice dentro de `dwells`) o null. Uno a la vez, y NO se persiste
   // —a diferencia de `pinK`—: ampliar una parada es el gesto de "mirá ésta", no una preferencia
   // que alguien quiera encontrarse mañana. Se limpia solo al cambiar de día o de filtro, porque
@@ -348,8 +349,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // Memoizado: sin esto se rehace en cada render, y el padre re-renderiza con cada posición que
   // llega por Realtime.
   const leafletTrails = useMemo(
-    () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
-    [trails, snapOn, snapped, foco]
+    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null }),
+    [trails, snapped, foco]
   )
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, compartido con Desktop). Sale de
   // `trails`, así que ya viene filtrado por chip y con los puntos limpios. Barato (una entrada por
@@ -649,8 +650,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         onAbrirFecha={abrirFecha}
         onCambiarFecha={cambiarFecha}
         hayTrazos={trails.length > 0}
-        snapOn={snapOn}
-        onSnap={() => setSnapOn((v) => !v)}
         dwellOn={dwellOn}
         onDwell={() => setDwellOn((v) => !v)}
         showClientes={showClientes}
