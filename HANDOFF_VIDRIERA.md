@@ -1,12 +1,16 @@
 # HANDOFF — VIDRIERA (tablet del cliente)
 
-**Estado al 19/08/2026.** La vidriera **funciona de punta a punta en hardware real**: el celular
+**Estado al 18/08/2026.** La vidriera **funciona de punta a punta en hardware real**: el celular
 levanta la red, la tablet escanea el QR, se une y trae el catálogo de 529 productos. Lo que sigue
 son mejoras y una decisión de producto, no arreglos para que arranque.
 
-Publicado: **APK 1.16.0** (versionCode 35) instalado en la tablet de prueba y en el celular del
-dueño · **OTA + PWA 1.16.0** · `min_version` **sigue en 1.13.0 a propósito** — el parque no se toca
-hasta que esto salga a la calle.
+Publicado: **OTA + PWA 1.17.1** · en el árbol y **sin publicar**: **APK 1.18.0** (versionCode 36),
+instalado a mano en la tablet de prueba. `min_version` **sigue en 1.13.0 a propósito** — el parque
+no se toca hasta que esto salga a la calle.
+
+> 🩸 **Lo nativo de 1.18.0 NO llega a nadie hasta que se suba `min_version`.** Eso incluye el
+> arreglo de la notificación del GPS, que no es de la vidriera pero viaja en el mismo APK. Subir
+> `min_version` reinstala los 9 equipos (misma firma, no pierden datos locales).
 
 > Este documento es SOLO de la vidriera. Lo demás del proyecto sigue en
 > [HANDOFF.md](HANDOFF.md) y [CLAUDE.md](CLAUDE.md).
@@ -76,6 +80,24 @@ sin fotos anda bien; **con fotos hay que volver a medirlo**.
 ---
 
 ## 4. Lo que falta, por prioridad
+
+> ## Qué se hizo el 18/08/2026
+>
+> Todo lo de §4 está **implementado y compilado**; lo que falta es **medirlo en la calle**.
+>
+> · **A (fotos)** — el mecanismo se arregló antes de probarlo, porque medía otra cosa: `foto: true`
+>   salía de la URL de Storage y no del espejo del teléfono (la tablet pedía 529 fotos y cobraba
+>   404); "Preparar catálogo" **era inalcanzable** (vivía en `PerfilTab.jsx`, que no lo monta nadie
+>   — ahora cuelga del menú de cuenta); y la tablet guardaba en `cacheDir`, que Android borra bajo
+>   presión de espacio. Falta la medición con fotos reales.
+> · **B (Bluetooth)** — hecho. `EnlaceBluetoothPlugin` + botón "Buscar por Bluetooth".
+>   **Verificado en la tablet real**: el botón aparece y contesta. Falta el pareo contra el celular.
+> · **C-bis / C** — hechos: carrito espejo, ficha grande, reposo, "mirá este", "miró y no compró".
+> · **D** — reintentar en `EspejoTablet` y fijado de pantalla, hechos. Varias tablets: sin probar.
+>
+> 🩸 Y un bug que la prueba con fotos iba a destapar: la pantalla de la tablet usaba `inset:0`, que
+> recién existe desde **Chrome 87**; el WebView de esa tablet es **Chrome 79**. No se notó nunca
+> porque el catálogo cargado no tiene imágenes.
 
 ### 🔴 A. Probar con fotos — es el único riesgo real que queda
 

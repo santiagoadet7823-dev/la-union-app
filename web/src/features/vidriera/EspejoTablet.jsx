@@ -19,12 +19,12 @@ import { textoQr } from '../../services/vidriera'
  * ⚠️ El QR se genera con `QrPlugin` (ZXing nativo), el mismo que usa el modal "Invitar". No se suma
  * una librería de QR al bundle web para esto.
  *
- * props: { red, error, abriendo, fotos, onCerrarVentana, onCerrarVidriera, onReintentar }
+ * props: { red, error, abriendo, fotos, bt, onCerrarVentana, onCerrarVidriera, onReintentar }
  */
 
 const Qr = registerPlugin('Qr')
 
-export default function EspejoTablet({ red, error, abriendo, fotos, onCerrarVentana, onCerrarVidriera, onReintentar }) {
+export default function EspejoTablet({ red, error, abriendo, fotos, bt, onCerrarVentana, onCerrarVidriera, onReintentar }) {
   const [qr, setQr] = useState(null)
   const [sinQr, setSinQr] = useState(false)
 
@@ -98,6 +98,16 @@ export default function EspejoTablet({ red, error, abriendo, fotos, onCerrarVent
               Escanealo desde la tablet, en <b>Soy una tablet</b>. No usa datos: la red no tiene
               salida a internet.
             </div>
+
+            {/* 🩸 EL CAMINO SIN CÁMARA (18/08/2026). Si la tablet está vinculada por Bluetooth con
+                este celular, no hace falta apuntar a nada. Es un renglón y no un botón porque acá
+                no hay que hacer nada: el sobre ya está saliendo, la que toca es la tablet. */}
+            {bt && (
+              <div style={sx('display:flex;align-items:center;gap:8px;padding:8px 13px;border-radius:99px;background:var(--info-tint);color:var(--muted);font-size:11.5px')}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--info)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 7l10 10-5 5V2l5 5L7 17" /></svg>
+                O sin cámara: en la tablet, <b>Buscar por Bluetooth</b>
+              </div>
+            )}
             <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>
               {red.ssid} · {red.ip}:{red.puerto}
             </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
-import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo } from '../../services/vidrieraTablet'
+import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo, fijarPantalla, soltarPantalla } from '../../services/vidrieraTablet'
 
 /**
  * LA VIDRIERA que ve el CLIENTE en la tablet. Recibe el catálogo ya filtrado por el celular del
@@ -106,7 +106,19 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   const forzarRef = useRef(false)
   const [refrescando, setRefrescando] = useState(false)
 
-  useEffect(() => () => { vivo.current = false; desconectar() }, [])
+  /**
+   * 🩸 LA TABLET QUEDA FIJADA EN LA APP MIENTRAS LA USA EL CLIENTE (18/08/2026). Se la damos en la
+   * mano a alguien que no es empleado nuestro: no tiene por qué poder irse al navegador o a los
+   * ajustes, ni sin querer ni queriendo.
+   *
+   * Se suelta SIEMPRE al desmontar, en el mismo `useEffect` que corta el enlace: una tablet trabada
+   * en una app es, para el cliente, una tablet rota. Sin Device Owner el fijado igual es blando
+   * (Android avisa y se sale con Atrás + Recientes), que para esto alcanza.
+   */
+  useEffect(() => {
+    fijarPantalla()
+    return () => { vivo.current = false; soltarPantalla(); desconectar() }
+  }, [])
 
   /**
    * 🩸 PODA AL RECIBIR EL CATÁLOGO (18/08/2026). Desde hoy las fotos viven en `filesDir` y no en el

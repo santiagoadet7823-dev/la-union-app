@@ -46,6 +46,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EnlaceTabletPlugin.class);
         // Plugin local: escaner de QR (CameraX + el decodificador de ZXing que ya estaba).
         registerPlugin(EscanerQrPlugin.class);
+        // Plugin local: VIDRIERA por BLUETOOTH — el camino alternativo al QR. Pasa SOLO el sobre de
+        // la red (~120 bytes); el catalogo y las fotos siguen por WiFi. Ver EnlaceBluetoothPlugin.
+        registerPlugin(EnlaceBluetoothPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

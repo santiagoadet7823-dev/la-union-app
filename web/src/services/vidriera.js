@@ -201,14 +201,25 @@ export async function cerrarVidriera() {
  * Queda en ~100 caracteres: baja varias versiones de QR y los módulos se ven casi al doble.
  */
 export function textoQr(red) {
-  return JSON.stringify({
+  return JSON.stringify(sobreDe(red))
+}
+
+/**
+ * EL SOBRE: lo mínimo que la tablet necesita para unirse y pedir el catálogo.
+ *
+ * Vive acá, en una sola función, porque desde el 18/08/2026 sale por DOS caminos —el QR y el
+ * Bluetooth (`services/vidrieraBluetooth.js`)— y dos formatos para el mismo dato son dos parsers
+ * que tarde o temprano se desincronizan. La versión de protocolo cubre a los dos.
+ */
+export function sobreDe(red) {
+  return {
     v: PROTOCOLO,
     s: red.ssid,
     k: red.clave,
     i: red.ip,
     p: red.puerto,
     t: red.token,
-  })
+  }
 }
 
 /** Un toque de la tablet. Devuelve la función para dejar de escuchar. */

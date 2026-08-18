@@ -255,6 +255,7 @@ export default function VisitaCatalogo({ j }) {
           error={vid.error}
           abriendo={vid.abriendo}
           fotos={vid.fotos}
+          bt={vid.bt}
           onReintentar={vid.abrir}
           onCerrarVentana={() => setVerQr(false)}
           onCerrarVidriera={() => { vid.cerrar(); setVerQr(false); showToast('Vidriera cerrada') }}

@@ -1,5 +1,6 @@
 package com.launion.app;
 
+import android.app.Activity;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -307,6 +308,57 @@ public class EnlaceTabletPlugin extends Plugin {
                 JSObject r = new JSObject();
                 r.put("borrados", borrados);
                 call.resolve(r);
+            }
+        });
+    }
+
+    /**
+     * 🩸 FIJA LA TABLET DENTRO DE LA APP (18/08/2026). El cliente tiene la tablet en la mano y no
+     * tiene por qué poder salirse al navegador, a los ajustes o a la cámara. `startLockTask()` sin
+     * Device Owner **no bloquea**: Android muestra un cartel y el usuario sale con Atrás + Recientes
+     * mantenidos. Alcanza — esto no es un kiosco antirrobo, es evitar que alguien se vaya de la
+     * pantalla sin querer mientras mira precios.
+     *
+     * Falla en silencio a propósito: hay OEM que lo tienen deshabilitado, y una vidriera que no
+     * arranca porque no pudo fijarse sería mucho peor que una vidriera que no se fija. Devuelve si
+     * quedó fijada, para no mentirle a la UI.
+     *
+     * ⚠️ Todo lo que se fija hay que poder soltarlo: `soltarPantalla()` se llama al salir, y también
+     * si la Activity se destruye. Una tablet trabada en una app es un teléfono roto para el cliente.
+     */
+    @PluginMethod
+    public void fijarPantalla(final PluginCall call) {
+        final Activity act = getActivity();
+        final JSObject r = new JSObject();
+        if (act == null) { r.put("fijada", false); call.resolve(r); return; }
+        act.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                boolean ok = false;
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        act.startLockTask();
+                        ok = true;
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "no se pudo fijar la pantalla: " + e.getMessage());
+                }
+                r.put("fijada", ok);
+                call.resolve(r);
+            }
+        });
+    }
+
+    /** Suelta el fijado. No tira si no estaba fijada. */
+    @PluginMethod
+    public void soltarPantalla(final PluginCall call) {
+        final Activity act = getActivity();
+        if (act == null) { call.resolve(); return; }
+        act.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) act.stopLockTask();
+                } catch (Exception ignored) { /* no estaba fijada */ }
+                call.resolve();
             }
         });
     }

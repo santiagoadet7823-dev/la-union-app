@@ -158,6 +158,28 @@ export function escuchar(sesion, cb) {
   }
 }
 
+/**
+ * Fija la tablet dentro de la app (screen pinning) mientras la usa el cliente, y la suelta al salir.
+ *
+ * Sin Device Owner esto NO es un kiosco: Android avisa y se sale con Atrás + Recientes mantenidos.
+ * Alcanza para lo que se pidió — que el cliente no se vaya de la pantalla sin querer.
+ *
+ * ⚠️ Best-effort las dos. Que no se pueda fijar no puede impedir que la vidriera abra; que no se
+ * pueda soltar no puede impedir que se cierre.
+ */
+export async function fijarPantalla() {
+  try {
+    const { fijada } = await EnlaceTablet.fijarPantalla()
+    return !!fijada
+  } catch (_) {
+    return false
+  }
+}
+
+export async function soltarPantalla() {
+  try { await EnlaceTablet.soltarPantalla() } catch (_) { /* no estaba fijada */ }
+}
+
 /** Corta el enlace y suelta la red. Se llama al salir de la vidriera. */
 export async function desconectar() {
   try { await EnlaceTablet.desconectar() } catch (_) { /* ya estaba suelto */ }

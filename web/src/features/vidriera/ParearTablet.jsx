@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { btnPrimario, btnSecundario } from '../../lib/botones'
 import { disponible, escanear, conectar, pedirCatalogo, desconectar } from '../../services/vidrieraTablet'
+import { disponible as btDisponible, buscar as buscarBt } from '../../services/vidrieraBluetooth'
 
 /**
  * EMPAREJAMIENTO DE LA TABLET. Escanea el QR del celular del vendedor, se une a su red y trae el
@@ -25,6 +26,7 @@ import { disponible, escanear, conectar, pedirCatalogo, desconectar } from '../.
 const PASOS = {
   inicio: 'Tocá para escanear el código del vendedor.',
   escaneando: 'Apuntá a la pantalla del celular…',
+  buscandoBt: 'Buscando el celular del vendedor por Bluetooth…',
   uniendo: 'Uniéndome a la red del vendedor…',
   pidiendo: 'Trayendo el catálogo…',
 }
@@ -36,11 +38,17 @@ export default function ParearTablet({ onListo, onSalir }) {
   const vivo = useRef(true)
   useEffect(() => () => { vivo.current = false }, [])
 
-  const emparejar = useCallback(async () => {
+  /**
+   * 🩸 DOS CAMINOS PARA LO MISMO (18/08/2026). `porBluetooth` cambia SOLO cómo llega el sobre de la
+   * red; todo lo que sigue —unirse, pedir el catálogo, el manejo de error— es idéntico, y por eso
+   * está en una sola función. El QR sigue siendo el camino por defecto: Bluetooth entró porque la
+   * cámara de esta tablet no enfoca bien, no porque el QR estuviera mal.
+   */
+  const emparejar = useCallback(async (porBluetooth = false) => {
     setError(null)
     try {
-      setPaso('escaneando')
-      const sesion = await escanear()
+      setPaso(porBluetooth ? 'buscandoBt' : 'escaneando')
+      const sesion = porBluetooth ? await buscarBt() : await escanear()
       if (!vivo.current) return
 
       setPaso('uniendo')
@@ -103,12 +111,21 @@ export default function ParearTablet({ onListo, onSalir }) {
       <div style={sx('display:flex;gap:10px;margin-top:4px')}>
         <button
           className="lu-press"
-          onClick={emparejar}
+          onClick={() => emparejar(false)}
           disabled={trabajando || !disponible()}
           style={{ ...btnPrimario, minWidth: 200, opacity: (trabajando || !disponible()) ? 0.55 : 1 }}
         >
           {error ? 'Reintentar' : 'Escanear código'}
         </button>
+        {/* El camino SIN cámara. Va como acción secundaria y no como principal: necesita que
+            alguien haya vinculado los dos aparatos una vez en el depósito, y si eso no pasó, el
+            mensaje de error lo dice y manda al QR. */}
+        {btDisponible() && (
+          <button className="lu-press" onClick={() => emparejar(true)} disabled={trabajando}
+            style={{ ...btnSecundario, minWidth: 190, opacity: trabajando ? 0.55 : 1 }}>
+            Buscar por Bluetooth
+          </button>
+        )}
         {onSalir && (
           <button className="lu-press" onClick={onSalir} disabled={trabajando} style={{ ...btnSecundario, minWidth: 120 }}>
             Volver

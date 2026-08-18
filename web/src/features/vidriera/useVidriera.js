@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { abrirVidriera, cerrarVidriera, alTocar, alCaerse, disponible, emitirCarrito, destacar } from '../../services/vidriera'
 import { estadoEspejo } from '../../services/data/espejoFotos'
+import { publicar as publicarBt, detener as detenerBt, disponible as btDisponible } from '../../services/vidrieraBluetooth'
 
 /**
  * DUEÑA DE LA SESIÓN DE VIDRIERA. La sesión vive acá y **no** dentro de la ventana del QR.
@@ -37,6 +38,7 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
    * Se mide al abrir, que es cuando se arma el snapshot y por lo tanto cuando el número es cierto.
    */
   const [fotos, setFotos] = useState(null)   // { total, presentes, faltan } o null
+  const [bt, setBt] = useState(false)        // ¿el sobre está saliendo también por Bluetooth?
   const vivo = useRef(true)
   const timer = useRef(null)
   // `onToque` cambia de identidad en cada render del padre; se lee del ref para no tener que
@@ -48,6 +50,7 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
     vivo.current = false
     clearTimeout(timer.current)
     cerrarVidriera()
+    detenerBt()
   }, [])
 
   const abrir = useCallback(async () => {
@@ -58,6 +61,10 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
       const r = await abrirVidriera({ productos, comercio })
       if (!vivo.current) return
       setRed(r)
+      // 🩸 El sobre también sale por BLUETOOTH (18/08/2026), para la tablet cuya cámara no enfoca.
+      // Es best-effort y va DESPUÉS de tener la red: si falla, el QR ya está en pantalla y nadie se
+      // entera. Ver `services/vidrieraBluetooth.js`.
+      if (btDisponible()) publicarBt(r).then((ok) => { if (vivo.current) setBt(!!ok) })
       // Después de abrir: que el enlace no espere por un contador. Si falla, se calla — es un
       // aviso, no una condición para trabajar.
       estadoEspejo(productos)
@@ -76,8 +83,10 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
   }, [red, abriendo, productos, comercio])
 
   const cerrar = useCallback(async () => {
-    setRed(null); setAviso(null); setError(null); setFotos(null)
-    await cerrarVidriera()
+    setRed(null); setAviso(null); setError(null); setFotos(null); setBt(false)
+    // Los dos caminos se cierran juntos, siempre: un servicio Bluetooth que sobrevive a la visita
+    // es lo mismo que un hotspot que sobrevive a la visita — batería y un token de más.
+    await Promise.all([cerrarVidriera(), detenerBt()])
   }, [])
 
   // Toques del cliente y caída del enlace. Solo mientras hay sesión.
@@ -126,6 +135,7 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
     aviso,
     mirados,
     fotos,
+    bt,
     abrir,
     cerrar,
     descartarAviso: useCallback(() => setAviso(null), []),

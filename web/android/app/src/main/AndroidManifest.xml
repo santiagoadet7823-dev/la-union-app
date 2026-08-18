@@ -79,6 +79,27 @@
 <uses-feature android:name="android.hardware.camera" android:required="false" />
 <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+<!-- 🩸 BLUETOOTH — el camino alternativo al QR para pasarle la red a la tablet (18/08/2026).
+     Pasa SOLO el sobre de la red (~120 bytes); el catálogo y las fotos siguen por WiFi.
+     Ver EnlaceBluetoothPlugin.java.
+
+     ⚠️ Los dos de abajo son de RUNTIME desde Android 12 y los pide el plugin con su alias, igual
+     que NEARBY_WIFI_DEVICES. Esto no es una suposición: es el error que ya se cometió una vez acá
+     mismo, con un comentario que afirmaba lo contrario y una prueba de campo perdida.
+     `neverForLocation` en BLUETOOTH_SCAN es la misma promesa verificable que en el WiFi: no
+     derivamos ubicación de lo que se encuentre. Sin eso, el permiso arrastraría el de ubicación.
+
+     Los dos VIEJOS llevan `maxSdkVersion="30"`: en Android 12+ los reemplazan los de arriba, y
+     dejarlos sin tope los haría figurar de más en la ficha de la app. La tablet es API 28 y usa
+     estos, no aquéllos. -->
+<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:targetApi="s" />
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation"
+    tools:targetApi="s" />
+<uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
     <application
         android:name=".LaUnionApp"
         android:allowBackup="true"
