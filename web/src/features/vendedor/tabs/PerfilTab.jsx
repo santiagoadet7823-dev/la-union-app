@@ -4,6 +4,7 @@ import { fmtPesos } from '../../../lib/format'
 import { useAuth } from '../../../context/AuthContext'
 import { card } from '../ui'
 import MiCuenta from '../../perfil/MiCuenta'
+import PrepararCatalogo from '../../vidriera/PrepararCatalogo'
 
 /** Pestaña "Perfil": venta del día, meta diaria, visitas/efectividad y cierre de jornada. */
 export default function PerfilTab({ j }) {
@@ -63,6 +64,10 @@ export default function PerfilTab({ j }) {
           </div>
         </div>
       </div>
+      {/* Fotos del catálogo en el teléfono, para poder mostrárselas a la tablet del cliente sin
+          internet del otro lado. Se dibuja sola solo en el APK y solo si hay fotos que bajar. */}
+      <PrepararCatalogo onToast={showToast} />
+
       <button onClick={() => showToast('Jornada cerrada · resumen enviado al panel')} style={sx('width:100%;min-height:48px;display:grid;place-items:center;border:1px solid var(--danger);color:var(--danger);background:var(--danger-tint);border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer;margin-bottom:12px')}>Cerrar jornada</button>
 
       {/* Cuenta (editar perfil, tema, cerrar sesión) — mismas acciones que el menú del admin. */}

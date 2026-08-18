@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { isNative } from '../../services/platform'
 import { abrirAjustesUbicacion } from '../../services/geolocation'
 import { estaExento, pedirExencion, abrirAutostart } from '../../services/battery'
+import { diaUltimoBg } from '../../hooks/useEstadoDispositivo'
 import Overlay from '../../components/Overlay'
 
 /**
@@ -33,6 +34,30 @@ const REPETIR_MS = 7 * 24 * 60 * 60 * 1000
 
 function ultimoVisto() {
   try { return Number(localStorage.getItem(VISTO_KEY)) || 0 } catch (_) { return 0 }
+}
+
+/**
+ * 🩸 EL AVISO MIRABA UNA SOLA DE LAS DOS COSAS QUE PIDE (18/08/2026). Este cartel sirve para
+ * "Permitir siempre" **y** para la exención de batería, pero para decidir si REAPARECER consultaba
+ * únicamente la batería. O sea que quien concedía la batería y no el permiso de fondo dejaba de ver
+ * el cartel para siempre — y su teléfono seguía marcando solo con la app abierta.
+ *
+ * Le pasó a Zura: exención concedida, `bg_ok` en false, el servicio nativo sin entregar un fix en
+ * 14 h con el latido del JS fresco, y **2.250 m de recorrido dibujados como una línea recta** entre
+ * el depósito y el destino, porque guardó el teléfono en el bolsillo y el WebView se congeló.
+ *
+ * Se mide en DÍAS y no en horas porque el dato que hay es el día de la última captura en segundo
+ * plano. Tres días cubren un fin de semana largo sin sonar de gusto: alguien que no trabajó el
+ * sábado y el domingo no tiene por qué recibir el cartel el lunes.
+ */
+const DIAS_SIN_FONDO = 3
+
+function elFondoAnda() {
+  const d = diaUltimoBg()
+  if (!d) return false // nunca capturó en segundo plano: es exactamente el caso que hay que avisar
+  const t = new Date(d + 'T00:00:00').getTime()
+  if (!Number.isFinite(t)) return false
+  return Date.now() - t < DIAS_SIN_FONDO * 24 * 60 * 60 * 1000
 }
 
 export default function PermisoSiemprePrompt() {
@@ -67,7 +92,10 @@ export default function PermisoSiemprePrompt() {
     const chequear = () => estaExento().then((v) => {
       if (!vivo) return
       setExento(v)
-      if (modo === 'repetir' && v === false && !autoAbiertoRef.current) {
+      // Reaparece si falta CUALQUIERA de las dos, no solo la batería (ver `elFondoAnda`). Sin el
+      // segundo término, un teléfono con la batería concedida y sin permiso de fondo no volvía a
+      // ver este cartel nunca.
+      if (modo === 'repetir' && (v === false || !elFondoAnda()) && !autoAbiertoRef.current) {
         autoAbiertoRef.current = true
         setAbierto(true)
       }

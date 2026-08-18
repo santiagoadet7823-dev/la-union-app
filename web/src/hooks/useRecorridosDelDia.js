@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { persistence } from '../services/persistence'
+import { useAuth } from '../context/AuthContext'
 import { hoyStr } from '../lib/format'
 
 const REFRESH_MS = 60000
@@ -38,6 +39,10 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   // puntos con ts viejo por detrás del cursor incremental (ver comentario en `load`).
   const cargadosRef = useRef(0)
   const esHoy = fecha === hoyStr()
+  // Sube cuando la app arrancó con el token vencido y después consiguió uno bueno: hay que volver
+  // a pedir lo que se cayó con 401 (ver AuthContext). Sin esto el mapa quedaba vacío hasta cerrar
+  // sesión y volver a entrar.
+  const { authEpoch } = useAuth()
 
   const load = useCallback(async (incremental) => {
     if (!idEmpresa) return
@@ -237,7 +242,7 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
       }
     })()
     return () => { vigente = false }
-  }, [load, fecha, idEmpresa, conRol])
+  }, [load, fecha, idEmpresa, conRol, authEpoch])
 
   // Persistir lo cargado. Se guarda UNA sola fecha (la clave es fija y el registro lleva
   // adentro fecha/empresa/forma): así cambiar de día pisa la entrada anterior y el storage

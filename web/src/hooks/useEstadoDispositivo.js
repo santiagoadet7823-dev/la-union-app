@@ -85,6 +85,31 @@ function computeGpsOk(pos, error) {
     && (typeof pos.accuracy !== 'number' || pos.accuracy <= ACCURACY_MAX_M)
 }
 
+/**
+ * Último día en que el teléfono capturó una posición ESTANDO EN SEGUNDO PLANO.
+ *
+ * 🩸 Existe por el caso de Zura (18/08/2026). `bgRef` se reinicia todos los días y vive en RAM, así
+ * que nadie fuera de este hook podía saber si el rastreo de fondo alguna vez funcionó — y el aviso
+ * que pide "Permitir siempre" (`PermisoSiemprePrompt`) estaba decidiendo si reaparecer mirando
+ * SOLO la exención de batería. Resultado: quien concedía la batería pero no el permiso de fondo no
+ * volvía a ver el cartel NUNCA, y su teléfono quedaba marcando solo con la app abierta. Medido:
+ * 2.250 m de recorrido sin un punto, con el latido del JS fresco y el servicio nativo sin entregar
+ * un fix en 14 h.
+ *
+ * Va en `localStorage` a secas, como `lu-permiso-siempre-visto`: es un dato de presentación, hay
+ * que leerlo SÍNCRONO en el primer render del aviso, y perderlo solo cuesta un cartel de más.
+ */
+const BG_DIA_KEY = 'lu-bg-ultimo-dia'
+
+function marcarBgHoy(dia) {
+  try { if (localStorage.getItem(BG_DIA_KEY) !== dia) localStorage.setItem(BG_DIA_KEY, dia) } catch (_) { /* modo privado */ }
+}
+
+/** 'YYYY-MM-DD' del último día con captura en segundo plano, o null si no pasó nunca. */
+export function diaUltimoBg() {
+  try { return localStorage.getItem(BG_DIA_KEY) || null } catch (_) { return null }
+}
+
 export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }) {
   const gpsDesdeRef = useRef({ ok: null, since: Date.now() })
   const bgRef = useRef({ dia: null, ok: false }) // ¿latió en 2º plano hoy?
@@ -112,6 +137,9 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
     const visible = typeof document !== 'undefined' && document.visibilityState === 'visible'
     if (!visible && gpsOk) bgRef.current.ok = true // recibió fix estando en 2º plano → permiso "siempre"
     if (hbFresco && hb.ultimaBg) bgRef.current.ok = true // capturó en background (callback nativo)
+    // Se deja constancia en disco: es lo único que sobrevive al reinicio diario de `bgRef` y a que
+    // se cierre la app, y es lo que le permite al aviso de "Permitir siempre" saber si hace falta.
+    if (bgRef.current.ok) marcarBgHoy(hoy)
     return {
       gps_ok: gpsOk,
       gps_desde: new Date(gpsDesdeRef.current.since).toISOString(),

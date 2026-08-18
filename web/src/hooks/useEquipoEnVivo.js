@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../services/supabase'
+import { useAuth } from '../context/AuthContext'
 import { useTenant, TODAS } from '../context/TenantContext'
 import { suscribirPosiciones, suscribirAlertas, estadoConexion } from '../services/sync/realtime'
 
@@ -46,6 +47,10 @@ const ROLES_RASTREADOS = ['vendedor', 'repartidor', 'encargado']
 export default function useEquipoEnVivo() {
   const { idEmpresaActiva } = useTenant()
   const idEmpresa = idEmpresaActiva
+  // Ver AuthContext: sube al salir de un arranque con el token vencido, y obliga a volver a pedir
+  // lo que se cayó con 401. Las dos consultas de abajo corren UNA sola vez al montar, así que sin
+  // esto un arranque degradado dejaba el mapa sin nombres y sin burbujas hasta cerrar sesión.
+  const { authEpoch } = useAuth()
   const [nombres, setNombres] = useState({}) // { [id_usuario]: nombre }
   const [fotos, setFotos] = useState({})     // { [id_usuario]: foto_url } para la burbuja del mapa
   const [roles, setRoles] = useState({})     // { [id_usuario]: rol }
@@ -60,7 +65,13 @@ export default function useEquipoEnVivo() {
     if (!idEmpresa) return // el perfil todavía no cargó: no disparar la query sin filtro
     let q = supabase.from('perfiles').select('id, nombre, foto_url, rol, activo')
     if (idEmpresa !== TODAS) q = q.eq('id_empresa', idEmpresa)
-    q.then(({ data }) => {
+    q.then(({ data, error }) => {
+      // 🩸 El error se MIRA (18/08/2026). Hasta hoy esto era `.then(({ data }) => …)` y descartaba
+      // `error`: un 401 por token vencido dejaba `data` en null, el mapa se quedaba sin nombres,
+      // sin plantel y sin burbujas, y **no había una sola línea en consola**. Fue lo que hizo que
+      // "no se ven las ubicaciones" tardara semanas en diagnosticarse. Mismo criterio que
+      // `useRecorridosDelDia`: los fallos tienen que ser ruidosos.
+      if (error) { console.error('[equipo] no se pudieron leer los perfiles', { idEmpresa, msg: error.message }, error); return }
       const nom = {}
       const fot = {}
       const rol = {}
@@ -76,7 +87,7 @@ export default function useEquipoEnVivo() {
       setRoles(rol)
       setPlantel(espera)
     })
-  }, [idEmpresa])
+  }, [idEmpresa, authEpoch])
 
   // Sembrar con la ÚLTIMA posición conocida de CADA móvil (sin corte de tiempo), vía el RPC
   // ultimas_posiciones (distinct on). Antes se cortaba a los últimos 15 min: al cerrar la app
@@ -110,7 +121,7 @@ export default function useEquipoEnVivo() {
       })
     }
     return () => { vivo = false }
-  }, [idEmpresa])
+  }, [idEmpresa, authEpoch])
 
   // Telemetría en vivo (Supabase Realtime): posición de los móviles + alertas GPS on/off.
   //

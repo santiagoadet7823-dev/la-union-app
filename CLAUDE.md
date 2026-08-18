@@ -708,7 +708,7 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. **1.14.8** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.14.8; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
+Hay varios números que conviven. **1.14.9** es OTA-solo (JS): `APP_VERSION` y el bundle van en 1.14.9; el APK sigue en 1.13.0 (agosto 2026). ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
 > cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
@@ -716,10 +716,10 @@ Hay varios números que conviven. **1.14.8** es OTA-solo (JS): `APP_VERSION` y e
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.14.8` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.14.9` | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.13.0` | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `32` | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.14.8` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.14.9` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.13.0` ✅ publicado (1.14.0 es OTA, no toca `min_version`) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

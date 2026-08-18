@@ -36,6 +36,10 @@ public class MainActivity extends BridgeActivity {
         // sumar una librería de PDF que obligaría a dibujar el informe una segunda vez. Ver
         // ImpresionPlugin. Mismo requisito: antes de super.onCreate().
         registerPlugin(ImpresionPlugin.class);
+        // Plugin local: VIDRIERA, lado celular. Levanta un hotspot local (sin salida a internet) y
+        // sirve el catálogo a la tablet del cliente, para que ella no consuma un solo byte de datos.
+        // Ver EnlaceLocalPlugin y ServidorLocal. Mismo requisito: antes de super.onCreate().
+        registerPlugin(EnlaceLocalPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

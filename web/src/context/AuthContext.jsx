@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
@@ -32,6 +32,23 @@ const borrarCacheSesion = () => persistence.set(SESSION_KEY, null)
  * de cerrar sesión es cuando más sirve que el login sepa quién sos. Se pisa sola con la próxima
  * cuenta que entre.
  */
+/**
+ * ¿El servidor RECHAZÓ el refresh token, o simplemente no se pudo preguntar?
+ *
+ * La diferencia decide si se conserva el espejo de sesión o se manda a iniciar sesión, así que
+ * equivocarse acá cuesta caro en las dos direcciones: de más, se expulsa a un vendedor que estaba
+ * sin señal; de menos, la app queda abierta con un token muerto haciendo consultas que devuelven
+ * vacío en silencio.
+ *
+ * Solo cuentan las respuestas donde el servidor dijo "este token no vale": **400, 401 y 403**. Un
+ * 5xx es Supabase con un mal momento y un `status` ausente es que no hubo respuesta (sin red,
+ * DNS, avión): los dos son transitorios y conservan el espejo.
+ */
+function esRechazoDelServidor(error) {
+  const s = error?.status
+  return s === 400 || s === 401 || s === 403
+}
+
 const ULTIMO_KEY = 'lu-ultimo-ingreso'
 const RECORDAR_KEY = 'lu-recordar-usuario'
 
@@ -89,6 +106,15 @@ export function AuthProvider({ children }) {
   const [perfilError, setPerfilError] = useState(false)
   const [authError, setAuthError] = useState(null) // error del login nativo
   const [authStatus, setAuthStatus] = useState(null) // diagnóstico en pantalla del login nativo
+  /**
+   * Contador que sube UNA vez: cuando la app arrancó con un token vencido y después consiguió uno
+   * bueno. Los hooks de LECTURA lo llevan en sus dependencias para volver a consultar lo que se
+   * les cayó con 401 en el arranque. No es un "refrescar cada tanto": sube solo saliendo de un
+   * arranque degradado. Ver el comentario largo de `restaurarDesdeEspejo`.
+   */
+  const [authEpoch, setAuthEpoch] = useState(0)
+  // El access_token con el que se abrió en modo degradado, o null si el arranque fue sano.
+  const tokenDegradadoRef = useRef(null)
 
   // Carga el perfil con timeout + reintentos, sin colgar la app: si la red está
   // lenta/cortada (ahorro de energía), no deja "Cargando…" para siempre.
@@ -130,8 +156,40 @@ export function AuthProvider({ children }) {
       const cached = await leerCacheSesion()
       if (!cached || !active) return null
       setSession(cached)
-      try { supabase.auth.setSession({ access_token: cached.access_token, refresh_token: cached.refresh_token }) } catch (_) {}
       cargarPerfil(cached.user?.id)
+      // 🩸 EL `await` NO ES COSMÉTICO (18/08/2026). Hasta hoy este `setSession` salía sin esperar y
+      // con el error tragado, así que el Gate dejaba pasar a la app con el token VENCIDO del
+      // espejo. Todas las pantallas montan y disparan sus consultas en ese instante — perfiles,
+      // `ultimas_posiciones`, los recorridos del día— y las tres se iban con ese token muerto:
+      // **401, y el mapa vacío**. Treinta segundos después supabase-js refrescaba solo y
+      // `onAuthStateChange` actualizaba la sesión… pero ningún hook depende de `session`, así que
+      // nada volvía a consultar y el mapa se quedaba vacío hasta cerrar sesión y volver a entrar.
+      // Ése era el "después de una actualización o de terminar la jornada no aparecen las
+      // ubicaciones": los dos casos son una REAPERTURA con el token ya vencido.
+      // Esperarlo hace que la app arranque con el token bueno cuando hay red.
+      tokenDegradadoRef.current = cached.access_token
+      try {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: cached.access_token, refresh_token: cached.refresh_token,
+        })
+        if (!error && data?.session?.access_token && data.session.access_token !== cached.access_token) {
+          tokenDegradadoRef.current = null
+          if (active) { escribirCacheSesion(data.session); setSession(data.session) }
+        } else if (error && esRechazoDelServidor(error)) {
+          // 🩸 Y ACÁ ESTÁ LA PARTE QUE HACÍA EL BUG INVISIBLE. Si el servidor CONTESTA que el
+          // refresh token ya no vale (400/401/403), la sesión está muerta y no hay nada que
+          // esperar: sin esto, la app seguía abierta con un token vencido y **las consultas salían
+          // como `anon`** — o sea que RLS devolvía CERO FILAS *sin un solo error*. El mapa quedaba
+          // vacío, sin cartel, sin nada en consola, indistinguible de un día sin recorridos.
+          // Reproducido el 18/08/2026 con el token vencido hacía 9,1 h: 0 marcadores, 0 trazos y
+          // `[recorridos] carga completa VACÍA`.
+          // El espejo se borra SOLO en este caso. Un fallo de red (o un 5xx de Supabase) sigue
+          // conservándolo: ése es todo el motivo por el que el espejo existe (auto-login offline).
+          await borrarCacheSesion()
+          if (active) { setSession(null); setPerfil(null) }
+          return null
+        }
+      } catch (_) { /* offline: se abre igual, en modo sin conexión (es el motivo del espejo) */ }
       return cached
     }
 
@@ -157,7 +215,22 @@ export function AuthProvider({ children }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       // Solo ESCRIBIR el espejo cuando hay sesión. NO borrarlo ante un `s` null: un refresh
       // fallido offline emite SIGNED_OUT y perderíamos el auto-login. El borrado va en signOut().
-      if (s) { escribirCacheSesion(s); recordarIngreso(s); setSession(s); cargarPerfil(s.user?.id) }
+      if (s) {
+        escribirCacheSesion(s); recordarIngreso(s); setSession(s); cargarPerfil(s.user?.id)
+        // La OTRA mitad del arreglo. Si la app arrancó con el token vencido y SIN red (el `await`
+        // de arriba no pudo renovarlo), las consultas del arranque ya fallaron con 401. Cuando la
+        // red vuelve, supabase-js refresca solo y cae acá: ese es el único momento en que se sabe
+        // que lo que falló ahora puede funcionar. `authEpoch` avisa a los hooks de lectura para
+        // que vuelvan a consultar.
+        //
+        // ⚠️ Se compara el TOKEN, no se cuenta el evento: `onAuthStateChange` dispara también al
+        // suscribirse y en cada refresco normal (~cada hora). Bumpear en todos recargaría la
+        // jornada entera —~200 KB por datos móviles— sin que nada estuviera roto.
+        if (tokenDegradadoRef.current && s.access_token !== tokenDegradadoRef.current) {
+          tokenDegradadoRef.current = null
+          setAuthEpoch((n) => n + 1)
+        }
+      }
       setLoading(false)
     })
 
@@ -359,6 +432,7 @@ export function AuthProvider({ children }) {
     hasSupabase,
     authError,
     authStatus,
+    authEpoch,
     signInWithGoogle,
     signInWithPassword,
     enviarEnlaceContrasena,

@@ -52,6 +52,31 @@
      va a seguir pidiendo confirmación, y de la segunda en adelante ya no. No es un bug del código —
      es cómo se gana el privilegio. Ver el comentario de `instalarConPackageInstaller`. -->
 <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
+<!-- ══ VIDRIERA: la tablet del cliente, emparejada por QR y SIN CONSUMIR DATOS (18/08/2026) ══
+     El celular del vendedor levanta un hotspot LOCAL (sin salida a internet) y le sirve el catálogo
+     a la tablet. El requisito es del cliente y es duro: la tablet no puede sumarle factura, y eso no
+     se cumple "usando poco" sino con un enlace que no tiene por dónde salir. Ver EnlaceLocalPlugin.
+
+     Los cuatro son permisos NORMALES (no de runtime): se declaran, no se piden. El único de runtime
+     que hace falta —ACCESS_FINE_LOCATION, que es lo que Android exige para crear la red— ya está
+     arriba y lo gobierna el GpsGate. -->
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+<uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+<!-- Android 13+ partió los permisos de WiFi cercano en uno propio. `neverForLocation` es una promesa
+     verificable: le dice al sistema que no derivamos ubicación de los resultados de WiFi, y sin eso
+     el permiso arrastraría el de ubicación aunque no lo necesitáramos para esto. -->
+<uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+    android:usesPermissionFlags="neverForLocation"
+    tools:targetApi="s" />
+<!-- La tablet escanea el QR del vendedor. Es de runtime y se pide en el momento, en la única
+     pantalla que lo usa. `uses-feature required=false`: los celulares del parque NO escanean —solo
+     muestran el QR— y marcarla obligatoria dejaría afuera a cualquier equipo sin cámara. -->
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-feature android:name="android.hardware.camera" android:required="false" />
+<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <application
         android:name=".LaUnionApp"
         android:allowBackup="true"
