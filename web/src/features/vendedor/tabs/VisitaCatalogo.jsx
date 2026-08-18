@@ -5,7 +5,8 @@ import { Search } from '../../../components/icons'
 import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
 import EspejoTablet from '../../vidriera/EspejoTablet'
-import { disponible as vidrieraDisponible } from '../../../services/vidriera'
+import AvisoVidriera from '../../vidriera/AvisoVidriera'
+import { useVidriera } from '../../vidriera/useVidriera'
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
 // vendedor: ve el color, NUNCA el número. Sin nivel → borde neutro. Ver index.css (--rent-*).
@@ -17,8 +18,11 @@ const rentColor = (nivel) => (nivel >= 1 && nivel <= 4 ? `var(--rent-${nivel})` 
  * renglones, precio, unidades y marco de color por rentabilidad), y la barra de carrito.
  */
 export default function VisitaCatalogo({ j }) {
-  // Vidriera: el QR que la tablet del cliente escanea. Solo en la APK con los plugins nativos.
-  const [vidriera, setVidriera] = useState(false)
+  // 🩸 LA SESIÓN DE VIDRIERA VIVE ACÁ, no en la ventana del QR (19/08/2026). Cerrar esa ventana ya
+  // no desconecta la tablet: el vendedor vuelve a su catálogo, ve el cartel de lo que el cliente
+  // toca y el enlace sigue vivo hasta que aprieta "Cerrar vidriera" o termina la visita.
+  const [verQr, setVerQr] = useState(false)
+  const vid = useVidriera({ productos: PRODUCTS, comercio: visitC })
   const [verCarrito, setVerCarrito] = useState(false)
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
   const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
@@ -56,11 +60,24 @@ export default function VisitaCatalogo({ j }) {
                   visita en curso porque el gesto es: hago check-in, le paso la tablet, tomo el
                   pedido. Fuera de una visita no tiene sentido: el cartel del celular no sabría de
                   qué comercio es el pedido. */}
-              {vidrieraDisponible() && (
-                <button onClick={() => setVidriera(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:12px;font-size:12px;font-weight:600;color:var(--deep);cursor:pointer;background:var(--primary-tint)')}>Vidriera</button>
+              {vid.disponible && (
+                <button
+                  onClick={() => { setVerQr(true); if (!vid.activa) vid.abrir() }}
+                  style={{
+                    ...sx('min-height:38px;padding:0 12px;display:flex;align-items:center;gap:6px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer'),
+                    border: `1px solid ${vid.activa ? 'var(--success)' : 'var(--primary)'}`,
+                    background: vid.activa ? 'var(--success-tint)' : 'var(--primary-tint)',
+                    color: 'var(--deep)',
+                  }}
+                >
+                  {/* El punto verde late mientras el enlace está vivo: es la única señal de que la
+                      tablet sigue conectada una vez que la ventana del QR se cerró. */}
+                  {vid.activa && <span style={sx('width:7px;height:7px;border-radius:99px;background:var(--success);animation:lu-blink 1.6s infinite')} />}
+                  Vidriera
+                </button>
               )}
               <button onClick={() => setSheet(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--warning);cursor:pointer;background:transparent')}>Sin pedido</button>
-              <button onClick={cancelVisit} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
+              <button onClick={() => { vid.cerrar(); cancelVisit() }} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -191,18 +208,33 @@ export default function VisitaCatalogo({ j }) {
           onConfirmar={() => {
             const total = cartTotal
             setVerCarrito(false)
+            vid.cerrar()
             endVisit('visitado', { monto: total })
             showToast(`Pedido confirmado · ${fmtPesos(total)}`)
           }}
         />
       )}
 
-      {vidriera && (
+      {/* El cartel de lo que el cliente mira: va SIEMPRE que haya sesión, esté abierta o no la
+          ventana del QR. Ése es el punto de haber mudado la sesión un nivel arriba. */}
+      <AvisoVidriera
+        aviso={vid.aviso}
+        comercio={visitC}
+        onSumar={(p, n = 1) => {
+          addCart(p.id, n)
+          vid.descartarAviso()
+          showToast(`${n > 1 ? n + ' × ' : ''}${p.name} sumado al pedido`)
+        }}
+        onDescartar={vid.descartarAviso}
+      />
+
+      {verQr && (
         <EspejoTablet
-          productos={PRODUCTS}
-          comercio={visitC}
-          onSumar={(p, n = 1) => { addCart(p.id, n); showToast(`${n > 1 ? n + ' × ' : ''}${p.name} sumado al pedido`) }}
-          onCerrar={() => setVidriera(false)}
+          red={vid.red}
+          error={vid.error}
+          abriendo={vid.abriendo}
+          onCerrarVentana={() => setVerQr(false)}
+          onCerrarVidriera={() => { vid.cerrar(); setVerQr(false); showToast('Vidriera cerrada') }}
         />
       )}
 
@@ -226,7 +258,7 @@ export default function VisitaCatalogo({ j }) {
           </div>
           {visitC ? (
             <button
-              onClick={() => { const total = cartTotal; endVisit('visitado', { monto: total }); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
+              onClick={() => { const total = cartTotal; vid.cerrar(); endVisit('visitado', { monto: total }); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
               style={sx('width:100%;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;border:none')}
             >Confirmar pedido y finalizar visita</button>
           ) : (

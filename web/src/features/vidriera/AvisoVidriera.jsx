@@ -1,0 +1,62 @@
+import { sx } from '../../lib/sx'
+import { fmtPesos } from '../../lib/format'
+import { btnPrimario, btnSecundario } from '../../lib/botones'
+
+/**
+ * EL CARTEL DE "EL CLIENTE ESTÁ MIRANDO ESTO", flotando sobre lo que el vendedor tenga abierto.
+ *
+ * 🩸 Salió de dentro de la hoja del QR el 19/08/2026. Ahí solo se veía con esa ventana abierta, y el
+ * vendedor la cierra todo el tiempo —para buscar en su catálogo, para revisar el pedido, para
+ * hablar—: o sea que el aviso aparecía justo cuando no lo estaba mirando. Ahora vive al nivel de la
+ * pantalla de la visita y se ve siempre.
+ *
+ * 🩸 El toque del cliente NO entra solo al carrito. El pedido es del vendedor, y su cliente puede
+ * estar señalando para preguntar un precio, no para comprar. Por eso hay un botón.
+ *
+ * ⚠️ `pointerEvents:'none'` en el contenedor y `'auto'` solo en la tarjeta (regla 30): esto es un
+ * flotante con `left`/`right` fijos y se tragaría los toques de la grilla en toda esa franja.
+ */
+export default function AvisoVidriera({ aviso, comercio, onSumar, onDescartar }) {
+  if (!aviso) return null
+  const precio = aviso.oferta && aviso.precioOferta != null ? aviso.precioOferta : aviso.price
+  const n = aviso._cant || 1
+
+  return (
+    <div style={sx('position:absolute;left:12px;right:12px;bottom:150px;z-index:6;pointer-events:none;display:flex;justify-content:center')}>
+      <div className="lu-rise" style={{
+        ...sx('width:100%;padding:12px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow-lg)'),
+        border: '1.5px solid var(--primary)',
+        pointerEvents: 'auto',
+      }}>
+        <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px')}>
+          <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)')}>
+            El cliente está mirando{comercio?.name ? ` · ${comercio.name}` : ''}
+          </div>
+          <button onClick={onDescartar} aria-label="Descartar"
+            style={sx('width:26px;height:26px;flex:none;display:grid;place-items:center;border:none;background:transparent;color:var(--faint);font-size:18px;cursor:pointer')}>×</button>
+        </div>
+
+        <div style={sx('display:flex;align-items:center;gap:11px')}>
+          {aviso.imagen
+            ? <img src={aviso.imagen} alt="" style={sx('width:52px;height:52px;flex:none;border-radius:12px;object-fit:cover;background:var(--surface2)')} />
+            : <div style={sx('width:52px;height:52px;flex:none;border-radius:12px;background:var(--surface2)')} />}
+          <div style={sx('flex:1;min-width:0')}>
+            <div style={{ ...sx('font-size:13px;font-weight:500;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{aviso.name}</div>
+            <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--deep);margin-top:2px')}>
+              {n > 1 && <span style={sx('color:var(--muted);font-weight:600')}>{n} × </span>}
+              {fmtPesos(precio)}
+              {n > 1 && <span style={sx('color:var(--muted);font-weight:600')}> = {fmtPesos(n * precio)}</span>}
+            </div>
+          </div>
+        </div>
+
+        <div style={sx('display:flex;gap:8px;margin-top:11px')}>
+          <button className="lu-press" onClick={() => onSumar(aviso, n)} style={{ ...btnPrimario, flex: 1, minHeight: 44 }}>
+            Sumar {n > 1 ? `${n} al carrito` : 'al carrito'}
+          </button>
+          <button className="lu-press" onClick={onDescartar} style={{ ...btnSecundario, minHeight: 44, padding: '0 16px' }}>Después</button>
+        </div>
+      </div>
+    </div>
+  )
+}

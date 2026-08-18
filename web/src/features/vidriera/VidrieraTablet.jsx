@@ -39,6 +39,20 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
    * la tarjeta no dice "agregado" sino "se lo mostramos".
    */
   const [cant, setCant] = useState({}) // { [id]: n }
+  /**
+   * 🩸 BUSCADOR Y FILTROS (19/08/2026, pedido del cliente con la vidriera ya en uso). Son 529
+   * productos en una grilla: sin filtrar, encontrar algo puntual es scrollear delante del cliente.
+   * El catálogo del vendedor ya tenía buscador por el mismo motivo — acá se copia el CRITERIO, no
+   * el código: mismos campos (nombre y marca) para que buscar lo mismo dé lo mismo en las dos
+   * pantallas.
+   *
+   * `eje` alterna qué muestran los chips: hay ~10 categorías y 28 marcas, y dos filas de chips
+   * sobre una tablet de 800 px se comen el espacio que necesita la grilla, que es de lo que se
+   * trata la pantalla.
+   */
+  const [busca, setBusca] = useState('')
+  const [eje, setEje] = useState('categoria') // 'categoria' | 'marca'
+  const [filtro, setFiltro] = useState('Todos')
   const vivo = useRef(true)
   const pedidas = useRef(new Set())
   // Lo prende el botón "Actualizar fotos": vuelve a pedirlas aunque el archivo esté.
@@ -49,15 +63,36 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
 
   // Ordenados como decidió el celular. Los que no estén en `orden` van al final, por si el snapshot
   // y la lista quedan desalineados: mejor mostrarlos que perderlos.
-  const lista = (() => {
+  const ordenados = (() => {
     const pos = new Map(orden.map((id, i) => [id, i]))
     return productos.slice().sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9))
   })()
 
-  // Bajar las fotos de a poco, en el orden en que se van a ver.
+  // Los valores del eje activo, en el orden en que aparecen (o sea: lo más destacado primero).
+  const valores = [...new Set(ordenados.map((p) => (eje === 'marca' ? p.marca : p.categoria)).filter(Boolean))]
+  const hayOfertas = ordenados.some((p) => p.oferta)
+  const chips = ['Todos', ...(hayOfertas ? ['Ofertas'] : []), ...valores]
+
+  const q = busca.trim().toLowerCase()
+  const lista = ordenados.filter((p) => {
+    if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.marca || '').toLowerCase().includes(q)) return false
+    if (filtro === 'Ofertas') return p.oferta
+    if (filtro !== 'Todos' && (eje === 'marca' ? p.marca : p.categoria) !== filtro) return false
+    return true
+  })
+
+  /**
+   * Bajar las fotos de a poco, en el orden en que se van a ver.
+   *
+   * ⚠️ Va sobre `ordenados` (el catálogo COMPLETO) y no sobre `lista` (lo filtrado). Con el buscador
+   * puesto, `lista` son cuatro productos: si el efecto mirara eso, las fotos se bajarían solo de lo
+   * que está buscando en ese momento y al limpiar el filtro la grilla quedaría gris. Y como `lista`
+   * cambia con cada tecla, tampoco puede estar en las dependencias — se re-dispararía la descarga
+   * entera mientras el cliente escribe.
+   */
   useEffect(() => {
     let cancelado = false
-    const conFoto = lista.filter((p) => p.foto && !pedidas.current.has(p.id))
+    const conFoto = ordenados.filter((p) => p.foto && !pedidas.current.has(p.id))
     const obrero = async () => {
       while (!cancelado && conFoto.length) {
         const p = conFoto.shift()
@@ -111,7 +146,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
           </div>
         </div>
         <div style={sx('display:flex;align-items:center;gap:14px')}>
-          <div style={sx('font-family:var(--font-mono);font-size:12px;color:var(--faint)')}>{lista.length} productos</div>
+          <div style={sx('font-family:var(--font-mono);font-size:12px;color:var(--faint)')}>
+            {lista.length === ordenados.length ? `${lista.length} productos` : `${lista.length} de ${ordenados.length}`}
+          </div>
           <button onClick={actualizarFotos} className="lu-press" title="Volver a bajar las fotos"
             style={sx('min-height:40px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer')}>
             Actualizar fotos
@@ -125,9 +162,64 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         </div>
       </div>
 
+      {/* Buscar y filtrar. Campos y toques grandes: esto lo usa un comerciante de pie. */}
+      {ordenados.length > 0 && (
+        <div style={sx('flex:none;padding:12px 14px 8px;display:flex;flex-direction:column;gap:9px;background:var(--surface);border-bottom:1px solid var(--line)')}>
+          <div style={sx('display:flex;gap:9px;align-items:center')}>
+            <div className="lu-campo" style={sx('flex:1;display:flex;align-items:center;gap:9px;background:var(--bg-app);border:1px solid var(--line2);border-radius:var(--r-md);padding:0 14px;height:50px')}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar producto o marca…"
+                style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:15px;color:var(--text)')}
+              />
+              {busca && (
+                <button onClick={() => setBusca('')} className="lu-press"
+                  style={sx('width:32px;height:32px;flex:none;display:grid;place-items:center;border:none;background:transparent;color:var(--faint);font-size:19px;cursor:pointer')}>×</button>
+              )}
+            </div>
+            {/* Qué eje filtran los chips. Cambiarlo resetea el filtro: un valor de marca no existe
+                entre las categorías, y dejarlo puesto mostraría la grilla vacía sin motivo visible. */}
+            <div style={sx('flex:none;display:flex;border:1px solid var(--line2);border-radius:var(--r-md);overflow:hidden')}>
+              {[['categoria', 'Categorías'], ['marca', 'Marcas']].map(([k, etiqueta]) => (
+                <button key={k} onClick={() => { setEje(k); setFiltro('Todos') }} className="lu-press"
+                  style={{
+                    ...sx('height:50px;padding:0 15px;border:none;font-size:13px;font-weight:600;cursor:pointer'),
+                    background: eje === k ? 'var(--primary-tint)' : 'transparent',
+                    color: eje === k ? 'var(--deep)' : 'var(--muted)',
+                  }}>
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="lu-chips" style={sx('display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;-ms-overflow-style:none')}>
+            {chips.map((c) => {
+              const on = filtro === c
+              const esOferta = c === 'Ofertas'
+              return (
+                <button key={c} onClick={() => setFiltro(c)} className="lu-press"
+                  style={{
+                    ...sx('flex:none;min-height:40px;padding:0 16px;border-radius:99px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap'),
+                    border: `1px solid ${on ? 'var(--primary)' : 'var(--line2)'}`,
+                    background: on ? 'var(--primary-tint)' : 'transparent',
+                    color: on ? 'var(--deep)' : (esOferta ? 'var(--warning)' : 'var(--muted)'),
+                  }}>
+                  {esOferta ? '★ Ofertas' : c}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {!lista.length ? (
-        <div style={sx('flex:1;display:grid;place-items:center;padding:40px;text-align:center;color:var(--muted);font-size:14px')}>
-          El vendedor todavía no tiene productos cargados en su catálogo.
+        <div style={sx('flex:1;display:grid;place-items:center;padding:40px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5')}>
+          {ordenados.length
+            ? <span>No hay productos que coincidan.<br />Probá con otra palabra o tocá <b>Todos</b>.</span>
+            : 'El vendedor todavía no tiene productos cargados en su catálogo.'}
         </div>
       ) : (
         <div style={sx('flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;align-content:start')}>
