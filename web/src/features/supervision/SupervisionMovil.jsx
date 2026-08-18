@@ -25,6 +25,7 @@ import Overlay from '../../components/Overlay'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
+import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa, { RAIL_W } from './components/RailMapa'
 import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
@@ -222,11 +223,37 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     setSeguirId((s) => (s && id && s !== id ? null : s))
   }, [])
 
+  /**
+   * Ir a una parada (click en `BurbujasParadas`): abre su cartel en el mapa y vuela hasta ella.
+   *
+   * 🩸 SIEMPRE selecciona y SIEMPRE vuela — sin toggle. La alternativa (que tocar la abierta la
+   * cierre) deja el gesto ambiguo: la burbuja dice "tocar para ir", y que a veces vaya y a veces
+   * cierre es justo lo que hace que uno no sepa qué esperar. El cartel se cierra tocándolo en el
+   * mapa, que es lo que `onDwellClick` ya hace.
+   *
+   * El `nonce` nuevo en cada toque es lo que permite volver a la MISMA parada dos veces (regla 41).
+   *
+   * Y suelta el seguimiento en vivo por el mismo motivo que `enfocarUsuario`: el seguimiento mueve
+   * la cámara en cada frame desde adentro de la animación del pin, así que cancelaría el vuelo
+   * antes de que llegue.
+   */
+  const irAParada = useCallback((i, d) => {
+    setDwellSel(i)
+    setSeguirId(null)
+    setFoco((f) => ({ id: f?.id || d.id, nonce: Date.now(), points: [{ lat: d.lat, lng: d.lng }] }))
+  }, [])
+
   // Puntos a encuadrar para el usuario enfocado: su recorrido (byUser) o, si no tiene, su
   // último punto en vivo (movers). El toast de "sin recorrido" se dispara en un efecto aparte
   // para no correr efectos secundarios dentro del render.
   const focusData = useMemo(() => {
     if (!foco) return null
+    // 🩸 Puntos EXPLÍCITOS: es el camino de "ir a esta parada" (`BurbujasParadas`). Va primero
+    // porque para una parada no hay que encuadrar el recorrido entero sino volar a un punto —
+    // `LeafletMap` ya distingue el caso de un solo punto y hace `flyTo` con zoom mínimo 16.
+    // Sin esto habría que duplicar el efecto de cámara acá afuera, y `focus` existe justo para
+    // que la cámara la maneje un solo lugar (regla 41: el enganche es un EVENTO, no una coordenada).
+    if (foco.points) return { points: foco.points, nonce: foco.nonce }
     const pts = byUser[foco.id]?.points
     if (pts && pts.length) return { points: pts, nonce: foco.nonce }
     const mv = movers[foco.id]
@@ -699,6 +726,20 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             byUser={byUser}
             focoId={foco?.id || null}
             onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
+            style={{ alignSelf: 'stretch' }}
+          />
+        )}
+
+        {/* PARADAS DE LA PERSONA TOCADA (18/08/2026). Va DEBAJO de las burbujas de equipo y con la
+            misma condición de inmersivo: es la continuación natural del gesto —toco a alguien, veo
+            sus paradas, toco una y voy—. Se dibuja sola si hay foco (el componente devuelve null si
+            no), así que no hace falta una condición más acá. */}
+        {inmersivo && (
+          <BurbujasParadas
+            dwells={dwells}
+            focoId={foco?.id || null}
+            sel={dwellSel}
+            onIr={irAParada}
             style={{ alignSelf: 'stretch' }}
           />
         )}

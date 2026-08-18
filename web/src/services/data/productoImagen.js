@@ -140,6 +140,25 @@ export function subirImagenProducto(idEmpresa, productoId, file) {
   return subir('productos', `${idEmpresa}/${productoId}`, file)
 }
 
+/** El bucket donde viven las fotos de producto. Lo necesita la cola de escrituras para borrarlas. */
+export const BUCKET_PRODUCTOS = 'productos'
+
+/**
+ * Todas las rutas que PODRÍA tener la foto de un producto, una por extensión.
+ *
+ * 🩸 Son las cuatro y no una: el path incluye la extensión (`carpeta.ext`) y a lo largo del tiempo
+ * la misma foto pudo quedar en `.webp` (lo normal), en `.jpg` (WebView que no encodea webp) o en
+ * `.jpeg`/`.png` (importaciones viejas). `subir()` ya limpia las otras variantes al reemplazar una
+ * foto, por este mismo motivo; al BORRAR el producto hay que barrer las cuatro igual, porque nadie
+ * sabe con cuál quedó.
+ *
+ * Borrar una ruta que no existe no es error en la API de Storage, así que pedir las cuatro es
+ * gratis y no puede fallar por las que no están.
+ */
+export function rutasImagenProducto(idEmpresa, productoId) {
+  return EXTS_IMG.map((e) => `${idEmpresa}/${productoId}.${e}`)
+}
+
 /** Avatar de perfil → bucket 'avatares', un objeto por usuario. */
 export function subirAvatar(userId, file) {
   return subir('avatares', `${userId}`, file)

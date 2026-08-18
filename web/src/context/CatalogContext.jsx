@@ -6,6 +6,7 @@ import { uid } from '../lib/uid'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
 import { startPosQueue } from '../services/sync/queue'
 import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo } from '../services/data/catalogo'
+import { BUCKET_PRODUCTOS, rutasImagenProducto } from '../services/data/productoImagen'
 
 /**
  * Catálogo real desde Supabase (clientes + productos), aislado por empresa vía
@@ -203,13 +204,31 @@ export function CatalogProvider({ children }) {
     return { ok: true }
   }, [])
 
-  /** Baja de producto (ABM admin). Offline-first; el DELETE es idempotente al reintentar. */
+  /**
+   * Baja de producto (ABM admin). Offline-first; el DELETE es idempotente al reintentar.
+   *
+   * 🩸 Y SE LLEVA LA FOTO (18/08/2026). Hasta hoy esto borraba la fila y dejaba la imagen en
+   * Storage para siempre: medido, **626 fotos huérfanas (13 MB) contra 0 productos**. Nadie se
+   * entera nunca, porque una foto sin producto no se muestra en ningún lado — solo se paga.
+   *
+   * Las dos operaciones van por la MISMA cola y en este orden, que importa: si se borrara la foto
+   * primero y la fila fallara, quedaría un producto visible con la imagen rota. Al revés, lo peor
+   * que puede pasar es lo que ya pasaba (una huérfana), y encima se reintenta.
+   *
+   * ⚠️ `idEmpresa` es el de la IDENTIDAD (`useAuth`), no el scope activo — regla 32. La ruta de la
+   * foto se armó con ese mismo valor al subirla, así que tienen que coincidir o el borrado apunta
+   * a una carpeta que no es.
+   */
   const deleteProducto = useCallback(async (id) => {
     setProductos((prev) => prev.filter((p) => p.id !== id))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'delete', id })
+    await enqueueMutacion({
+      op_uid: uid(), op: 'borrarArchivos',
+      bucket: BUCKET_PRODUCTOS, paths: rutasImagenProducto(idEmpresa, id),
+    })
     flushMutaciones()
     return { ok: true }
-  }, [])
+  }, [idEmpresa])
 
   /** Edición parcial de cliente (ficha admin). patch en columnas de DB. Offline-first. */
   const updateCliente = useCallback(async (id, patch) => {

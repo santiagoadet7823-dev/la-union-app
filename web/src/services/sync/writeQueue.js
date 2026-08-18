@@ -8,11 +8,12 @@ import { persistence } from '../persistence'
  * la conexión. Usa el puerto `persistence` (async), así en la APK puede pasar a
  * SQLite sin tocar este archivo.
  *
- * Cada mutación: { op_uid, table, op:'insert'|'update'|'updateMany'|'delete', payload, id?, ids? }.
+ * Cada mutación: { op_uid, table, op:'insert'|'update'|'updateMany'|'delete'|'borrarArchivos', payload, id?, ids? }.
  * - insert:     upsert(onConflict:'id', ignoreDuplicates) → reintentar no duplica.
  * - update:     update(payload).eq('id', id).
  * - updateMany: update(payload).in('id', ids) → UNA entrada para N filas.
  * - delete:     delete().eq('id', id) → reintentar es idempotente (borrar lo ya borrado no falla).
+ * - borrarArchivos: Storage, no tabla. `{ bucket, paths[] }` → remove(paths).
  * El id de las filas nuevas lo genera el cliente (uuid), así la fila optimista y la
  * de la base comparten el mismo id.
  *
@@ -66,6 +67,24 @@ export async function flushMutaciones() {
         }
       } else if (m.op === 'delete') {
         ({ error } = await supabase.from(m.table).delete().eq('id', m.id))
+      } else if (m.op === 'borrarArchivos') {
+        /* 🩸 LA FOTO NO SE BORRABA NUNCA (18/08/2026). `deleteProducto` encolaba el DELETE de la
+         * fila y no tocaba Storage, así que cada producto eliminado dejaba su imagen para siempre.
+         * Medido el 18/08: **626 fotos huérfanas (13 MB) contra 0 productos**.
+         *
+         * Va por la cola y no por un `await` suelto en el contexto porque las mutaciones de
+         * catálogo van SIEMPRE por acá (es regla del repo): si se borra un producto sin red, el
+         * DELETE de la fila se encola y la foto tiene que seguir el mismo camino. Si no, la fila
+         * se va al reconectar y el archivo queda huérfano igual — el bug, con más pasos.
+         *
+         * ⚠️ IDEMPOTENTE Y SIN TAPONAR: `remove()` sobre algo que ya no está **no es error** en la
+         * API de Storage, así que un reintento pasa limpio. Y un fallo de PERMISO tampoco puede
+         * frenar la cola: sería un archivo perdido bloqueando altas y ediciones de catálogo detrás
+         * suyo, que es mucho peor que la foto que quedó. Por eso el error se anota y NO se propaga
+         * (la cola corta al primer `error` no nulo, ver el `if (error) break` de abajo).
+         */
+        const { error: eStorage } = await supabase.storage.from(m.bucket).remove(m.paths || [])
+        if (eStorage) console.warn('[writeQueue] no se pudo borrar el archivo', m.paths, eStorage.message)
       } else {
         // Op desconocida. Se descarta igual (si no, tapona la cola para siempre), pero se GRITA:
         // el caso real es un APK que revierte a un bundle OTA anterior y se encuentra con

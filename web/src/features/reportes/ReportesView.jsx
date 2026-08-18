@@ -51,6 +51,7 @@ export default function ReportesView({
   const [sel, setSel] = useState(null)          // id de la persona abierta, o null = equipo
   const [paradaSel, setParadaSel] = useState(null)
   const [horarios, setHorarios] = useState({})
+  const [errorExport, setErrorExport] = useState(null)
 
   // 🚨 ALCANCE POR EMPRESA (regla 11 / 32). El informe NO filtra por su cuenta y no debe hacerlo:
   // sus datos llegan por `byUser` (useRecorridosDelDia, que aplica `.eq('id_empresa', …)`) y por
@@ -111,14 +112,69 @@ export default function ReportesView({
   // se arregló el selector— está en `exportarInforme.js`.
   useEffect(() => montarImpresionInforme(), [])
 
+  /**
+   * 🩸 EXPORTAR NO PUEDE FALLAR EN SILENCIO (18/08/2026).
+   *
+   * Hasta hoy los dos botones llamaban a una función `async` **sin `catch`**: cualquier excepción
+   * —el `import('xlsx')` que no baja, `Filesystem.writeFile` sin espacio, el plugin de impresión
+   * que no está en un APK viejo— terminaba en una promesa rechazada que nadie miraba. Para el que
+   * lo usa eso es "apreté y no pasó nada", y desde afuera es indistinguible de "salió un archivo
+   * vacío": las dos veces que se reportó este bug se perdió la sesión entera en averiguar cuál de
+   * las dos era.
+   *
+   * El cartel no reemplaza al arreglo de la causa; es lo que permite ENCONTRARLA, y se queda
+   * después, porque estas dos funciones dependen de cosas que están fuera de la app (una descarga
+   * dinámica, el filesystem del teléfono, la hoja de compartir del sistema).
+   */
+  const exportar = async (que, fn) => {
+    setErrorExport(null)
+    /* 🩸 UN INFORME VACÍO NO SE EXPORTA (18/08/2026), y esto es la mitad del bug reportado.
+     *
+     * Reportado como "Excel y PDF entregan documentos en blanco", en los dos canales. Medido: con
+     * datos, la planilla del 17/08 pesa **73.786 bytes** y sale perfecta; sin datos pesa **17.509**
+     * y es un .xlsx **válido con las tres hojas vacías** — o sea, se abre en blanco. Lo mismo el
+     * PDF: imprimir una tabla sin filas da una hoja en blanco.
+     *
+     * Y es fácil caer ahí sin darse cuenta: el informe abre en el día de HOY, así que a la mañana
+     * temprano —o un domingo, como el 16/08, que tuvo 3 puntos en total— está legítimamente vacío.
+     * El archivo que sale no está roto: no hay nada adentro porque no hubo jornada.
+     *
+     * Entonces se dice, en vez de entregar un archivo que parece un error. Es lo que separa "la
+     * exportación falla" de "ese día no trabajó nadie", que son dos problemas MUY distintos y que
+     * hasta hoy se veían idénticos desde afuera.
+     */
+    if (!informe.porUsuario.length) {
+      setErrorExport(`No hay datos para el ${fecha}: no se exporta un informe vacío. Probá con otro día.`)
+      return
+    }
+    try {
+      await fn()
+    } catch (e) {
+      console.error(`[informe] falló ${que}`, e)
+      setErrorExport(`No se pudo generar ${que}. ${e?.message || e}`)
+    }
+  }
+
   return (
     <div id="lu-informe" style={sx('padding:14px 14px 28px;max-width:900px;margin:0 auto;display:grid;gap:14px')}>
       <Controles
         fecha={fecha}
         onFecha={onFecha}
-        onExcel={() => exportarExcel(informe, nombres)}
-        onPdf={() => imprimirInforme()}
+        onExcel={() => exportar('la planilla', () => exportarExcel(informe, nombres))}
+        onPdf={() => exportar('el PDF', () => imprimirInforme())}
       />
+
+      {/* `lu-no-print`: el error es de la app, no del informe — no tiene por qué salir impreso. */}
+      {errorExport && (
+        <div
+          className="lu-no-print"
+          onClick={() => setErrorExport(null)}
+          title="Tocar para cerrar"
+          style={sx('background:var(--danger-tint);border:1px solid var(--danger);color:var(--danger);border-radius:var(--r-md);padding:10px 13px;font-size:var(--fs-xs);line-height:1.5;cursor:pointer')}
+        >
+          {errorExport}
+        </div>
+      )}
 
       {multiEmpresa && (
         <div style={sx('background:var(--surface2);border:1px dashed var(--line2);border-radius:var(--r-md);padding:11px 13px;font-size:var(--fs-xs);color:var(--muted);line-height:1.55')}>

@@ -22,6 +22,7 @@ import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
+import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
 import { APP_VERSION } from '../../version'
@@ -185,8 +186,24 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     enfocarUsuario(a.id_usuario)
   }, [enfocarUsuario])
 
+  /**
+   * Ir a una parada (click en `BurbujasParadas`). Espejo exacto del de SupervisionMovil: abre su
+   * cartel, suelta el seguimiento —que si no cancela el vuelo— y vuela con un `nonce` nuevo, que es
+   * lo que permite volver dos veces a la misma parada (regla 41).
+   *
+   * ⚠️ Los dos tienen que hacer LO MISMO. Es el caso que la regla 31 viene señalando: los carteles
+   * de parada existieron solo en Movil durante versiones enteras porque acá quedó sin portar.
+   */
+  const irAParada = useCallback((i, d) => {
+    setDwellSel(i)
+    setSeguirId(null)
+    setFoco((f) => ({ id: f?.id || d.id, nonce: Date.now(), points: [{ lat: d.lat, lng: d.lng }] }))
+  }, [])
+
   const focusData = useMemo(() => {
     if (!foco) return null
+    // Puntos EXPLÍCITOS: el camino de "ir a esta parada". Ver el comentario en SupervisionMovil.
+    if (foco.points) return { points: foco.points, nonce: foco.nonce }
     const pts = byUser[foco.id]?.points
     if (pts && pts.length) return { points: pts, nonce: foco.nonce }
     const mv = movers[foco.id]
@@ -645,6 +662,18 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         focoId={foco?.id || null}
                         onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
                         style={{ position: 'absolute', left: 16, right: 76, bottom: 16, zIndex: 'var(--z-chrome)' }}
+                      />
+                    )}
+                    {/* Paradas de la persona tocada. Va ARRIBA de la tira de equipo (bottom mayor)
+                        porque es la continuación del gesto: primero elegís a quién, después a dónde.
+                        El componente devuelve null sin foco, así que no hace falta otra condición. */}
+                    {inmersivo && (
+                      <BurbujasParadas
+                        dwells={dwells}
+                        focoId={foco?.id || null}
+                        sel={dwellSel}
+                        onIr={irAParada}
+                        style={{ position: 'absolute', left: 16, right: 76, bottom: 74, zIndex: 'var(--z-chrome)' }}
                       />
                     )}
                   </div>
