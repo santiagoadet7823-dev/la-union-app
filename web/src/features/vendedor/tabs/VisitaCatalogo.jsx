@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Search } from '../../../components/icons'
 import { card } from '../ui'
+import EspejoTablet from '../../vidriera/EspejoTablet'
+import { disponible as vidrieraDisponible } from '../../../services/vidriera'
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
 // vendedor: ve el color, NUNCA el número. Sin nivel → borde neutro. Ver index.css (--rent-*).
@@ -13,6 +16,8 @@ const rentColor = (nivel) => (nivel >= 1 && nivel <= 4 ? `var(--rent-${nivel})` 
  * renglones, precio, unidades y marco de color por rentabilidad), y la barra de carrito.
  */
 export default function VisitaCatalogo({ j }) {
+  // Vidriera: el QR que la tablet del cliente escanea. Solo en la APK con los plugins nativos.
+  const [vidriera, setVidriera] = useState(false)
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
   const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
 
@@ -45,6 +50,13 @@ export default function VisitaCatalogo({ j }) {
               <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{visitC.codigo || ''} · {visitC.loc || ''}</div>
             </div>
             <div style={sx('display:flex;gap:6px')}>
+              {/* VIDRIERA — abre el QR para emparejar la tablet del cliente. Va en el header de la
+                  visita en curso porque el gesto es: hago check-in, le paso la tablet, tomo el
+                  pedido. Fuera de una visita no tiene sentido: el cartel del celular no sabría de
+                  qué comercio es el pedido. */}
+              {vidrieraDisponible() && (
+                <button onClick={() => setVidriera(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:12px;font-size:12px;font-weight:600;color:var(--deep);cursor:pointer;background:var(--primary-tint)')}>Vidriera</button>
+              )}
               <button onClick={() => setSheet(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--warning);cursor:pointer;background:transparent')}>Sin pedido</button>
               <button onClick={cancelVisit} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
             </div>
@@ -168,6 +180,15 @@ export default function VisitaCatalogo({ j }) {
           </div>
         )}
       </div>
+
+      {vidriera && (
+        <EspejoTablet
+          productos={PRODUCTS}
+          comercio={visitC}
+          onSumar={(p) => { addCart(p.id, 1); showToast(`${p.name} sumado al pedido`) }}
+          onCerrar={() => setVidriera(false)}
+        />
+      )}
 
       {cartCount > 0 && (
         <div style={sx('position:absolute;left:12px;right:12px;bottom:80px;background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow-lg);padding:12px 14px;z-index:5')}>

@@ -13,8 +13,8 @@ android {
         applicationId "com.launion.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 32
-        versionName "1.13.0"
+        versionCode 33
+        versionName "1.15.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -84,6 +84,15 @@ dependencies {
     // ZXing: generación del QR de invitación en NATIVO (QrPlugin), para no sumar una librería JS
     // al bundle. Solo el encoder core (sin la UI de escaneo de zxing-android-embedded).
     implementation "com.google.zxing:core:3.5.3"
+
+    // CameraX para el escáner de QR de la tablet (EscanerQrActivity). El DECODIFICADOR ya está
+    // arriba: `zxing:core` trae tanto el encoder (QrPlugin) como el reader, así que lo único que
+    // faltaba era la cámara. Se elige CameraX y no `zxing-android-embedded` porque esa librería
+    // usa la Camera1 vieja, que en un Android 9 de gama baja anda peor y ya está deprecada.
+    // 1.3.4 es la última rama que compila contra compileSdk 34 (la 1.4 pide 35).
+    implementation "androidx.camera:camera-camera2:1.3.4"
+    implementation "androidx.camera:camera-lifecycle:1.3.4"
+    implementation "androidx.camera:camera-view:1.3.4"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

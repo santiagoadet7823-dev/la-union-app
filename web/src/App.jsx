@@ -12,6 +12,8 @@ import UpdatePrompt from './components/UpdatePrompt'
 import DeviceBanner from './components/DeviceBanner'
 import SplashIntro, { yaSeVioHoy } from './components/SplashIntro'
 import LoginView from './features/auth/LoginView'
+import ParearTablet from './features/vidriera/ParearTablet'
+import VidrieraTablet from './features/vidriera/VidrieraTablet'
 import PendienteView from './features/auth/PendienteView'
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { sx } from './lib/sx'
@@ -271,8 +273,30 @@ function AuthedApp() {
 
 function Gate() {
   const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil } = useAuth()
+  /**
+   * MODO VIDRIERA — la tablet del cliente. Va ACÁ, antes de todo lo demás, porque **la tablet no se
+   * loguea nunca**: no toca Supabase, no tiene sesión ni perfil ni empresa, y todo lo que muestra se
+   * lo da el celular del vendedor por el enlace local. Colgarla del árbol de providers de abajo
+   * sería pedirle una sesión que por diseño no va a tener.
+   *
+   * `null` = ingreso normal · `{}` = escaneando · `{sesion, catalogo}` = vidriera abierta.
+   */
+  const [vidriera, setVidriera] = useState(null)
+
   if (loading) return <Cargando />
-  if (!session) return <LoginView />
+  if (vidriera?.catalogo) {
+    return (
+      <VidrieraTablet
+        sesion={vidriera.sesion}
+        catalogo={vidriera.catalogo}
+        onSalir={() => setVidriera(null)}
+      />
+    )
+  }
+  if (vidriera) {
+    return <ParearTablet onListo={setVidriera} onSalir={() => setVidriera(null)} />
+  }
+  if (!session) return <LoginView onTablet={() => setVidriera({})} />
   // Sesión OK pero el perfil aún no cargó (o falló): loader acotado, no "Cargando…" infinito.
   if (!perfil && (perfilLoading || perfilError)) return <CargandoPerfil error={perfilError} onRetry={refetchPerfil} />
   if (!aprobado) return <PendienteView />

@@ -191,5 +191,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
-    </application>
+    
+        <!-- Pantalla de escaneo del QR de la vidriera. `singleTask` para que dos toques seguidos no
+             abran dos camaras, y sin exportar: la abre solo la propia app. -->
+        <activity
+            android:name=".EscanerQrActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+</application>
 </manifest>

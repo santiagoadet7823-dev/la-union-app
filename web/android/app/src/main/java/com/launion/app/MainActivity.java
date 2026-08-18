@@ -40,6 +40,12 @@ public class MainActivity extends BridgeActivity {
         // sirve el catálogo a la tablet del cliente, para que ella no consuma un solo byte de datos.
         // Ver EnlaceLocalPlugin y ServidorLocal. Mismo requisito: antes de super.onCreate().
         registerPlugin(EnlaceLocalPlugin.class);
+        // Plugin local: VIDRIERA, lado TABLET. Se une al hotspot del vendedor (dos caminos según la
+        // version de Android, ver EnlaceTabletPlugin) y le habla al servidor local por HTTP nativo,
+        // porque el WebView bloquea el contenido mixto. Antes de super.onCreate().
+        registerPlugin(EnlaceTabletPlugin.class);
+        // Plugin local: escaner de QR (CameraX + el decodificador de ZXing que ya estaba).
+        registerPlugin(EscanerQrPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

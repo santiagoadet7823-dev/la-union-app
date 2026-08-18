@@ -6,6 +6,7 @@ import { APP_VERSION } from '../../version'
 import { initials } from '../../lib/format'
 import Isotipo from '../../components/Isotipo'
 import Overlay from '../../components/Overlay'
+import { disponible as vidrieraDisponible } from '../../services/vidrieraTablet'
 
 /**
  * INGRESO — diseño v1.4 del handoff (`Ingreso v1.4.dc.html`), 28/07/2026.
@@ -39,7 +40,7 @@ function clasificar(mensaje) {
   return 'otro'
 }
 
-export default function LoginView() {
+export default function LoginView({ onTablet }) {
   const { signInWithGoogle, signInWithPassword, enviarEnlaceContrasena, hasSupabase, authError, authStatus } = useAuth()
   const { isDark, toggleTheme } = useTheme()
 
@@ -277,6 +278,17 @@ export default function LoginView() {
             style={sx('min-height:48px;padding:0 20px;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:var(--fs-md);font-weight:600;cursor:pointer')}>
             Solicitar acceso
           </button>
+          {/* ENTRADA DE LA TABLET DEL CLIENTE. Va acá, en el ingreso, porque la tablet **no se
+              loguea nunca**: no toca Supabase, no tiene sesión ni GPS, y todo lo que muestra se lo
+              da el celular del vendedor por el enlace local. Es un renglón chico y no un botón
+              grande a propósito — de nueve personas del parque, ninguna lo usa: lo toca una tablet
+              una vez, y el vendedor sabe que existe. Solo aparece en la APK con los plugins. */}
+          {vidrieraDisponible() && (
+            <button onClick={onTablet} className="lu-press"
+              style={sx('background:none;border:none;font-size:var(--fs-sm);color:var(--muted);text-decoration:underline;cursor:pointer;padding:8px 4px;margin-top:2px')}>
+              Soy una tablet · escanear código
+            </button>
+          )}
           <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint);margin-top:2px')}>v{APP_VERSION}</div>
         </div>
       </div>
