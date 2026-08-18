@@ -171,6 +171,19 @@ export default function VisitaCatalogo({ j }) {
                     {qty > 0 && (
                       <span style={sx('position:absolute;top:6px;right:6px;width:22px;height:22px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:99px;font-family:var(--font-mono);font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>{qty}</span>
                     )}
+                    {/* "MIRÁ ESTE": se lo abre grande en la tablet del cliente. Solo aparece con la
+                        vidriera viva — fuera de eso no hay a dónde mandarlo. Va abajo a la derecha
+                        para no pelear con el contador del carrito, que va arriba. */}
+                    {vid.activa && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); vid.destacar(p); showToast(`Se lo mostramos: ${p.name}`) }}
+                        className="lu-press"
+                        title="Mostrárselo en la tablet"
+                        style={sx('position:absolute;right:6px;bottom:6px;width:30px;height:30px;display:grid;place-items:center;border:none;border-radius:9px;background:var(--glass-strong);color:var(--deep);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.25)')}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="14" rx="2" /><path d="M8 21h8" /></svg>
+                      </button>
+                    )}
                   </div>
 
                   <div style={sx('flex:1;display:flex;flex-direction:column;padding:9px 10px 10px')}>
@@ -246,6 +259,33 @@ export default function VisitaCatalogo({ j }) {
           onCerrarVentana={() => setVerQr(false)}
           onCerrarVidriera={() => { vid.cerrar(); setVerQr(false); showToast('Vidriera cerrada') }}
         />
+      )}
+
+      {/* 🩸 "MIRÓ Y NO COMPRÓ" (18/08/2026). Cada toque del cliente ya se registraba en `mirados` y
+          nadie lo miraba nunca. Acá está la inteligencia comercial que la tablet genera sola: lo que
+          le interesó y no terminó en el pedido.
+          Va EN VIVO y no al cerrar la visita, que era la idea original: al cerrar ya no se puede
+          hacer nada con el dato, y acá —mientras el comerciante está enfrente— todavía se le puede
+          preguntar por los tres que miró y no pidió. Ocupa un renglón y no interrumpe nada. */}
+      {vid.activa && vid.mirados.length > 0 && (
+        <div
+          style={{
+            ...sx('position:absolute;left:12px;right:12px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted);box-shadow:var(--shadow)'),
+            // Se apoya arriba de la barra del pedido cuando la hay, y baja a su lugar cuando no.
+            bottom: cartCount > 0 ? 186 : 80,
+          }}
+        >
+          <span style={sx('width:7px;height:7px;flex:none;border-radius:99px;background:var(--success)')} />
+          <span>
+            Miró <b style={sx('font-family:var(--font-mono);color:var(--text)')}>{vid.mirados.length}</b>
+            {(() => {
+              const sinPedir = vid.mirados.filter((m) => !(cart[m.id] > 0))
+              return sinPedir.length > 0
+                ? <> · sin pedir <b style={sx('font-family:var(--font-mono);color:var(--warning)')}>{sinPedir.length}</b>: {sinPedir.slice(0, 2).map((m) => m.name).join(', ')}{sinPedir.length > 2 ? '…' : ''}</>
+                : <> · todo lo que miró está en el pedido</>
+            })()}
+          </span>
+        </div>
       )}
 
       {cartCount > 0 && (

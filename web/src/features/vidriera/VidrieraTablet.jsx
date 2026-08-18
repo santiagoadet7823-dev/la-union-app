@@ -18,12 +18,25 @@ import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo } fro
  * (medido el 18/08/2026 en la `Cidea CM915`). Se guardan en el caché y se muestran por ruta de
  * archivo — nunca en base64, que las infla un 33 % y las deja en el DOM.
  *
+ * 🩸 Y NADA DE `inset:0` ACÁ (18/08/2026). El WebView de la tablet es **Chrome 79** y la forma
+ * corta `inset` recién existe desde Chrome 87: el navegador la ignora en silencio, así que una foto
+ * `position:absolute` se queda sin sus cuatro offsets y se dibuja donde le parece. No se notó nunca
+ * porque el catálogo cargado no tiene imágenes — o sea que iba a aparecer exactamente el día de la
+ * prueba con fotos. Va la forma larga (`top/right/bottom/left`), que anda en todas.
+ * Ojo: esto son estilos INLINE (`sx()`), y por ahí no pasa ni autoprefixer ni el plugin legacy —
+ * eso transpila JS, no propiedades de CSS.
+ *
  * props: { sesion, catalogo, onSalir }
  */
 
 // De a cuántas fotos se piden por vez. Tres en paralelo alcanza para que la grilla se vaya llenando
 // mientras el cliente mira, sin que la tablet se quede sin aire.
 const FOTOS_A_LA_VEZ = 3
+
+// Cuánto silencio antes de que la tablet se ponga a ofrecer sola, y cada cuánto cambia de producto.
+// 30 s es el número que se acordó: menos y se dispara mientras el comerciante piensa.
+const REPOSO_MS = 30000
+const REPOSO_PASO_MS = 6000
 
 export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   /**
@@ -47,17 +60,6 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
    */
   const [cant, setCant] = useState({}) // { [id]: n }
   /**
-   * 🩸 BUSCADOR Y FILTROS (19/08/2026, pedido del cliente con la vidriera ya en uso). Son 529
-   * productos en una grilla: sin filtrar, encontrar algo puntual es scrollear delante del cliente.
-   * El catálogo del vendedor ya tenía buscador por el mismo motivo — acá se copia el CRITERIO, no
-   * el código: mismos campos (nombre y marca) para que buscar lo mismo dé lo mismo en las dos
-   * pantallas.
-   *
-   * `eje` alterna qué muestran los chips: hay ~10 categorías y 28 marcas, y dos filas de chips
-   * sobre una tablet de 800 px se comen el espacio que necesita la grilla, que es de lo que se
-   * trata la pantalla.
-   */
-  /**
    * 🩸 EL CARRITO ESPEJO (18/08/2026). Lo manda el celular por el canal `emitir()`, que existía
    * desde el primer día y no tenía un solo consumidor. El cliente ve el pedido armándose y el
    * total, como la pantalla de una caja: es lo que saca el "¿cuánto me dijiste que era?" del final.
@@ -68,6 +70,29 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   const [pedido, setPedido] = useState(null)  // { items, unidades, total } o null
   // Producto abierto a pantalla completa: lo abre un toque del cliente o un "mirá este" del vendedor.
   const [ficha, setFicha] = useState(null)
+  /**
+   * 🩸 VIDRIERA EN REPOSO (18/08/2026). A los 30 s sin que nadie toque, la tablet deja de ser una
+   * grilla quieta y se pone a ofrecer: ofertas y destacados, uno por vez y grande.
+   *
+   * El criterio de qué mostrar **no viaja**: se usa `orden`, que el celular ya calculó (ofertas
+   * primero, después por rentabilidad) y mandó resuelto. La tablet muestra el resultado sin saber
+   * nunca por qué ese producto va antes que el otro — misma frontera que el resto de la pantalla.
+   *
+   * Se apaga con cualquier toque, y no se enciende si hay una ficha abierta o si el vendedor está
+   * cargando el pedido: en los dos casos hay una conversación en curso y esto la interrumpiría.
+   */
+  const [reposo, setReposo] = useState(0)   // 0 = despierta; >0 = índice del carrusel + 1
+  /**
+   * 🩸 BUSCADOR Y FILTROS (19/08/2026, pedido del cliente con la vidriera ya en uso). Son 529
+   * productos en una grilla: sin filtrar, encontrar algo puntual es scrollear delante del cliente.
+   * El catálogo del vendedor ya tenía buscador por el mismo motivo — acá se copia el CRITERIO, no
+   * el código: mismos campos (nombre y marca) para que buscar lo mismo dé lo mismo en las dos
+   * pantallas.
+   *
+   * `eje` alterna qué muestran los chips: hay ~10 categorías y 28 marcas, y dos filas de chips
+   * sobre una tablet de 800 px se comen el espacio que necesita la grilla, que es de lo que se
+   * trata la pantalla.
+   */
   const [busca, setBusca] = useState('')
   const [eje, setEje] = useState('categoria') // 'categoria' | 'marca'
   const [filtro, setFiltro] = useState('Todos')
@@ -195,6 +220,35 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     setCant((c) => ({ ...c, [id]: Math.max(1, Math.min(999, (c[id] || 1) + d)) }))
   }, [])
 
+  /**
+   * El reloj del reposo. Se rearma con cada toque de la pantalla (el `onPointerDown` del contenedor)
+   * y con cada cambio de estado que signifique "acá está pasando algo".
+   *
+   * ⚠️ Nada de `requestAnimationFrame`: con el documento oculto no dispara (regla 35), y esto es
+   * justo una pantalla que se queda sola. `setInterval` sí corre.
+   */
+  useEffect(() => {
+    if (ficha) return                       // hay una ficha abierta: alguien está mirando algo
+    if (reposo) return                      // ya está en reposo; el carrusel lo maneja el otro efecto
+    const t = setTimeout(() => { if (vivo.current) setReposo(1) }, REPOSO_MS)
+    return () => clearTimeout(t)
+  }, [ficha, reposo, tocado, pedido])
+
+  // El carrusel: avanza mientras siga en reposo.
+  useEffect(() => {
+    if (!reposo) return
+    const i = setInterval(() => { if (vivo.current) setReposo((r) => (r ? r + 1 : r)) }, REPOSO_PASO_MS)
+    return () => clearInterval(i)
+  }, [reposo])
+
+  // Los que se ofrecen solos: lo que está en oferta y, si no alcanza, lo primero del orden que
+  // mandó el celular. Con foto, porque un carrusel de recuadros grises no vende nada.
+  const enVidriera = (() => {
+    const conFoto = ordenados.filter((p) => fotos[p.id])
+    const ofertas = conFoto.filter((p) => p.oferta)
+    return (ofertas.length >= 3 ? ofertas : conFoto).slice(0, 12)
+  })()
+
   const alTocar = useCallback(async (p) => {
     // 🩸 EL TOQUE ABRE LA FICHA, ADEMÁS DE AVISAR (18/08/2026). Hasta hoy tocar una tarjeta solo
     // mandaba el aviso al celular: el cliente señalaba a ciegas, con una foto de 190 px y el nombre
@@ -211,7 +265,12 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   }, [sesion, cant])
 
   return (
-    <div style={sx('min-height:100vh;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}>
+    <div
+      // Cualquier toque despierta la vidriera. Va en `onPointerDown` (no en `onClick`) para que la
+      // pantalla vuelva en el momento en que el dedo baja, no cuando se completa un click.
+      onPointerDown={() => { if (reposo) setReposo(0) }}
+      style={sx('min-height:100vh;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}
+    >
       <div style={sx('flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--line)')}>
         <div>
           <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)')}>Catálogo</div>
@@ -319,9 +378,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
                 {/* padding-top en vez de aspect-ratio: el WebView de la tablet es Chrome 79. */}
                 <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2)')}>
                   {url ? (
-                    <img src={url} alt="" loading="lazy" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
+                    <img src={url} alt="" loading="lazy" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
                   ) : (
-                    <div style={sx('position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)')}>
+                    <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}>
                       <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
                     </div>
                   )}
@@ -397,6 +456,46 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         </div>
       )}
 
+      {/* ===== VIDRIERA EN REPOSO =================================================================
+          A los 30 s sin que nadie toque. Un producto por vez, grande, sobre fondo lleno: a dos
+          metros del mostrador una grilla de 190 px no se lee, y una tablet apagada no ofrece nada.
+          Cualquier toque la despierta (`onPointerDown` del contenedor de arriba).
+          El criterio de qué mostrar NO viaja: sale de `orden`, que el celular mandó ya resuelto. */}
+      {reposo > 0 && enVidriera.length > 0 && (() => {
+        const p = enVidriera[(reposo - 1) % enVidriera.length]
+        const oferta = p.oferta && p.precioOferta != null
+        return (
+          <div style={sx('position:fixed;top:0;right:0;bottom:0;left:0;z-index:var(--z-screen);background:var(--bg-app);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:40px')}>
+            {/* `key` por producto: sin eso React reusa el nodo y la entrada no se vuelve a animar,
+                así que el carrusel cambiaría de foto de golpe, sin transición. */}
+            <div key={p.id} className="lu-rise" style={sx('display:flex;flex-direction:column;align-items:center;gap:20px;max-width:640px;width:100%')}>
+              {/* padding-top y no `aspect-ratio`: el WebView de la tablet es Chrome 79, igual que
+                  en las tarjetas de la grilla. */}
+              <div style={sx('width:min(380px,60vh);padding-top:min(380px,60vh);position:relative;border-radius:24px;overflow:hidden;background:var(--surface2);box-shadow:var(--shadow-lg)')}>
+                <img src={fotos[p.id]} alt="" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
+                {oferta && (
+                  <span style={sx('position:absolute;top:14px;left:14px;background:var(--warning);color:#3d2c00;font-size:13px;font-weight:700;letter-spacing:.06em;padding:6px 15px;border-radius:99px')}>OFERTA</span>
+                )}
+              </div>
+              <div style={sx('text-align:center')}>
+                <div style={sx('font-family:var(--font-display);font-weight:600;font-size:27px;line-height:1.3')}>{p.nombre}</div>
+                <div style={sx('margin-top:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                  {oferta ? (
+                    <span>
+                      <span style={sx('font-size:19px;color:var(--faint);text-decoration:line-through;margin-right:12px')}>{fmtPesos(p.precio)}</span>
+                      <span style={sx('font-size:38px;font-weight:700;color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
+                    </span>
+                  ) : (
+                    <span style={sx('font-size:38px;font-weight:700;color:var(--deep)')}>{fmtPesos(p.precio)}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div style={sx('font-size:13.5px;color:var(--faint)')}>Tocá la pantalla para volver al catálogo</div>
+          </div>
+        )
+      })()}
+
       {/* ===== FICHA GRANDE =======================================================================
           La abre el toque del cliente o un "mirá este" del vendedor. Foto grande, precio grande, y
           la cantidad se cambia sin volver a la grilla.
@@ -416,9 +515,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
             <div style={sx('flex:none;width:300px;max-width:42vw')}>
               <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2);border-radius:16px;overflow:hidden')}>
                 {fotos[ficha.id] ? (
-                  <img src={fotos[ficha.id]} alt="" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
+                  <img src={fotos[ficha.id]} alt="" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
                 ) : (
-                  <div style={sx('position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)')}>
+                  <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}>
                     <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
                   </div>
                 )}
