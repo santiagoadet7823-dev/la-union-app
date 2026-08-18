@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { isNative } from './platform'
+import { idsEnEspejo } from './data/espejoFotos'
 
 /**
  * VIDRIERA — el enlace local entre el celular del vendedor y la tablet del cliente.
@@ -54,7 +55,7 @@ function versionFoto(url) {
  * `foto: true/false` en vez de una URL: las fotos las pide la tablet por `/foto/<id>` al servidor
  * local. Una URL de Storage la mandaría a internet, que es exactamente lo que no puede hacer.
  */
-export function snapshotCatalogo(productos, comercio) {
+export function snapshotCatalogo(productos, comercio, enEspejo) {
   const vivos = (productos || []).filter((p) => p && p.id)
 
   // Orden de vidriera: primero lo que está en oferta, después lo más rentable, y a igualdad por
@@ -89,13 +90,18 @@ export function snapshotCatalogo(productos, comercio) {
       unidades: p.unidades != null ? Number(p.unidades) : null,
       kg: Number(p.kg) || 0,
       unidadVenta: p.unidadVenta || null,
-      foto: !!p.imagen,
+      // 🩸 `foto` DICE LO QUE EL TELÉFONO TIENE, no lo que Storage tiene (18/08/2026). Acá decía
+      // `!!p.imagen` —la URL— y el servidor local sirve desde la carpeta `espejo/`, que se llena
+      // recién cuando alguien aprieta "Preparar catálogo". Con el espejo a medias la tablet pedía
+      // una foto por producto y cobraba 404: cientos de viajes por el hotspot para una grilla gris.
+      // `enEspejo` es un Set y es OBLIGATORIO: si no llega, no se afirma que haya foto.
+      foto: !!p.imagen && !!enEspejo && enEspejo.has(p.id),
       // 🩸 VERSION de la foto (19/08/2026). La tablet guarda cada imagen con este sufijo en el
       // nombre del archivo, así que "¿la tengo?" y "¿cambió?" son la MISMA pregunta: si el archivo
       // existe, está al día. Sale de la URL, que ya cambia sola cuando marketing reemplaza la foto
       // (`subirImagenProducto` le pega un `?v=<timestamp>`), así que no hay que inventar un hash
       // del contenido ni una columna nueva.
-      fotoV: p.imagen ? versionFoto(p.imagen) : null,
+      fotoV: p.imagen && enEspejo && enEspejo.has(p.id) ? versionFoto(p.imagen) : null,
     })),
     orden,
   }
@@ -107,13 +113,24 @@ export function snapshotCatalogo(productos, comercio) {
  */
 export async function abrirVidriera({ productos, comercio }) {
   const red = await EnlaceLocal.iniciar()
-  await EnlaceLocal.publicarCatalogo({ json: JSON.stringify(snapshotCatalogo(productos, comercio)) })
+  await publicar({ productos, comercio })
   return red
+}
+
+/**
+ * Arma y publica el snapshot. Único lugar que consulta el espejo de fotos, para que abrir y
+ * republicar no puedan quedar con criterios distintos.
+ */
+async function publicar({ productos, comercio }) {
+  const enEspejo = await idsEnEspejo(productos)
+  await EnlaceLocal.publicarCatalogo({
+    json: JSON.stringify(snapshotCatalogo(productos, comercio, enEspejo)),
+  })
 }
 
 /** Vuelve a publicar el catálogo (cambió un precio, entró un producto) sin cortar la sesión. */
 export async function republicar({ productos, comercio }) {
-  await EnlaceLocal.publicarCatalogo({ json: JSON.stringify(snapshotCatalogo(productos, comercio)) })
+  await publicar({ productos, comercio })
 }
 
 /** Evento celular → tablet (el carrito espejo, un producto que el vendedor le empuja). */

@@ -79,14 +79,42 @@ export async function pedirCatalogo(sesion) {
  */
 export async function fotoDe(sesion, id, version, forzar = false) {
   try {
-    const { ruta } = await EnlaceTablet.bajarFoto({
+    const { ruta, cache } = await EnlaceTablet.bajarFoto({
       url: conToken(sesion, `/foto/${id}`),
-      id: version ? `${id}_${version}` : id,
+      id: nombreArchivo(id, version),
       forzar,
     })
-    return Capacitor.convertFileSrc(ruta)
+    // `cache` viaja a JS desde el 18/08/2026 y no es adorno: "se baja una sola vez" era una promesa
+    // que NADIE podía comprobar sin abrir el teléfono. Con esto, la prueba es contar.
+    return { url: Capacitor.convertFileSrc(ruta), cache: !!cache }
   } catch (_) {
-    return null
+    return { url: null, cache: false }
+  }
+}
+
+/** El nombre con el que se guarda una foto. Único lugar que arma `<id>_<version>`. */
+export function nombreArchivo(id, version) {
+  return version ? `${id}_${version}` : String(id)
+}
+
+/**
+ * Borra de la tablet las fotos que el catálogo de ahora ya no nombra.
+ *
+ * 🩸 Hace falta desde que las fotos se guardan en `filesDir` en vez del caché (18/08/2026): el caché
+ * lo podaba Android, `filesDir` no lo poda nadie. Y la carpeta crece por diseño — el nombre lleva la
+ * versión, así que cada foto reemplazada deja atrás la anterior para siempre.
+ *
+ * Best-effort: si falla, la tablet funciona igual (solo ocupa de más).
+ */
+export async function limpiarFotos(productos) {
+  try {
+    const vigentes = (productos || [])
+      .filter((p) => p.foto)
+      .map((p) => nombreArchivo(p.id, p.fotoV))
+    const { borrados } = await EnlaceTablet.limpiarFotos({ vigentes })
+    return borrados || 0
+  } catch (_) {
+    return 0
   }
 }
 

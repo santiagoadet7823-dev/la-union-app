@@ -4,6 +4,7 @@ import { useDevice } from '../context/DeviceContext'
 import { isNative } from '../services/platform'
 import Logo from './Logo'
 import MiCuenta from '../features/perfil/MiCuenta'
+import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -118,7 +119,18 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       {acctOpen && (
         <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setAcctOpen(false)} className="lu-modal-scrim" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))' }}>
+          <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))', maxHeight: 'calc(100vh - 80px)', overflowY: 'auto' }}>
+            {/* 🩸 "PREPARAR CATÁLOGO" VIVE ACÁ PORQUE ANTES NO VIVÍA EN NINGÚN LADO (18/08/2026).
+                La tarjeta estaba escrita en `vendedor/tabs/PerfilTab.jsx`, y ese archivo **no lo
+                monta nadie**: el bottom nav del vendedor tiene tres pestañas (Inicio · Ruta ·
+                Catálogo) y ninguna es esa. O sea que el ÚNICO camino para llenar el espejo de fotos
+                —lo que la tablet del cliente necesita para no mostrar una grilla gris— era código
+                muerto desde que se escribió. Se cuelga del menú de cuenta, que es la superficie de
+                ajustes que el vendedor sí tiene, y llega desde cualquier pantalla.
+                Solo `vendedor`: el repartidor no abre la vidriera y no tiene por qué ver un botón
+                que baja 13 MB de fotos con sus datos. La tarjeta además se esconde sola en la PWA y
+                cuando el catálogo no tiene fotos. */}
+            {rol === 'vendedor' && <PrepararCatalogo onToast={showToast} />}
             <MiCuenta onToast={showToast} showDeviceToggle={!isNative()} />
           </div>
         </div>

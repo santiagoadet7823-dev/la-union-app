@@ -19,12 +19,12 @@ import { textoQr } from '../../services/vidriera'
  * ⚠️ El QR se genera con `QrPlugin` (ZXing nativo), el mismo que usa el modal "Invitar". No se suma
  * una librería de QR al bundle web para esto.
  *
- * props: { red, error, abriendo, onCerrarVentana, onCerrarVidriera }
+ * props: { red, error, abriendo, fotos, onCerrarVentana, onCerrarVidriera, onReintentar }
  */
 
 const Qr = registerPlugin('Qr')
 
-export default function EspejoTablet({ red, error, abriendo, onCerrarVentana, onCerrarVidriera }) {
+export default function EspejoTablet({ red, error, abriendo, fotos, onCerrarVentana, onCerrarVidriera, onReintentar }) {
   const [qr, setQr] = useState(null)
   const [sinQr, setSinQr] = useState(false)
 
@@ -70,6 +70,17 @@ export default function EspejoTablet({ red, error, abriendo, onCerrarVentana, on
         {error && (
           <div style={sx('width:100%;padding:14px;border-radius:14px;background:var(--danger-tint);font-size:13px;line-height:1.55')}>
             {error}
+            {/* 🩸 REINTENTAR SIN CERRAR LA HOJA (18/08/2026). Hasta hoy este estado era un cartel y
+                nada más: había que salir y volver a entrar, delante del cliente, para reintentar
+                algo que falla justamente cuando hay alguien esperando. `abrir()` ya limpia el error
+                y no hace nada si la sesión está viva, así que el botón es seguro de apretar dos
+                veces. */}
+            {onReintentar && !abriendo && (
+              <button onClick={onReintentar} className="lu-press"
+                style={sx('display:block;margin-top:12px;min-height:44px;padding:0 18px;border:1px solid var(--danger);border-radius:12px;background:transparent;color:var(--danger);font-size:13px;font-weight:600;cursor:pointer')}>
+                Reintentar
+              </button>
+            )}
           </div>
         )}
 
@@ -90,6 +101,18 @@ export default function EspejoTablet({ red, error, abriendo, onCerrarVentana, on
             <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>
               {red.ssid} · {red.ip}:{red.puerto}
             </div>
+
+            {/* 🩸 EL ESPEJO A MEDIAS SE AVISA ACÁ (18/08/2026), que es la pantalla que el vendedor
+                mira justo antes de darle la tablet. La foto que la tablet ve sale de la carpeta del
+                teléfono, no de internet: sin "Preparar catálogo" esos productos se le muestran al
+                cliente en gris. No traba nada — el catálogo funciona igual, con precios y todo. */}
+            {fotos && fotos.faltan > 0 && (
+              <div style={sx('width:100%;max-width:340px;padding:11px 13px;border-radius:12px;background:var(--warning-tint);color:var(--muted);font-size:12px;line-height:1.5')}>
+                Le faltan <b>{fotos.faltan}</b> de {fotos.total} fotos a este teléfono: esos
+                productos se le muestran al cliente sin imagen. Se bajan desde <b>Mi cuenta →
+                Preparar catálogo</b>, mejor con WiFi.
+              </div>
+            )}
 
             {/* El ÚNICO camino que corta el enlace de verdad. Va separado del "Volver" y pintado como
                 acción destructiva justamente porque los dos botones se parecían demasiado. */}

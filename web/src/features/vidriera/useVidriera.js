@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { abrirVidriera, cerrarVidriera, alTocar, alCaerse, disponible } from '../../services/vidriera'
+import { estadoEspejo } from '../../services/data/espejoFotos'
 
 /**
  * DUEÑA DE LA SESIÓN DE VIDRIERA. La sesión vive acá y **no** dentro de la ventana del QR.
@@ -21,7 +22,7 @@ import { abrirVidriera, cerrarVidriera, alTocar, alCaerse, disponible } from '..
  * tiene que aparecer aunque el vendedor esté en la grilla o en el carrito. Ése es todo el punto.
  *
  * Devuelve:
- *   { activa, red, error, mirados, aviso, abrir, cerrar, descartarAviso, disponible }
+ *   { activa, red, error, mirados, aviso, fotos, abrir, cerrar, descartarAviso, disponible }
  */
 export function useVidriera({ productos, comercio, onToque }) {
   const [red, setRed] = useState(null)        // { ssid, clave, ip, puerto, token } o null
@@ -29,6 +30,13 @@ export function useVidriera({ productos, comercio, onToque }) {
   const [abriendo, setAbriendo] = useState(false)
   const [aviso, setAviso] = useState(null)    // producto que el cliente está mirando
   const [mirados, setMirados] = useState([])  // todo lo que tocó, para el resumen del final
+  /**
+   * 🩸 CUÁNTAS FOTOS LE FALTAN AL TELÉFONO (18/08/2026). No es adorno: desde hoy `snapshotCatalogo`
+   * solo declara `foto: true` para lo que está espejado, así que un espejo a medias se ve como una
+   * grilla gris del lado del cliente. Eso hay que saberlo ANTES de darle la tablet, no después.
+   * Se mide al abrir, que es cuando se arma el snapshot y por lo tanto cuando el número es cierto.
+   */
+  const [fotos, setFotos] = useState(null)   // { total, presentes, faltan } o null
   const vivo = useRef(true)
   const timer = useRef(null)
   // `onToque` cambia de identidad en cada render del padre; se lee del ref para no tener que
@@ -50,6 +58,15 @@ export function useVidriera({ productos, comercio, onToque }) {
       const r = await abrirVidriera({ productos, comercio })
       if (!vivo.current) return
       setRed(r)
+      // Después de abrir: que el enlace no espere por un contador. Si falla, se calla — es un
+      // aviso, no una condición para trabajar.
+      estadoEspejo(productos)
+        .then((e) => {
+          if (vivo.current && e?.soportado) {
+            setFotos({ total: e.total, presentes: e.presentes, faltan: e.faltantes.length })
+          }
+        })
+        .catch(() => {})
     } catch (e) {
       if (!vivo.current) return
       setError(e?.message || 'No se pudo abrir la vidriera.')
@@ -59,7 +76,7 @@ export function useVidriera({ productos, comercio, onToque }) {
   }, [red, abriendo, productos, comercio])
 
   const cerrar = useCallback(async () => {
-    setRed(null); setAviso(null); setError(null)
+    setRed(null); setAviso(null); setError(null); setFotos(null)
     await cerrarVidriera()
   }, [])
 
@@ -94,6 +111,7 @@ export function useVidriera({ productos, comercio, onToque }) {
     error,
     aviso,
     mirados,
+    fotos,
     abrir,
     cerrar,
     descartarAviso: useCallback(() => setAviso(null), []),

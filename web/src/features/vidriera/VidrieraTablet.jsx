@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
-import { fotoDe, tocar, desconectar } from '../../services/vidrieraTablet'
+import { fotoDe, tocar, desconectar, limpiarFotos } from '../../services/vidrieraTablet'
 
 /**
  * LA VIDRIERA que ve el CLIENTE en la tablet. Recibe el catálogo ya filtrado por el celular del
@@ -55,11 +55,28 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   const [filtro, setFiltro] = useState('Todos')
   const vivo = useRef(true)
   const pedidas = useRef(new Set())
+  // Cuántas salieron del disco y cuántas hubo que bajar. Va al log, no a la pantalla: es la única
+  // forma de comprobar "se baja una sola vez" sin abrir la tablet, y el cliente no tiene por qué
+  // ver un contador de diagnóstico mientras elige productos.
+  const cuenta = useRef({ cache: 0, red: 0 })
   // Lo prende el botón "Actualizar fotos": vuelve a pedirlas aunque el archivo esté.
   const forzarRef = useRef(false)
   const [refrescando, setRefrescando] = useState(false)
 
   useEffect(() => () => { vivo.current = false; desconectar() }, [])
+
+  /**
+   * 🩸 PODA AL RECIBIR EL CATÁLOGO (18/08/2026). Desde hoy las fotos viven en `filesDir` y no en el
+   * caché, porque el caché lo borraba Android justo cuando más falta hacía. El costo de esa decisión
+   * es que ahora hay que barrer a mano: el nombre del archivo lleva la versión, así que cada foto
+   * que marketing reemplaza deja la anterior tirada para siempre en una tablet de 2 GB.
+   *
+   * Acá es el único momento en que se sabe qué archivos son "los de ahora".
+   */
+  useEffect(() => {
+    if (!productos.length) return
+    limpiarFotos(productos).then((n) => { if (n) console.log(`[vidriera] fotos viejas borradas: ${n}`) })
+  }, [catalogo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ordenados como decidió el celular. Los que no estén en `orden` van al final, por si el snapshot
   // y la lista quedan desalineados: mejor mostrarlos que perderlos.
@@ -98,12 +115,17 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         const p = conFoto.shift()
         if (!p || pedidas.current.has(p.id)) continue
         pedidas.current.add(p.id)
-        const url = await fotoDe(sesion, p.id, p.fotoV, forzarRef.current)
+        const { url, cache } = await fotoDe(sesion, p.id, p.fotoV, forzarRef.current)
         if (cancelado || !vivo.current) return
+        if (url) cuenta.current[cache ? 'cache' : 'red']++
         setFotos((f) => ({ ...f, [p.id]: url }))
       }
     }
-    Promise.all(Array.from({ length: FOTOS_A_LA_VEZ }, obrero))
+    cuenta.current = { cache: 0, red: 0 }
+    Promise.all(Array.from({ length: FOTOS_A_LA_VEZ }, obrero)).then(() => {
+      const { cache, red } = cuenta.current
+      if (cache || red) console.log(`[vidriera] fotos: ${cache} del disco · ${red} bajadas`)
+    })
     return () => { cancelado = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogo, refrescando])

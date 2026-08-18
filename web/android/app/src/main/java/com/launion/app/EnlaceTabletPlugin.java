@@ -11,6 +11,7 @@ import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
 import android.util.Log;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -25,6 +26,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URL;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -217,8 +220,17 @@ public class EnlaceTabletPlugin extends Plugin {
         ejecutor().execute(new Runnable() {
             @Override public void run() {
                 try {
-                    File dir = new File(getContext().getCacheDir(), "vidriera");
-                    if (!dir.exists() && !dir.mkdirs()) throw new Exception("no se pudo crear el caché");
+                    // 🩸 VA EN `filesDir`, NO EN `cacheDir` (18/08/2026). Estuvo en el caché desde
+                    // que se escribió, y el caché es **la primera carpeta que Android borra** cuando
+                    // el almacenamiento aprieta — justo lo que pasa en una tablet de 2 GB con 20 MB
+                    // de fotos encima. O sea que la garantía de "se baja una sola vez" se caía sola,
+                    // en silencio y sin patrón: la tablet volvía a bajar el catálogo entero delante
+                    // de un cliente, que es exactamente lo que este mecanismo vino a evitar.
+                    // El lado del celular ya usa `Directory.Data` (= `filesDir`) para el espejo por
+                    // el mismo motivo (`services/data/espejoFotos.js`); acá quedaba la mitad sin
+                    // alinear. Lo que se guarda no es un caché: es la copia que reemplaza a internet.
+                    File dir = new File(getContext().getFilesDir(), "vidriera");
+                    if (!dir.exists() && !dir.mkdirs()) throw new Exception("no se pudo crear la carpeta de fotos");
                     // El id ya viene validado del lado del servidor, pero acá también se acota: es
                     // una ruta de archivo y no se construye con texto de la red sin mirarlo.
                     if (!id.matches("[A-Za-z0-9_-]{1,64}")) throw new Exception("id inválido");
@@ -251,6 +263,50 @@ public class EnlaceTabletPlugin extends Plugin {
                     r.put("ruta", f.getAbsolutePath());
                     call.resolve(r);
                 } catch (Exception e) { call.reject("No se pudo bajar la foto: " + e.getMessage(), e); }
+            }
+        });
+    }
+
+    /**
+     * 🩸 BORRA LO QUE YA NO SIRVE. Es la contraparte obligatoria de haber mudado las fotos de
+     * `cacheDir` a `filesDir`: el caché lo podaba Android solo, `filesDir` no lo poda nadie. Y esta
+     * carpeta crece por diseño — el nombre del archivo lleva la VERSIÓN (`<producto>_<v>`), así que
+     * cada foto que marketing reemplaza deja atrás la anterior, para siempre, en una tablet de 2 GB.
+     *
+     * Recibe la lista de nombres vigentes (los mismos `<id>_<v>` que pide el catálogo de ahora) y
+     * borra todo lo demás. Se llama al recibir el catálogo, que es el único momento en que se sabe
+     * qué es "vigente".
+     *
+     * No falla nunca: no poder borrar un archivo no es motivo para romperle la pantalla al cliente.
+     * Devuelve cuántos borró, para poder verlo en el log de una prueba.
+     */
+    @PluginMethod
+    public void limpiarFotos(final PluginCall call) {
+        final JSArray vigentesJs = call.getArray("vigentes");
+        ejecutor().execute(new Runnable() {
+            @Override public void run() {
+                int borrados = 0;
+                try {
+                    Set<String> vigentes = new HashSet<String>();
+                    if (vigentesJs != null) {
+                        for (int i = 0; i < vigentesJs.length(); i++) {
+                            Object v = vigentesJs.opt(i);
+                            if (v != null) vigentes.add(String.valueOf(v));
+                        }
+                    }
+                    File dir = new File(getContext().getFilesDir(), "vidriera");
+                    File[] hay = dir.listFiles();
+                    if (hay != null) {
+                        for (File f : hay) {
+                            if (f.isFile() && !vigentes.contains(f.getName()) && f.delete()) borrados++;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "no se pudo podar la carpeta de fotos: " + e.getMessage());
+                }
+                JSObject r = new JSObject();
+                r.put("borrados", borrados);
+                call.resolve(r);
             }
         });
     }

@@ -75,6 +75,26 @@ async function escribirIndice(indice) {
 }
 
 /**
+ * 🩸 LOS IDS QUE EL SERVIDOR LOCAL PUEDE SERVIR DE VERDAD (18/08/2026).
+ *
+ * Existe porque `snapshotCatalogo` marcaba `foto: !!p.imagen`, o sea **la URL de Storage**, mientras
+ * `/foto/<id>` se sirve desde ESTA carpeta. Los dos datos no son el mismo: la URL existe apenas
+ * marketing sube la imagen, el archivo local recién cuando alguien apretó "Preparar catálogo".
+ * Con el espejo a medias, la tablet pedía una foto por producto y cobraba 404 — 529 viajes por el
+ * hotspot para dibujar una grilla gris, y el caché de "se baja una sola vez" nunca se llenaba
+ * porque no había nada que guardar.
+ *
+ * Se apoya en `diffEspejo`, que es donde vive el criterio de "vigente": un archivo bajado con una
+ * URL vieja NO cuenta, igual que no cuenta para el contador de la tarjeta.
+ */
+export async function idsEnEspejo(productos) {
+  if (!isNative()) return new Set()
+  const { faltantes } = diffEspejo(productos, await leerIndice())
+  const faltan = new Set(faltantes.map((p) => p.id))
+  return new Set((productos || []).filter((p) => p.imagen && !faltan.has(p.id)).map((p) => p.id))
+}
+
+/**
  * Qué falta bajar. `productos` son los de `useCatalog()` (ya mapeados: `id` e `imagen`).
  *
  * Devuelve también los HUÉRFANOS: archivos de productos que ya no están en el catálogo o que
