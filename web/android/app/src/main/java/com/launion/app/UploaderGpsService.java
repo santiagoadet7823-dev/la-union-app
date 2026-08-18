@@ -205,6 +205,11 @@ public class UploaderGpsService extends Service {
     static final String K_ALARMA_EXACTA = "alarmaExacta";  // la próxima se programó como EXACTA
     static final String K_FGS_BLOQ = "fgsBloqueado";       // veces que Android rechazó arrancar el FGS
     static final String K_FGS_BLOQ_TS = "fgsBloqueadoTs";  // epoch ms del último rechazo
+    // Desde Android 14 la notificación del foreground service SE PUEDE DESLIZAR (ver
+    // NotifDeslizadaReceiver). Se cuenta porque hasta hoy era un evento invisible: un hueco en el
+    // recorrido no se podía ni atribuir ni descartar.
+    static final String K_NOTIF_DESLIZ = "notifDeslizada";
+    static final String K_NOTIF_DESLIZ_TS = "notifDeslizadaTs";
 
     /* 🩸 CONFIG DEL WATCHDOG, PERSISTIDA (05/08/2026). Vivía en tres `static` de
      * AlarmWatchdogPlugin, o sea SOLO EN MEMORIA. Cuando la alarma revivía el proceso en frío —que
@@ -1221,12 +1226,29 @@ public class UploaderGpsService extends Service {
             .setContentTitle("LA UNIÓN · rastreo activo")
             .setContentText(texto)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            // `setOngoing(true)` alcanzaba hasta Android 13. En **Android 14 la notificación de un
+            // foreground service se puede deslizar igual** y esto ya no lo impide. Se deja porque
+            // sigue valiendo en los equipos viejos del parque — el `deleteIntent` de abajo es el que
+            // cubre a los nuevos.
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             // Hasta 1.6.x tocar esta notificación no hacía absolutamente nada. Es la pieza de la app
             // que el vendedor tiene delante todo el día: tiene que abrirla.
             .setContentIntent(intentApp())
+            // 🩸 Y SI LA DESLIZAN, VUELVE (18/08/2026). Ver `NotifDeslizadaReceiver`: Android 14
+            // permite descartarla, y `actualizarNotif()` solo repinta cuando CAMBIA el texto — que
+            // con todo funcionando bien no cambia en horas. O sea que se iba hasta el próximo cambio
+            // de estado, y sin cartel "sigue rastreando" y "se apagó" se ven exactamente igual.
+            .setDeleteIntent(intentDeslizada())
             .build();
+    }
+
+    /** El PendingIntent que Android dispara cuando el usuario desliza la notificación. */
+    private PendingIntent intentDeslizada() {
+        Intent i = new Intent(this, NotifDeslizadaReceiver.class).setAction(NotifDeslizadaReceiver.ACCION);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getBroadcast(this, 0, i, flags);
     }
 
     /**

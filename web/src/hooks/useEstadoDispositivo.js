@@ -54,6 +54,9 @@ const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_ver
   // upsert cada 2 minutos, que es justo lo que esta lista existe para evitar (mismo criterio que
   // `red_desde`). Y `alarma_proxima_ts` cambia en cada reprogramación, o sea siempre.
   'alarma_exacta', 'fgs_bloqueado',
+  // Deslizamientos de la notificación (18/08/2026): ESTADO, y cada uno importa. Su `_ts` no compara,
+  // por el mismo motivo que los otros tres.
+  'notif_deslizada',
   // Modelo del teléfono (db/39). Entra en la comparación porque es ESTADO puro: no cambia nunca en
   // un mismo aparato, así que no dispara upserts, pero hace que el primer latido que lo conozca sí
   // suba en vez de esperar los 10 min de FORZAR_MS.
@@ -220,6 +223,14 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
         fgs_bloqueado: nat.fgsBloqueado,
         fgs_bloqueado_ts: nat.fgsBloqueadoTs ? new Date(nat.fgsBloqueadoTs).toISOString() : null,
       } : null
+      // Deslizamientos de la notificación del rastreo (18/08/2026). Desde Android 14 se puede
+      // descartar la notificación de un foreground service, y hasta hoy eso no dejaba rastro: un
+      // hueco en el recorrido no se podía ni atribuir ni descartar. Mismo criterio que arriba —
+      // en un APK viejo viene undefined y no se sube nada.
+      const diagNotif = nat && typeof nat.notifDeslizada === 'number' ? {
+        notif_deslizada: nat.notifDeslizada,
+        notif_deslizada_ts: nat.notifDeslizadaTs ? new Date(nat.notifDeslizadaTs).toISOString() : null,
+      } : null
       // Subir solo si algún campo de estado cambió: antes el upsert corría cada 120 s
       // aunque no hubiera novedad (30 requests/hora de puro ruido). Igual se fuerza un
       // envío cada FORZAR_MS para refrescar el `ts`: Supervisión (EstadoEquipo)
@@ -281,7 +292,7 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
         bateria_exenta: exenta,
         ...(modelo ? { modelo } : {}),
       } : {}
-      const estado = { cola_pendiente: cola, cuarentena_pendiente: cuar, ...identidad, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...diagArranque, ...s }
+      const estado = { cola_pendiente: cola, cuarentena_pendiente: cuar, ...identidad, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...diagArranque, ...diagNotif, ...s }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {

@@ -139,6 +139,17 @@
             android:name=".AlarmReceiver"
             android:exported="false" />
 
+        <!-- 🩸 Receptor del DESLIZAMIENTO de la notificación del rastreo (18/08/2026). Desde Android
+             14 la notificación de un foreground service se puede descartar y `setOngoing(true)` ya
+             no lo impide; esta app apunta a targetSdk 34. El `deleteIntent` de la notificación
+             dispara acá y el servicio la repone. Va en el manifest y no dinámico por el mismo motivo
+             que los dos de arriba: el PendingIntent es un broadcast explícito y tiene que llegar
+             aunque el proceso esté frío. exported="false": lo dispara el sistema para nuestra propia
+             app. Ver NotifDeslizadaReceiver.java. -->
+        <receiver
+            android:name=".NotifDeslizadaReceiver"
+            android:exported="false" />
+
         <!-- FCM: quitamos el MessagingService de @capacitor/push-notifications del manifest merge y lo
              reemplazamos por el nuestro, que EXTIENDE de él y llama a super (conserva push en primer
              plano + captura de token) y suma el trabajo nativo del watchdog. Sin este remove, ambos

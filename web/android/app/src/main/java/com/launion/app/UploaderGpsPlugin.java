@@ -212,6 +212,11 @@ public class UploaderGpsPlugin extends Plugin {
         ret.put("alarmaExacta", sp.getBoolean(UploaderGpsService.K_ALARMA_EXACTA, false));
         ret.put("fgsBloqueado", sp.getInt(UploaderGpsService.K_FGS_BLOQ, 0));
         ret.put("fgsBloqueadoTs", sp.getLong(UploaderGpsService.K_FGS_BLOQ_TS, 0));
+        // Cuántas veces deslizaron la notificación del rastreo. Desde Android 14 se puede, y hasta
+        // hoy era un evento invisible: un hueco en el recorrido no se podía atribuir ni descartar.
+        // Ver NotifDeslizadaReceiver.
+        ret.put("notifDeslizada", sp.getInt(UploaderGpsService.K_NOTIF_DESLIZ, 0));
+        ret.put("notifDeslizadaTs", sp.getLong(UploaderGpsService.K_NOTIF_DESLIZ_TS, 0));
         call.resolve(ret);
     }
 }
