@@ -290,6 +290,44 @@ el arreglo son estructuralmente los que no lo pueden recibir* — solo se destra
 
 ---
 
+### Publicado — 1.14.6 (17/08/2026) — **El trazo va por la ruta, y el respaldo se prende por persona**
+
+#### El reporte y el diagnóstico
+
+*"En ruta Javier no guarda ubicaciones o guarda muy esporádicamente, y no logro encontrar si es por
+velocidad o porque muere el GPS estando sin señal de internet."* **No era ninguna de las dos.**
+
+| Hipótesis | Veredicto | Evidencia |
+|---|---|---|
+| Velocidad (el filtro descarta) | ❌ | 7 tramos de 21-27 km con **cero puntos**. A 50 km/h cualquier fix supera los 50 m: cero puntos ⇒ no llegó ni un fix. Y en la banda 40-70 km/h el parque guarda uno cada **29,8 m** (9.663 hops) |
+| Falta de internet | ❌ | En el **medio de ese mismo corredor**, Orlando tiene **3.621 puntos a 1,5 m** de precisión. 1,5 m es GNSS puro, que no usa internet. Y `cola_pendiente` = 0 |
+| La hora se sella al subir | ❌ | El `ts` sale de `loc.getTime()` y sobrevive intacto hasta el render. Prueba empírica: **cero segundos con más de 2 puntos** en 5 días — si se sellara al subir, un lote offline caería junto |
+| **El chip de Javier** | ✅ | 46,9 m contra los 1,5 de Orlando en la misma ruta. Su servicio registró un silencio de **38,8 min**: despierto, contando, y sin recibir nada |
+
+#### Lo que se cambió
+
+- **`snap-recorridos` ALGO 12** — se rutea el **conector** entre segmentos (no el tramo: un hueco de
+  27 min supera `GAP_MS`, así que los 25 km **no son parte de ningún tramo**, son el borde entre
+  dos). Condiciones: > 5 km, < 90 min, velocidad de vehículo, y la ruta no puede medir más de
+  **×1,25** la recta — la prueba de que hay un solo camino. Sobre el día real: **29 conectores → 4
+  ruteados** (los 4 viajes en ruta, ratios ×1,005 a ×1,042) y **25 quedan rectos** (todos urbanos,
+  el mayor de 0,82 km).
+- **`gpsPerfil.js`** — clave nueva `silencio_s` [150, 900] que **pisa el apagado de la triangulación
+  del modo simple**. Los teléfonos con el GNSS degradado tenían apagada la única red que podía
+  taparlos. Campo nuevo en el panel de Usuarios.
+
+#### Tres cosas que costaron y conviene no repetir
+
+- 🩸 **La primera hipótesis (relajar la guarda de tramo ciego) era falsa, y solo se supo corriendo el
+  código real contra el día real.** El harness está en el scratchpad; el patrón —compilar
+  `segmentar.ts` a `.mjs` y alimentarlo con los puntos de la base— vale para cualquier cambio del snap.
+- 🩸 **El conector no puede ir mezclado en `geometrias`**: `cubreElRecorrido` compara pegado contra
+  crudo para descartar un snap que borró recorrido, y un conector agrega largo **sin contraparte
+  cruda**. Mezclarlo apagaba la guarda. Viaja en `_conectores`, aparte.
+- 🩸 **Y tiene presupuesto propio de ruteos** (`MAX_RUTEOS_CONECTOR`): se resuelven últimos, así que
+  compartiendo el pote de 40 se habrían quedado sin cupo justo los días cargados — la feature
+  andaría los días tranquilos y fallaría en silencio los demás.
+
 ### Publicado — 1.13.8 (12/08/2026) — **El snap borraba recorrido. OTA + PWA**
 
 #### 🔴 "El pegado a calles elimina el trazo" — el cliente tenía razón, y el mecanismo era literal

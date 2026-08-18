@@ -180,6 +180,9 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     // propio cache y sus propias guardas, y ninguna de ellas puede tener licencia para borrar
     // kilómetros del recorrido. Si lo pegado cubre bastante menos que el crudo, se dibuja el crudo.
     const segs = snapOn ? snapped[t.id] : null
+    // ⚠️ Los conectores NO entran a `cubreElRecorrido`: agregan largo sin contraparte cruda y
+    // apagarían la guarda. Por eso viajan en su propia propiedad (ver `services/recorridos.js`).
+    const conectoresRuteados = snapOn ? snapped?._conectores?.[t.id] : null
     const usable = segs && segs.length && cubreElRecorrido(segs, t.segmentos)
     const lineas = usable
       ? segs.filter((s) => s?.length >= 2)
@@ -220,6 +223,17 @@ export function construirLeaflet({ trails, snapped = {}, snapOn = false, focoId 
     // Los `aproximados` (triangulados) NO se tocan: siguen punteados y finos. Esos no son un hueco
     // sino datos de ±100 m, y dibujarlos llenos sería afirmar una precisión que no existe. Además
     // dejan de generarse solos: el modo `simple` apaga la triangulación (ver `gpsPerfil.js`).
+    //
+    // 🩸 Y DESDE 1.14.6 EL HUECO LARGO VIENE RUTEADO DEL SERVIDOR. El caso que lo motivó, textual:
+    // *"no puede estar en González y aparecer en Lajitas, debió ir por la ruta"* — 7 tramos de 21 a
+    // 27 km, con el teléfono mudo, unidos por esta recta. Cuando el hueco mide más de 5 km, se hizo
+    // en menos de 90 min y a velocidad de vehículo, `snap-recorridos` devuelve la RUTA real en
+    // `_conectores` (y solo si esa ruta mide menos de ×1,25 la recta, que es la prueba de que hay un
+    // solo camino posible). En el pueblo no se activa nunca: ahí la recta corta sigue siendo menos
+    // mentira que inventar una calle.
+    if (usable && conectoresRuteados?.length) {
+      piezas.push({ id: t.id, color: t.color, weight, opacity, lineas: conectoresRuteados })
+    }
     if (!usable) {
       const conectores = []
       for (let i = 1; i < lineas.length; i++) {

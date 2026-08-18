@@ -124,6 +124,13 @@ const MAX_DETOUR_CONECTOR = 1.25
 const CONECTOR_MIN_M = 5000
 const CONECTOR_MAX_MS = 90 * 60000
 const CONECTOR_VEL_MIN_MPS = 8
+/* 🩸 Y PRESUPUESTO PROPIO, SEPARADO DE `MAX_RUTEOS`. Los conectores se resuelven DESPUÉS de todos
+ * los tramos de la persona, así que compartiendo el pote de 40 serían los primeros en quedarse sin
+ * cupo — y justo en los días cargados, que son los que más tramos de ruta tienen. La feature
+ * funcionaría los días tranquilos y fallaría en silencio los demás, que es el peor modo de fallar.
+ * Son pocos por definición (el día más movido de Javier da 4) y son la diferencia entre "cruza el
+ * campo" y "va por la ruta": se les reserva su propio cupo. */
+const MAX_RUTEOS_CONECTOR = 8
 /* 🩸 LA GUARDA DE LARGO ERA UN PROXY, Y DEJÓ DE HACER FALTA (ALGO 10, 04/08/2026). Estaba en 4.000 m
  * con el argumento "4 km no se hacen a pie, sea cual sea la velocidad media" — o sea, era una forma
  * indirecta de cazar un VEHÍCULO mal clasificado como peatón, en la época en que la clasificación se
@@ -250,13 +257,14 @@ Deno.serve(async (req) => {
     const crudos = { corto: 0, largoPeaton: 0, creciendo: 0, presupuesto: 0, osrm: 0, detour: 0, ciego: 0, quieto: 0 }
     let autos = 0, pies = 0   // tramos enviados a cada motor
     let conectados = 0        // conectores de hueco largo que se rutearon por calle (ver el 🩸 abajo)
+    let ruteosConector = 0    // presupuesto PROPIO de los conectores (ver MAX_RUTEOS_CONECTOR)
     let triangulados = 0      // puntos apartados por venir de red y no de GPS
     // 🩸 LA MEDIDA QUE DECIDE SI ESTO SIRVE. Sin el cociente pegado/crudo, "se ve más pegado a la
     // calle" es una impresión — y el 03/08/2026 la impresión decía que estaba bien mientras el snap
     // inventaba el 63 % del recorrido. Viaja en la respuesta y llega al front por `_meta`.
     const km: Record<string, { crudo: number; pegado: number }> = {}
 
-    const recorridos: { id_usuario: string; geometrias: number[][][] }[] = []
+    const recorridos: { id_usuario: string; geometrias: number[][][]; conectores: number[][][] }[] = []
     for (const [id, ptsCrudos] of Object.entries(byUser)) {
       // Orden del pipeline (ALGO 9): triangulados afuera → racimos promediados → corte por hueco y
       // por modo → guarda de tramo a ciegas → ruteo por perfil → anti-detour. Cada paso le entrega
@@ -268,7 +276,7 @@ Deno.serve(async (req) => {
       const previas = cache[id]?.algo === ALGO ? cache[id].piezas : []
       const porFirma = new Map<string, number[][]>(previas.map((p) => [p.f, p.g] as [string, number[][]]))
 
-      const piezas: { f: string; g: number[][] }[] = []
+      const piezas: { f: string; g: number[][]; c?: boolean }[] = []
       const mio = (km[id] ||= { crudo: 0, pegado: 0 })
       let osrmMiss = false
       // Bordes entre segmentos consecutivos: el ÚLTIMO punto de uno y el PRIMERO del siguiente. Es
@@ -388,6 +396,14 @@ Deno.serve(async (req) => {
        * Los km: se suma la RECTA al crudo y la RUTA al pegado. Las dos describen el mismo
        * desplazamiento, así que el cociente pegado/crudo —la medida que dice si el snap está
        * inventando— sigue significando lo mismo. Sumar solo el pegado lo inflaría.
+       *
+       * 🩸 Y VIAJAN EN SU PROPIO CAMPO, NO MEZCLADOS EN `geometrias`. El front tiene una red de
+       * contención —`cubreElRecorrido`, en `trazos.js`— que descarta el snap entero si lo pegado
+       * cubre menos que el crudo; es lo que impide que el snap borre recorrido, y el comentario que
+       * la acompaña dice que se queda para siempre. Un conector agrega largo que **no tiene
+       * contraparte cruda** (el hueco no está en `segmentos`), así que mezclarlo ahí inflaría el
+       * lado "pegado" de esa comparación y podría tapar un snap que sí borró tramos. Separados, la
+       * guarda sigue comparando lo mismo contra lo mismo.
        */
       for (const [a, b] of bordes) {
         const recta = hav(a, b)
@@ -397,9 +413,9 @@ Deno.serve(async (req) => {
         if (recta / (dt / 1000) < CONECTOR_VEL_MIN_MPS) continue
         const f = firmaRun([a, b])
         const previo = porFirma.get(f)
-        if (previo) { mio.crudo += recta; mio.pegado += pathLenLL(previo); piezas.push({ f, g: previo }); continue }
-        if (ruteos >= MAX_RUTEOS) { truncados++; continue }
-        ruteos++
+        if (previo) { mio.crudo += recta; mio.pegado += pathLenLL(previo); piezas.push({ f, g: previo, c: true }); continue }
+        if (ruteosConector >= MAX_RUTEOS_CONECTOR) { truncados++; continue }
+        ruteosConector++
         const g = await routeSeg([a, b], OSRM_CAR)
         if (!g) { osrmMiss = true; continue }
         // Sin la holgura de +50 m que usan los otros: sobre 25 km no cambia nada, y acá el número ES
@@ -407,10 +423,16 @@ Deno.serve(async (req) => {
         if (pathLenLL(g) > MAX_DETOUR_CONECTOR * recta) { crudos.ciego++; continue }
         conectados++
         mio.crudo += recta; mio.pegado += pathLenLL(g)
-        piezas.push({ f, g })
+        piezas.push({ f, g, c: true })
       }
 
-      recorridos.push({ id_usuario: id, geometrias: piezas.map((p) => p.g) })
+      // `c` marca conector. Se cachea junto con lo demás (misma firma, mismo determinismo) pero sale
+      // por un campo aparte — ver el 🩸 de arriba sobre `cubreElRecorrido`.
+      recorridos.push({
+        id_usuario: id,
+        geometrias: piezas.filter((p) => !p.c).map((p) => p.g),
+        conectores: piezas.filter((p) => p.c).map((p) => p.g),
+      })
       // Cachear salvo que OSRM haya FALLADO en algún tramo (así se reintenta cuando el host vuelva).
       // Los rechazados por la guarda SÍ se cachean: son determinísticos.
       if (piezas.length === 0 || !osrmMiss) {

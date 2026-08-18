@@ -21,12 +21,21 @@ export async function fetchSnapRecorridos({ fecha, desde, hasta }) {
     })
     if (error || !data?.recorridos) return {}
     const out = {}
+    const conectores = {}
+    const aLatLng = (segs) => (segs || [])
+      .filter((seg) => Array.isArray(seg) && seg.length >= 2)
+      .map((seg) => seg.map(([lat, lng]) => ({ lat, lng })))
     for (const r of data.recorridos) {
       if (!r.id_usuario || !Array.isArray(r.geometrias)) continue
-      out[r.id_usuario] = r.geometrias
-        .filter((seg) => Array.isArray(seg) && seg.length >= 2)
-        .map((seg) => seg.map(([lat, lng]) => ({ lat, lng })))
+      out[r.id_usuario] = aLatLng(r.geometrias)
+      // 🩸 LOS CONECTORES VIAJAN APARTE Y NO SE MEZCLAN CON LOS SEGMENTOS (17/08/2026). Son el hueco
+      // largo entre dos segmentos, ruteado por calle en vez de dibujado como recta a campo traviesa.
+      // Van separados porque `cubreElRecorrido` (trazos.js) compara el largo pegado contra el crudo
+      // para descartar un snap que borró recorrido, y un conector agrega largo que NO tiene
+      // contraparte cruda: mezclarlo inflaría ese lado de la comparación y apagaría la guarda.
+      if (Array.isArray(r.conectores) && r.conectores.length) conectores[r.id_usuario] = aLatLng(r.conectores)
     }
+    Object.defineProperty(out, '_conectores', { enumerable: false, value: conectores })
     // 🩸 El desglose viaja por una propiedad NO enumerable (03/08/2026). La función informa cuántos
     // tramos pegó por matcheo, cuántos por ruteo y por qué quedaron crudos los demás — sin eso, un
     // tope alcanzado se ve igual que "salió todo bien" y afinar un umbral es adivinar. Va acá y no
@@ -41,7 +50,7 @@ export async function fetchSnapRecorridos({ fecha, desde, hasta }) {
       // adelgazado), así que lo que hay que mirar es que no se despegue HACIA ARRIBA de ~×1,2.
       value: {
         ruteos: data.ruteos, truncados: data.truncados, autos: data.autos, pies: data.pies,
-        crudos: data.crudos, triangulados: data.triangulados, km: data.km,
+        conectados: data.conectados, crudos: data.crudos, triangulados: data.triangulados, km: data.km,
       },
     })
     return out
