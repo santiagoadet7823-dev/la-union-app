@@ -58,9 +58,11 @@
      a la tablet. El requisito es del cliente y es duro: la tablet no puede sumarle factura, y eso no
      se cumple "usando poco" sino con un enlace que no tiene por dónde salir. Ver EnlaceLocalPlugin.
 
-     Los cuatro son permisos NORMALES (no de runtime): se declaran, no se piden. El único de runtime
-     que hace falta —ACCESS_FINE_LOCATION, que es lo que Android exige para crear la red— ya está
-     arriba y lo gobierna el GpsGate. -->
+     Los TRES de WiFi de abajo son permisos normales (se declaran, no se piden). ACCESS_FINE_LOCATION
+     ya está arriba y lo gobierna el GpsGate.
+     🩸 `NEARBY_WIFI_DEVICES`, en cambio, SÍ ES DE RUNTIME — acá había un comentario mío que decía lo
+     contrario y costó una prueba de campo: en un Android 14 salía "Android bloqueó la creación de la
+     red" y parecía un problema del teléfono. Lo pide `EnlaceLocalPlugin` con su alias. -->
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />

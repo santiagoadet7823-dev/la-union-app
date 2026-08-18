@@ -22,7 +22,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -240,19 +241,12 @@ public class EnlaceTabletPlugin extends Plugin {
         if (url == null) { call.reject("Falta la url."); return; }
         ejecutor().execute(new Runnable() {
             @Override public void run() {
-                HttpURLConnection c = null;
                 try {
-                    c = abrir(url, TIMEOUT_MS);
-                    c.setRequestMethod("POST");
-                    c.setDoOutput(true);
-                    c.setRequestProperty("Content-Type", "application/json");
-                    OutputStream os = c.getOutputStream();
-                    try { os.write(cuerpo.getBytes("UTF-8")); } finally { os.close(); }
-                    if (c.getResponseCode() >= 400) throw new Exception("HTTP " + c.getResponseCode());
+                    crudo("POST", url, cuerpo.getBytes("UTF-8"), TIMEOUT_MS);
                     call.resolve();
                 } catch (Exception e) {
                     call.reject("No se pudo avisarle al vendedor: " + e.getMessage(), e);
-                } finally { if (c != null) c.disconnect(); }
+                }
             }
         });
     }
@@ -297,29 +291,103 @@ public class EnlaceTabletPlugin extends Plugin {
 
     // ------------------------------------------------------------------ plomería HTTP
 
-    private HttpURLConnection abrir(String url, int timeout) throws Exception {
+    /**
+     * 🩸 EL HTTP VA SOBRE UN SOCKET CRUDO, NO SOBRE `HttpURLConnection` (19/08/2026).
+     *
+     * Primera prueba con la tablet real: el QR se leía bien y al pedir el catálogo saltaba
+     * **"cleartext HTTP traffic to 10.41.149.222 not permitted"**. Desde Android 9 el tráfico sin
+     * cifrar está prohibido por defecto para apps que apuntan a API 28+, y esa política la aplican
+     * las pilas HTTP del sistema — `HttpURLConnection` incluida. O sea: moví el HTTP del WebView al
+     * nativo para escapar del contenido mixto y me olvidé de que acá había otra puerta cerrada.
+     *
+     * **Por qué no se prende `usesCleartextTraffic` en el manifest**, que es lo que hace casi todo el
+     * mundo: esa bandera habilita HTTP sin cifrar en TODA la app y para siempre. Este proyecto manda
+     * datos de GPS y de clientes a Supabase; dejar la puerta abierta a nivel de aplicación por una
+     * sola pantalla es un precio desproporcionado, y encima invisible.
+     *
+     * Un `Socket` no pasa por esa política, así que la excepción queda **en esta función**, a la
+     * vista, y el resto de la app sigue con el cleartext prohibido. Y no es código exótico: el
+     * SERVIDOR del otro lado también está escrito a mano (`ServidorLocal`), con `Content-Length` y
+     * `Connection: close` — que es justo lo que hace que el cliente sea simple: se escribe el pedido
+     * y se lee hasta el cierre.
+     *
+     * ⚠️ Esto SOLO vale para el enlace local. Cualquier pedido a internet sigue por donde debe.
+     */
+    private byte[] crudo(String metodo, String url, byte[] cuerpo, int timeout) throws Exception {
         URL u = new URL(url);
-        HttpURLConnection c = (HttpURLConnection) u.openConnection();
-        c.setConnectTimeout(10000);
-        c.setReadTimeout(timeout);
-        c.setUseCaches(false);
-        return c;
+        String host = u.getHost();
+        int puerto = u.getPort() > 0 ? u.getPort() : 80;
+        String recurso = u.getFile();
+        if (recurso == null || recurso.isEmpty()) recurso = "/";
+
+        Socket s = new Socket();
+        try {
+            s.connect(new InetSocketAddress(host, puerto), 10000);
+            s.setSoTimeout(timeout);
+
+            // Los CRLF van por una constante: es lo que separa las cabeceras y equivocarlo deja el
+            // pedido colgado esperando el resto para siempre.
+            final String FIN = "\r\n";
+            StringBuilder cab = new StringBuilder();
+            cab.append(metodo).append(' ').append(recurso).append(" HTTP/1.1").append(FIN);
+            cab.append("Host: ").append(host).append(':').append(puerto).append(FIN);
+            if (cuerpo != null) {
+                cab.append("Content-Type: application/json").append(FIN);
+                cab.append("Content-Length: ").append(cuerpo.length).append(FIN);
+            }
+            // Sin keep-alive: el fin de la respuesta ES el cierre de la conexión, así no hay que
+            // interpretar Content-Length ni chunked del lado del cliente.
+            cab.append("Connection: close").append(FIN).append(FIN);
+
+            OutputStream out = s.getOutputStream();
+            out.write(cab.toString().getBytes("UTF-8"));
+            if (cuerpo != null) out.write(cuerpo);
+            out.flush();
+
+            byte[] todo = leer(s.getInputStream());
+            int corte = separador(todo);
+            if (corte < 0) throw new Exception("respuesta sin cabeceras");
+            String cabecera = new String(todo, 0, corte, "UTF-8");
+            int codigo = codigoDe(cabecera);
+            if (codigo >= 400) {
+                // El 401 es el token: se distingue porque es el único que no se arregla reintentando.
+                throw new Exception(codigo == 401
+                        ? "el código ya no vale (el vendedor cerró la vidriera)"
+                        : ("HTTP " + codigo));
+            }
+            byte[] body = new byte[todo.length - (corte + 4)];
+            System.arraycopy(todo, corte + 4, body, 0, body.length);
+            return body;
+        } finally {
+            try { s.close(); } catch (Exception ignored) { }
+        }
+    }
+
+    /** Posición de la línea vacía (CRLF CRLF) que separa cabeceras de cuerpo. -1 si no está. */
+    private static int separador(byte[] b) {
+        for (int i = 0; i + 3 < b.length; i++) {
+            if (b[i] == 13 && b[i + 1] == 10 && b[i + 2] == 13 && b[i + 3] == 10) return i;
+        }
+        return -1;
+    }
+
+    /** `HTTP/1.1 200 OK` → 200. Devuelve 0 si la línea no se entiende. */
+    private static int codigoDe(String cabecera) {
+        try {
+            String primera = cabecera.split("\r\n")[0];
+            String[] p = primera.split(" ");
+            return p.length >= 2 ? Integer.parseInt(p[1].trim()) : 0;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private String texto(String url, int timeout) throws Exception {
-        HttpURLConnection c = abrir(url, timeout);
-        try {
-            if (c.getResponseCode() >= 400) throw new Exception("HTTP " + c.getResponseCode());
-            return new String(leer(c.getInputStream()), "UTF-8");
-        } finally { c.disconnect(); }
+        return new String(crudo("GET", url, null, timeout), "UTF-8");
     }
 
     private byte[] bytes(String url) throws Exception {
-        HttpURLConnection c = abrir(url, TIMEOUT_MS);
-        try {
-            if (c.getResponseCode() >= 400) throw new Exception("HTTP " + c.getResponseCode());
-            return leer(c.getInputStream());
-        } finally { c.disconnect(); }
+        return crudo("GET", url, null, TIMEOUT_MS);
     }
 
     private static byte[] leer(InputStream in) throws Exception {
@@ -327,7 +395,6 @@ public class EnlaceTabletPlugin extends Plugin {
         byte[] buf = new byte[8192];
         int n;
         while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-        in.close();
         return out.toByteArray();
     }
 

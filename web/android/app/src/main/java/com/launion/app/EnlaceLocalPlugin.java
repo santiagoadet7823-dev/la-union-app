@@ -18,6 +18,9 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.getcapacitor.PermissionState;
 
 import java.io.File;
 import java.net.Inet4Address;
@@ -61,8 +64,26 @@ import java.util.List;
  *
  * Eventos al JS: `toque` (la tablet tocó algo) y `enlaceCaido` (el sistema cerró el hotspot solo).
  */
-@CapacitorPlugin(name = "EnlaceLocal")
+/**
+ * 🩸 `NEARBY_WIFI_DEVICES` ES DE RUNTIME Y HAY QUE PEDIRLO (19/08/2026). Estaba declarado en el
+ * manifest con un comentario mío que decía que era "normal, se declara y no se pide": **falso**.
+ * Desde Android 13 (API 33) `startLocalOnlyHotspot()` lo exige concedido, y sin él tira
+ * `SecurityException`. Medido en un motorola con API 34: `granted=false` y el vendedor veía
+ * "Android bloqueó la creación de la red", que hacía pensar en el teléfono o en la falta de chip de
+ * datos — cuando el problema era esto.
+ *
+ * Se pide con el alias, no con el string, porque `NEARBY_WIFI_DEVICES` no existe por debajo de API
+ * 33: Capacitor resuelve el alias por versión y en un Android viejo no pide nada.
+ */
+@CapacitorPlugin(
+    name = "EnlaceLocal",
+    permissions = {
+        @Permission(alias = EnlaceLocalPlugin.WIFI_CERCANO, strings = { Manifest.permission.NEARBY_WIFI_DEVICES })
+    }
+)
 public class EnlaceLocalPlugin extends Plugin {
+
+    static final String WIFI_CERCANO = "wifiCercano";
 
     private static final String TAG = "EnlaceLocal";
 
@@ -96,6 +117,28 @@ public class EnlaceLocalPlugin extends Plugin {
         }
         if (reserva != null) { call.resolve(datos()); return; }
 
+        // Android 13+ exige NEARBY_WIFI_DEVICES para crear la red. Si falta, se pide y se sigue en
+        // `trasPermiso` con la MISMA llamada: el JS no se entera de que hubo un desvío.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && getPermissionState(WIFI_CERCANO) != PermissionState.GRANTED) {
+            requestPermissionForAlias(WIFI_CERCANO, call, "trasPermiso");
+            return;
+        }
+
+        levantar(call);
+    }
+
+    @PermissionCallback
+    private void trasPermiso(PluginCall call) {
+        if (getPermissionState(WIFI_CERCANO) != PermissionState.GRANTED) {
+            call.reject("Sin el permiso de \"dispositivos WiFi cercanos\" Android no deja crear la red para la tablet.");
+            return;
+        }
+        levantar(call);
+    }
+
+    /** Levanta el hotspot y el servidor. Ya con permisos verificados. */
+    private void levantar(final PluginCall call) {
         WifiManager wifi = (WifiManager) getContext().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         if (wifi == null) { call.reject("Este teléfono no expone el WiFi."); return; }
 
