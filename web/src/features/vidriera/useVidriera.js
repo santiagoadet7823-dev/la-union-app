@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { abrirVidriera, cerrarVidriera, alTocar, alCaerse, disponible } from '../../services/vidriera'
+import { abrirVidriera, cerrarVidriera, alTocar, alCaerse, disponible, emitirCarrito, destacar } from '../../services/vidriera'
 import { estadoEspejo } from '../../services/data/espejoFotos'
 
 /**
@@ -22,9 +22,9 @@ import { estadoEspejo } from '../../services/data/espejoFotos'
  * tiene que aparecer aunque el vendedor esté en la grilla o en el carrito. Ése es todo el punto.
  *
  * Devuelve:
- *   { activa, red, error, mirados, aviso, fotos, abrir, cerrar, descartarAviso, disponible }
+ *   { activa, red, error, mirados, aviso, fotos, abrir, cerrar, descartarAviso, destacar, disponible }
  */
-export function useVidriera({ productos, comercio, onToque }) {
+export function useVidriera({ productos, comercio, cart, onToque }) {
   const [red, setRed] = useState(null)        // { ssid, clave, ip, puerto, token } o null
   const [error, setError] = useState(null)
   const [abriendo, setAbriendo] = useState(false)
@@ -104,6 +104,20 @@ export function useVidriera({ productos, comercio, onToque }) {
     return () => { offToque(); offCaida() }
   }, [red, productos])
 
+  /**
+   * 🩸 EL CARRITO ESPEJO (18/08/2026). El canal `emitir()` estaba escrito desde el primer día y no
+   * tenía un solo consumidor; éste es. El cliente ve el pedido armándose y el total, como la
+   * pantalla de una caja — que es lo que evita el "¿cuánto me dijiste que era?" del final.
+   *
+   * Va con un respiro de 350 ms: tocar cinco veces el `+` son cinco renders, y cada uno un viaje
+   * por el hotspot para un número que el cliente todavía está cambiando.
+   */
+  useEffect(() => {
+    if (!red) return
+    const t = setTimeout(() => { emitirCarrito(cart, productos) }, 350)
+    return () => clearTimeout(t)
+  }, [red, cart, productos])
+
   return {
     activa: !!red,
     abriendo,
@@ -115,6 +129,8 @@ export function useVidriera({ productos, comercio, onToque }) {
     abrir,
     cerrar,
     descartarAviso: useCallback(() => setAviso(null), []),
+    // "Mirá este": el vendedor le abre un producto en la tablet.
+    destacar: useCallback((p) => { if (red) destacar(p) }, [red]),
     disponible: disponible(),
   }
 }

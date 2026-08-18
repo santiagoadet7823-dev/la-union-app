@@ -32,7 +32,7 @@ export default function VisitaCatalogo({ j }) {
   // no desconecta la tablet: el vendedor vuelve a su catálogo, ve el cartel de lo que el cliente
   // toca y el enlace sigue vivo hasta que aprieta "Cerrar vidriera" o termina la visita.
   const [verQr, setVerQr] = useState(false)
-  const vid = useVidriera({ productos: PRODUCTS, comercio: visitC })
+  const vid = useVidriera({ productos: PRODUCTS, comercio: visitC, cart })
   const [verCarrito, setVerCarrito] = useState(false)
 
   const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]

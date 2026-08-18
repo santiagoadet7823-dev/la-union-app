@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
-import { fotoDe, tocar, desconectar, limpiarFotos } from '../../services/vidrieraTablet'
+import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo } from '../../services/vidrieraTablet'
 
 /**
  * LA VIDRIERA que ve el CLIENTE en la tablet. Recibe el catálogo ya filtrado por el celular del
@@ -26,8 +26,15 @@ import { fotoDe, tocar, desconectar, limpiarFotos } from '../../services/vidrier
 const FOTOS_A_LA_VEZ = 3
 
 export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
-  const productos = catalogo?.productos || []
-  const orden = catalogo?.orden || []
+  /**
+   * El catálogo llega como prop del emparejamiento, pero puede REEMPLAZARSE en vivo: si el servidor
+   * avisa `resync` (se le cayeron eventos del buffer y no puede decir cuáles), la tablet vuelve a
+   * pedirlo entero. Por eso vive en estado y no se lee de la prop directamente.
+   */
+  const [catalogoVivo, setCatalogoVivo] = useState(catalogo)
+  useEffect(() => { setCatalogoVivo(catalogo) }, [catalogo])
+  const productos = catalogoVivo?.productos || []
+  const orden = catalogoVivo?.orden || []
   const [fotos, setFotos] = useState({})    // { [id]: url | null }
   const [tocado, setTocado] = useState(null) // id del último tocado (para el acuse)
   /**
@@ -50,6 +57,17 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
    * sobre una tablet de 800 px se comen el espacio que necesita la grilla, que es de lo que se
    * trata la pantalla.
    */
+  /**
+   * 🩸 EL CARRITO ESPEJO (18/08/2026). Lo manda el celular por el canal `emitir()`, que existía
+   * desde el primer día y no tenía un solo consumidor. El cliente ve el pedido armándose y el
+   * total, como la pantalla de una caja: es lo que saca el "¿cuánto me dijiste que era?" del final.
+   *
+   * Llega YA RESUELTO (nombre, cantidad, subtotal). La tablet no sabe de dónde sale un precio y no
+   * tiene que saberlo — misma frontera que el catálogo.
+   */
+  const [pedido, setPedido] = useState(null)  // { items, unidades, total } o null
+  // Producto abierto a pantalla completa: lo abre un toque del cliente o un "mirá este" del vendedor.
+  const [ficha, setFicha] = useState(null)
   const [busca, setBusca] = useState('')
   const [eje, setEje] = useState('categoria') // 'categoria' | 'marca'
   const [filtro, setFiltro] = useState('Todos')
@@ -76,7 +94,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   useEffect(() => {
     if (!productos.length) return
     limpiarFotos(productos).then((n) => { if (n) console.log(`[vidriera] fotos viejas borradas: ${n}`) })
-  }, [catalogo]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [catalogoVivo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ordenados como decidió el celular. Los que no estén en `orden` van al final, por si el snapshot
   // y la lista quedan desalineados: mejor mostrarlos que perderlos.
@@ -128,7 +146,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     })
     return () => { cancelado = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogo, refrescando])
+  }, [catalogoVivo, refrescando])
 
   /**
    * Volver a pedir TODAS las fotos. No hace falta en el uso normal —cada una se baja una sola vez y
@@ -143,6 +161,34 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     setTimeout(() => { forzarRef.current = false }, 1000)
   }, [])
 
+  /**
+   * Eventos del celular. `escuchar` cuelga un long-poll y devuelve la función para cortarlo.
+   *
+   * `resync` significa "te perdiste eventos y no puedo decirte cuáles": se vuelve a pedir el
+   * catálogo entero, porque seguir con un estado incompleto que PARECE completo es peor que
+   * recargar. Es la misma decisión que ya toma el servidor cuando descarta eventos viejos.
+   */
+  useEffect(() => {
+    const off = escuchar(sesion, ({ eventos, resync }) => {
+      if (!vivo.current) return
+      if (resync) { pedirCatalogo(sesion).then((c) => { if (vivo.current && c) setCatalogoVivo(c) }).catch(() => {}) }
+      for (const raw of eventos || []) {
+        let ev = raw
+        if (typeof raw === 'string') { try { ev = JSON.parse(raw) } catch (_) { continue } }
+        if (!ev || typeof ev !== 'object') continue
+        if (ev.t === 'carrito') setPedido({ items: ev.items || [], unidades: ev.unidades || 0, total: ev.total || 0 })
+        // "Mirá este": el vendedor le abre un producto. Si no está en el catálogo de la tablet
+        // (entró después del snapshot), no se hace nada — mejor que abrir una ficha vacía.
+        if (ev.t === 'destacar') {
+          const p = productos.find((x) => String(x.id) === String(ev.id))
+          if (p) setFicha(p)
+        }
+      }
+    })
+    return off
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sesion])
+
   // El stepper no manda nada: solo prepara el número. Se manda al tocar la tarjeta.
   const mover = useCallback((e, id, d) => {
     e.stopPropagation() // sin esto, tocar el + también dispararía el envío de la tarjeta
@@ -150,6 +196,12 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   }, [])
 
   const alTocar = useCallback(async (p) => {
+    // 🩸 EL TOQUE ABRE LA FICHA, ADEMÁS DE AVISAR (18/08/2026). Hasta hoy tocar una tarjeta solo
+    // mandaba el aviso al celular: el cliente señalaba a ciegas, con una foto de 190 px y el nombre
+    // cortado a dos renglones. Las dos cosas pasan juntas —el vendedor ve "está mirando X" en el
+    // mismo momento en que el cliente lo tiene grande—, que es justo la conversación que la tablet
+    // viene a facilitar.
+    setFicha(p)
     // El acuse se muestra ANTES de que el envío termine: el cliente tiene que sentir que su toque
     // pasó algo, y esperar la ida y vuelta por WiFi se siente como que la tablet no responde.
     setTocado(p.id)
@@ -164,7 +216,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         <div>
           <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)')}>Catálogo</div>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:19px')}>
-            {catalogo?.comercio?.nombre || 'Productos'}
+            {catalogoVivo?.comercio?.nombre || 'Productos'}
           </div>
         </div>
         <div style={sx('display:flex;align-items:center;gap:14px')}>
@@ -320,6 +372,106 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ===== BARRA DEL PEDIDO (carrito espejo) ==================================================
+          Solo aparece cuando hay algo. El cliente ve lo que el vendedor va cargando y el total,
+          como la pantalla de una caja: es lo que saca el "¿cuánto me dijiste que era?" del final.
+          Es de LECTURA. Acá no se edita el pedido — el pedido es del vendedor, y dos personas
+          editando lo mismo desde dos pantallas es una discusión, no una función. */}
+      {pedido && pedido.items.length > 0 && (
+        <div className="lu-rise" style={sx('flex:none;border-top:1px solid var(--line);background:var(--surface);padding:11px 16px;display:flex;align-items:center;gap:14px')}>
+          <div style={sx('flex:none;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)')}>Su pedido</div>
+          <div className="lu-chips" style={sx('flex:1;min-width:0;display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none')}>
+            {pedido.items.map((i) => (
+              <span key={i.id} style={sx('flex:none;padding:5px 11px;border-radius:99px;border:1px solid var(--line2);font-size:12px;white-space:nowrap')}>
+                <b style={sx('font-family:var(--font-mono)')}>{i.cantidad}×</b> {i.nombre}
+              </span>
+            ))}
+          </div>
+          <div style={sx('flex:none;text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+            <div style={sx('font-size:10.5px;color:var(--faint)')}>{pedido.unidades} u</div>
+            <div style={sx('font-size:19px;font-weight:700;color:var(--deep)')}>{fmtPesos(pedido.total)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== FICHA GRANDE =======================================================================
+          La abre el toque del cliente o un "mirá este" del vendedor. Foto grande, precio grande, y
+          la cantidad se cambia sin volver a la grilla.
+          No sale de `Overlay.jsx` a propósito: esto no vive dentro del marco de la app — es la
+          pantalla completa de la tablet del cliente, sin AppShell, sin header y sin scroll-lock que
+          coordinar. `Overlay` es para la app del vendedor. */}
+      {ficha && (
+        <div
+          onClick={() => setFicha(null)}
+          style={sx('position:fixed;top:0;right:0;bottom:0;left:0;z-index:var(--z-modal);background:var(--scrim);display:grid;place-items:center;padding:28px')}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="lu-rise"
+            style={sx('width:min(760px,100%);max-height:100%;overflow:auto;display:flex;gap:24px;background:var(--surface);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px')}
+          >
+            <div style={sx('flex:none;width:300px;max-width:42vw')}>
+              <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2);border-radius:16px;overflow:hidden')}>
+                {fotos[ficha.id] ? (
+                  <img src={fotos[ficha.id]} alt="" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
+                ) : (
+                  <div style={sx('position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)')}>
+                    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={sx('flex:1;min-width:0;display:flex;flex-direction:column')}>
+              <div style={sx('display:flex;align-items:flex-start;justify-content:space-between;gap:12px')}>
+                <div style={sx('font-family:var(--font-display);font-weight:600;font-size:24px;line-height:1.25')}>{ficha.nombre}</div>
+                <button onClick={() => setFicha(null)} className="lu-press"
+                  style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;background:transparent;color:var(--muted);font-size:22px;cursor:pointer')}>×</button>
+              </div>
+              {ficha.marca && <div style={sx('margin-top:5px;font-size:13px;color:var(--faint)')}>{ficha.marca}</div>}
+
+              <div style={sx('margin-top:16px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                {ficha.oferta && ficha.precioOferta != null ? (
+                  <div style={sx('display:flex;align-items:baseline;gap:11px;flex-wrap:wrap')}>
+                    <span style={sx('font-size:16px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(ficha.precio)}</span>
+                    <span style={sx('font-size:30px;font-weight:700;color:var(--warning)')}>{fmtPesos(ficha.precioOferta)}</span>
+                  </div>
+                ) : (
+                  <span style={sx('font-size:30px;font-weight:700;color:var(--deep)')}>{fmtPesos(ficha.precio)}</span>
+                )}
+              </div>
+
+              {(ficha.unidades != null || ficha.kg > 0) && (
+                <div style={sx('margin-top:7px;font-size:13px;color:var(--faint);font-family:var(--font-mono)')}>
+                  {[ficha.unidades != null ? `×${ficha.unidades} u` : null, ficha.kg > 0 ? `${String(ficha.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
+                </div>
+              )}
+
+              <div style={sx('flex:1')} />
+
+              <div style={sx('margin-top:20px;display:flex;align-items:center;gap:12px')}>
+                <div style={sx('flex:none;display:flex;align-items:center;gap:10px;padding:5px;border:1px solid var(--line2);border-radius:14px')}>
+                  <button onClick={(e) => mover(e, ficha.id, -1)} className="lu-press"
+                    style={sx('width:48px;height:48px;display:grid;place-items:center;border:none;border-radius:11px;background:transparent;color:var(--muted);font-size:25px;cursor:pointer;user-select:none')}>−</button>
+                  <span style={sx('min-width:38px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:700')}>{cant[ficha.id] || 1}</span>
+                  <button onClick={(e) => mover(e, ficha.id, 1)} className="lu-press"
+                    style={sx('width:48px;height:48px;display:grid;place-items:center;border:none;border-radius:11px;background:var(--primary-tint);color:var(--deep);font-size:24px;cursor:pointer;user-select:none')}>+</button>
+                </div>
+                {/* Vuelve a avisar con la cantidad de ahora. Sigue siendo una PROPUESTA: el pedido
+                    lo arma el vendedor en su celular. Por eso dice "pedir" y no "agregar". */}
+                <button
+                  onClick={async () => { const p = ficha; setFicha(null); await tocar(sesion, p, cant[p.id] || 1) }}
+                  className="lu-press"
+                  style={sx('flex:1;min-height:58px;border:none;border-radius:14px;background:var(--primary);color:var(--on-primary);font-size:15px;font-weight:600;cursor:pointer')}
+                >
+                  Pedir {cant[ficha.id] || 1}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

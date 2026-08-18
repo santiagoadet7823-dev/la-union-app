@@ -133,9 +133,45 @@ export async function republicar({ productos, comercio }) {
   await publicar({ productos, comercio })
 }
 
-/** Evento celular → tablet (el carrito espejo, un producto que el vendedor le empuja). */
+/**
+ * Evento celular → tablet. Best-effort: que la tablet no se entere de algo no puede romperle la
+ * pantalla al vendedor, que es el que está trabajando.
+ *
+ * 🔴 TODO LO QUE SALGA POR ACÁ CRUZA LA MISMA FRONTERA QUE `snapshotCatalogo`: la tablet es del
+ * cliente. Nada de `nivel`, `costo_real` ni `margen` — se arma campo por campo, como allá.
+ */
 export async function emitir(evento) {
-  await EnlaceLocal.emitir({ json: JSON.stringify(evento) })
+  try { await EnlaceLocal.emitir({ json: JSON.stringify(evento) }) } catch (_) { /* sin enlace */ }
+}
+
+/**
+ * EL CARRITO ESPEJO: que el cliente vea el pedido armándose, como la pantalla de una caja.
+ *
+ * Viaja ya resuelto —nombre, cantidad y lo que se le cobra— para que la tablet no tenga que saber
+ * nada del catálogo del vendedor ni de cómo se decide un precio.
+ */
+export async function emitirCarrito(cart, productos) {
+  const items = Object.entries(cart || {})
+    .filter(([, n]) => n > 0)
+    .map(([id, n]) => {
+      const p = (productos || []).find((x) => String(x.id) === String(id))
+      if (!p) return null
+      const unit = p.oferta && p.precioOferta != null ? Number(p.precioOferta) : Number(p.price) || 0
+      return { id: p.id, nombre: p.name || '', cantidad: n, unitario: unit, subtotal: unit * n }
+    })
+    .filter(Boolean)
+  await emitir({
+    t: 'carrito',
+    items,
+    unidades: items.reduce((a, i) => a + i.cantidad, 0),
+    total: items.reduce((a, i) => a + i.subtotal, 0),
+  })
+}
+
+/** "Mirá este": el vendedor le abre un producto en la tablet. */
+export async function destacar(producto) {
+  if (!producto) return
+  await emitir({ t: 'destacar', id: producto.id })
 }
 
 /**
