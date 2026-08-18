@@ -718,6 +718,27 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
         {/* BURBUJAS DEL EQUIPO (solo en inmersivo): con el chrome escondido, es el único acceso al
             enfoque por persona. */}
+        {/* PARADAS DE LA PERSONA TOCADA (18/08/2026). Es la continuación natural del gesto: toco a
+            alguien, veo sus paradas, toco una y voy.
+
+            ⚠️ VA ANTES de la tira de equipo, o sea ARRIBA: este contenedor es una columna anclada
+            al borde inferior, así que el último hijo queda pegado al borde. La tira de equipo es la
+            que tiene que quedar ahí —es donde el usuario ya la busca— y las paradas se apilan
+            encima. En `SupervisionDesktop` el mismo orden se logra con `bottom: 74` vs `bottom: 16`.
+            Las dos vistas tienen que verse IGUAL (regla 31): tenerlas invertidas es exactamente
+            cómo empiezan las divergencias que después cuestan una sesión.
+
+            El componente devuelve null si no hay foco, así que no hace falta otra condición acá. */}
+        {inmersivo && (
+          <BurbujasParadas
+            dwells={dwells}
+            focoId={foco?.id || null}
+            sel={dwellSel}
+            onIr={irAParada}
+            style={{ alignSelf: 'stretch' }}
+          />
+        )}
+
         {inmersivo && (
           <BurbujasEquipo
             movers={moversFil}
@@ -726,20 +747,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             byUser={byUser}
             focoId={foco?.id || null}
             onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
-            style={{ alignSelf: 'stretch' }}
-          />
-        )}
-
-        {/* PARADAS DE LA PERSONA TOCADA (18/08/2026). Va DEBAJO de las burbujas de equipo y con la
-            misma condición de inmersivo: es la continuación natural del gesto —toco a alguien, veo
-            sus paradas, toco una y voy—. Se dibuja sola si hay foco (el componente devuelve null si
-            no), así que no hace falta una condición más acá. */}
-        {inmersivo && (
-          <BurbujasParadas
-            dwells={dwells}
-            focoId={foco?.id || null}
-            sel={dwellSel}
-            onIr={irAParada}
             style={{ alignSelf: 'stretch' }}
           />
         )}

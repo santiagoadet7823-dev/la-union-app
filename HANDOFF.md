@@ -290,6 +290,56 @@ el arreglo son estructuralmente los que no lo pueden recibir* — solo se destra
 
 ---
 
+### Publicado — 1.14.7 (18/08/2026) — **Burbujas de parada, fotos huérfanas y exportación honesta**
+
+#### 1. Burbujas de parada en pantalla completa
+
+`components/BurbujasParadas.jsx` (nuevo, compartido por las dos supervisiones — regla 31). Al tocar
+a una persona en modo inmersivo aparece una tira de burbujas, **una por parada, con el mismo número
+que los carteles del mapa y la columna "#" de la planilla**; tocar una vuela hasta ella.
+
+Reusa todo lo que ya existía: `calcularDwells` (que ya trae `orden`, `id`, `lat`, `lng`), el
+`focus={{points, nonce}}` de `LeafletMap` —que ya distinguía el caso de un punto solo y hace `flyTo`
+con zoom mínimo 16— y el lenguaje visual de `BurbujasEquipo`. **No recalcula nada**: filtra un array.
+
+🩸 El índice que viaja es el **global** dentro de `dwells`, no el de la lista filtrada: `dwellSel` es
+una posición en el array entero (así lo consume `LeafletMap`), y usar el del filtro abriría el
+cartel de otra persona en cuanto haya más de una en el mapa.
+
+#### 2. Las fotos se van con su producto
+
+`deleteProducto` encolaba el DELETE de la fila y **nunca tocaba Storage**: al 18/08 había **626
+fotos huérfanas (13 MB) contra 0 productos**. Se agregó la op `borrarArchivos` a la cola de
+escrituras (idempotente; y un fallo **no tapona la cola**, que sería peor que la foto perdida) y las
+626 se borraron **por la API de Storage** — no por SQL: borrar la fila de `storage.objects` deja el
+archivo en S3, invisible y facturándose igual. Inventario en `../fotos-huerfanas-2026-08-18.txt`.
+
+**`db/41`** — la foto ahora exige el **mismo rol que la fila**. `productos_wr` pedía rol y la policy
+de Storage solo miraba la carpeta: un `vendedor` no podía borrar un producto pero **sí su foto**. El
+aislamiento entre empresas nunca estuvo comprometido.
+
+🟡 Queda sin cerrar: **no hay forma de saber quién borró el catálogo**. `productos` no tiene borrado
+lógico ni auditoría.
+
+#### 3. "Excel y PDF salen en blanco" — medido
+
+| Día | Datos | Excel |
+|---|---|---|
+| 17/08 | 10 personas, 383 km | **73.786 bytes**, hojas pobladas |
+| 18/08 (madrugada) | ninguno | **17.509 bytes**, `.xlsx` **válido con las hojas vacías** |
+
+La exportación funciona. Lo que engaña es que **el informe abre en el día de HOY**: de madrugada, o
+un domingo (el 16/08 tuvo 3 puntos en total), está legítimamente vacío y el archivo que sale parece
+un bug. Desde 1.14.7 **no se exporta un informe vacío: se avisa**.
+
+Y los dos botones **fallaban mudos** — llamaban a funciones `async` sin `catch`, así que cualquier
+excepción (el `import('xlsx')`, `Filesystem`, el plugin de impresión) moría en una promesa rechazada.
+Ahora el error se muestra. ⚠️ **Los caminos NATIVOS del APK quedaron sin probar** (`Filesystem`+
+`Share`, plugin `Impresion`): si ahí falla, ahora se ve el mensaje en vez de un archivo mudo.
+
+> El arreglo de fondo del PDF (`moverInformeABody`) es de 1.14.6, la noche anterior: estaba escrito
+> desde una sesión previa y sin publicar.
+
 ### Publicado — 1.14.6 (17/08/2026) — **El trazo va por la ruta, y el respaldo se prende por persona**
 
 #### El reporte y el diagnóstico
