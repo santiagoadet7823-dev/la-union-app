@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { abrirVidriera, cerrarVidriera, alTocar, alCaerse, disponible, emitirCarrito, destacar } from '../../services/vidriera'
+import { abrirVidriera, cerrarVidriera, republicar, alTocar, alCaerse, disponible, emitirCarrito, destacar } from '../../services/vidriera'
 import { estadoEspejo } from '../../services/data/espejoFotos'
 import { publicar as publicarBt, detener as detenerBt, disponible as btDisponible } from '../../services/vidrieraBluetooth'
 
@@ -15,9 +15,16 @@ import { publicar as publicarBt, detener as detenerBt, disponible as btDisponibl
  * Ahora el QR es una VISTA sobre una sesión que sigue viva por atrás, y el enlace se corta solo con
  * el botón "Cerrar vidriera" o al terminar la visita.
  *
- * ⚠️ Igual se cierra SIEMPRE al desmontar el componente que use este hook: la sesión pertenece a la
- * visita, no a la jornada. Un hotspot que sobrevive a la visita es batería que el teléfono no tiene
- * (ya vive al límite con el GPS) y un token que no debería seguir valiendo.
+ * 🩸 Y DESDE EL 18/08/2026 LA SESIÓN ES DE LA JORNADA, NO DE LA VISITA. En la primera jornada real
+ * el vendedor cerraba una visita, iba a Inicio a hacer el próximo check-in y **la tablet se
+ * desconectaba**: el hook vivía dentro de `VisitaCatalogo`, y esa pestaña se DESMONTA al cambiar de
+ * tab. Ahora el hook vive en `useJornada` y al cambiar de cliente solo se **republica** el catálogo
+ * con el comercio nuevo — el enlace no se corta.
+ *
+ * ⚠️ Eso contradecía a medias lo que decía acá antes ("un hotspot que sobrevive a la visita es
+ * batería que el teléfono no tiene, y ya vive al límite con el GPS"), y esa parte sigue siendo
+ * cierta. Por eso la contrapartida NO es opcional: **si la tablet no da señales en `INACTIVA_MS`,
+ * la sesión se cierra sola**. Sobrevive mientras se usa, no mientras está prendida.
  *
  * ⚠️ Y el escuchador de toques vive ACÁ, no en la hoja: el cartel de "el cliente está mirando X"
  * tiene que aparecer aunque el vendedor esté en la grilla o en el carrito. Ése es todo el punto.
@@ -25,6 +32,13 @@ import { publicar as publicarBt, detener as detenerBt, disponible as btDisponibl
  * Devuelve:
  *   { activa, red, error, mirados, aviso, fotos, abrir, cerrar, descartarAviso, destacar, disponible }
  */
+/**
+ * Cuánto silencio de la tablet apaga la vidriera sola. 20 min es más que cualquier visita y menos
+ * que una tarde: cubre el caso real (el vendedor guardó la tablet y siguió) sin cortar a nadie que
+ * la esté usando.
+ */
+const INACTIVA_MS = 20 * 60 * 1000
+
 export function useVidriera({ productos, comercio, cart, onToque }) {
   const [red, setRed] = useState(null)        // { ssid, clave, ip, puerto, token } o null
   const [error, setError] = useState(null)
@@ -60,6 +74,7 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
     try {
       const r = await abrirVidriera({ productos, comercio })
       if (!vivo.current) return
+      ultimoToque.current = Date.now()
       setRed(r)
       // 🩸 El sobre también sale por BLUETOOTH (18/08/2026), para la tablet cuya cámara no enfoca.
       // Es best-effort y va DESPUÉS de tener la red: si falla, el QR ya está en pantalla y nadie se
@@ -94,6 +109,7 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
     if (!red) return
     const offToque = alTocar((t) => {
       if (!vivo.current || !t?.id) return
+      ultimoToque.current = Date.now()
       const p = (productos || []).find((x) => x.id === t.id)
       if (!p) return
       const cant = Math.max(1, Math.min(999, Number(t.cantidad) || 1))
@@ -126,6 +142,41 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
     const t = setTimeout(() => { emitirCarrito(cart, productos) }, 350)
     return () => clearTimeout(t)
   }, [red, cart, productos])
+
+  /**
+   * 🩸 CAMBIAR DE CLIENTE NO CORTA EL ENLACE (18/08/2026): se republica el catálogo con el comercio
+   * nuevo y la tablet cambia el encabezado sola. `republicar` ya existía en el servicio y no tenía
+   * quién lo llamara — este es el caso para el que se escribió.
+   *
+   * Se saltea la primera vuelta: `abrirVidriera` ya publicó con el comercio de ese momento.
+   */
+  const comercioPub = useRef(null)
+  useEffect(() => {
+    if (!red) { comercioPub.current = comercio?.id ?? null; return }
+    if (comercioPub.current === (comercio?.id ?? null)) return
+    comercioPub.current = comercio?.id ?? null
+    republicar({ productos, comercio })
+  }, [red, comercio, productos])
+
+  /**
+   * 🩸 EL FRENO. La sesión ahora dura la jornada, así que necesita una forma de terminarse sola: un
+   * AP encendido toda la tarde es batería que este teléfono no tiene (regla del handoff, §"cerrar
+   * vidriera"). Se rearma con cada toque del cliente; si no llega ninguno en `INACTIVA_MS`, cierra.
+   *
+   * `ultimoToque` avanza también al abrir, para que abrir y no usarla no la deje viva para siempre.
+   */
+  const ultimoToque = useRef(0)
+  useEffect(() => {
+    if (!red) return
+    const i = setInterval(() => {
+      if (!vivo.current) return
+      if (Date.now() - ultimoToque.current < INACTIVA_MS) return
+      cerrarVidriera()
+      setRed(null)
+      setError('La vidriera se cerró sola: la tablet no dio señales en 20 minutos.')
+    }, 60000)
+    return () => clearInterval(i)
+  }, [red])
 
   return {
     activa: !!red,

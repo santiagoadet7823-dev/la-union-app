@@ -63,6 +63,13 @@
   --z-sheet: 300;     /* bottom-sheets (dashboard, entrega) */
   --z-screen: 400;    /* pantallas full-screen (GestionHost, ImportarClientes) */
   --z-modal: 500;     /* modales centrados */
+  --z-aviso: 550;     /* 🩸 el cartel de "el cliente está mirando esto" (vidriera, 18/08/2026).
+                         Tiene que verse SOBRE el pedido abierto: en la primera jornada real el
+                         vendedor estaba revisando el carrito, el cliente tocó otro producto y el
+                         aviso no llegó nunca — el sheet lo tapaba. Iba con un `z-index:6` literal,
+                         que es justo lo que la regla del §7 dice que no se hace: 6 contra 300 no es
+                         una competencia. Va arriba de los modales porque es una interrupción
+                         ACCIONABLE y de otro; abajo del toast, que sigue siendo el techo. */
   --z-toast: 600;     /* el toast va arriba de TODO, a propósito: confirma
                          acciones que pueden dispararse desde un modal */
 }

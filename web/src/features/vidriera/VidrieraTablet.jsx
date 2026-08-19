@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo, fijarPantalla, soltarPantalla } from '../../services/vidrieraTablet'
@@ -38,6 +38,120 @@ const FOTOS_A_LA_VEZ = 3
 const REPOSO_MS = 30000
 const REPOSO_PASO_MS = 6000
 
+// Cada cuánto se vuelcan a la pantalla las fotos que fueron llegando. Ver `encolarFoto`.
+const TANDA_FOTOS_MS = 250
+
+// Cuántas tarjetas se dibujan de entrada, y de a cuántas crece al llegar al final del scroll.
+// 529 tarjetas de una son ~5.000 nodos en un WebView Chrome 79 con 2 GB de RAM.
+const PAGINA = 60
+
+// Alto de la foto de cada tarjeta, en píxeles. Pegado al ancho mínimo de columna (190 px) para que
+// se vea cuadrada. Ver el 🩸 de la tarjeta: acá NO va un porcentaje.
+const ALTO_FOTO = 190
+
+/**
+ * 🩸 `grid-auto-rows:max-content` NO ES DECORATIVO (18/08/2026). Con las filas en `auto` y el
+ * contenedor con **altura definida** —que es lo que pasó al poner la raíz en `height:100vh`—, el
+ * navegador las colapsaba al alto del texto: medido, **37 px de tarjeta contra los ~303** que
+ * corresponden, con la foto recortada por el `overflow:hidden` de la tarjeta.
+ *
+ * Con 12 productos no pasaba y con 529 sí: es la clase de bug que solo aparece con el catálogo real,
+ * y por eso la prueba se hace con 529 y no con tres (regla 50-bis).
+ */
+const ESTILO_GRILLA = sx('flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));grid-auto-rows:max-content;gap:12px;align-content:start')
+
+/**
+ * 🩸 UNA TARJETA, MEMOIZADA (18/08/2026). Estaba inline dentro del `map`, así que cualquier cambio
+ * de estado de la pantalla —y cada foto que llegaba era uno— volvía a construir las 529.
+ *
+ * `memo` solo sirve si las props son estables: por eso `onTocar` y `onMover` son `useCallback` del
+ * padre y la cantidad entra como número (`cantidad`) y no como el objeto `cant` entero, que cambia
+ * de identidad con cada toque del `+` de cualquier producto.
+ */
+const Tarjeta = memo(function Tarjeta({ p, url, acusado, cantidad, onTocar, onMover }) {
+  const enOferta = p.oferta && p.precioOferta != null
+  return (
+          <div
+            onClick={() => onTocar(p)}
+            className="lu-press"
+            role="button"
+            style={{
+              ...sx('display:flex;flex-direction:column;background:var(--surface);border-radius:16px;overflow:hidden;cursor:pointer'),
+              // El marco es NEUTRO. En el catálogo del vendedor este borde lleva el color de la
+              // rentabilidad; acá no hay tal dato y no debe haberlo nunca.
+              border: `1px solid ${acusado ? 'var(--primary)' : 'var(--line)'}`,
+              boxShadow: acusado ? '0 0 0 2px var(--primary-tint)' : 'var(--shadow)',
+              transition: 'border-color 180ms cubic-bezier(.23,1,.32,1), box-shadow 180ms cubic-bezier(.23,1,.32,1)',
+            }}
+          >
+            {/* 🩸 ALTURA EXPLÍCITA, ni `aspect-ratio` ni `padding-top:100%` (18/08/2026).
+                `aspect-ratio` no existe en Chrome 79, que es el WebView de esta tablet. Y el truco
+                del `padding-top` porcentual **no aporta altura cuando el navegador dimensiona la
+                fila del grid**: los porcentajes se resuelven a cero al calcular el tamaño
+                intrínseco, así que la fila salía del alto del texto y la foto quedaba recortada por
+                el `overflow:hidden` de la tarjeta. Medido: 37 px de tarjeta contra los ~310 que
+                corresponden. Con `height` en píxeles el problema no existe, y `ALTO_FOTO` está
+                pegado al ancho mínimo de columna, así que se sigue viendo cuadrada.
+                ⚠️ Y `flex:none` NO es decorativo: la tarjeta es un contenedor flex en columna, así
+                que un alto fijo igual se **encoge** si la fila del grid queda más baja (el default
+                es `flex-shrink:1`). Sin esto, la foto medía 0 px con el `height:190px` puesto — que
+                es exactamente lo que pasó al fijar el alto de la pantalla. */}
+            <div style={{ ...sx('position:relative;width:100%;flex:none;background:var(--surface2)'), height: ALTO_FOTO }}>
+              {url ? (
+                <img src={url} alt="" loading="lazy" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
+              ) : (
+                <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}>
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                </div>
+              )}
+              {enOferta && (
+                <span style={sx('position:absolute;top:8px;left:8px;background:var(--warning);color:#3d2c00;font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:99px')}>OFERTA</span>
+              )}
+              {acusado && (
+                <div className="lu-rise" style={sx('position:absolute;left:8px;right:8px;bottom:8px;padding:7px 10px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-size:11.5px;font-weight:600;text-align:center')}>
+                  Listo, se lo mostramos
+                </div>
+              )}
+              {/* Cuántos quiere. Toques grandes: esto lo usa un comerciante de pie, con una
+                  mano, sobre una tablet apoyada en el mostrador. */}
+              {!acusado && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={sx('position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px;border-radius:12px;background:var(--glass-strong);border:1px solid var(--line)')}
+                >
+                  <button onClick={(e) => onMover(e, p.id, -1)} className="lu-press"
+                    style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:transparent;color:var(--muted);font-size:21px;cursor:pointer;user-select:none')}>−</button>
+                  <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:700')}>{cantidad}</span>
+                  <button onClick={(e) => onMover(e, p.id, 1)} className="lu-press"
+                    style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:20px;cursor:pointer;user-select:none')}>+</button>
+                </div>
+              )}
+            </div>
+
+            <div style={sx('flex:1;display:flex;flex-direction:column;padding:11px 12px 13px')}>
+              <div style={{ ...sx('font-size:13.5px;font-weight:500;line-height:1.35;min-height:2.7em'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {p.nombre}
+              </div>
+              <div style={sx('margin-top:7px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                {enOferta ? (
+                  <div style={sx('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
+                    <span style={sx('font-size:12px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.precio)}</span>
+                    <span style={sx('font-size:16px;font-weight:700;color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
+                  </div>
+                ) : (
+                  <span style={sx('font-size:16px;font-weight:700;color:var(--deep)')}>{fmtPesos(p.precio)}</span>
+                )}
+              </div>
+              {(p.unidades != null || p.kg > 0) && (
+                <div style={sx('margin-top:3px;font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
+                  {[p.unidades != null ? `×${p.unidades} u` : null, p.kg > 0 ? `${String(p.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
+          </div>
+  )
+})
+
 export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   /**
    * El catálogo llega como prop del emparejamiento, pero puede REEMPLAZARSE en vivo: si el servidor
@@ -59,6 +173,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
    * la tarjeta no dice "agregado" sino "se lo mostramos".
    */
   const [cant, setCant] = useState({}) // { [id]: n }
+  // Espejo de `cant` para las callbacks estables (ver `alTocar`).
+  const cantRef = useRef(cant)
+  cantRef.current = cant
   /**
    * 🩸 EL CARRITO ESPEJO (18/08/2026). Lo manda el celular por el canal `emitir()`, que existía
    * desde el primer día y no tenía un solo consumidor. El cliente ve el pedido armándose y el
@@ -121,6 +238,29 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   }, [])
 
   /**
+   * 🩸 LAS FOTOS SE VUELCAN EN TANDAS, NO DE A UNA (18/08/2026). Cada `setFotos` era un render de la
+   * pantalla entera: con 529 productos, **529 renders**, y hasta hoy cada uno de esos renders además
+   * volvía a ordenar los 529 (ver el memo de `ordenados`). Eso era el "va trabado" de la tablet —
+   * el hardware ayudaba, pero el trabajo se lo estaba dando el código.
+   *
+   * Se juntan en un ref y se vuelcan cada TANDA_MS: ~20 renders en vez de 529, con la grilla
+   * llenándose igual de a poco a la vista.
+   */
+  const pendientes = useRef({})
+  const tandaRef = useRef(null)
+  const encolarFoto = useCallback((id, url) => {
+    pendientes.current[id] = url
+    if (tandaRef.current) return
+    tandaRef.current = setTimeout(() => {
+      tandaRef.current = null
+      const tanda = pendientes.current
+      pendientes.current = {}
+      if (vivo.current) setFotos((f) => ({ ...f, ...tanda }))
+    }, TANDA_FOTOS_MS)
+  }, [])
+  useEffect(() => () => clearTimeout(tandaRef.current), [])
+
+  /**
    * 🩸 PODA AL RECIBIR EL CATÁLOGO (18/08/2026). Desde hoy las fotos viven en `filesDir` y no en el
    * caché, porque el caché lo borraba Android justo cuando más falta hacía. El costo de esa decisión
    * es que ahora hay que barrer a mano: el nombre del archivo lleva la versión, así que cada foto
@@ -133,25 +273,82 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     limpiarFotos(productos).then((n) => { if (n) console.log(`[vidriera] fotos viejas borradas: ${n}`) })
   }, [catalogoVivo]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ordenados como decidió el celular. Los que no estén en `orden` van al final, por si el snapshot
-  // y la lista quedan desalineados: mejor mostrarlos que perderlos.
-  const ordenados = (() => {
+  /**
+   * 🩸 TODO LO DERIVADO VA MEMOIZADO (18/08/2026), y no es prolijidad: era un costo CUADRÁTICO.
+   *
+   * Estas cuatro líneas estaban sueltas en el cuerpo del componente, o sea que se recalculaban en
+   * CADA render — y el componente re-renderizaba una vez por cada foto que terminaba de bajar. Con
+   * 529 productos eso es ordenar 529 elementos, 529 veces. Es el mismo patrón que la regla 50
+   * (`detectarParadas`): un costo que nadie escribió a propósito y que crece solo con el catálogo.
+   *
+   * Ordenados como decidió el celular. Los que no estén en `orden` van al final, por si el snapshot
+   * y la lista quedan desalineados: mejor mostrarlos que perderlos.
+   */
+  const ordenados = useMemo(() => {
     const pos = new Map(orden.map((id, i) => [id, i]))
     return productos.slice().sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9))
-  })()
+  }, [productos, orden])
 
   // Los valores del eje activo, en el orden en que aparecen (o sea: lo más destacado primero).
-  const valores = [...new Set(ordenados.map((p) => (eje === 'marca' ? p.marca : p.categoria)).filter(Boolean))]
-  const hayOfertas = ordenados.some((p) => p.oferta)
-  const chips = ['Todos', ...(hayOfertas ? ['Ofertas'] : []), ...valores]
+  const chips = useMemo(() => {
+    const valores = [...new Set(ordenados.map((p) => (eje === 'marca' ? p.marca : p.categoria)).filter(Boolean))]
+    const hayOfertas = ordenados.some((p) => p.oferta)
+    return ['Todos', ...(hayOfertas ? ['Ofertas'] : []), ...valores]
+  }, [ordenados, eje])
 
-  const q = busca.trim().toLowerCase()
-  const lista = ordenados.filter((p) => {
-    if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.marca || '').toLowerCase().includes(q)) return false
-    if (filtro === 'Ofertas') return p.oferta
-    if (filtro !== 'Todos' && (eje === 'marca' ? p.marca : p.categoria) !== filtro) return false
-    return true
-  })
+  const lista = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return ordenados.filter((p) => {
+      if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.marca || '').toLowerCase().includes(q)) return false
+      if (filtro === 'Ofertas') return p.oferta
+      if (filtro !== 'Todos' && (eje === 'marca' ? p.marca : p.categoria) !== filtro) return false
+      return true
+    })
+  }, [ordenados, busca, filtro, eje])
+
+  /**
+   * 🩸 LA GRILLA CRECE AL SCROLLEAR (18/08/2026). Dibujar los 529 productos de una son ~5.000 nodos
+   * en un WebView Chrome 79 con 2 GB — y el cliente ve seis a la vez. Se dibujan `PAGINA` y se suma
+   * otra tanda cuando el centinela del final entra en pantalla.
+   *
+   * `IntersectionObserver` existe desde Chrome 51, así que la tablet lo tiene. Y el contador del
+   * encabezado sigue diciendo el TOTAL real: el cliente nunca ve "hay menos productos".
+   *
+   * Se reinicia cuando cambia lo que se está mirando — si no, buscar algo después de haber bajado
+   * mucho dejaría dibujadas 500 tarjetas de una lista de cuatro.
+   */
+  const [cuantas, setCuantas] = useState(PAGINA)
+  useEffect(() => { setCuantas(PAGINA) }, [busca, filtro, eje, catalogoVivo])
+  const visibles = useMemo(() => lista.slice(0, cuantas), [lista, cuantas])
+  /**
+   * Crece al acercarse al final. Es un `scroll` pasivo sobre la grilla y NO un
+   * `IntersectionObserver`, por dos razones:
+   *
+   *  1. El que scrollea es el CONTENEDOR, no la ventana (la raíz está en `height:100vh;overflow:
+   *     hidden`). Un observador contra el viewport no se entera nunca — medido: el centinela quedaba
+   *     700 px por debajo y la grilla no crecía jamás. Habría que pasarle `root`, que es un detalle
+   *     fácil de perder en el próximo refactor.
+   *  2. 🩸 Y sobre todo: **`IntersectionObserver` no entrega callbacks con el documento oculto**,
+   *     igual que `rAF` (regla 35). Un `scroll` sí. Acá eso además es lo que hace la diferencia
+   *     entre poder probarlo y tener que creerle.
+   *
+   * El cálculo es una resta: no hace falta medir nada del layout que no esté ya en el evento.
+   */
+  const grillaRef = useRef(null)
+  useEffect(() => {
+    const g = grillaRef.current
+    if (!g) return
+    const alScrollear = () => {
+      if (g.scrollTop + g.clientHeight < g.scrollHeight - 600) return
+      setCuantas((c) => (c < listaRef.current.length ? c + PAGINA : c))
+    }
+    g.addEventListener('scroll', alScrollear, { passive: true })
+    return () => g.removeEventListener('scroll', alScrollear)
+  }, [])
+  // La lista se lee de un ref para que el listener se registre UNA vez: volver a suscribirse con
+  // cada tecla del buscador es justo el trabajo que esta pantalla no tiene para gastar.
+  const listaRef = useRef(lista)
+  listaRef.current = lista
 
   /**
    * Bajar las fotos de a poco, en el orden en que se van a ver.
@@ -173,7 +370,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         const { url, cache } = await fotoDe(sesion, p.id, p.fotoV, forzarRef.current)
         if (cancelado || !vivo.current) return
         if (url) cuenta.current[cache ? 'cache' : 'red']++
-        setFotos((f) => ({ ...f, [p.id]: url }))
+        encolarFoto(p.id, url)
       }
     }
     cuenta.current = { cache: 0, red: 0 }
@@ -273,15 +470,25 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     setTocado(p.id)
     setTimeout(() => { if (vivo.current) setTocado((t) => (t === p.id ? null : t)) }, 1800)
     try { if (navigator.vibrate) navigator.vibrate(18) } catch (_) { /* sin motor de vibración */ }
-    await tocar(sesion, p, cant[p.id] || 1)
-  }, [sesion, cant])
+    await tocar(sesion, p, cantRef.current[p.id] || 1)
+    // `cantRef` y no `cant`: si esta callback cambiara de identidad con cada toque del `+`, se
+    // rompería el `memo` de las 529 tarjetas — que es justo lo que vinimos a arreglar.
+  }, [sesion])
 
   return (
     <div
       // Cualquier toque despierta la vidriera. Va en `onPointerDown` (no en `onClick`) para que la
       // pantalla vuelva en el momento en que el dedo baja, no cuando se completa un click.
       onPointerDown={() => { if (reposo) setReposo(0) }}
-      style={sx('min-height:100vh;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}
+      /**
+       * 🩸 `height`, NO `min-height` (18/08/2026). Con `min-height:100vh` el contenedor CRECE con el
+       * contenido, así que el `flex:1;overflow-y:auto` de la grilla nunca llega a acotar nada: el
+       * que scrollea es el documento entero y se van con él el encabezado y los filtros. Eso era el
+       * "los botones de arriba se pierden al deslizar" de la primera jornada. Con altura fija, el
+       * único que scrollea es la grilla — y de paso es la condición para que el centinela del final
+       * pueda detectar dónde termina.
+       */
+      style={sx('height:100vh;overflow:hidden;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}
     >
       <div style={sx('flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--line)')}>
         <div>
@@ -367,82 +574,19 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
             : 'El vendedor todavía no tiene productos cargados en su catálogo.'}
         </div>
       ) : (
-        <div style={sx('flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;align-content:start')}>
-          {lista.map((p) => {
-            const url = fotos[p.id]
-            const enOferta = p.oferta && p.precioOferta != null
-            const acusado = tocado === p.id
-            return (
-              <div
-                key={p.id}
-                onClick={() => alTocar(p)}
-                className="lu-press"
-                role="button"
-                style={{
-                  ...sx('display:flex;flex-direction:column;background:var(--surface);border-radius:16px;overflow:hidden;cursor:pointer'),
-                  // El marco es NEUTRO. En el catálogo del vendedor este borde lleva el color de la
-                  // rentabilidad; acá no hay tal dato y no debe haberlo nunca.
-                  border: `1px solid ${acusado ? 'var(--primary)' : 'var(--line)'}`,
-                  boxShadow: acusado ? '0 0 0 2px var(--primary-tint)' : 'var(--shadow)',
-                  transition: 'border-color 180ms cubic-bezier(.23,1,.32,1), box-shadow 180ms cubic-bezier(.23,1,.32,1)',
-                }}
-              >
-                {/* padding-top en vez de aspect-ratio: el WebView de la tablet es Chrome 79. */}
-                <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2)')}>
-                  {url ? (
-                    <img src={url} alt="" loading="lazy" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
-                  ) : (
-                    <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}>
-                      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-                    </div>
-                  )}
-                  {enOferta && (
-                    <span style={sx('position:absolute;top:8px;left:8px;background:var(--warning);color:#3d2c00;font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:99px')}>OFERTA</span>
-                  )}
-                  {acusado && (
-                    <div className="lu-rise" style={sx('position:absolute;left:8px;right:8px;bottom:8px;padding:7px 10px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-size:11.5px;font-weight:600;text-align:center')}>
-                      Listo, se lo mostramos
-                    </div>
-                  )}
-                  {/* Cuántos quiere. Toques grandes: esto lo usa un comerciante de pie, con una
-                      mano, sobre una tablet apoyada en el mostrador. */}
-                  {!acusado && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={sx('position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px;border-radius:12px;background:var(--glass-strong);border:1px solid var(--line)')}
-                    >
-                      <button onClick={(e) => mover(e, p.id, -1)} className="lu-press"
-                        style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:transparent;color:var(--muted);font-size:21px;cursor:pointer;user-select:none')}>−</button>
-                      <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:700')}>{cant[p.id] || 1}</span>
-                      <button onClick={(e) => mover(e, p.id, 1)} className="lu-press"
-                        style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:20px;cursor:pointer;user-select:none')}>+</button>
-                    </div>
-                  )}
-                </div>
+        <div ref={grillaRef} style={ESTILO_GRILLA}>
+          {visibles.map((p) => (
+            <Tarjeta
+              key={p.id}
+              p={p}
+              url={fotos[p.id]}
+              acusado={tocado === p.id}
+              cantidad={cant[p.id] || 1}
+              onTocar={alTocar}
+              onMover={mover}
+            />
+          ))}
 
-                <div style={sx('flex:1;display:flex;flex-direction:column;padding:11px 12px 13px')}>
-                  <div style={{ ...sx('font-size:13.5px;font-weight:500;line-height:1.35;min-height:2.7em'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {p.nombre}
-                  </div>
-                  <div style={sx('margin-top:7px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
-                    {enOferta ? (
-                      <div style={sx('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
-                        <span style={sx('font-size:12px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.precio)}</span>
-                        <span style={sx('font-size:16px;font-weight:700;color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
-                      </div>
-                    ) : (
-                      <span style={sx('font-size:16px;font-weight:700;color:var(--deep)')}>{fmtPesos(p.precio)}</span>
-                    )}
-                  </div>
-                  {(p.unidades != null || p.kg > 0) && (
-                    <div style={sx('margin-top:3px;font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
-                      {[p.unidades != null ? `×${p.unidades} u` : null, p.kg > 0 ? `${String(p.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
         </div>
       )}
 

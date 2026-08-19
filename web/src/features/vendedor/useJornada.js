@@ -4,6 +4,7 @@ import { useGps } from '../../context/GpsContext'
 import { uid } from '../../lib/uid'
 import { supabase } from '../../services/supabase'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
+import { useVidriera } from '../vidriera/useVidriera'
 
 const now = () => {
   const d = new Date()
@@ -182,7 +183,23 @@ export function useJornada() {
   const meta = Math.min(100, Math.round((montoHoy / 900000) * 100))
   const efect = done ? Math.round((conPedido.length / done) * 100) : 0
 
+  /**
+   * 🩸 LA SESIÓN DE VIDRIERA VIVE ACÁ (18/08/2026), no en la pestaña del catálogo.
+   *
+   * Estaba en `VisitaCatalogo`, y `VendedorView` monta esa pestaña como
+   * `{j.tab === 'catalogo' && <VisitaCatalogo/>}`: **cambiar de pestaña la desmonta**, y el hook
+   * cierra el hotspot al desmontar. O sea que el vendedor iba a Inicio para hacer el próximo
+   * check-in y ahí mismo perdía la tablet — que es exactamente lo que se reportó de la primera
+   * jornada. Acá arriba sobrevive a las pestañas Y a las visitas: al cambiar de cliente solo se
+   * republica el catálogo con el comercio nuevo.
+   *
+   * El freno para que esto no deje el AP prendido toda la tarde vive dentro del hook
+   * (`INACTIVA_MS`), no acá.
+   */
+  const vid = useVidriera({ productos: PRODUCTS, comercio: visitC, cart })
+
   return {
+    vid,
     tab, setTab,
     visit, seconds, cart, sheet, setSheet, motivo, setMotivo,
     search, setSearch, catFilter, setCatFilter, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,

@@ -15,6 +15,13 @@ import { btnPrimario, btnSecundario } from '../../lib/botones'
  *
  * ⚠️ `pointerEvents:'none'` en el contenedor y `'auto'` solo en la tarjeta (regla 30): esto es un
  * flotante con `left`/`right` fijos y se tragaría los toques de la grilla en toda esa franja.
+ *
+ * 🩸 Y VA `fixed` CON `--z-aviso`, NO `absolute` CON UN NÚMERO (18/08/2026). En la primera jornada
+ * real el vendedor estaba mirando el pedido y el cliente tocó otro producto: el aviso no llegó
+ * nunca. Llevaba `z-index:6` —un literal suelto— contra los **300** de `--z-sheet` que usa
+ * `CarritoSheet`; no había competencia. Y `absolute` además lo recortaba el contenedor de la
+ * pestaña. Ahora se ve sobre todo lo que el vendedor tenga abierto, que es literalmente lo que dice
+ * la primera línea de este comentario y hasta hoy era mentira.
  */
 export default function AvisoVidriera({ aviso, comercio, onSumar, onDescartar }) {
   if (!aviso) return null
@@ -22,7 +29,7 @@ export default function AvisoVidriera({ aviso, comercio, onSumar, onDescartar })
   const n = aviso._cant || 1
 
   return (
-    <div style={sx('position:absolute;left:12px;right:12px;bottom:150px;z-index:6;pointer-events:none;display:flex;justify-content:center')}>
+    <div style={sx('position:fixed;left:12px;right:12px;bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:var(--z-aviso);pointer-events:none;display:flex;justify-content:center')}>
       <div className="lu-rise" style={{
         ...sx('width:100%;padding:12px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow-lg)'),
         border: '1.5px solid var(--primary)',

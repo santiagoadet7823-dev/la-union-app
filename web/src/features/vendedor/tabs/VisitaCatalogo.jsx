@@ -6,7 +6,6 @@ import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
-import { useVidriera } from '../../vidriera/useVidriera'
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
 // vendedor: ve el color, NUNCA el número. Sin nivel → borde neutro. Ver index.css (--rent-*).
@@ -26,13 +25,13 @@ export default function VisitaCatalogo({ j }) {
   // El build daba verde: Vite no detecta TDZ. Si mañana un hook nuevo necesita otro campo de `j`,
   // ya lo tiene arriba; no hay motivo para volver a bajar esta línea.
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
-  const { PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
+  const { vid, PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
 
-  // 🩸 LA SESIÓN DE VIDRIERA VIVE ACÁ, no en la ventana del QR (18/08/2026). Cerrar esa ventana ya
-  // no desconecta la tablet: el vendedor vuelve a su catálogo, ve el cartel de lo que el cliente
-  // toca y el enlace sigue vivo hasta que aprieta "Cerrar vidriera" o termina la visita.
+  // 🩸 LA SESIÓN DE VIDRIERA NO VIVE ACÁ: vive en `useJornada` (18/08/2026). Primero se mudó desde
+  // la ventana del QR —cerrarla desconectaba la tablet— y después un nivel más arriba, porque esta
+  // pestaña se DESMONTA al cambiar de tab y volvía a pasar lo mismo camino al próximo check-in.
+  // Acá solo se consume: `j.vid`.
   const [verQr, setVerQr] = useState(false)
-  const vid = useVidriera({ productos: PRODUCTS, comercio: visitC, cart })
   const [verCarrito, setVerCarrito] = useState(false)
 
   const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]
@@ -85,7 +84,7 @@ export default function VisitaCatalogo({ j }) {
                 </button>
               )}
               <button onClick={() => setSheet(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--warning);cursor:pointer;background:transparent')}>Sin pedido</button>
-              <button onClick={() => { vid.cerrar(); cancelVisit() }} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
+              <button onClick={cancelVisit} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -229,7 +228,6 @@ export default function VisitaCatalogo({ j }) {
           onConfirmar={() => {
             const total = cartTotal
             setVerCarrito(false)
-            vid.cerrar()
             endVisit('visitado', { monto: total })
             showToast(`Pedido confirmado · ${fmtPesos(total)}`)
           }}
@@ -273,7 +271,11 @@ export default function VisitaCatalogo({ j }) {
           style={{
             ...sx('position:absolute;left:12px;right:12px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted);box-shadow:var(--shadow)'),
             // Se apoya arriba de la barra del pedido cuando la hay, y baja a su lugar cuando no.
-            bottom: cartCount > 0 ? 186 : 80,
+            // 🩸 Con `env(safe-area-inset-bottom)`: la bottom-nav CRECE con la barra de gestos
+            // (`VendedorView`), así que un 80 clavado en píxeles queda debajo de ella en cualquier
+            // teléfono sin botones físicos. El `,0px` de reserva no es de más — sin él, un WebView
+            // que no conozca `env()` deja la propiedad inválida y el flotante se va al fondo.
+            bottom: `calc(${cartCount > 0 ? 186 : 80}px + env(safe-area-inset-bottom,0px))`,
           }}
         >
           <span style={sx('width:7px;height:7px;flex:none;border-radius:99px;background:var(--success)')} />
@@ -290,7 +292,7 @@ export default function VisitaCatalogo({ j }) {
       )}
 
       {cartCount > 0 && (
-        <div style={sx('position:absolute;left:12px;right:12px;bottom:80px;background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow-lg);padding:12px 14px;z-index:5')}>
+        <div style={sx('position:absolute;left:12px;right:12px;bottom:calc(80px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow-lg);padding:12px 14px;z-index:5')}>
           {/* 🩸 La barra ABRE el pedido (19/08/2026). Antes solo informaba: para cambiar una
               cantidad había que volver a buscar el producto entre 529, y para saber qué llevaba el
               cliente, acordarse. Con la vidriera andando se nota enseguida — el comercio señala
@@ -309,7 +311,7 @@ export default function VisitaCatalogo({ j }) {
           </div>
           {visitC ? (
             <button
-              onClick={() => { const total = cartTotal; vid.cerrar(); endVisit('visitado', { monto: total }); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
+              onClick={() => { const total = cartTotal; endVisit('visitado', { monto: total }); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
               style={sx('width:100%;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;border:none')}
             >Confirmar pedido y finalizar visita</button>
           ) : (
