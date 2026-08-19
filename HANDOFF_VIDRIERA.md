@@ -1,17 +1,18 @@
 # HANDOFF — VIDRIERA (tablet del cliente)
 
-**Estado al 18/08/2026.** La vidriera **funciona de punta a punta en hardware real**: el celular
-levanta la red, la tablet escanea el QR, se une y trae el catálogo de 529 productos. Lo que sigue
-son mejoras y una decisión de producto, no arreglos para que arranque.
+**Estado al 19/08/2026.** La vidriera **funciona de punta a punta en hardware real** y ya se usó una
+jornada completa con un cliente enfrente. El veredicto del dueño fue *"anda perfecto"*, con cinco
+cosas de uso que se arreglaron en 1.18.1. Lo que queda es **medición en el aparato**, no
+construcción.
 
-Publicado: **APK 1.18.0** (versionCode 36) · **OTA + PWA 1.18.0** · `min_version` **subido a
-1.18.0 el 18/08/2026**: los 9 equipos reinstalan solos (misma firma, no pierden datos locales).
+Publicado: **APK 1.18.0** (versionCode 36) · **OTA + PWA 1.18.1** · `min_version` **1.18.0** — los 9
+equipos reinstalaron solos.
 
-> 🩸 **Se subió `min_version` por el arreglo de la notificación del GPS**, que no es de la vidriera
-> pero viaja en el mismo APK y no llegaba de ninguna otra forma. O sea que **la vidriera salió a la
-> calle antes de estar medida**: en los 9 teléfonos el botón existe, pero el catálogo no tiene fotos
-> y nadie corrió todavía "Preparar catálogo". No es un problema —degrada a una grilla sin
-> imágenes— pero conviene saberlo antes de que alguien la abra delante de un cliente.
+> 🩸 **La vidriera salió a la calle ANTES de estar medida, y fue a propósito.** Se subió
+> `min_version` por el arreglo de la notificación del GPS, que es nativo, no es de la vidriera y no
+> llegaba de ninguna otra forma. Efecto lateral asumido: en los 9 teléfonos el botón **Vidriera**
+> existe. Degrada bien (sin fotos es una grilla sin imágenes), pero **nadie corrió todavía "Preparar
+> catálogo"**: si alguien la abre delante de un comerciante hoy, se ve gris.
 
 > Este documento es SOLO de la vidriera. Lo demás del proyecto sigue en
 > [HANDOFF.md](HANDOFF.md) y [CLAUDE.md](CLAUDE.md).
@@ -22,26 +23,39 @@ Publicado: **APK 1.18.0** (versionCode 36) · **OTA + PWA 1.18.0** · `min_versi
 
 El cliente explora el catálogo en una tablet mientras el vendedor toma el pedido en su celular. Cada
 producto que el cliente toca —con la cantidad que quiere— le aparece al vendedor como un cartel con
-el botón de sumarlo al carrito.
+el botón de sumarlo al carrito, y se le abre grande en la tablet.
 
-**🩸 La sesión NO vive en la ventana del QR** (cambio del 19/08). El vendedor puede cerrar esa
-ventana y seguir usando su catálogo, ver el pedido y recibir los avisos de lo que el cliente toca —
-la tablet sigue conectada. El enlace se corta **solo** con el botón *"Cerrar vidriera y desconectar
-la tablet"* o al terminar/cancelar la visita. El chip "Vidriera" del header late en verde mientras
-hay enlace vivo, que es la única señal de que sigue activo con la ventana cerrada.
+**🩸 La sesión es de la JORNADA, no de la visita** (18/08/2026, segunda mudanza). Primero salió de la
+ventana del QR; después subió a `useJornada`, porque `VendedorView` **desmonta la pestaña Catálogo al
+cambiar de tab** y el vendedor perdía la tablet camino al próximo check-in. Hoy:
+
+- cerrar la ventana del QR no corta nada;
+- cambiar de pestaña no corta nada;
+- **cambiar de cliente tampoco**: se republica el catálogo con el comercio nuevo y la tablet cambia
+  el encabezado sola;
+- se corta con el botón *"Cerrar vidriera y desconectar la tablet"*, al cerrar sesión, o **sola a los
+  20 minutos sin que la tablet dé señales** (`INACTIVA_MS`) — ese freno es lo que evita dejar el AP
+  prendido toda la tarde, que era la objeción original.
+
+El chip "Vidriera" del header late en verde mientras hay enlace vivo.
 
 **El camino en la app:**
 
 1. Vendedor: **Inicio → check-in en un cliente** (el ✓ verde).
 2. Salta a **Catálogo**, con la cabecera "VISITA EN CURSO". Ahí está el botón **Vidriera**.
 3. Se abre el QR a pantalla completa.
-4. Tablet: **"Soy una tablet · escanear código"** en el ingreso → *Escanear código*.
-5. La tablet se une sola a la red y trae el catálogo.
-6. El vendedor toca **Volver**: sigue en su catálogo, con el enlace vivo.
+4. Tablet: **"Soy una tablet · escanear código"** → *Escanear código*, o **Buscar por Bluetooth** si
+   están vinculados.
+5. La tablet se une sola y trae el catálogo.
+6. El vendedor toca **Volver** y sigue trabajando.
 
 ⚠️ **El check-in en un cliente SIN ubicación le asigna las coordenadas de donde estés** y te lo
 reclama como propio (`reclamar_y_ubicar_cliente`). Para demostraciones, usar un comercio que ya
-tenga ubicación — hay unos pocos; `BU AYELEN ACOSTA` (código 2788) es uno.
+tenga ubicación — `BU AYELEN ACOSTA` (código 2788) es uno.
+
+⚠️ **Las fotos las sirve el TELÉFONO, no internet.** Sin correr *Mi cuenta → Preparar catálogo*, la
+tablet muestra la grilla sin imágenes. Desde 1.18.1 la ventana del QR avisa cuántas faltan antes de
+que le pases la tablet al cliente.
 
 ---
 
@@ -49,17 +63,22 @@ tenga ubicación — hay unos pocos; `BU AYELEN ACOSTA` (código 2788) es uno.
 
 1. **`LocalOnlyHotspot`, no Bluetooth ni WiFi Direct, para los DATOS.** El requisito es que la tablet
    no consuma datos, y esa red **no tiene salida a internet**: el cero es demostrable, no una
-   promesa. (Ver §5 para el rol que sí tiene Bluetooth.)
+   promesa. Bluetooth existe, pero **solo pasa el sobre de la red** (~120 bytes) — ver §4.
 2. 🩸 **El JS NUNCA hace `fetch` a la IP local.** La app se sirve desde `https://localhost` y el
    WebView bloquea el contenido mixto pase lo que pase en el manifest. El HTTP lo hace el nativo.
 3. 🔴 **`nivel_rentabilidad` NO viaja, y se filtra en el ORIGEN.** `snapshotCatalogo`
    (`services/vidriera.js`) arma el payload **campo por campo** — nada de spread, que arrastraría
    cualquier columna futura (el costo). Lo que sí sobrevive es el **orden** de la vidriera,
    calculado en el celular y enviado ya resuelto: la tablet muestra el resultado sin conocer el
-   criterio. Hay una prueba que lo verifica contra un producto con `costo_real` y `margen`.
+   criterio. El mismo criterio vale para el canal `emitir()` (carrito espejo, "mirá este").
+   > ⚠️ **Corrección**: la versión anterior de este documento decía que *"hay una prueba que lo
+   > verifica contra un producto con `costo_real` y `margen`"*. **Esa prueba no existe** — el repo no
+   > tiene tests (CLAUDE.md §3). Se verificó a mano el 18/08 renderizando el snapshot con un producto
+   > con `nivel`, `costo_real` y `margen`: cero fugas. **Es una verificación manual, no una red.**
 4. **La tablet no se loguea nunca.** No toca Supabase, no tiene sesión ni GPS ni cuenta como
-   dispositivo. Cero superficie de RLS y nada que revocar si se pierde. Por eso da igual que no se
-   pueda crear una cuenta de Google en esas tablets.
+   dispositivo. `App.jsx` devuelve la vidriera **antes** de montar `CatalogProvider` y `GpsProvider`,
+   así que ahí no hay ni catálogo remoto ni colas. Cero superficie de RLS y nada que revocar si se
+   pierde.
 
 ---
 
@@ -75,106 +94,132 @@ del sistema**. Las dos ramas están escritas.
 
 Verificar una tablet nueva: `bash scripts/diagnostico-tablet.sh` (acepta serial de USB o IP).
 
-⚠️ **Riesgo abierto: memoria.** 2 GB con recolección de basura en cadena al arrancar. Con el catálogo
-sin fotos anda bien; **con fotos hay que volver a medirlo**.
+### 🔴 Chrome 79 es más viejo de lo que parece — y ahí está la clase de bug más cara
+
+El navegador de esa tablet es de **diciembre de 2019**. `@vitejs/plugin-legacy` transpila **JS**, no
+CSS, y estos estilos son **inline** (`sx()`), así que **por ahí no pasa ni autoprefixer ni el plugin
+legacy**. Lo que el navegador no entiende, lo ignora en silencio: no hay error, no hay consola, solo
+una pantalla que se ve mal.
+
+| Propiedad | Desde | ¿La tiene Chrome 79? | Estado |
+|---|---|---|---|
+| `aspect-ratio` | Chrome 88 | ❌ | Ya evitado |
+| `inset` (forma corta) | Chrome 87 | ❌ | **Arreglado el 18/08** — 5 fotos que no se posicionaban |
+| **`gap` en FLEXBOX** | Chrome 84 | ❌ | 🔴 **ABIERTO — ver §4** |
+| `gap` en GRID | Chrome 66 | ✅ | Sin problema |
+
+**Antes de tocar cualquier cosa de la pantalla del cliente, chequear la propiedad contra Chrome 79.**
+
+⚠️ **Riesgo abierto: memoria.** 2 GB con recolección de basura en cadena al arrancar. Desde 1.18.1 la
+grilla dibuja de a 60 tarjetas y no 529, lo que baja mucho el DOM — pero **con fotos hay que volver a
+medirlo**.
 
 ---
 
-## 4. Lo que falta, por prioridad
+## 4. Lo que falta
 
-> ## Qué se hizo el 18/08/2026
->
-> Todo lo de §4 está **implementado y compilado**; lo que falta es **medirlo en la calle**.
->
-> · **A (fotos)** — el mecanismo se arregló antes de probarlo, porque medía otra cosa: `foto: true`
->   salía de la URL de Storage y no del espejo del teléfono (la tablet pedía 529 fotos y cobraba
->   404); "Preparar catálogo" **era inalcanzable** (vivía en `PerfilTab.jsx`, que no lo monta nadie
->   — ahora cuelga del menú de cuenta); y la tablet guardaba en `cacheDir`, que Android borra bajo
->   presión de espacio. Falta la medición con fotos reales.
-> · **B (Bluetooth)** — hecho. `EnlaceBluetoothPlugin` + botón "Buscar por Bluetooth".
->   **Verificado en la tablet real**: el botón aparece y contesta. Falta el pareo contra el celular.
-> · **C-bis / C** — hechos: carrito espejo, ficha grande, reposo, "mirá este", "miró y no compró".
-> · **D** — reintentar en `EspejoTablet` y fijado de pantalla, hechos. Varias tablets: sin probar.
->
-> 🩸 Y un bug que la prueba con fotos iba a destapar: la pantalla de la tablet usaba `inset:0`, que
-> recién existe desde **Chrome 87**; el WebView de esa tablet es **Chrome 79**. No se notó nunca
-> porque el catálogo cargado no tiene imágenes.
+### 🔴 A. Probar con fotos — sigue siendo el único riesgo grande
 
-### 🔴 A. Probar con fotos — es el único riesgo real que queda
-
-El catálogo cargado (529 productos) **no tiene imágenes**, así que dos cosas están escritas y **sin
+El catálogo cargado (529 productos) **no tiene imágenes**, así que dos cosas siguen escritas y **sin
 verificar**:
 
-- Que las fotos **se bajen una sola vez**. El mecanismo: el archivo se guarda como
-  `<producto>_<version>`, con la versión derivada de la URL (que ya cambia sola cuando marketing
-  reemplaza una foto). "¿La tengo?" y "¿cambió?" son la misma pregunta.
+- Que las fotos **se bajen una sola vez**. El archivo se guarda como `<producto>_<version>`, con la
+  versión derivada de la URL (que cambia sola cuando marketing reemplaza una foto): "¿la tengo?" y
+  "¿cambió?" son la misma pregunta.
 - Que una tablet de **2 GB aguante** una grilla con ~20 MB de imágenes.
 
-**Cómo probarlo**: cargar fotos a unos 30 productos desde la pantalla de marketing, abrir la
-vidriera dos veces y confirmar que la segunda no vuelve a bajarlas. Después, el catálogo completo.
+**Cómo probarlo, en orden:**
 
-### 🟠 B. Bluetooth para VINCULAR (no para los datos)
+1. Cargar fotos a ~30 productos desde la pantalla de marketing.
+2. En el celular: *Mi cuenta → **Preparar catálogo*** hasta que el contador llegue a 30/30.
+   ⚠️ **Sin este paso la prueba no mide nada** (ver §5, la trampa del espejo).
+3. Abrir la vidriera **dos veces** y leer el log de la tablet:
+   `[vidriera] fotos: N del disco · M bajadas`. La segunda vez, **M tiene que ser 0**.
+4. Después, el catálogo completo: `adb shell dumpsys meminfo com.launion.app`, tiempo hasta la grilla
+   llena, y si hay GC en cadena.
 
-El cliente lo pidió porque la cámara fallaba. **Achicar el QR (213 → 105 caracteres) redujo mucho el
-problema — confirmado por el cliente el 19/08** —, así que esto bajó de necesario a cómodo.
+### 🔴 B. `gap` en flexbox no existe en Chrome 79 — 18 lugares de la pantalla del cliente
 
-El alcance correcto: Bluetooth pasa **solo el sobre con los datos de la red** (~120 bytes: SSID,
-clave, IP, puerto, token). El catálogo y las fotos siguen por WiFi. Así se saca la cámara del camino
-sin perder velocidad.
+Encontrado el 19/08 buscando la misma familia del bug de `inset`. En la tablet, **todo `display:flex`
+con `gap` pierde el espaciado**: el encabezado, la fila de chips, el stepper de cantidad, la barra
+del pedido y la ficha grande quedan con los elementos pegados. Los `gap` de la GRILLA sí funcionan
+(es grid), que es justo por qué no se notó antes.
 
-- Celular: `listenUsingInsecureRfcommWithServiceRecord` con un UUID propio (**inseguro = sin PIN**).
-- Tablet: `getBondedDevices()` si están vinculados —instantáneo— o `startDiscovery()` si no.
-- **Lo práctico: vincular tablet y celular UNA vez en el depósito.** Después cada visita es un toque.
-- ⚠️ Permisos: `BLUETOOTH_CONNECT`/`BLUETOOTH_SCAN` son **de runtime** en Android 12+; en la tablet
-  (API 28) alcanza con los normales más ubicación, que ya tiene. **Pedirlos desde el principio** —
-  esta misma clase de error costó dos vueltas con `NEARBY_WIFI_DEVICES`.
+Nadie lo reportó porque la pantalla se usó poco y con pocos productos, pero **se ve mal ahora mismo**
+en la tablet de prueba.
 
-### 🟢 C-bis. Hecho el 19/08 y sin verificar en la calle
+**El arreglo** es mecánico y sin riesgo: reemplazar `gap` por márgenes en los contenedores flex de
+`VidrieraTablet.jsx` (y revisar `ParearTablet.jsx`). **Verificar en la tablet real, no en el
+navegador de escritorio** — en Chrome moderno el `gap` funciona y el bug es invisible.
 
-- **Buscador y filtros en la tablet** (por nombre y marca; chips que alternan entre categorías y
-  marcas). Pedido del cliente con la vidriera ya en uso: 529 productos en una grilla son
-  imposibles de recorrer delante de un comerciante.
-- **Cantidades desde la tablet** (stepper por tarjeta) → el cartel del celular dice "Sumar N".
-- **El carrito se abre y se edita** (`CarritoSheet`) tocando la barra del pedido.
-- **La sesión sobrevive al cierre de la ventana del QR** (ver §1).
-- **QR de 213 → 105 caracteres + `TRY_HARDER`**. ✅ **El cliente confirmó menos problemas de
-  escaneo**, que es lo que bajó a Bluetooth de necesario a cómodo.
+### 🟠 C. El pareo por Bluetooth, contra el celular
 
-### 🟡 C. Extras de la vidriera acordados y no hechos
+`EnlaceBluetoothPlugin` está escrito y **verificado del lado de la tablet**: el botón "Buscar por
+Bluetooth" aparece, el plugin contesta y el mensaje de error es el correcto (*"El Bluetooth de la
+tablet está apagado"*). Los permisos quedan concedidos solos en API 28, como se esperaba.
 
-- **Vidriera en reposo**: a los 30 s sin tocar, un carrusel de ofertas y destacados. El orden ya
-  viene resuelto del celular, así que no hay que mandar el criterio de rentabilidad.
-- **Carrito espejo**: que el cliente vea el pedido armándose y el total, como la pantalla de una caja.
-  El canal `emitir()` (celular → tablet) ya existe y no tiene consumidor todavía.
-- **"Miró y no compró"**: cada toque ya se registra en `mirados`. Falta mostrarlo al cerrar la visita
-  como inteligencia comercial ("le mostraste 12, tocó 6, compró 2").
-- **Ficha grande al tocar**: hoy el toque manda el aviso; falta abrir el producto a pantalla completa.
-- **El vendedor empuja un producto a la tablet** ("mirá este"). El canal es bidireccional; son pocas
-  líneas.
+**Falta la otra mitad**: vincular tablet y celular una vez, abrir la vidriera en el celular y
+confirmar que la tablet trae el sobre. Sin eso, el camino sin cámara es teoría.
 
-### ⚪ D. Menores
+- **Lo práctico: vincularlos UNA vez en el depósito.** Después cada visita es un toque.
+- El QR sigue siendo el camino por defecto y no depende de nada de esto.
 
-- `EspejoTablet` **no tiene botón de reintentar** en el estado de error: hay que cerrar la hoja y
-  volver a abrirla.
-- **Fijar la tablet dentro de la app** (screen pinning) para que el cliente no se salga a otra cosa.
-  Android lo permite sin Device Owner; con Headwind (HANDOFF §7.9) sale gratis.
-- **Varias tablets a la vez**: el servidor acepta N clientes; no está probado.
+### 🟠 D. Medir la fluidez en la tablet, no en el escritorio
+
+En 1.18.1 se atacó el "va trabado" y **la causa era el código, no el hardware**: cada foto que bajaba
+repintaba la pantalla entera (hasta 529 renders) y cada uno de esos renders volvía a ordenar los 529
+productos, porque no había un solo `useMemo`. Medido en escritorio: la derivación cruda son
+**2,11 ms × 529 = 1.114 ms** de puro reordenar.
+
+Ahora: derivados memoizados, fotos volcadas en tandas de 250 ms, tarjeta con `React.memo`, y la
+grilla dibuja 60 y crece al scrollear (**1.017 nodos en el DOM en vez de ~9.000**).
+
+**Lo que falta medir es en el aparato**, con los 529 productos y el catálogo real. Y hay una cosa
+puntual sin verificar de punta a punta:
+
+- ⚠️ **El crecimiento por scroll**. Se probó despachando el evento a mano (crece de 60 a 529 y frena
+  ahí), pero **nunca con un dedo en la tablet**: el panel de vista previa de esta máquina jamás
+  llega a estar visible, y con el documento oculto el navegador **no despacha eventos de scroll ni
+  callbacks de `IntersectionObserver`** (es la regla 35 otra vez). Por eso el crecimiento va por un
+  `scroll` pasivo y no por observer — pero el toque real sigue sin hacerse.
+
+### ⚪ E. Menores
+
+- **Varias tablets a la vez**: el servidor acepta N clientes; **sin probar**. Con dos, verificar que
+  el long-poll de `/eventos` no se pise (cada una lleva su `desde`) y que el pool de hilos alcance —
+  cada `/eventos` colgado ocupa uno hasta 25 s.
+- **`PerfilTab.jsx` es una pantalla que no monta nadie.** Se rescató lo que importaba (la tarjeta
+  "Preparar catálogo", que estaba ahí adentro y por eso era inalcanzable) y el resto quedó como
+  copia muerta de `MiCuenta`. Falta decidir si se borra, con el mismo criterio que la tabla de
+  pantallas inalcanzables de [CLAUDE.md §8](CLAUDE.md).
+- **Fijado de pantalla (screen pinning)**: implementado, se activa al abrir la vidriera y se suelta
+  al salir. Sin Device Owner no es un kiosco (se sale con Atrás + Recientes mantenidos) y **no se
+  probó con un cliente intentando salirse**.
 
 ---
 
-## 5. Trampas ya pagadas — leer antes de tocar el nativo
+## 5. Trampas ya pagadas — leer antes de tocar
 
 | Síntoma | Causa real |
 |---|---|
-| "Android bloqueó la creación de la red" | `NEARBY_WIFI_DEVICES` **es de runtime** desde Android 13. Un comentario mío en el manifest decía lo contrario. Verificar con `dumpsys package … \| grep NEARBY` |
-| `cleartext HTTP traffic not permitted` | La política de cleartext **también aplica al nativo**, no solo al WebView. **No se prende `usesCleartextTraffic`** (habilita HTTP en toda la app, y por acá viajan GPS y datos de clientes): el cliente HTTP va sobre un `Socket` crudo, que no atraviesa esa política |
-| El import de `ListenableFuture` no resuelve | CameraX declara Guava como `implementation` y Gradle no lo propaga. Y agregar `listenablefuture` **no alcanza**: Google publica una versión `9999.0` **vacía** que Gradle elige por número mayor. Se usa `LifecycleCameraController`, que no expone futuros |
+| **La grilla del cliente se ve gris, sin fotos** | El espejo del teléfono está vacío. Las fotos NO salen de Storage: las sirve el celular desde su carpeta `espejo/`, y eso se llena solo apretando *Preparar catálogo*. Desde 1.18.1 `snapshotCatalogo` declara `foto:true` **solo** para lo que está espejado — antes mentía y la tablet pedía 529 fotos para cobrar 404 |
+| **La foto de la tarjeta aparece recortada o de 0 px** | Dos causas distintas, las dos medidas el 18/08: la tarjeta es un contenedor flex y un alto fijo **igual se encoge** sin `flex:none`; y con las filas del grid en `auto` y el contenedor con altura definida, el navegador **las colapsa al alto del texto** (37 px contra 303) — va `grid-auto-rows:max-content` |
+| **Los filtros se van al scrollear** | La raíz estaba en `min-height:100vh`: crece con el contenido y el `overflow-y:auto` de la grilla nunca acota nada, así que scrollea el documento. Va `height:100vh;overflow:hidden` |
+| **El aviso del toque no llega** | Estaba con un `z-index:6` literal contra los 300 del sheet del pedido. Va `--z-aviso` (550). **Nunca un z-index literal** (CLAUDE.md §7) |
+| **Un flotante queda debajo de la botonera** | La bottom-nav crece con `env(safe-area-inset-bottom)`; los flotantes clavados en píxeles quedan abajo en cualquier teléfono con gestos. Van con el mismo `env()` |
+| "Android bloqueó la creación de la red" | `NEARBY_WIFI_DEVICES` **es de runtime** desde Android 13. Verificar con `dumpsys package … \| grep NEARBY`. Lo mismo vale para `BLUETOOTH_CONNECT`/`BLUETOOTH_SCAN` desde Android 12 |
+| `cleartext HTTP traffic not permitted` | La política de cleartext **también aplica al nativo**. **No se prende `usesCleartextTraffic`**: el cliente HTTP va sobre un `Socket` crudo, que no atraviesa esa política |
+| El import de `ListenableFuture` no resuelve | CameraX declara Guava como `implementation` y Gradle no lo propaga. Agregar `listenablefuture` **no alcanza**: Google publica una `9999.0` **vacía** que Gradle elige por número mayor. Se usa `LifecycleCameraController` |
 | "Conecta pero no carga" | Falta `bindProcessToNetwork`. La red del hotspot no tiene internet y Android manda el tráfico por otro lado |
-| El QR no se lee | Densidad. Ya se achicó de 213 a 105 caracteres y **el cliente confirmó la mejora**. Si vuelve a pasar, mirar el tamaño del payload antes que la cámara |
-| El build dice verde y falló | El notificador de tareas reporta el exit del wrapper. **Vale el log, no el resumen** |
+| El QR no se lee | Densidad. Ya se achicó de 213 a 105 caracteres y el cliente confirmó la mejora. Mirar el tamaño del payload antes que la cámara |
+| El build dice verde y falló | El notificador reporta el exit del wrapper. **Vale el log y el exit code real, no el resumen** |
+| **Una prueba en el navegador "no hace nada"** | El panel de vista previa está **oculto** (`visibilityState: 'hidden'`) y ahí no corren `rAF`, ni eventos de scroll, ni `IntersectionObserver`. Mirar `document.hidden` antes de creerle a una medición |
 
-⚠️ **No editar los `.java` con scripts de Python.** Rompió literales de cadena tres veces en un día;
-el compilador los caza pero cuesta vueltas. Usar edición directa.
+⚠️ **No editar los `.java` con scripts de Python.** Rompió literales de cadena tres veces en un día.
+Usar edición directa.
+
+⚠️ **Probar con el catálogo REAL, no con tres productos.** Los dos bugs de layout de arriba **no
+aparecen con 12 productos y sí con 529**. Es la regla 50-bis aplicada al dibujo.
 
 ---
 
@@ -186,29 +231,37 @@ el compilador los caza pero cuesta vueltas. Usar edición directa.
 |---|---|
 | `EnlaceLocalPlugin` | Celular: levanta el hotspot, pide el permiso de WiFi cercano, arranca el servidor |
 | `ServidorLocal` | HTTP escrito a mano, 4 rutas. Se ata a la IP del hotspot (**no** a `0.0.0.0`), token en tiempo constante, `/foto/<id>` con lista blanca de caracteres |
-| `EnlaceTabletPlugin` | Tablet: se une a la red (dos ramas por versión de Android) y habla por socket crudo |
-| `EscanerQrActivity` + `EscanerQrPlugin` | Cámara con CameraX + el decodificador de ZXing que ya estaba |
+| `EnlaceTabletPlugin` | Tablet: se une a la red (dos ramas por versión de Android), habla por socket crudo, guarda las fotos en `filesDir`, las poda y fija la pantalla |
+| `EnlaceBluetoothPlugin` | El sobre de la red por RFCOMM. Solo ~120 bytes; el catálogo sigue por WiFi |
+| `EscanerQrActivity` + `EscanerQrPlugin` | Cámara con CameraX + el decodificador de ZXing |
 
 **Web** (`web/src/`):
 
 | Archivo | Qué hace |
 |---|---|
-| `services/vidriera.js` | Lado celular. **`snapshotCatalogo` es la frontera de privacidad** |
+| `services/vidriera.js` | Lado celular. **`snapshotCatalogo` es la frontera de privacidad**; `sobreDe` es el formato único del QR y del Bluetooth |
 | `services/vidrieraTablet.js` | Lado tablet. Sin un solo `fetch` |
-| `features/vidriera/EspejoTablet.jsx` | El QR del vendedor + el cartel emergente |
-| `features/vidriera/ParearTablet.jsx` | El emparejamiento, con sus cuatro pasos visibles |
-| `features/vidriera/VidrieraTablet.jsx` | La grilla del cliente: buscador, filtros, cantidades |
+| `services/vidrieraBluetooth.js` | El camino sin cámara |
+| `services/data/espejoFotos.js` | El espejo de fotos del celular. **`idsEnEspejo` es lo que hace que `foto:true` no mienta** |
+| `features/vidriera/useVidriera.js` | **Dueña de la sesión.** La usa `useJornada`, no la pestaña |
+| `features/vidriera/EspejoTablet.jsx` | El QR, el aviso de fotos faltantes y el reintento |
+| `features/vidriera/ParearTablet.jsx` | Emparejamiento: QR o Bluetooth, con sus pasos visibles |
+| `features/vidriera/VidrieraTablet.jsx` | La grilla del cliente: buscador, filtros, cantidades, ficha grande, carrito espejo y reposo |
+| `features/vidriera/PrepararCatalogo.jsx` | Baja las fotos al teléfono. **Se monta en `components/AppShell.jsx`**, solo para vendedor |
+| `features/vendedor/tabs/VisitaCatalogo.jsx` | Consume `j.vid`. **No crea la sesión** |
 | `features/vendedor/CarritoSheet.jsx` | El pedido abierto y editable |
-| `scripts/extraer-lista-precios.py` | La lista de precios en PDF → filas importables |
 
 ---
 
 ## 7. Datos del entorno
 
 - **Tablet de prueba**: `Cidea CM915`, serial `202410210004880`, adb por red en `192.168.18.74:5555`.
-  Con `installerPackageName=com.launion.app` (instalada con `-i`), así la próxima se actualiza sola.
-- **Celular de prueba**: motorola edge 30 neo, `ZY22G7DCNB`, API 34. **Sin chip de datos** — mientras
-  el hotspot está activo se queda sin internet. En los 9 del parque no pasa: tienen SIM.
+  Con `installerPackageName=com.launion.app`. Tiene el APK 1.18.0 (versionCode 36) instalado.
+- **Celular de prueba**: motorola edge 30 neo, `ZY22G7DCNB`, API 34 (cuenta `cardixteam@gmail.com`).
+  **Sin chip de datos** — mientras el hotspot está activo se queda sin internet. En los 9 del parque
+  no pasa: tienen SIM.
+  ⚠️ Ese equipo tiene **`bg_ok = false`** (sin permiso de ubicación en segundo plano). No afecta a la
+  vidriera, pero **sí ensucia cualquier prueba de GPS** que se haga con él.
 - **Catálogo**: 529 productos y 28 marcas de LA UNIÓN, de `LISTA 08-08 M.pdf`. Sin fotos, sin peso,
   sin categoría propia (la infiere la app) y **sin rentabilidad**.
 - **Secuencia acordada**: el parque de tablets se configura recién con el MDM (Headwind) andando.
