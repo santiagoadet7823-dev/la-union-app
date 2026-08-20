@@ -6,6 +6,7 @@ import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
+import { useSugeridos } from '../useSugeridos'
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
 // vendedor: ve el color, NUNCA el número. Sin nivel → borde neutro. Ver index.css (--rent-*).
@@ -25,12 +26,17 @@ export default function VisitaCatalogo({ j }) {
   // El build daba verde: Vite no detecta TDZ. Si mañana un hook nuevo necesita otro campo de `j`,
   // ya lo tiene arriba; no hay motivo para volver a bajar esta línea.
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
-  const { vid, PRODUCTS, visitC, timer, cart, addCart, endVisit, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter } = j
+  const { vid, PRODUCTS, visitC, timer, cart, quitados, addCart, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter, quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido } = j
 
   // 🩸 LA SESIÓN DE VIDRIERA NO VIVE ACÁ: vive en `useJornada` (18/08/2026). Primero se mudó desde
   // la ventana del QR —cerrarla desconectaba la tablet— y después un nivel más arriba, porque esta
   // pestaña se DESMONTA al cambiar de tab y volvía a pasar lo mismo camino al próximo check-in.
   // Acá solo se consume: `j.vid`.
+  // 🔴 VA DEBAJO DEL DESTRUCTURING DE `j`, no arriba (regla 51): usa `visitC`, que es un `const`
+  // de este mismo scope. Puesto por encima caería en la zona muerta temporal y reventaría en cada
+  // render con un ReferenceError que el build NO detecta.
+  const sugeridosIds = useSugeridos(visitC?.id)
+
   const [verQr, setVerQr] = useState(false)
   const [verCarrito, setVerCarrito] = useState(false)
 
@@ -38,6 +44,10 @@ export default function VisitaCatalogo({ j }) {
   const hayOfertas = PRODUCTS.some((p) => p.oferta)
   // Fila de chips: Todos · Ofertas (si hay) · una por categoría.
   const chips = ['Todos', ...(hayOfertas ? ['Ofertas'] : []), ...CATS]
+
+  // Los ids sugeridos se resuelven contra el catálogo cargado: si un producto se dio de baja
+  // después del pedido, simplemente no aparece.
+  const sugerencias = sugeridosIds.map((id) => PRODUCTS.find((p) => p.id === id)).filter(Boolean)
 
   const q = search.trim().toLowerCase()
   const items = PRODUCTS.filter((p) => {
@@ -103,6 +113,46 @@ export default function VisitaCatalogo({ j }) {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
         </div>
       </div>
+
+      {/* 🩸 LO QUE MÁS LLEVA ESTE COMERCIO (19/08/2026). El vendedor entra y tiene 529 productos en
+          una grilla; lo que ese comercio compra siempre estaba en algún lugar de esa lista y había
+          que acordárselo. Sale de `productos_sugeridos_cliente` (db/44), que pondera frecuencia por
+          recencia sobre el historial de pedidos.
+
+          ⚠️ NO APARECE HASTA QUE HAY HISTORIAL, y es a propósito: la RPC exige dos pedidos como
+          mínimo por producto. Con una sola compra no hay preferencia — y una recomendación
+          equivocada quema la confianza en la función más rápido que su ausencia. Como los pedidos
+          recién se empiezan a guardar hoy, esta fila va a estar vacía varias semanas. */}
+      {sugerencias.length > 0 && (
+        <div style={sx('flex:none;padding:0 14px 10px')}>
+          <div style={sx('display:flex;align-items:center;gap:6px;margin-bottom:7px')}>
+            <span style={sx('width:6px;height:6px;flex:none;border-radius:99px;background:var(--primary)')} />
+            <span style={sx('font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--muted)')}>LO QUE MÁS LLEVA</span>
+          </div>
+          <div className="lu-chips" style={sx('display:flex;gap:7px;overflow-x:auto')}>
+            {sugerencias.map((p) => {
+              const q = cart[p.id] || 0
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => addCart(p.id, 1)}
+                  className="lu-press"
+                  style={{
+                    ...sx('flex:none;max-width:190px;text-align:left;padding:7px 11px;border-radius:12px;cursor:pointer;background:var(--surface)'),
+                    border: `1px solid ${q > 0 ? 'var(--primary)' : 'var(--line2)'}`,
+                  }}
+                >
+                  <div style={{ ...sx('font-size:11.5px;font-weight:500;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), maxWidth: 168 }}>{p.name}</div>
+                  <div style={sx('margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11px;color:var(--deep);font-weight:600')}>
+                    {fmtPesos(p.oferta && p.precioOferta != null ? p.precioOferta : p.price)}
+                    {q > 0 ? <span style={sx('color:var(--muted);font-weight:400')}> · {q} en el pedido</span> : ''}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Chips de categoría: scroll horizontal. Ofertas filtra los productos en oferta. */}
       {PRODUCTS.length > 0 && (
@@ -222,13 +272,18 @@ export default function VisitaCatalogo({ j }) {
 
       {verCarrito && (
         <CarritoSheet
-          productos={PRODUCTS} cart={cart} addCart={addCart}
+          productos={PRODUCTS} cart={cart} quitados={quitados} addCart={addCart}
+          quitarLinea={quitarDelCarrito} vaciar={vaciarCarrito} deshacer={deshacerCarrito}
+          recuperar={recuperarQuitado}
           cartCount={cartCount} cartKg={cartKg} cartTotal={cartTotal}
           onCerrar={() => setVerCarrito(false)}
           onConfirmar={() => {
             const total = cartTotal
             setVerCarrito(false)
-            endVisit('visitado', { monto: total })
+            // `confirmarPedido` es lo que ESCRIBE el pedido (cabecera + líneas) por la write queue
+            // y recién después cierra la visita. Antes acá se llamaba `endVisit` a secas y el
+            // pedido no se guardaba en ningún lado — ver el comentario de `useJornada`.
+            confirmarPedido()
             showToast(`Pedido confirmado · ${fmtPesos(total)}`)
           }}
         />
@@ -265,8 +320,13 @@ export default function VisitaCatalogo({ j }) {
           le interesó y no terminó en el pedido.
           Va EN VIVO y no al cerrar la visita, que era la idea original: al cerrar ya no se puede
           hacer nada con el dato, y acá —mientras el comerciante está enfrente— todavía se le puede
-          preguntar por los tres que miró y no pidió. Ocupa un renglón y no interrumpe nada. */}
-      {vid.activa && vid.mirados.length > 0 && (
+          preguntar por los tres que miró y no pidió. Ocupa un renglón y no interrumpe nada.
+
+          🩸 19/08/2026 — el renglón ahora cuenta las DOS señales, no solo la de la tablet. La otra
+          mitad es lo que entró al pedido y salió (`quitados`), que es la señal más fuerte de las dos
+          —lo iba a llevar y se arrepintió— y que hasta hoy se evaporaba sin dejar rastro. El detalle
+          con el botón para recuperarlo vive en `CarritoSheet`; acá va el resumen de un renglón. */}
+      {(vid.activa || Object.keys(quitados).length > 0) && (
         <div
           style={{
             ...sx('position:absolute;left:12px;right:12px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted);box-shadow:var(--shadow)'),
@@ -279,15 +339,23 @@ export default function VisitaCatalogo({ j }) {
           }}
         >
           <span style={sx('width:7px;height:7px;flex:none;border-radius:99px;background:var(--success)')} />
-          <span>
-            Miró <b style={sx('font-family:var(--font-mono);color:var(--text)')}>{vid.mirados.length}</b>
-            {(() => {
-              const sinPedir = vid.mirados.filter((m) => !(cart[m.id] > 0))
-              return sinPedir.length > 0
-                ? <> · sin pedir <b style={sx('font-family:var(--font-mono);color:var(--warning)')}>{sinPedir.length}</b>: {sinPedir.slice(0, 2).map((m) => m.name).join(', ')}{sinPedir.length > 2 ? '…' : ''}</>
-                : <> · todo lo que miró está en el pedido</>
-            })()}
-          </span>
+          {(() => {
+            // Lo sacado del pedido va primero: es la señal más fuerte y la que el vendedor puede
+            // repreguntar ya mismo. Lo mirado-y-no-pedido se suma sin repetir lo que ya está.
+            const sacados = Object.keys(quitados).map((id) => PRODUCTS.find((p) => p.id === id)).filter(Boolean)
+            const mirados = (vid.mirados || []).filter((m) => !(cart[m.id] > 0) && !(m.id in quitados))
+            const sinPedir = [...sacados, ...mirados]
+            if (!sinPedir.length) {
+              return <span>{vid.activa ? <>Miró <b style={sx('font-family:var(--font-mono);color:var(--text)')}>{vid.mirados.length}</b> · todo lo que miró está en el pedido</> : 'Todo lo que vio está en el pedido'}</span>
+            }
+            return (
+              <span>
+                Sin pedir <b style={sx('font-family:var(--font-mono);color:var(--warning)')}>{sinPedir.length}</b>
+                {sacados.length > 0 ? <> · sacó <b style={sx('font-family:var(--font-mono);color:var(--text)')}>{sacados.length}</b></> : null}
+                {' · '}{sinPedir.slice(0, 2).map((p) => p.name).join(', ')}{sinPedir.length > 2 ? '…' : ''}
+              </span>
+            )
+          })()}
         </div>
       )}
 
@@ -311,7 +379,7 @@ export default function VisitaCatalogo({ j }) {
           </div>
           {visitC ? (
             <button
-              onClick={() => { const total = cartTotal; endVisit('visitado', { monto: total }); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
+              onClick={() => { const total = cartTotal; confirmarPedido(); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
               style={sx('width:100%;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;border:none')}
             >Confirmar pedido y finalizar visita</button>
           ) : (

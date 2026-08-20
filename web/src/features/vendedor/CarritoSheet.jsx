@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
@@ -14,39 +15,105 @@ import Overlay from '../../components/Overlay'
  * Es la MISMA fuente que la grilla (`cart` + `addCart` de `useJornada`): no hay un segundo estado
  * del pedido que pueda desincronizarse. Tocar el − hasta cero saca la línea, igual que en la grilla.
  *
- * Va por `Overlay variant="sheet"` (§7): nunca un overlay a mano.
+ * 🩸 QUÉ SE SUMÓ EL 19/08/2026, y por qué:
  *
- * props: { productos, cart, addCart, cartCount, cartKg, cartTotal, onConfirmar, onCerrar }
+ *  · **Vaciar el pedido.** Corregir un error de tipeo obligaba a sacar producto por producto. Va con
+ *    "Deshacer" y no con un diálogo de confirmación porque el error real es el DEDO, no la decisión:
+ *    un diálogo frena al que sí quería vaciar y no salva al que no quería.
+ *  · **Quitar una línea de un toque.** Sacar un producto de 8 unidades eran 8 toques al `−`.
+ *  · **Intención de compra.** Lo que entró al carrito y salió es la señal comercial más fuerte que
+ *    genera una visita —lo iba a llevar y se arrepintió— y hasta hoy se evaporaba. Se muestra al pie
+ *    con un `+` que lo devuelve al pedido con la cantidad que tenía, para poder preguntar por él
+ *    mientras el comerciante está enfrente.
+ *
+ * Va por `Overlay variant="sheet"` (§7): nunca un overlay a mano. Con `alto="medio"` porque con dos
+ * o tres ítems la hoja quedaba pegada abajo, encimada con la botonera del sistema.
+ *
+ * props: { productos, cart, quitados, addCart, quitarLinea, vaciar, deshacer, recuperar,
+ *          cartCount, cartKg, cartTotal, onConfirmar, onCerrar }
  */
-export default function CarritoSheet({ productos, cart, addCart, cartCount, cartKg, cartTotal, onConfirmar, onCerrar }) {
+export default function CarritoSheet({
+  productos, cart, quitados = {}, addCart, quitarLinea, vaciar, deshacer, recuperar,
+  cartCount, cartKg, cartTotal, onConfirmar, onCerrar,
+}) {
+  // "Se vació" es local del sheet y no del hook: es un estado de PRESENTACIÓN (mostrar la tira de
+  // deshacer), y el respaldo real de lo vaciado vive en `useJornada`.
+  const [deshacible, setDeshacible] = useState(false)
+
   // Las líneas salen del carrito y no de la lista de productos: así el orden es el de lo que se fue
   // agregando, que es como el vendedor lo repasa en voz alta con el cliente.
   const lineas = Object.entries(cart)
     .map(([id, qty]) => ({ p: productos.find((x) => x.id === id), qty }))
     .filter((l) => l.p)
 
+  // Intención de compra: lo que salió del pedido. Lo más reciente primero — es lo que el vendedor
+  // acaba de escuchar y sobre lo que todavía puede repreguntar.
+  const intencion = Object.entries(quitados)
+    .map(([id, q]) => ({ p: productos.find((x) => x.id === id), cantidad: q.cantidad, ts: q.ts }))
+    .filter((l) => l.p)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+
   const precio = (p) => (p.oferta && p.precioOferta != null ? p.precioOferta : (p.price || 0))
+
+  function alVaciar() {
+    vaciar?.()
+    setDeshacible(true)
+  }
+  function alDeshacer() {
+    deshacer?.()
+    setDeshacible(false)
+  }
 
   return (
     <Overlay
       open
       onClose={onCerrar}
       variant="sheet"
+      alto="medio"
       title="Pedido"
       subtitle={`${cartCount} ${cartCount === 1 ? 'ítem' : 'ítems'} · ${cartKg.toFixed(1).replace('.', ',')} kg`}
       footer={
         <div style={sx('display:flex;flex-direction:column;gap:10px;width:100%')}>
-          <div style={sx('display:flex;justify-content:space-between;align-items:baseline;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
-            <span style={sx('font-size:12.5px;color:var(--muted)')}>Total</span>
-            <span style={sx('font-size:21px;font-weight:700;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
-          </div>
+          {/* La tira de deshacer ocupa el lugar del total mientras está: si el pedido se vació,
+              el total es 0 y no hay nada que informar ahí. */}
+          {deshacible ? (
+            <div style={sx('display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)')}>
+              <span style={sx('font-size:12.5px;color:var(--muted)')}>Se vació el pedido</span>
+              <button
+                onClick={alDeshacer}
+                className="lu-press"
+                style={sx('border:none;background:transparent;color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;padding:4px 6px')}
+              >Deshacer</button>
+            </div>
+          ) : (
+            <div style={sx('display:flex;justify-content:space-between;align-items:baseline;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+              <span style={sx('font-size:12.5px;color:var(--muted)')}>Total</span>
+              <span style={sx('font-size:21px;font-weight:700;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
+            </div>
+          )}
+
           <button
             onClick={onConfirmar}
+            disabled={!lineas.length}
             className="lu-press"
-            style={sx('width:100%;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14.5px;cursor:pointer;border:none')}
+            style={{
+              ...sx('width:100%;min-height:50px;display:grid;place-items:center;border-radius:12px;font-weight:600;font-size:14.5px;border:none'),
+              background: lineas.length ? 'var(--primary)' : 'var(--surface2)',
+              color: lineas.length ? 'var(--on-primary)' : 'var(--faint)',
+              cursor: lineas.length ? 'pointer' : 'default',
+            }}
           >
             Confirmar pedido y finalizar visita
           </button>
+
+          {/* Secundario y separado del confirmar: son el gesto opuesto y no van a la misma altura
+              ni con el mismo peso visual. */}
+          {lineas.length > 0 && (
+            <button
+              onClick={alVaciar}
+              style={sx('width:100%;min-height:38px;display:grid;place-items:center;background:transparent;border:none;color:var(--muted);font-size:12.5px;cursor:pointer')}
+            >Vaciar el pedido</button>
+          )}
         </div>
       }
     >
@@ -76,9 +143,47 @@ export default function CarritoSheet({ productos, cart, addCart, cartCount, cart
                 <div style={sx('min-width:26px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600')}>{qty}</div>
                 <button onClick={() => addCart(p.id, 1)} className="lu-press"
                   style={sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:17px;cursor:pointer;user-select:none')}>+</button>
+                {/* Sacar la línea entera. Con 8 unidades, el − son 8 toques. */}
+                <button
+                  onClick={() => { quitarLinea?.(p.id); setDeshacible(true) }}
+                  className="lu-press"
+                  aria-label={`Quitar ${p.name} del pedido`}
+                  style={sx('width:30px;height:34px;display:grid;place-items:center;border:none;background:transparent;color:var(--faint);cursor:pointer')}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* INTENCIÓN DE COMPRA. Va al pie y no arriba: es contexto, no la tarea. Se muestra igual con
+          el pedido vacío — ahí es cuando más sirve, porque significa que el cliente miró y sacó
+          todo, y todavía se le puede preguntar por qué. */}
+      {intencion.length > 0 && (
+        <div style={sx('margin-top:16px;padding-top:14px;border-top:1px dashed var(--line2)')}>
+          <div style={sx('display:flex;align-items:center;gap:7px;margin-bottom:9px')}>
+            <span style={sx('width:6px;height:6px;flex:none;border-radius:99px;background:var(--warning)')} />
+            <span style={sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;color:var(--muted)')}>INTENCIÓN DE COMPRA</span>
+          </div>
+          <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.45;margin-bottom:10px')}>
+            Lo sacó del pedido. Tocá el + para volver a sumarlo con la cantidad que tenía.
+          </div>
+          <div style={sx('display:flex;flex-direction:column;gap:7px')}>
+            {intencion.map(({ p, cantidad }) => (
+              <div key={p.id} style={sx('display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
+                <div style={{ ...sx('flex:1;min-width:0;font-size:12.5px;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</div>
+                <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted)')}>{cantidad} u</div>
+                <button
+                  onClick={() => recuperar?.(p.id)}
+                  className="lu-press"
+                  aria-label={`Volver a sumar ${p.name}`}
+                  style={sx('width:30px;height:30px;flex:none;display:grid;place-items:center;border:1px solid var(--primary);border-radius:9px;background:var(--primary-tint);color:var(--deep);font-size:16px;cursor:pointer;user-select:none')}
+                >+</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Overlay>

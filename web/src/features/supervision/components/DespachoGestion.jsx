@@ -38,6 +38,7 @@ const FaltanteTab = lazy(() => import('../../admin/tabs/FaltanteTab'))
 const UsuariosView = lazy(() => import('../../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../../admin/EmpresasView'))
 const InvitarModal = lazy(() => import('../../../components/InvitarModal'))
+const RespaldoDatos = lazy(() => import('../../gestion/RespaldoDatos'))
 
 export function GestionCargando() {
   return (
@@ -77,6 +78,7 @@ export default function DespachoGestion({
       {invitarInline && vista === 'invitar' && <InvitarModal open onClose={onCerrarInvitar} onToast={onToast} />}
       {vista === 'usuarios' && <UsuariosView onToast={onToast} />}
       {vista === 'empresas' && <EmpresasView onToast={onToast} />}
+      {vista === 'respaldo' && <RespaldoDatos onToast={onToast} />}
     </Suspense>
   )
 }

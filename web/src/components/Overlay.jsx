@@ -49,6 +49,17 @@ import { apilarAtras } from '../services/atras'
  *   - aside       ReactNode   contenido a la derecha del header, antes del cerrar
  *                             (ej. los puntos de progreso del wizard de entrega)
  *   - maxWidth    number      ancho máx. del modal (default 460)
+ *   - alto        'auto' | 'medio'  solo sheets. 'auto' (default) es lo de siempre: la hoja mide
+ *                             lo que mide su contenido, con tope de 85vh. 'medio' le pone además
+ *                             un PISO de media pantalla.
+ *                             🩸 Por qué existe (19/08/2026): el sheet del pedido con dos o tres
+ *                             ítems quedaba tan bajo que se leía encimado con la botonera del
+ *                             sistema, y "se acomodaba" recién cuando la lista crecía lo bastante
+ *                             para scrollear — el reporte textual del cliente fue "aparece debajo
+ *                             de los botones de menú y al scrollear recién se acomoda". No era
+ *                             z-index ni safe-area: era que la altura la decidía el contenido.
+ *                             El valor sale de `--sheet-medio` (index.css), que elige entre `vh` y
+ *                             `dvh` según lo que el navegador soporte.
  *   - dismissible bool        permite cerrar con scrim/Escape (default true)
  *   - glass       bool        superficie esmerilada en vez de sólida. Lo usa el
  *                             dashboard de SupervisionMovil, que flota sobre el
@@ -88,6 +99,7 @@ export default function Overlay({
   aside,
   footer,
   maxWidth = 460,
+  alto = 'auto',
   dismissible = true,
   glass = false,
   contained = false,
@@ -296,7 +308,14 @@ export default function Overlay({
             : null),
           display: 'flex',
           flexDirection: 'column',
-          minHeight: 0,
+          // 🩸 El piso de `alto="medio"` va ACÁ y no en una clase (19/08/2026). Primero se intentó
+          // con `.lu-sheet-medio`, y no aplicaba nunca: este `minHeight: 0` es INLINE y lo inline
+          // le gana a cualquier clase, así que la regla quedaba pisada en silencio — el build daba
+          // verde y el sheet seguía midiendo lo que medía su contenido. La elección entre `vh` y
+          // `dvh` sí necesita cascada, así que vive en `--sheet-medio` (index.css), que es una
+          // variable y se puede leer desde acá. El `0` del caso normal no se toca: es lo que deja
+          // que el cuerpo del overlay scrollee en vez de desbordar.
+          minHeight: esSheet && alto === 'medio' ? 'var(--sheet-medio)' : 0,
           outline: 'none',
           ...(glass
             ? { background: 'var(--sheet-bg)', ...glassBlur, border: '0.5px solid var(--glass-brd)', borderBottom: 'none' }

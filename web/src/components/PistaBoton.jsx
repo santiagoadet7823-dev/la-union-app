@@ -24,19 +24,30 @@ import { useEffect, useState } from 'react'
  *
  * Vive en `components/` porque lo usan las dos supervisiones por caminos distintos: el **rail**
  * vertical (`RailMapa`, donde la etiqueta va a la izquierda) y la **barra** horizontal de chips de
- * `SupervisionDesktop` (donde va arriba, o taparía el chip vecino).
+ * `SupervisionDesktop` (donde va abajo, o taparía el chip vecino).
  *
- * props: { texto, lado: 'izq'|'arriba', ms, children }
+ * 🩸 LA ETIQUETA VA HACIA ABAJO, NO HACIA ARRIBA (19/08/2026). El modo `'arriba'` la sacaba con
+ * `bottom: calc(100% + 6px)`, o sea FUERA del borde superior del panel del mapa — y ese panel es
+ * `overflow:hidden` (`panelSx` en `SupervisionDesktop`), así que la recortaba; lo que llegaba a
+ * escaparse quedaba además debajo del header sticky, que va en `--z-chrome` (100) contra el
+ * `zIndex:1` que tenía esto. Reportado como "las etiquetas se tapan con la barra de título".
+ * Hacia abajo cae DENTRO del panel y el recorte deja de existir. Y el z-index pasa a `--z-popover`,
+ * que es el token que le corresponde a algo que flota sobre el chrome (§7: nunca un literal).
+ *
+ * La duración por defecto son 6 s: los 4,2 originales no alcanzaban para leer dos etiquetas
+ * distintas al abrir la pantalla. El parpadeo (`lu-blink`, 1,1 s) se repite 5 veces para cubrirlos.
+ *
+ * props: { texto, lado: 'izq'|'abajo', ms, children }
  */
-export default function PistaBoton({ texto, lado = 'izq', ms = 4200, children }) {
+export default function PistaBoton({ texto, lado = 'izq', ms = 6000, children }) {
   const [visible, setVisible] = useState(true)
   useEffect(() => {
     const t = setTimeout(() => setVisible(false), ms)
     return () => clearTimeout(t)
   }, [ms])
 
-  const pos = lado === 'arriba'
-    ? { bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)' }
+  const pos = lado === 'abajo'
+    ? { top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)' }
     : { right: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
 
   return (
@@ -46,12 +57,12 @@ export default function PistaBoton({ texto, lado = 'izq', ms = 4200, children })
           aria-hidden="true"
           style={{
             position: 'absolute', ...pos,
-            pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 1,
+            pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 'var(--z-popover)',
             padding: '4px 9px', borderRadius: 'var(--r-pill)',
             background: 'var(--primary)', color: 'var(--on-primary)',
             fontSize: 11.5, fontWeight: 700, letterSpacing: '.01em',
             boxShadow: 'var(--shadow-lg)',
-            animation: 'lu-blink 1.1s ease-in-out 3',
+            animation: 'lu-blink 1.1s ease-in-out 5',
           }}
         >
           {texto}

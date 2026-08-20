@@ -26,6 +26,9 @@ export const GESTION_ITEMS = [
   { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
   { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
+  // Respaldo mensual: los recorridos se purgan a los 45 días (db/42) y esto es la ÚNICA salida
+  // del historial fuera de Supabase. Solo admin y superadmin — exporta la empresa entera.
+  { key: 'respaldo', label: 'Respaldo', roles: ['admin', 'superadmin'] },
 ]
 
 export const GESTION_TITLES = Object.fromEntries(GESTION_ITEMS.map((i) => [i.key, i.label]))

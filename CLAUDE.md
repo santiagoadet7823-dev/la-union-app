@@ -726,6 +726,8 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
+Hay varios números que conviven. **1.19.0 es OTA + PWA, SIN APK**: es JS puro (pedidos que se guardan, ticket, respaldo mensual, encuadre del mapa del informe y el barrido de `gap` de la vidriera). No se tocó ni un `.java`, ni el manifest, ni `capacitor.config.ts`, así que `versionName`/`versionCode` se quedan en 1.18.0/36. ⚠️ Sus tres migraciones (`db/42`, `db/43`, `db/44`) van **antes** del bundle: la cola de escrituras corta al primer error y reintenta, así que un insert contra columnas inexistentes taponaría también el catálogo.
+
 Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambio NATIVO (la vidriera: hotspot local, servidor HTTP, escaner de QR y union a la red de la tablet), asi que los plugins solo viajan en el APK. El bundle 1.15.0 va igual por OTA para los que ya lo tengan instalado. ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
 > 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
@@ -734,10 +736,10 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.18.1` ✅ publicado | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.19.0` ✅ publicado | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.18.0` ✅ publicado | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `36` ✅ publicado | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.18.1` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.19.0` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | `1.18.0` ✅ publicado (18/08/2026 — los 9 equipos reinstalan solos) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

@@ -117,7 +117,7 @@ const Tarjeta = memo(function Tarjeta({ p, url, acusado, cantidad, onTocar, onMo
               {!acusado && (
                 <div
                   onClick={(e) => e.stopPropagation()}
-                  style={sx('position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px;border-radius:12px;background:var(--glass-strong);border:1px solid var(--line)')}
+                  style={{ ...sx('position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;justify-content:space-between;padding:4px;border-radius:12px;background:var(--glass-strong);border:1px solid var(--line)'), '--gx': '6px' }}
                 >
                   <button onClick={(e) => onMover(e, p.id, -1)} className="lu-press"
                     style={sx('width:38px;height:38px;flex:none;display:grid;place-items:center;border:none;border-radius:10px;background:transparent;color:var(--muted);font-size:21px;cursor:pointer;user-select:none')}>−</button>
@@ -134,7 +134,7 @@ const Tarjeta = memo(function Tarjeta({ p, url, acusado, cantidad, onTocar, onMo
               </div>
               <div style={sx('margin-top:7px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
                 {enOferta ? (
-                  <div style={sx('display:flex;align-items:baseline;gap:7px;flex-wrap:wrap')}>
+                  <div style={{ ...sx('display:flex;align-items:baseline;flex-wrap:wrap'), '--gx': '7px' }}>
                     <span style={sx('font-size:12px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.precio)}</span>
                     <span style={sx('font-size:16px;font-weight:700;color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
                   </div>
@@ -490,14 +490,14 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
        */
       style={sx('height:100vh;overflow:hidden;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}
     >
-      <div style={sx('flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--line)')}>
+      <div style={{ ...sx('flex:none;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--line)'), '--gx': '12px' }}>
         <div>
           <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)')}>Catálogo</div>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:19px')}>
             {catalogoVivo?.comercio?.nombre || 'Productos'}
           </div>
         </div>
-        <div style={sx('display:flex;align-items:center;gap:14px')}>
+        <div style={{ ...sx('display:flex;align-items:center'), '--gx': '14px' }}>
           <div style={sx('font-family:var(--font-mono);font-size:12px;color:var(--faint)')}>
             {lista.length === ordenados.length ? `${lista.length} productos` : `${lista.length} de ${ordenados.length}`}
           </div>
@@ -516,9 +516,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
 
       {/* Buscar y filtrar. Campos y toques grandes: esto lo usa un comerciante de pie. */}
       {ordenados.length > 0 && (
-        <div style={sx('flex:none;padding:12px 14px 8px;display:flex;flex-direction:column;gap:9px;background:var(--surface);border-bottom:1px solid var(--line)')}>
-          <div style={sx('display:flex;gap:9px;align-items:center')}>
-            <div className="lu-campo" style={sx('flex:1;display:flex;align-items:center;gap:9px;background:var(--bg-app);border:1px solid var(--line2);border-radius:var(--r-md);padding:0 14px;height:50px')}>
+        <div style={{ ...sx('flex:none;padding:12px 14px 8px;display:flex;flex-direction:column;background:var(--surface);border-bottom:1px solid var(--line)'), '--gy': '9px' }}>
+          <div style={{ ...sx('display:flex;align-items:center'), '--gx': '9px' }}>
+            <div className="lu-campo" style={{ ...sx('flex:1;display:flex;align-items:center;background:var(--bg-app);border:1px solid var(--line2);border-radius:var(--r-md);padding:0 14px;height:50px'), '--gx': '9px' }}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
               <input
                 value={busca}
@@ -547,7 +547,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
             </div>
           </div>
 
-          <div className="lu-chips" style={sx('display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;-ms-overflow-style:none')}>
+          <div className="lu-chips" style={{ ...sx('display:flex;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;-ms-overflow-style:none'), '--gx': '8px' }}>
             {chips.map((c) => {
               const on = filtro === c
               const esOferta = c === 'Ofertas'
@@ -596,9 +596,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
           Es de LECTURA. Acá no se edita el pedido — el pedido es del vendedor, y dos personas
           editando lo mismo desde dos pantallas es una discusión, no una función. */}
       {pedido && pedido.items.length > 0 && (
-        <div className="lu-rise" style={sx('flex:none;border-top:1px solid var(--line);background:var(--surface);padding:11px 16px;display:flex;align-items:center;gap:14px')}>
+        <div className="lu-rise" style={{ ...sx('flex:none;border-top:1px solid var(--line);background:var(--surface);padding:11px 16px;display:flex;align-items:center'), '--gx': '14px' }}>
           <div style={sx('flex:none;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)')}>Su pedido</div>
-          <div className="lu-chips" style={sx('flex:1;min-width:0;display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none')}>
+          <div className="lu-chips" style={{ ...sx('flex:1;min-width:0;display:flex;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none'), '--gx': '7px' }}>
             {pedido.items.map((i) => (
               <span key={i.id} style={sx('flex:none;padding:5px 11px;border-radius:99px;border:1px solid var(--line2);font-size:12px;white-space:nowrap')}>
                 <b style={sx('font-family:var(--font-mono)')}>{i.cantidad}×</b> {i.nombre}
@@ -621,10 +621,10 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         const p = enVidriera[(reposo - 1) % enVidriera.length]
         const oferta = p.oferta && p.precioOferta != null
         return (
-          <div style={sx('position:fixed;top:0;right:0;bottom:0;left:0;z-index:var(--z-screen);background:var(--bg-app);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:40px')}>
+          <div style={{ ...sx('position:fixed;top:0;right:0;bottom:0;left:0;z-index:var(--z-screen);background:var(--bg-app);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px'), '--gy': '22px' }}>
             {/* `key` por producto: sin eso React reusa el nodo y la entrada no se vuelve a animar,
                 así que el carrusel cambiaría de foto de golpe, sin transición. */}
-            <div key={p.id} className="lu-rise" style={sx('display:flex;flex-direction:column;align-items:center;gap:20px;max-width:640px;width:100%')}>
+            <div key={p.id} className="lu-rise" style={{ ...sx('display:flex;flex-direction:column;align-items:center;max-width:640px;width:100%'), '--gy': '20px' }}>
               {/* padding-top y no `aspect-ratio`: el WebView de la tablet es Chrome 79, igual que
                   en las tarjetas de la grilla. */}
               <div style={sx('width:min(380px,60vh);padding-top:min(380px,60vh);position:relative;border-radius:24px;overflow:hidden;background:var(--surface2);box-shadow:var(--shadow-lg)')}>
@@ -666,7 +666,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
           <div
             onClick={(e) => e.stopPropagation()}
             className="lu-rise"
-            style={sx('width:min(760px,100%);max-height:100%;overflow:auto;display:flex;gap:24px;background:var(--surface);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px')}
+            style={{ ...sx('width:min(760px,100%);max-height:100%;overflow:auto;display:flex;background:var(--surface);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px'), '--gx': '24px' }}
           >
             <div style={sx('flex:none;width:300px;max-width:42vw')}>
               <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2);border-radius:16px;overflow:hidden')}>
@@ -681,7 +681,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
             </div>
 
             <div style={sx('flex:1;min-width:0;display:flex;flex-direction:column')}>
-              <div style={sx('display:flex;align-items:flex-start;justify-content:space-between;gap:12px')}>
+              <div style={{ ...sx('display:flex;align-items:flex-start;justify-content:space-between'), '--gx': '12px' }}>
                 <div style={sx('font-family:var(--font-display);font-weight:600;font-size:24px;line-height:1.25')}>{ficha.nombre}</div>
                 <button onClick={() => setFicha(null)} className="lu-press"
                   style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;background:transparent;color:var(--muted);font-size:22px;cursor:pointer')}>×</button>
@@ -690,7 +690,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
 
               <div style={sx('margin-top:16px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
                 {ficha.oferta && ficha.precioOferta != null ? (
-                  <div style={sx('display:flex;align-items:baseline;gap:11px;flex-wrap:wrap')}>
+                  <div style={{ ...sx('display:flex;align-items:baseline;flex-wrap:wrap'), '--gx': '11px' }}>
                     <span style={sx('font-size:16px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(ficha.precio)}</span>
                     <span style={sx('font-size:30px;font-weight:700;color:var(--warning)')}>{fmtPesos(ficha.precioOferta)}</span>
                   </div>
@@ -707,8 +707,8 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
 
               <div style={sx('flex:1')} />
 
-              <div style={sx('margin-top:20px;display:flex;align-items:center;gap:12px')}>
-                <div style={sx('flex:none;display:flex;align-items:center;gap:10px;padding:5px;border:1px solid var(--line2);border-radius:14px')}>
+              <div style={{ ...sx('margin-top:20px;display:flex;align-items:center'), '--gx': '12px' }}>
+                <div style={{ ...sx('flex:none;display:flex;align-items:center;padding:5px;border:1px solid var(--line2);border-radius:14px'), '--gx': '10px' }}>
                   <button onClick={(e) => mover(e, ficha.id, -1)} className="lu-press"
                     style={sx('width:48px;height:48px;display:grid;place-items:center;border:none;border-radius:11px;background:transparent;color:var(--muted);font-size:25px;cursor:pointer;user-select:none')}>−</button>
                   <span style={sx('min-width:38px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:700')}>{cant[ficha.id] || 1}</span>

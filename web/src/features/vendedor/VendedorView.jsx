@@ -11,6 +11,7 @@ import { useJornada } from './useJornada'
 import InicioTab from './tabs/InicioTab'
 import VisitaCatalogo from './tabs/VisitaCatalogo'
 import RutaTab from './tabs/RutaTab'
+import TicketPedido from '../pedidos/TicketPedido'
 import SinPedidoSheet from './tabs/SinPedidoSheet'
 
 // Pantallas de catálogo: lazy, igual que en las supervisiones. Un vendedor sin el permiso nunca
@@ -43,6 +44,19 @@ export default function VendedorView() {
       {j.tab === 'ruta' && <RutaTab j={j} />}
 
       {j.sheet && <SinPedidoSheet j={j} />}
+
+      {/* EL COMPROBANTE. Va acá y no en `VisitaCatalogo` porque confirmar el pedido cierra la
+          visita y vuelve a "Inicio", lo que DESMONTA esa pestaña: un ticket colgado de ahí
+          desaparecería en el mismo frame en que se crea. */}
+      {j.ticket && (
+        <TicketPedido
+          pedido={j.ticket.pedido}
+          comercio={j.ticket.comercio}
+          vendedor={j.ticket.vendedor}
+          lineas={j.ticket.lineas}
+          onCerrar={() => j.setTicket(null)}
+        />
+      )}
 
       {j.toast && (
         <div style={sx('position:absolute;top:14px;left:14px;right:14px;z-index:var(--z-toast);background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 14px;display:flex;align-items:center;gap:9px')}>

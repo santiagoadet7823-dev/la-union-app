@@ -536,7 +536,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         dejó de aplicarse (ver el 🩸 de `trazos.js`). */}
                     {/* Toggle "Paradas" (carteles de permanencia) */}
                     {trails.length > 0 && (
-                      <PistaBoton texto="Paradas" lado="arriba">
+                      <PistaBoton texto="Paradas" lado="abajo">
                       <div onClick={() => setDwellOn((v) => !v)} title="Muestra un cartel donde la persona estuvo detenida más de 3 minutos, con el tiempo y la batería del equipo." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: dwellOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${dwellOn ? 'transparent' : 'var(--line)'}`, color: dwellOn ? '#fff' : 'var(--muted)' }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Paradas</span>
@@ -551,7 +551,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Centrar y SEGUIR la última posición. Es el segundo zoom: tocar una burbuja
                         encuadra todo el recorrido; esto va a donde está ahora y se queda pegado.
                         Arrastrar el mapa lo suelta (LeafletMap escucha `dragstart`). */}
-                    <PistaBoton texto="Seguir" lado="arriba">
+                    <PistaBoton texto="Seguir" lado="abajo">
                     <div
                       onClick={alternarSeguir}
                       title={seguirId

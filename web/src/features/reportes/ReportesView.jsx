@@ -5,12 +5,15 @@ import { compararDia } from '../../lib/comparar'
 import { getTrackConfig } from '../../services/tracking'
 import useMetricasActividad from '../../hooks/useMetricasActividad'
 import { useTenant, TODAS } from '../../context/TenantContext'
+import { useCatalog } from '../../context/CatalogContext'
 import { construirInforme, sinReportar } from './informe'
 import LineaTiempoJornada from './components/LineaTiempoJornada'
 import CurvaBateria from './components/CurvaBateria'
 import TablaParadas from './components/TablaParadas'
 import SaludDato from './components/SaludDato'
 import MapaRecorrido from './components/MapaRecorrido'
+import PedidosDelDia from './components/PedidosDelDia'
+import { usePedidosDelDia, usePrimerDiaConDatos } from './usePedidosDelDia'
 import { exportarExcel, imprimirInforme, montarImpresionInforme } from './exportarInforme'
 
 /**
@@ -74,6 +77,12 @@ export default function ReportesView({
   // la comparativa hablaría de una empresa mientras el resto de la pantalla habla de todas: no se
   // muestra, que es lo único honesto.
   const { serieKmPorUsuario } = useMetricasActividad('mes', !multiEmpresa)
+  // Los pedidos SÍ se consultan acá (el porqué de la excepción está en `usePedidosDelDia.js`).
+  const { pedidos, cargando: cargandoPedidos, error: errorPedidos } = usePedidosDelDia(fecha)
+  const primerDia = usePrimerDiaConDatos()
+  // Del CONTEXTO, no de una consulta nueva: el catálogo ya está cargado en memoria y solo hace
+  // falta para poner nombre a los ids que vienen en `intencion`.
+  const { productos } = useCatalog()
 
   // Las ventanas de rastreo por persona, para medir el arranque tardío. `getTrackConfig` cachea
   // 4 minutos por usuario, así que abrir y cerrar el informe no vuelve a consultar.
@@ -156,11 +165,11 @@ export default function ReportesView({
   }
 
   return (
-    <div id="lu-informe" style={sx('padding:14px 14px 28px;max-width:900px;margin:0 auto;display:grid;gap:14px')}>
+    <div id="lu-informe" className="lu-imprimible" style={sx('padding:14px 14px 28px;max-width:900px;margin:0 auto;display:grid;gap:14px')}>
       <Controles
         fecha={fecha}
         onFecha={onFecha}
-        onExcel={() => exportar('la planilla', () => exportarExcel(informe, nombres))}
+        onExcel={() => exportar('la planilla', () => exportarExcel(informe, nombres, pedidos, productos))}
         onPdf={() => exportar('el PDF', () => imprimirInforme())}
       />
 
@@ -184,6 +193,17 @@ export default function ReportesView({
         </div>
       )}
 
+      {/* 🩸 DESDE CUÁNDO HAY DATOS. La purga corre todos los días: un informe viejo no sale vacío
+          porque no se trabajó, sale vacío porque los recorridos ya no existen. Mostrar las dos
+          cosas igual es la peor forma de mentir — sin ruido, sin error y con cara de dato. */}
+      {primerDia && fecha < String(primerDia).slice(0, 10) && (
+        <div style={sx('background:var(--warning-tint);border:1px solid var(--warning);border-radius:var(--r-md);padding:10px 13px;font-size:var(--fs-xs);color:var(--text);line-height:1.55')}>
+          Esta fecha es anterior al dato más viejo que queda guardado
+          (<b>{new Date(primerDia).toLocaleDateString('es-AR')}</b>). Los recorridos se borran a los
+          45 días, así que este informe no está incompleto: está vacío porque ya no hay qué mostrar.
+        </div>
+      )}
+
       <Solapas
         informe={informe}
         sel={sel}
@@ -200,7 +220,19 @@ export default function ReportesView({
             onParada={(orden) => setParadaSel((s) => (s === orden ? null : orden))}
             onVerEnMapa={onVerEnMapa}
           />
-        : <Equipo informe={informe} ausentes={ausentes} onSel={setSel} />}
+        : <>
+            <Equipo informe={informe} ausentes={ausentes} onSel={setSel} />
+            {/* Los pedidos van en la vista de EQUIPO y no en la ficha de cada persona: la pregunta
+                que motivó la sección —"¿dónde se toman los pedidos?"— se contesta comparando, y
+                un número suelto por persona no dice nada sin el resto al lado. */}
+            <PedidosDelDia
+              pedidos={pedidos}
+              nombres={nombres}
+              productos={productos}
+              cargando={cargandoPedidos}
+              error={errorPedidos}
+            />
+          </>}
     </div>
   )
 }

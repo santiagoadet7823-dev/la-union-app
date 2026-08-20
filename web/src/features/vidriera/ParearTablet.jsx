@@ -74,7 +74,7 @@ export default function ParearTablet({ onListo, onSalir }) {
   const trabajando = paso !== 'inicio'
 
   return (
-    <div style={sx('min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px;background:var(--bg);color:var(--text);text-align:center')}>
+    <div style={{ ...sx('min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;background:var(--bg);color:var(--text);text-align:center'), '--gy': '18px' }}>
       <div style={sx('width:72px;height:72px;border-radius:22px;background:var(--primary-tint);display:grid;place-items:center')}>
         <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5A2.5 2.5 0 0 1 18.5 21H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16" />
@@ -90,7 +90,7 @@ export default function ParearTablet({ onListo, onSalir }) {
       </div>
 
       {trabajando && (
-        <div style={sx('display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--faint)')}>
+        <div style={{ ...sx('display:flex;align-items:center;font-size:12.5px;color:var(--faint)'), '--gx': '9px' }}>
           <span style={sx('width:9px;height:9px;border-radius:99px;background:var(--primary);animation:lu-blink 1.2s infinite')} />
           {paso === 'uniendo' && via ? `Conectando (${via})` : 'Un momento'}
         </div>
@@ -108,7 +108,7 @@ export default function ParearTablet({ onListo, onSalir }) {
         </div>
       )}
 
-      <div style={sx('display:flex;gap:10px;margin-top:4px')}>
+      <div style={{ ...sx('display:flex;margin-top:4px'), '--gx': '10px' }}>
         <button
           className="lu-press"
           onClick={() => emparejar(false)}
