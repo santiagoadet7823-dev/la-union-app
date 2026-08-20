@@ -105,6 +105,22 @@ export async function flushMutaciones() {
 /** Cantidad de mutaciones pendientes (para diagnóstico/estado). */
 export async function pendingMutaciones() { return (await read()).length }
 
+/**
+ * Las mutaciones pendientes de UNA tabla, para poder MOSTRARLAS.
+ *
+ * 🩸 Existe por "Mis pedidos" (20/08/2026). Un vendedor sin señal confirma un pedido, entra a
+ * revisarlo y —si la lista saliera solo de Supabase— no lo encuentra: la fila todavía está acá,
+ * esperando red. Que no aparezca se lee como "se perdió", que es justo lo contrario de lo que la
+ * cola garantiza. Una pantalla que no puede ver la cola tiene que mentir sobre ella.
+ *
+ * Devuelve los payloads crudos, no filas de la base: quien las muestre tiene que marcarlas como
+ * "sin subir" y no mezclarlas de callado con lo confirmado.
+ */
+export async function pendientesDe(table, op = 'insert') {
+  const q = await read()
+  return q.filter((m) => m.table === table && m.op === op).map((m) => m.payload)
+}
+
 /** Arranca el auto-flush (una sola vez): al recuperar red y cada 30 s. */
 export function startWriteQueue() {
   if (started || typeof window === 'undefined') return

@@ -5,6 +5,7 @@ import { isNative } from '../services/platform'
 import Logo from './Logo'
 import MiCuenta from '../features/perfil/MiCuenta'
 import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
+import MisPedidosSheet from '../features/pedidos/MisPedidosSheet'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -31,6 +32,11 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
   const [acctOpen, setAcctOpen] = useState(false)
+  // 🩸 El estado vive ACÁ y no adentro del menú de cuenta (20/08/2026). Si colgara del menú, al
+  // cerrarlo para dejar ver la hoja se desmontaría el componente y la hoja moriria en el mismo
+  // frame. Es el mismo gotcha del §7 sobre `Overlay`: lo que anima su salida tiene que seguir
+  // montado.
+  const [misPedidos, setMisPedidos] = useState(false)
   const [toast, setToast] = useState(null)
   const toastRef = useRef(null)
   const showToast = (m) => {
@@ -131,9 +137,35 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
                 que baja 13 MB de fotos con sus datos. La tarjeta además se esconde sola en la PWA y
                 cuando el catálogo no tiene fotos. */}
             {rol === 'vendedor' && <PrepararCatalogo onToast={showToast} />}
+            {/* 🩸 "MIS PEDIDOS" VA ACÁ POR EL MISMO MOTIVO QUE "PREPARAR CATÁLOGO" (20/08/2026).
+                El lugar natural sería `vendedor/tabs/PerfilTab.jsx`, y ese archivo **no lo monta
+                nadie**: el bottom nav del vendedor tiene tres pestañas (Inicio · Ruta · Catálogo) y
+                ninguna es esa. Ponerlo ahí habría sido escribir la pantalla y que no se pudiera
+                abrir — que es exactamente lo que ya pasó una vez con el espejo de fotos.
+                El vendedor también, y no solo gestión: el que carga el pedido es el que se da cuenta
+                del error, y hasta hoy no tenía cómo mirarlo de nuevo. */}
+            {rol === 'vendedor' && (
+              <div
+                onClick={() => { setAcctOpen(false); setMisPedidos(true) }}
+                className="lu-press"
+                role="button"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: 'var(--shadow)', padding: '13px 15px', marginBottom: 10, cursor: 'pointer' }}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5h6M9 5a2 2 0 1 0 4 0M5 7h14v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" /><path d="M9 12h6M9 16h4" /></svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mis pedidos</div>
+                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Revisar y anular los de esta semana</div>
+                </div>
+              </div>
+            )}
             <MiCuenta onToast={showToast} showDeviceToggle={!isNative()} />
           </div>
         </div>
+      )}
+
+      {/* Montada SIEMPRE (con `open`), afuera del menú de cuenta: ver el comentario del estado. */}
+      {rol === 'vendedor' && (
+        <MisPedidosSheet open={misPedidos} onCerrar={() => setMisPedidos(false)} onToast={showToast} />
       )}
 
       {toast && (

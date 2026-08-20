@@ -39,6 +39,7 @@ const UsuariosView = lazy(() => import('../../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../../admin/EmpresasView'))
 const InvitarModal = lazy(() => import('../../../components/InvitarModal'))
 const RespaldoDatos = lazy(() => import('../../gestion/RespaldoDatos'))
+const PedidosView = lazy(() => import('../../pedidos/PedidosView'))
 
 export function GestionCargando() {
   return (
@@ -65,6 +66,7 @@ export default function DespachoGestion({
       {/* El informe recibe `byUser` YA LIMPIO, el mismo objeto del que salen el trazo y los
           carteles: es lo que garantiza que sus km sean dígito por dígito los del mapa. */}
       {vista === 'reportes' && reportes && <ReportesView {...reportes} />}
+      {vista === 'pedidos' && <PedidosView onToast={onToast} />}
       {vista === 'clientes' && <ClientesTab onToast={onToast} onNuevoCliente={onNuevoCliente} />}
       {vista === 'duplicados' && <RevisarDuplicados onToast={onToast} />}
       {vista === 'zonas' && <ZonasView onToast={onToast} />}

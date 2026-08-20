@@ -3,6 +3,7 @@ import { App as CapApp } from '@capacitor/app'
 import { supabase, hasSupabase } from '../services/supabase'
 import { primerInstallMs, modeloDispositivo } from '../services/infoApp'
 import { APP_VERSION } from '../version'
+import { estadoOta } from '../services/ota'
 import { hoyStr } from '../lib/format'
 import { ACCURACY_MAX_M } from '../services/gpsConfig'
 import { pendingCount, pendientesCuarentena } from '../services/sync/queue'
@@ -30,6 +31,10 @@ const FORZAR_MS = 600000  // ...pero al menos cada 10 min sí o sí (ver abajo)
 // Campos de ESTADO que deciden si vale la pena subir el latido. `ts`/`updated_at`
 // quedan afuera a propósito: cambian siempre y anularían la comparación.
 const CAMPOS = ['gps_ok', 'permiso', 'visible', 'bg_ok', 'app_version', 'apk_version', 'instalado_ts',
+  // 🩸 Estado de la OTA (20/08/2026). Entran en la comparación a propósito: son justo los campos
+  // que cambian el día que hay una actualización dando vueltas, y ese es el día en que el latido
+  // tiene que subir aunque no haya cambiado nada más. Ver `estadoOta()`.
+  'bundle_aplicado', 'bundle_encolado', 'ota_error',
   'cola_pendiente', 'cuarentena_pendiente', 'gps_error', 'fcm_token',
   // Diagnóstico de red del servicio nativo. `red_desde`/`arranque_ts`/`apagado_ts` NO entran en la
   // comparación aunque se suban: son marcas de tiempo que acompañan a `red`, y meterlas acá haría
@@ -284,7 +289,16 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
       // al que ya está — y acá puede ser null para siempre si el WebView reduce la UA (ver
       // `modeloDispositivo`).
       const modelo = isNative() ? modeloDispositivo() : null
+      // 🩸 EL BUNDLE QUE DE VERDAD ESTÁ CORRIENDO, no el que dice la constante (20/08/2026).
+      // `app_version` es `APP_VERSION`, o sea una constante COMPILADA DENTRO del bundle: siempre
+      // dice la versión del código que está ejecutando, y por eso no puede distinguir "la descarga
+      // falló" de "se descargó y espera un arranque en frío". El 19/08 los nueve equipos figuraron
+      // un día entero en 1.18.1 sin que se pudiera saber en cuál de los dos estados estaban.
+      const ota = isNative() ? await estadoOta() : null
       const identidad = isNative() ? {
+        bundle_aplicado: ota?.aplicado || null,
+        bundle_encolado: ota?.encolado || null,
+        ota_error: ota?.error || null,
         app_version: APP_VERSION,
         apk_version: apkRef.current,
         instalado_ts: instaladoRef.current,

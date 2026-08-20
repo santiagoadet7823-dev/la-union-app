@@ -66,8 +66,17 @@ export default function UpdatePrompt() {
         setModo('ota')
         try {
           await otaDownload(u)
-          // Listo y encolado. No se muestra nada: la próxima vez que abran, ya está actualizada.
-          if (!cancel) setFase('listo')
+          // 🩸 AHORA SÍ SE MUESTRA (20/08/2026), y en modo discreto. Hasta hoy acá decía "no se
+          // muestra nada: la próxima vez que abran, ya está actualizada" — y era cierto salvo por
+          // el detalle de que **`next()` aplica en el ARRANQUE EN FRÍO**, no al volver del
+          // segundo plano. Un teléfono que no cierra la app nunca se actualiza, y no había forma
+          // ni de saberlo ni de forzarlo: `otaReload()` estaba en el código y era inalcanzable,
+          // porque el botón que lo llama solo existe con el cartel visible.
+          // El 19/08 eso dejó a los nueve equipos un día entero en la versión anterior, con el
+          // bundle correcto ya descargado en cada teléfono.
+          // Sigue sin forzarse el reload: se OFRECE. Quien está a mitad de un check-in lo ignora
+          // y se aplica igual cuando cierre; quien está probando lo toca.
+          if (!cancel) { setFase('listo'); setShow(true) }
         } catch (e) {
           // Sin red o descarga cortada: recién ahí se pide ayuda, con el botón de reintentar.
           if (cancel) return
@@ -131,13 +140,13 @@ export default function UpdatePrompt() {
     ? 'Hay una nueva versión de la app.'
     : msg ? msg
     : fase === 'descargando' ? 'Descargando la actualización…'
-    : fase === 'listo' ? 'Actualización lista. Tocá Reiniciar para aplicarla.'
+    : fase === 'listo' ? 'Ya está descargada. Se aplica sola al cerrar y volver a abrir la app.'
     : esApk ? 'Hay una versión nueva para instalar. Se descarga sola; solo confirmá la instalación.'
     : 'La app se actualiza sola, sin reinstalar.'
 
   const cta = !nativo ? 'Actualizar'
     : fase === 'descargando' ? '…'
-    : fase === 'listo' ? 'Reiniciar app'
+    : fase === 'listo' ? 'Aplicar ahora'
     : fase === 'instalando' ? 'Instalando…'
     : fase === 'permiso' ? 'Actualizar'
     : fase === 'error' ? 'Reintentar'
@@ -158,6 +167,19 @@ export default function UpdatePrompt() {
         <button onClick={onCta} disabled={ctaDisabled} style={{ ...sx('flex:none;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:12.5px;font-weight:600;padding:8px 14px;cursor:pointer'), opacity: ctaDisabled ? 0.6 : 1 }}>
           {cta}
         </button>
+        {/* Descartar. Solo cuando ya está descargada: ahí el cartel es informativo y no debe
+            quedarse clavado sobre la pantalla de trabajo — la actualización se aplica igual al
+            cerrar la app. En los otros estados (error, permiso, instalador) hay algo que hacer y
+            no se ofrece esconderlo. */}
+        {fase === 'listo' && (
+          <button
+            onClick={() => setShow(false)}
+            aria-label="Ocultar el aviso"
+            style={sx('flex:none;display:grid;place-items:center;width:28px;height:28px;border:none;border-radius:8px;background:transparent;color:var(--faint);cursor:pointer')}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
+        )}
       </div>
     </div>
   )

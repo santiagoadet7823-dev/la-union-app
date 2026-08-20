@@ -4,6 +4,7 @@ import GestionHost from '../../components/GestionHost'
 import { Home, Pin, Box, Check } from '../../components/icons'
 import { glassSurface } from '../../lib/glass'
 import { useDevice } from '../../context/DeviceContext'
+import { useAltoMedido } from '../../hooks/useAltoMedido'
 import { useGps } from '../../context/GpsContext'
 import NuevoCliente from '../catalog/NuevoCliente'
 import EditarClienteVendedor from '../catalog/EditarClienteVendedor'
@@ -34,10 +35,16 @@ export default function VendedorView() {
   const [catalogoOpen, setCatalogoOpen] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
 
+  // 🩸 EL ALTO DE LA BOTONERA SE MIDE, NO SE ADIVINA (20/08/2026). Los flotantes de las pestañas
+  // (la barra del pedido, el renglón de "sin pedir") se apoyaban sobre un `80px` escrito a mano, y
+  // la botonera mide más que eso en cuanto la barra de gestos o el tamaño de fuente del sistema la
+  // hacen crecer: el botón de confirmar quedaba tapado. Ver `useAltoMedido`.
+  const [navRef, navAlto] = useAltoMedido()
+
   const navItem = (t) => (j.tab === t ? 'var(--primary)' : 'var(--faint)')
 
   return (
-    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600 }}>
+    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600, '--nav-h': navAlto ? `${navAlto}px` : undefined }}>
 
       {j.tab === 'inicio' && <InicioTab j={j} onNuevoCliente={() => setModalCliente(true)} onEditarCliente={setEditCliId} onAbrirCatalogo={() => setCatalogoOpen(true)} />}
       {j.tab === 'catalogo' && <VisitaCatalogo j={j} />}
@@ -100,7 +107,7 @@ export default function VendedorView() {
 
       {/* ===== BOTTOM NAV (glass + safe-area). En mobile va FIXED al fondo real de
               la pantalla; en escritorio, absolute dentro del marco de teléfono. ===== */}
-      <div style={{ ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr)'), zIndex: 'var(--z-chrome)', position: isMobile ? 'fixed' : 'absolute', ...glassSurface(), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
+      <div ref={navRef} style={{ ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr)'), zIndex: 'var(--z-chrome)', position: isMobile ? 'fixed' : 'absolute', ...glassSurface(), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
         {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box]].map(([t, label, Icon]) => (
           <div key={t} onClick={() => j.setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
             <Icon />

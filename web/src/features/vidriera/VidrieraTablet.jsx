@@ -162,6 +162,18 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   useEffect(() => { setCatalogoVivo(catalogo) }, [catalogo])
   const productos = catalogoVivo?.productos || []
   const orden = catalogoVivo?.orden || []
+  // 🩸 CUÁNTAS FOTOS TIENE EL CELULAR (20/08/2026). El cliente reportó "la tablet no actualiza
+  // fotos" y supuso que el botón necesitaba internet. Es al revés: "Actualizar fotos" le pide las
+  // fotos AL CELULAR por el enlace local y no toca internet nunca. El que necesita internet —una
+  // sola vez— es el celular, en Mi cuenta → Preparar catálogo, que llena la carpeta `espejo`.
+  // Con esa carpeta vacía, `foto` viene false para todos, esta pantalla ni siquiera las pide, y el
+  // botón no puede hacer nada: la grilla queda gris entera y nada dice por qué.
+  // Los contadores los manda el celular en el snapshot (`services/vidriera.js`).
+  const fotosListas = catalogoVivo?.fotosListas
+  const fotosTotal = catalogoVivo?.fotosTotal
+  // `undefined` = el celular está en una versión anterior a 1.20.0 y no los manda. Ahí se muestra
+  // el botón como siempre: no se puede afirmar que falten fotos si nadie las contó.
+  const sinEspejo = fotosListas === 0 && fotosTotal > 0
   const [fotos, setFotos] = useState({})    // { [id]: url | null }
   const [tocado, setTocado] = useState(null) // id del último tocado (para el acuse)
   /**
@@ -501,10 +513,20 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
           <div style={sx('font-family:var(--font-mono);font-size:12px;color:var(--faint)')}>
             {lista.length === ordenados.length ? `${lista.length} productos` : `${lista.length} de ${ordenados.length}`}
           </div>
-          <button onClick={actualizarFotos} className="lu-press" title="Volver a bajar las fotos"
-            style={sx('min-height:40px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer')}>
-            Actualizar fotos
-          </button>
+          {/* Un botón que no puede funcionar es peor que ningún botón: promete algo, no pasa
+              nada, y quien lo aprieta cree que la app está rota. Cuando el celular no preparó
+              ninguna foto, en su lugar va el cartel que dice qué falta y dónde se hace. */}
+          {sinEspejo ? (
+            <div style={sx('max-width:300px;padding:7px 11px;border-radius:var(--r-md);border:1px solid var(--warning);background:var(--warning-tint);color:var(--text);font-size:11.5px;line-height:1.45')}>
+              El celular todavía no preparó las fotos (0 de {fotosTotal}). Se preparan desde el
+              celular, en <b>Mi cuenta → Preparar catálogo</b>, con internet.
+            </div>
+          ) : (
+            <button onClick={actualizarFotos} className="lu-press" title="Volver a pedirle las fotos al celular"
+              style={sx('min-height:40px;padding:0 12px;border-radius:var(--r-md);border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer')}>
+              Actualizar fotos{fotosTotal > 0 && fotosListas < fotosTotal ? ` (${fotosListas}/${fotosTotal})` : ''}
+            </button>
+          )}
           {onSalir && (
             <button onClick={onSalir} className="lu-press"
               style={sx('min-height:40px;padding:0 14px;border-radius:var(--r-md);border:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer')}>

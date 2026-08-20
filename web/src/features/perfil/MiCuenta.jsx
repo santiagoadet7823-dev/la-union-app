@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useDevice } from '../../context/DeviceContext'
 import { APP_VERSION } from '../../version'
+import { estadoOta } from '../../services/ota'
 import MiPerfilModal from './MiPerfilModal'
 import CompartirUbicacion from '../../components/CompartirUbicacion'
 
@@ -27,6 +28,12 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
   const { isDark, toggleTheme } = useTheme()
   const { isMobile, setMode } = useDevice()
   const [perfilOpen, setPerfilOpen] = useState(false)
+  // 🩸 QUÉ VERSIÓN HAY ESPERANDO (20/08/2026). `APP_VERSION` es una constante compilada dentro del
+  // bundle que está corriendo, así que jamás puede avisar de una actualización ya descargada. El
+  // 19/08 los nueve equipos pasaron un día entero en la versión anterior con el bundle nuevo ya
+  // bajado en cada teléfono, y desde la app no había forma de verlo ni de aplicarlo.
+  const [ota, setOta] = useState(null)
+  useEffect(() => { let vivo = true; estadoOta().then((e) => { if (vivo) setOta(e) }).catch(() => {}); return () => { vivo = false } }, [])
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
   return (
@@ -36,7 +43,11 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
         <div style={sx('flex:1;min-width:0')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{nombre}</div>
           <div style={sx('font-size:11px;color:var(--muted);font-family:var(--font-mono)')}>{ROLE_LABEL[rol] || rol || '—'} · {user?.email || ''}</div>
-          <div style={sx('font-size:10px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>App v{APP_VERSION}</div>
+          <div style={sx('font-size:10px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>
+            App v{APP_VERSION}
+            {ota?.encolado && <span style={sx('color:var(--primary)')}> · v{ota.encolado} lista (se aplica al reabrir)</span>}
+            {ota?.error && !ota?.encolado && <span style={sx('color:var(--warning)')}> · no se pudo actualizar</span>}
+          </div>
         </div>
       </div>
 

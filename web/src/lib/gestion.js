@@ -18,6 +18,10 @@
  */
 export const GESTION_ITEMS = [
   { key: 'reportes', label: 'Reportes', roles: ['encargado', 'admin', 'superadmin'] },
+  // Revisar y anular pedidos (db/45). El alcance real lo pone `pedidos_sel` en el servidor: el
+  // encargado ve SOLO a su gente (`ids_a_mi_cargo()`), no toda la empresa. Esta tabla decide quién
+  // ve la pantalla; la base decide qué hay adentro.
+  { key: 'pedidos', label: 'Pedidos', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'clientes', label: 'Clientes', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'duplicados', label: 'Revisar repetidos', roles: ['admin', 'superadmin'] },
   { key: 'zonas', label: 'Zonas', roles: ['encargado', 'admin', 'superadmin'] },

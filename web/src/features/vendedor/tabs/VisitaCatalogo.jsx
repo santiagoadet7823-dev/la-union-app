@@ -6,6 +6,7 @@ import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
+import { useAltoMedido } from '../../../hooks/useAltoMedido'
 import { useSugeridos } from '../useSugeridos'
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
@@ -37,6 +38,12 @@ export default function VisitaCatalogo({ j }) {
   // render con un ReferenceError que el build NO detecta.
   const sugeridosIds = useSugeridos(visitC?.id)
 
+  // 🩸 EL ALTO DE LA BARRA DEL PEDIDO SE MIDE (20/08/2026). El renglón de "sin pedir" se apoyaba
+  // sobre un `186px` escrito a mano que era el alto estimado de esta barra; la barra cambia de alto
+  // con el largo del texto y con la fuente del sistema. Mismo motivo que `--nav-h` en
+  // `VendedorView`: una constante que hoy acierta vuelve a fallar en el próximo teléfono.
+  const [pedidoRef, pedidoAlto] = useAltoMedido()
+
   const [verQr, setVerQr] = useState(false)
   const [verCarrito, setVerCarrito] = useState(false)
 
@@ -58,7 +65,7 @@ export default function VisitaCatalogo({ j }) {
   })
 
   return (
-    <div style={sx('flex:1;display:flex;flex-direction:column;overflow:hidden')}>
+    <div style={{ ...sx('flex:1;display:flex;flex-direction:column;overflow:hidden'), '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px' }}>
       {visitC ? (
         <div style={sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);padding:12px 14px')}>
           <div style={sx('display:flex;justify-content:space-between;align-items:center')}>
@@ -331,11 +338,15 @@ export default function VisitaCatalogo({ j }) {
           style={{
             ...sx('position:absolute;left:12px;right:12px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted);box-shadow:var(--shadow)'),
             // Se apoya arriba de la barra del pedido cuando la hay, y baja a su lugar cuando no.
-            // 🩸 Con `env(safe-area-inset-bottom)`: la bottom-nav CRECE con la barra de gestos
-            // (`VendedorView`), así que un 80 clavado en píxeles queda debajo de ella en cualquier
-            // teléfono sin botones físicos. El `,0px` de reserva no es de más — sin él, un WebView
-            // que no conozca `env()` deja la propiedad inválida y el flotante se va al fondo.
-            bottom: `calc(${cartCount > 0 ? 186 : 80}px + env(safe-area-inset-bottom,0px))`,
+            // 🩸 LOS DOS NÚMEROS SE MIDEN (20/08/2026). Acá decía `186 : 80` — el alto estimado de
+            // la barra del pedido y el de la botonera. Los dos quedaban cortos en el Motorola del
+            // dueño y el botón de confirmar terminaba tapado. Ahora salen de `--nav-h`
+            // (`VendedorView`) y `--pedido-h` (esta pantalla), los dos por `ResizeObserver`.
+            // El fallback del `var()` reproduce el cálculo viejo y cubre el primer frame —antes de
+            // que el observer haya medido— y cualquier WebView sin `ResizeObserver`. El `,0px` de
+            // `env()` tampoco es de más: sin él, un navegador que no la conozca deja la propiedad
+            // inválida y el flotante se va al fondo.
+            bottom: 'calc(var(--nav-h, calc(80px + env(safe-area-inset-bottom,0px))) + var(--pedido-h, 0px) + 20px)',
           }}
         >
           <span style={sx('width:7px;height:7px;flex:none;border-radius:99px;background:var(--success)')} />
@@ -360,7 +371,30 @@ export default function VisitaCatalogo({ j }) {
       )}
 
       {cartCount > 0 && (
-        <div style={sx('position:absolute;left:12px;right:12px;bottom:calc(80px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow-lg);padding:12px 14px;z-index:5')}>
+        <div
+          ref={pedidoRef}
+          style={{
+            ...sx('position:absolute;left:12px;right:12px;background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow-lg);padding:12px 14px;z-index:5'),
+            // 🔴 ESTE ES EL BOTÓN QUE SE VEÍA TAPADO, y son DOS causas, no una.
+            //
+            //  1. El alto de la botonera era el número `80` escrito a mano. Ahora se MIDE
+            //     (`--nav-h`, ver `useAltoMedido`): crece con la barra de gestos, con el tamaño de
+            //     fuente del sistema y con una etiqueta que pase a dos renglones, y ninguna
+            //     constante sobrevive a eso.
+            //  2. 🩸 Y la que de verdad explica la captura del 20/08: la botonera es de VIDRIO
+            //     (`glassSurface`, `blur(14px) saturate(160%)`). Un `backdrop-filter` samplea lo
+            //     que está pintado DEBAJO, y en `filter: blur(L)` la `L` es la desviación estándar
+            //     —no el radio—, así que la influencia llega bastante más allá de 14 px. Con la
+            //     separación de 12 px que había, el turquesa del botón caía de lleno adentro del
+            //     muestreo: la barra entera se teñía de turquesa y el botón se leía cortado,
+            //     fundido con ella. No estaba tapado por geometría; estaba tapado por el desenfoque.
+            //
+            // 20 px baja mucho el tinte, pero **no lo elimina**: la gaussiana no tiene un borde
+            // duro, así que esto lo atenúa, no lo apaga. Apagarlo del todo pide una botonera opaca
+            // o menos blur, y eso es una decisión de diseño, no un arreglo.
+            bottom: 'calc(var(--nav-h, calc(80px + env(safe-area-inset-bottom,0px))) + 20px)',
+          }}
+        >
           {/* 🩸 La barra ABRE el pedido (19/08/2026). Antes solo informaba: para cambiar una
               cantidad había que volver a buscar el producto entre 529, y para saber qué llevaba el
               cliente, acordarse. Con la vidriera andando se nota enseguida — el comercio señala

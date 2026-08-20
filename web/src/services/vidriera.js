@@ -73,10 +73,22 @@ export function snapshotCatalogo(productos, comercio, enEspejo) {
     })
     .map((p) => p.id)
 
+  // 🩸 CUÁNTAS FOTOS TIENE EL CELULAR, PARA QUE LA TABLET LO PUEDA DECIR (20/08/2026). El cliente
+  // reportó "la tablet no actualiza fotos" y su hipótesis fue que el botón necesitaba internet.
+  // Es al revés: ese botón le pide las fotos AL CELULAR por el enlace local y no toca internet
+  // nunca. El que necesita internet —una sola vez— es el celular, en "Preparar catálogo". Con el
+  // espejo vacío, `foto` es false para todos, la tablet ni siquiera las pide, y el botón no puede
+  // hacer absolutamente nada: la grilla sale gris entera y no hay forma de saber por qué.
+  // Con estos dos números la tablet deja de ofrecer un botón inútil y dice qué falta y dónde.
+  const conFoto = vivos.filter((p) => p.imagen)
+  const listas = enEspejo ? conFoto.filter((p) => enEspejo.has(p.id)).length : 0
+
   return {
     protocolo: PROTOCOLO,
     ts: Date.now(),
     comercio: comercio ? { id: comercio.id, nombre: comercio.name || '' } : null,
+    fotosListas: listas,
+    fotosTotal: conFoto.length,
     // Lista explícita campo por campo. NO se hace `{...p, nivel: undefined}`: un spread arrastra
     // cualquier columna que alguien agregue en el futuro, y la próxima podría ser el costo.
     productos: vivos.map((p) => ({

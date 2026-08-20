@@ -48,7 +48,9 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
   useEffect(() => { setTope(POR_TANDA) }, [buscaCli, soloPendientes])
 
   return (
-    <div style={sx('flex:1;overflow-y:auto;padding:14px 14px 92px')}>
+    // El padding de abajo despeja la botonera, que se mide sola (`--nav-h`, ver `useAltoMedido`).
+    // El 92 que había acá era el mismo número inventado que tapaba el botón del pedido.
+    <div style={{ ...sx('flex:1;overflow-y:auto;padding:14px'), paddingBottom: 'calc(var(--nav-h, 80px) + 12px)' }}>
       <div style={sx('display:flex;align-items:center;justify-content:space-between;margin:2px 2px 14px')}>
         <div style={sx('display:flex;align-items:center;gap:8px')}>
           <Logo size={26} radius={8} />
