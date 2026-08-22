@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { normalizar, buscarParecidos } from '../../lib/texto'
 import { useCatalog } from '../../context/CatalogContext'
 import { descargarArchivo } from '../../services/download'
+import { Bajar, ChevronLeft, Subir } from '../../components/icons'
 
 /**
  * Importación masiva de clientes desde una planilla Excel (.xlsx). Modelo "la zona lleva
@@ -193,7 +194,7 @@ export default function ImportarClientes({ onClose, onToast }) {
       {/* Header */}
       <div style={sx('display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--surface)')}>
         <button onClick={onClose} style={sx('width:34px;height:34px;flex:none;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          <ChevronLeft size={16} />
         </button>
         <div style={{ flex: 1 }}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>Importar clientes</div>
@@ -206,11 +207,11 @@ export default function ImportarClientes({ onClose, onToast }) {
         {/* Acciones */}
         <div style={sx('display:flex;gap:10px;flex-wrap:wrap')}>
           <button onClick={descargarPlantilla} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-weight:600;cursor:pointer')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+            <Bajar size={15} />
             Descargar plantilla
           </button>
           <button onClick={() => fileRef.current?.click()} disabled={busy} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21V9M7 14l5-5 5 5M5 3h14" /></svg>
+            <Subir size={15} />
             {nombreArchivo ? 'Elegir otra planilla' : 'Elegir planilla'}
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={onFile} style={{ display: 'none' }} />

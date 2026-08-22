@@ -31,8 +31,16 @@ cambiar de tab** y el vendedor perdía la tablet camino al próximo check-in. Ho
 
 - cerrar la ventana del QR no corta nada;
 - cambiar de pestaña no corta nada;
-- **cambiar de cliente tampoco**: se republica el catálogo con el comercio nuevo y la tablet cambia
-  el encabezado sola;
+- **cambiar de cliente tampoco corta el enlace**;
+  > 🩸 **Acá decía "y la tablet cambia el encabezado sola". ERA FALSO** (corregido el 22/08/2026,
+  > lo reportó el cliente). El celular sí republicaba, pero `ServidorLocal.publicarCatalogo`
+  > reemplaza la variable **y nada más**: no encola un evento ni hace `notifyAll()`, así que la
+  > tablet no se enteraba y seguía con el snapshot del PRIMER comercio — encabezado, precios y
+  > ofertas incluidos. Sólo se corregia de casualidad, cuando el vendedor generaba tantos toques que
+  > desbordaba el buffer del servidor y forzaba un `resync`; por eso el síntoma parecía errático.
+  > Arreglado en 1.21.0: el celular emite un evento `catalogo` por el canal que ya despierta el
+  > long-poll (viaja por **OTA**) y la tablet lo escucha (necesita **APK**).
+  > El mismo comentario optimista estaba en `useVidriera.js` y en `useJornada.js`.
 - se corta con el botón *"Cerrar vidriera y desconectar la tablet"*, al cerrar sesión, o **sola a los
   20 minutos sin que la tablet dé señales** (`INACTIVA_MS`) — ese freno es lo que evita dejar el AP
   prendido toda la tarde, que era la objeción original.
@@ -105,8 +113,21 @@ una pantalla que se ve mal.
 |---|---|---|---|
 | `aspect-ratio` | Chrome 88 | ❌ | Ya evitado |
 | `inset` (forma corta) | Chrome 87 | ❌ | **Arreglado el 18/08** — 5 fotos que no se posicionaban |
-| **`gap` en FLEXBOX** | Chrome 84 | ❌ | 🔴 **ABIERTO — ver §4** |
+| **`gap` en FLEXBOX** | Chrome 84 | ❌ | ✅ **Cerrado.** `VidrieraTablet` el 19/08 (`--gx`/`--gy`), **`LoginView` el 20/08** |
 | `gap` en GRID | Chrome 66 | ✅ | Sin problema |
+| `min()` / `max()` / `clamp()` | Chrome 79 | ✅ | Justo en el piso; se usa en el reposo y anda |
+| `ResizeObserver` | Chrome 64 | ✅ (existe) | 🩸 **PERO NO SE USA, y a propósito.** Con el documento oculto **no entrega callbacks**, igual que `rAF` e `IntersectionObserver` (regla 35). Medido el 22/08 con la pestaña en segundo plano: los tres dieron **0 disparos en 800 ms**. Y ésta es, literalmente, la pantalla que se queda sola. El ancho de la grilla se re-mide en el evento `resize` |
+
+🩸 **La superficie de la tablet no es solo `VidrieraTablet`** (20/08/2026). El 19/08 se convirtió esa
+pantalla y se dio el tema por cerrado, pero la tablet **arranca en `LoginView`**: ahí está el botón
+"Soy una tablet · escanear código". Sus **14** contenedores flex con `gap` se venían viendo con todo
+pegado —el logo, los dos botones de ingreso y el pie— en la primera pantalla que ve la tablet.
+Convertida el 20/08. El recorrido completo es **`LoginView` → `ParearTablet` → `VidrieraTablet`**;
+`ParearTablet` se revisó y no usa `gap` (ni `inset`, ni `aspect-ratio`).
+
+⚠️ **Y el reemplazo tiene un borde que `gap` no tenía**: `[style*="--gx"] > * + *` **no alcanza a un
+nodo de texto suelto**. Un `<button><svg/>Texto</button>` queda sin separación aunque declare
+`--gx`. En `LoginView` hubo que envolver el texto de 4 botones en un `<span>`.
 
 **Antes de tocar cualquier cosa de la pantalla del cliente, chequear la propiedad contra Chrome 79.**
 
@@ -138,19 +159,39 @@ verificar**:
 4. Después, el catálogo completo: `adb shell dumpsys meminfo com.launion.app`, tiempo hasta la grilla
    llena, y si hay GC en cadena.
 
-### 🔴 B. `gap` en flexbox no existe en Chrome 79 — 18 lugares de la pantalla del cliente
+### ✅ B. `gap` en flexbox — CERRADO (19/08 la vidriera · 20/08 el login)
 
-Encontrado el 19/08 buscando la misma familia del bug de `inset`. En la tablet, **todo `display:flex`
-con `gap` pierde el espaciado**: el encabezado, la fila de chips, el stepper de cantidad, la barra
-del pedido y la ficha grande quedan con los elementos pegados. Los `gap` de la GRILLA sí funcionan
-(es grid), que es justo por qué no se notó antes.
+Ver la tabla de §3. Quedó convertido a `--gx`/`--gy` en las dos pantallas de la tablet.
+**Verificar en la tablet real, no en el navegador de escritorio** — en Chrome moderno el `gap`
+funciona y el bug es invisible.
 
-Nadie lo reportó porque la pantalla se usó poco y con pocos productos, pero **se ve mal ahora mismo**
-en la tablet de prueba.
+### 🟠 B-bis. La ficha grande se dibujaba siempre en DOS columnas — arreglado, falta verlo en la tablet
 
-**El arreglo** es mecánico y sin riesgo: reemplazar `gap` por márgenes en los contenedores flex de
-`VidrieraTablet.jsx` (y revisar `ParearTablet.jsx`). **Verificar en la tablet real, no en el
-navegador de escritorio** — en Chrome moderno el `gap` funciona y el bug es invisible.
+El cliente mandó (20/08) una foto de la tablet con el botón **"Pedir 7" aplastado contra el borde y
+cortado**, y la primera hipótesis —que era el `gap` de §3— **era falsa**: eso ya estaba arreglado. El
+problema real es que la ficha se dibujaba siempre en fila (foto de 300 px + columna de texto), y la
+tablet se usa **parada**, reportando ~478 px CSS de ancho — que es también por qué la grilla se ve de
+2 columnas y no de 3.
+
+Medido con el componente real a 478 px, **antes**:
+
+| | |
+|---|---|
+| fila de acción | 153,3 px |
+| stepper (`flex:none`) | **166 px** — más ancho que la fila entera |
+| botón "Pedir N" | **34,8 px** |
+| borde derecho del botón | **487,5 px** → **9,5 px FUERA de la pantalla** |
+
+`flex:1` no tiene piso: el botón se encogía sin quejarse y el texto se partía en dos renglones
+cortados. **Después**: botón **378 px**, borde derecho 428 px, dentro de la pantalla.
+
+El arreglo mide el ancho en JS (`FICHA_FILA_MIN`, 640) porque **estos estilos son inline y no admiten
+media queries**: por debajo del corte la ficha se apila y el botón va en su propio renglón. El
+stepper mide 166 px fijos y no se puede achicar sin romper el área táctil mínima, así que compartir
+renglón con él en una pantalla angosta siempre iba a dejar al botón sin lugar.
+
+⚠️ **Verificado en el navegador a 478 px, no todavía en la tablet.** Y como la tablet no recibe OTA
+(ver [CLAUDE.md](CLAUDE.md) §6), esto necesita **APK nuevo + reinstalación por USB**.
 
 ### 🟠 C. El pareo por Bluetooth, contra el celular
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
-import { Pin } from '../../../components/icons'
+import { Check, Editar, Mas, Pin, Search } from '../../../components/icons'
 import Logo from '../../../components/Logo'
 import { useGps } from '../../../context/GpsContext'
 import { useAuth } from '../../../context/AuthContext'
@@ -127,14 +127,14 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
       <div style={sx('display:flex;justify-content:space-between;align-items:center;margin:0 2px 10px')}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Mis clientes</div>
         <button onClick={onNuevoCliente} style={sx('display:flex;align-items:center;gap:5px;background:var(--primary-tint);border:1px solid var(--primary);color:var(--deep);border-radius:10px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer')}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo
+          <Mas size={12} w={2.5} />Nuevo
         </button>
       </div>
 
       {catLoading || clients.length === 0 ? null : (
         <div style={sx('margin-bottom:10px')}>
           <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:42px')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" style={{ flex: 'none' }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
+            <Search size={15} style={{ flex: 'none' }} />
             <input
               value={buscaCli}
               onChange={(e) => setBuscaCli(e.target.value)}
@@ -217,7 +217,7 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                     acompaña (`clientes_upd` acepta al rol vendedor dentro de su empresa); el alcance
                     por EMPRESA sigue intacto, y BORRAR sigue sin estar permitido. */}
                 <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                  <Editar size={15} />
                 </button>
                 {/* 🩸 11/08/2026 — CHECK-IN SIN LA PALABRA, y el motivo es aritmética, no estética.
                     Un vendedor reportó que no le entraba el nombre del comercio. A 375 px la columna
@@ -232,7 +232,7 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                     o el botón queda mudo para un lector de pantalla. */}
                 {c.status === 'pendiente' ? (
                   <button onClick={() => startVisit(c.id)} title="Check-in" aria-label={`Check-in en ${c.name}`} style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;cursor:pointer;border:none')}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                    <Check size={20} />
                   </button>
                 ) : (
                   <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>

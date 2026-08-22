@@ -12,6 +12,7 @@ import ReplayJornada from './components/ReplayJornada'
 import NuevoCliente from '../catalog/NuevoCliente'
 import NuevoProducto from '../catalog/NuevoProducto'
 import { panel, EmptyState } from './ui'
+import { Alerta, Check } from '../../components/icons'
 import MapaOperativo from './tabs/MapaOperativo'
 import ClientesTab from './tabs/ClientesTab'
 import CatalogoTab from './tabs/CatalogoTab'
@@ -103,7 +104,7 @@ export default function AdminView() {
 
       {gpsOffArr.length > 0 && (
         <div style={sx('flex:none;background:var(--danger-tint);border-bottom:1px solid var(--danger);color:var(--danger);padding:9px 20px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:10px')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
+          <Alerta size={16} />
           Alerta GPS: {gpsOffArr.map((u) => `${u.nombre} (${u.rol})`).join(', ')} {gpsOffArr.length > 1 ? 'tienen' : 'tiene'} el GPS DESACTIVADO.
         </div>
       )}
@@ -140,7 +141,7 @@ export default function AdminView() {
 
       {toast && (
         <div style={sx('position:fixed;top:68px;right:20px;z-index:var(--z-toast);background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:12px 16px;display:flex;align-items:center;gap:9px')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <Check size={16} color="var(--success)" />
           <span style={sx('font-size:12.5px;font-weight:500')}>{toast}</span>
         </div>
       )}

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
 import { isNative } from '../services/platform'
 import Logo from './Logo'
+import { Check, Mapa } from './icons'
 import MiCuenta from '../features/perfil/MiCuenta'
 import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
 import MisPedidosSheet from '../features/pedidos/MisPedidosSheet'
@@ -110,7 +111,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
         {/* Volver a la supervisión (admin/superadmin en .apk) */}
         {onMonitoreo && (
           <button onClick={onMonitoreo} title="Volver al monitoreo en vivo" style={isMobile ? iconBtn : textBtn}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg>
+            <Mapa size={15} w={1.9} />
             {!isMobile && 'Monitoreo'}
           </button>
         )}
@@ -170,7 +171,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
 
       {toast && (
         <div style={{ position: 'fixed', top: 66, right: 18, zIndex: 'var(--z-toast)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <Check size={16} color="var(--success)" />
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
       )}

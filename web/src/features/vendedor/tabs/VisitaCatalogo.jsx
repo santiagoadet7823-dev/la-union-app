@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
-import { Search } from '../../../components/icons'
+import { ImagenVacia, Search } from '../../../components/icons'
 import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
 import EspejoTablet from '../../vidriera/EspejoTablet'
@@ -218,7 +218,7 @@ export default function VisitaCatalogo({ j }) {
                       <img src={p.imagen} alt="" loading="lazy" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
                     ) : (
                       <div style={sx('position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)')}>
-                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                        <ImagenVacia size={30} />
                       </div>
                     )}
                     {enOferta && (

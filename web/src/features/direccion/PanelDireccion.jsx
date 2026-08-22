@@ -20,6 +20,7 @@ import { calcularDwells } from '../supervision/dwells'
 import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
 import BtnInmersivo from '../../components/BtnInmersivo'
+import { Check, ChevronRight, Menu } from '../../components/icons'
 import { fetchSnapRecorridos } from '../../services/recorridos'
 import { apilarAtras } from '../../services/atras'
 import { sx } from '../../lib/sx'
@@ -395,9 +396,7 @@ export default function PanelDireccion() {
                 aria-label="Menú de gestión"
                 style={sx('width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer')}
               >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18M3 12h18M3 18h18" />
-                </svg>
+                <Menu size={17} />
               </button>
             )}
             {/* El diseño no previó acceso a la cuenta: sin esto el dueño se queda sin editar su
@@ -659,9 +658,7 @@ export default function PanelDireccion() {
                 style={sx('display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:0 4px;background:none;border:none;border-radius:var(--r-md);color:var(--text);font-size:var(--fs-md);font-weight:500;text-align:left;cursor:pointer')}
               >
                 {it.label}
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
+                <ChevronRight size={15} />
               </button>
             ))}
           </div>
@@ -686,9 +683,7 @@ export default function PanelDireccion() {
             zIndex: 'var(--z-toast)',
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
+          <Check size={16} color="var(--success)" />
           {toast}
         </div>
       )}

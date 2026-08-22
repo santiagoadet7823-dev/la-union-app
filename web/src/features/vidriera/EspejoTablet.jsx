@@ -112,6 +112,17 @@ export default function EspejoTablet({ red, error, abriendo, fotos, bt, onCerrar
               {red.ssid} · {red.ip}:{red.puerto}
             </div>
 
+            {/* 🩸 EL CELULAR **ES** LA RED (22/08/2026, reporte del cliente: "se pierde la conexión
+                con la tablet"). El enlace no pasa por ningún WiFi: lo levanta este teléfono con
+                `startLocalOnlyHotspot` (`EnlaceLocalPlugin.java`). Unirse a otra red lo baja, y con
+                él se va la tablet — sin error, sin cartel, sin nada que le diga al vendedor qué
+                pasó. Se avisa acá porque ésta es la pantalla que mira justo antes de entregarla. */}
+            <div style={sx('width:100%;max-width:340px;padding:11px 13px;border-radius:12px;background:var(--warning-tint);color:var(--muted);font-size:12px;line-height:1.5')}>
+              Mientras la tablet esté conectada, <b>no cambies el WiFi de este celular</b>: la red
+              la está dando el teléfono, así que unirse a otra la baja y la tablet se queda sola.
+              Los datos móviles se pueden usar normalmente.
+            </div>
+
             {/* 🩸 EL ESPEJO A MEDIAS SE AVISA ACÁ (18/08/2026), que es la pantalla que el vendedor
                 mira justo antes de darle la tablet. La foto que la tablet ve sale de la carpeta del
                 teléfono, no de internet: sin "Preparar catálogo" esos productos se le muestran al

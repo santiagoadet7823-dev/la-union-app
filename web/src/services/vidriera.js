@@ -140,9 +140,27 @@ async function publicar({ productos, comercio }) {
   })
 }
 
-/** Vuelve a publicar el catálogo (cambió un precio, entró un producto) sin cortar la sesión. */
+/**
+ * Vuelve a publicar el catálogo (cambió un precio, entró un producto, se pasó a otro comercio) sin
+ * cortar la sesión.
+ *
+ * 🩸 PUBLICAR NO ALCANZA: HAY QUE AVISAR (22/08/2026, reporte del cliente: "cambio de cliente y la
+ * tablet sigue mostrando el primero"). `publicar()` termina en
+ * `ServidorLocal.publicarCatalogo`, que reemplaza la variable y **nada más** — no encola un evento
+ * ni despierta a los que están colgados en `/eventos`. Así que la tablet no se enteraba: se quedaba
+ * con el snapshot del primer comercio, encabezado y precios incluidos, salvo que el vendedor
+ * generara tantos toques como para desbordar el buffer y forzar un `resync`.
+ *
+ * El aviso va por `emitir()`, que es el canal que YA despierta el long-poll — así este arreglo es
+ * puro JS y llega al celular por OTA, sin tocar el nativo. La tablet necesita el APK igual: no
+ * recibe OTA nunca.
+ *
+ * El orden importa: primero se publica y después se avisa. Al revés, la tablet pediría el catálogo
+ * viejo.
+ */
 export async function republicar({ productos, comercio }) {
   await publicar({ productos, comercio })
+  await emitir({ t: 'catalogo' })
 }
 
 /**

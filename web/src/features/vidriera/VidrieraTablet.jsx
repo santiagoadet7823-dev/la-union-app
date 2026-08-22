@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
+import { ImagenVacia, Search } from '../../components/icons'
 import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo, fijarPantalla, soltarPantalla } from '../../services/vidrieraTablet'
 
 /**
@@ -33,10 +34,26 @@ import { fotoDe, tocar, desconectar, limpiarFotos, escuchar, pedirCatalogo, fija
 // mientras el cliente mira, sin que la tablet se quede sin aire.
 const FOTOS_A_LA_VEZ = 3
 
-// Cuánto silencio antes de que la tablet se ponga a ofrecer sola, y cada cuánto cambia de producto.
-// 30 s es el número que se acordó: menos y se dispara mientras el comerciante piensa.
-const REPOSO_MS = 30000
+/**
+ * Cuánto silencio antes de que la tablet se ponga a ofrecer sola, y cada cuánto cambia de producto.
+ *
+ * 🩸 ERAN 30 s Y ERA DEMASIADO (22/08/2026, reporte del cliente: "es muy rápido y se vuelve
+ * molesto"). Pero el número era solo la mitad del problema, y la otra mitad es la que explica por
+ * qué molestaba tanto: **el reloj casi no se rearmaba**. Se rearmaba por las dependencias del
+ * efecto (`ficha`, `reposo`, `tocado`, `pedido`), así que el ÚNICO gesto que lo reiniciaba era
+ * tocar una tarjeta. Medido sobre el código: NO rearmaban el scroll de la grilla, escribir en el
+ * buscador, tocar los chips de filtro ni tocar el `+`/`−` del stepper — y el despertador de la
+ * raíz era `if (reposo) …`, o sea que estando despierta el toque no hacía absolutamente nada.
+ * Un cliente que scrollea el catálogo 30 s se comía el salvapantallas encima.
+ *
+ * Ahora el reposo se mide contra `ultimaActividad`, un ref que sellan el toque y el scroll. Va en
+ * un ref y no en estado a propósito: cambiarlo por `setState` volvería a renderizar las 529
+ * tarjetas en cada toque, que es justo lo que el `memo` de la tarjeta vino a evitar.
+ */
+const REPOSO_MS = 300000        // 5 minutos
 const REPOSO_PASO_MS = 6000
+// Cada cuánto se COMPRUEBA el silencio. No hace falta afinar más: el error máximo es este número.
+const REPOSO_CHEQUEO_MS = 5000
 
 // Cada cuánto se vuelcan a la pantalla las fotos que fueron llegando. Ver `encolarFoto`.
 const TANDA_FOTOS_MS = 250
@@ -45,9 +62,89 @@ const TANDA_FOTOS_MS = 250
 // 529 tarjetas de una son ~5.000 nodos en un WebView Chrome 79 con 2 GB de RAM.
 const PAGINA = 60
 
-// Alto de la foto de cada tarjeta, en píxeles. Pegado al ancho mínimo de columna (190 px) para que
-// se vea cuadrada. Ver el 🩸 de la tarjeta: acá NO va un porcentaje.
-const ALTO_FOTO = 190
+/**
+ * Geometría de la grilla. Estos tres números viven acá y no sueltos dentro del string de estilo
+ * porque el alto de la foto se CALCULA con ellos (ver `altoFotoDe`).
+ */
+const COL_MIN = 190
+const COL_GAP = 12
+const GRILLA_PAD = 14
+// El borde de la tarjeta. Va en la cuenta porque la foto es `width:100%` de la caja de CONTENIDO:
+// medido en el navegador a 478 px, con la columna en 219 la foto sale 217 de ancho. Sin restarlo,
+// la caja quedaba 217x219 y `cover` recortaba esos 2 px — poco, pero es el mismo error de nuevo.
+const BORDE_TARJETA = 1
+
+/**
+ * 🩸 LA FOTO SE VEÍA CORTADA EN LA TABLET, Y NO ERA CHROME 79 NI LA IMAGEN (22/08/2026, reporte
+ * del cliente: "en el celular se ven bien, en la tablet se ven más grandes que el recuadro").
+ *
+ * La fuente es la MISMA en los dos lados: un cuadrado de ≤800 px con letterbox blanco
+ * (`lib/productoImagen.js`), sin thumbnails. Era geometría pura: el alto estaba FIJO en 190 px
+ * mientras el ancho de columna es ELÁSTICO (`1fr`). A los ~478 px CSS de la Cidea CM915:
+ *
+ *   contenido = 478 − 14×2 = 450  →  2 columnas  →  columna = (450 − 12) / 2 = **219 px**
+ *   caja real = 219 × 190, o sea APAISADA — y `object-fit:cover` escala a 219×219 y recorta
+ *   **29 px de alto (≈12,8 %)**, la mitad arriba y la mitad abajo.
+ *
+ * Y como el producto ocupa el 100 % del alto del lienzo (el letterbox es lateral), ese recorte cae
+ * directo sobre el producto: tapas de botellas, bordes de paquetes. Exactamente el síntoma.
+ *
+ * El comentario que estaba acá afirmaba que 190 px de alto "se ve cuadrada porque está pegado al
+ * ancho mínimo de columna". **Es falso con `1fr`**: el sobrante SIEMPRE se reparte entre las
+ * columnas, así que el ancho real nunca es 190. Era el único lugar de toda la app donde la caja de
+ * imagen no era cuadrada.
+ *
+ * Se calcula en JS y no con CSS porque estos estilos son inline (`sx()`) y no admiten media
+ * queries — la misma razón por la que `FICHA_FILA_MIN` se mide así. Y no se usa `aspect-ratio`
+ * (Chrome 88) ni `padding-top:100%` (se resuelve a cero al dimensionar la fila del grid): las dos
+ * ya fallaron acá, ver el 🩸 de la tarjeta.
+ *
+ * ⚠️ **Toma el ancho de la GRILLA (`clientWidth`), no el de la ventana.** Con el ancho de ventana la
+ * cuenta se equivocaba en 3,8 px cuando el navegador dibuja una barra de scroll CLÁSICA, que se come
+ * ~15 px del contenido: medido a 1024 px, la columna real era 236,25 y la fórmula decía 240. En la
+ * tablet no se nota (Android usa barras superpuestas, de ancho 0, y a 478 px la cuenta daba exacta),
+ * pero volver a suponer el ancho disponible es justo el error que este arreglo vino a sacar.
+ */
+function altoFotoDe(anchoGrilla) {
+  const contenido = Math.max(COL_MIN, anchoGrilla - GRILLA_PAD * 2)
+  const cols = Math.max(1, Math.floor((contenido + COL_GAP) / (COL_MIN + COL_GAP)))
+  return Math.floor((contenido - COL_GAP * (cols - 1)) / cols) - BORDE_TARJETA * 2
+}
+
+/**
+ * 🩸 LA FICHA SE APILA CUANDO LA PANTALLA ES ANGOSTA (20/08/2026). El cliente mandó una foto de la
+ * tablet con el botón "Pedir 7" aplastado contra el borde y cortado, y NO era el `gap` (eso ya se
+ * arregló el 19/08): era que la ficha se dibujaba SIEMPRE en dos columnas.
+ *
+ * La `Cidea CM915` se usa PARADA sobre el mostrador y reporta **~478 px CSS** de ancho — por eso la
+ * grilla se ve de 2 columnas y no de 3. Medido con el componente real a 478 px:
+ *
+ *   fila de acción 153,3 px · stepper (`flex:none`) **166 px** · botón **34,8 px**
+ *
+ * O sea que el stepper solo ya era más ancho que la fila entera, el botón se comía lo que sobraba
+ * (nada) y su borde derecho caía en **487,5 px**: casi 10 px FUERA de la pantalla. `flex:1` no tiene
+ * piso, así que el botón se encogía sin quejarse y el texto se partía en dos renglones cortados.
+ *
+ * No se puede resolver con una media query: estos estilos son inline (`sx()`). Va medido en JS.
+ *
+ * El corte es 640: por debajo, una foto de 300 px más una columna de texto usable no entran.
+ */
+const FICHA_FILA_MIN = 640
+
+/** Ancho de la ventana, en vivo. La tablet puede rotar con la ficha abierta. */
+function useAnchoVentana() {
+  const [ancho, setAncho] = useState(() => (typeof window === 'undefined' ? 1024 : window.innerWidth))
+  useEffect(() => {
+    const alCambiar = () => setAncho(window.innerWidth)
+    window.addEventListener('resize', alCambiar)
+    window.addEventListener('orientationchange', alCambiar)
+    return () => {
+      window.removeEventListener('resize', alCambiar)
+      window.removeEventListener('orientationchange', alCambiar)
+    }
+  }, [])
+  return ancho
+}
 
 /**
  * 🩸 `grid-auto-rows:max-content` NO ES DECORATIVO (18/08/2026). Con las filas en `auto` y el
@@ -58,7 +155,7 @@ const ALTO_FOTO = 190
  * Con 12 productos no pasaba y con 529 sí: es la clase de bug que solo aparece con el catálogo real,
  * y por eso la prueba se hace con 529 y no con tres (regla 50-bis).
  */
-const ESTILO_GRILLA = sx('flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));grid-auto-rows:max-content;gap:12px;align-content:start')
+const ESTILO_GRILLA = sx(`flex:1;overflow-y:auto;padding:${GRILLA_PAD}px;display:grid;grid-template-columns:repeat(auto-fill,minmax(${COL_MIN}px,1fr));grid-auto-rows:max-content;gap:${COL_GAP}px;align-content:start`)
 
 /**
  * 🩸 UNA TARJETA, MEMOIZADA (18/08/2026). Estaba inline dentro del `map`, así que cualquier cambio
@@ -68,7 +165,7 @@ const ESTILO_GRILLA = sx('flex:1;overflow-y:auto;padding:14px;display:grid;grid-
  * padre y la cantidad entra como número (`cantidad`) y no como el objeto `cant` entero, que cambia
  * de identidad con cada toque del `+` de cualquier producto.
  */
-const Tarjeta = memo(function Tarjeta({ p, url, acusado, cantidad, onTocar, onMover }) {
+const Tarjeta = memo(function Tarjeta({ p, url, alto, acusado, cantidad, onTocar, onMover }) {
   const enOferta = p.oferta && p.precioOferta != null
   return (
           <div
@@ -90,18 +187,19 @@ const Tarjeta = memo(function Tarjeta({ p, url, acusado, cantidad, onTocar, onMo
                 fila del grid**: los porcentajes se resuelven a cero al calcular el tamaño
                 intrínseco, así que la fila salía del alto del texto y la foto quedaba recortada por
                 el `overflow:hidden` de la tarjeta. Medido: 37 px de tarjeta contra los ~310 que
-                corresponden. Con `height` en píxeles el problema no existe, y `ALTO_FOTO` está
-                pegado al ancho mínimo de columna, así que se sigue viendo cuadrada.
+                corresponden. Con `height` en píxeles el problema no existe. El número lo da
+                `altoFotoDe(ancho)`, que mide la columna DE VERDAD — ver el 🩸 de esa función: la
+                constante fija de 190 px es lo que recortaba la foto.
                 ⚠️ Y `flex:none` NO es decorativo: la tarjeta es un contenedor flex en columna, así
                 que un alto fijo igual se **encoge** si la fila del grid queda más baja (el default
                 es `flex-shrink:1`). Sin esto, la foto medía 0 px con el `height:190px` puesto — que
                 es exactamente lo que pasó al fijar el alto de la pantalla. */}
-            <div style={{ ...sx('position:relative;width:100%;flex:none;background:var(--surface2)'), height: ALTO_FOTO }}>
+            <div style={{ ...sx('position:relative;width:100%;flex:none;background:var(--surface2)'), height: alto }}>
               {url ? (
                 <img src={url} alt="" loading="lazy" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
               ) : (
                 <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}>
-                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                  <ImagenVacia size={34} w={1.5} />
                 </div>
               )}
               {enOferta && (
@@ -225,7 +323,26 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   const [busca, setBusca] = useState('')
   const [eje, setEje] = useState('categoria') // 'categoria' | 'marca'
   const [filtro, setFiltro] = useState('Todos')
+  // Un solo lector del ancho para las dos cosas que dependen de él: si la tablet rota, las dos se
+  // recalculan juntas.
+  const ancho = useAnchoVentana()
+  // Ver `FICHA_FILA_MIN`: en la tablet del cliente esto da `false` y la ficha se apila.
+  const fichaEnFila = ancho >= FICHA_FILA_MIN
+  /**
+   * Ancho real de la grilla. Arranca estimado desde la ventana — el primer render es antes de que
+   * exista el nodo — y el efecto de más abajo lo corrige apenas hay algo que medir.
+   */
+  const [anchoGrilla, setAnchoGrilla] = useState(0)
+  // Ver `altoFotoDe`: la caja de la foto tiene que ser CUADRADA o la imagen se recorta.
+  const altoFoto = altoFotoDe(anchoGrilla || ancho)
   const vivo = useRef(true)
+  /**
+   * Cuándo fue la última señal de vida del cliente. Ref y no estado: sellarlo con `setState` en
+   * cada toque volvería a renderizar las 529 tarjetas, que es justo lo que el `memo` de `Tarjeta`
+   * vino a evitar. Ver el 🩸 de `REPOSO_MS`.
+   */
+  const ultimaActividad = useRef(Date.now())
+  const sellarActividad = useCallback(() => { ultimaActividad.current = Date.now() }, [])
   const pedidas = useRef(new Set())
   // Cuántas salieron del disco y cuántas hubo que bajar. Va al log, no a la pantalla: es la única
   // forma de comprobar "se baja una sola vez" sin abrir la tablet, y el cliente no tiene por qué
@@ -244,7 +361,20 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
    * en una app es, para el cliente, una tablet rota. Sin Device Owner el fijado igual es blando
    * (Android avisa y se sale con Atrás + Recientes), que para esto alcanza.
    */
+  /**
+   * 🩸 `vivo.current = true` AL ENTRAR, NO SOLO `false` AL SALIR (22/08/2026). `main.jsx` monta la
+   * app dentro de `<StrictMode>`, y en desarrollo React 18 invoca cada efecto DOS veces: monta,
+   * limpia, vuelve a montar. La limpieza ponía `vivo.current = false` y el segundo montaje no lo
+   * restauraba — el `useRef` es el mismo objeto —, así que **en desarrollo la pantalla entera
+   * quedaba muerta**: no cargaban las fotos, no corría el reloj del reposo, no se veía el acuse del
+   * toque y no se resincronizaba el catálogo. Todo eso cuelga de `if (vivo.current)`.
+   *
+   * En producción no pasa (StrictMode no duplica efectos en el build), por eso nunca se notó — y
+   * por eso vale la pena: una pantalla que solo se puede probar en la tablet es una pantalla que no
+   * se prueba. Encontrado al verificar el arreglo del salvapantallas, que "no funcionaba" por esto.
+   */
   useEffect(() => {
+    vivo.current = true
     fijarPantalla()
     return () => { vivo.current = false; soltarPantalla(); desconectar() }
   }, [])
@@ -351,12 +481,37 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     const g = grillaRef.current
     if (!g) return
     const alScrollear = () => {
+      // Scrollear el catálogo es estar mirándolo. Antes no contaba, y por eso el salvapantallas
+      // caía encima de un cliente que estaba usando la pantalla. Ver el 🩸 de `REPOSO_MS`.
+      sellarActividad()
       if (g.scrollTop + g.clientHeight < g.scrollHeight - 600) return
       setCuantas((c) => (c < listaRef.current.length ? c + PAGINA : c))
     }
     g.addEventListener('scroll', alScrollear, { passive: true })
     return () => g.removeEventListener('scroll', alScrollear)
-  }, [])
+  }, [sellarActividad])
+
+  /**
+   * El ancho REAL de la grilla, para el alto de las fotos (ver `altoFotoDe`).
+   *
+   * `clientWidth` y no `getBoundingClientRect().width`: el primero descuenta la barra de scroll y el
+   * segundo no, y esa diferencia es justo el error que se está corrigiendo.
+   *
+   * 🩸 **ACÁ NO VA UN `ResizeObserver`** (22/08/2026). Fue la primera versión y es la trampa que
+   * este archivo ya documenta para `IntersectionObserver` unas líneas más arriba: **con el documento
+   * oculto no entrega callbacks**, igual que `rAF` (regla 35). Medido en el navegador con la pestaña
+   * en segundo plano: `ResizeObserver`, `IntersectionObserver` y `requestAnimationFrame` dieron
+   * **0 disparos** en 800 ms, los tres. Y ésta es, literalmente, la pantalla que se queda sola.
+   *
+   * Se re-mide cuando cambia `ancho`, que ya lo alimentan `resize` y `orientationchange` — los dos
+   * eventos que de verdad importan en una tablet que se puede rotar sobre el mostrador — y cuando
+   * aparece la grilla (con la búsqueda sin resultados no se dibuja).
+   */
+  const hayGrilla = lista.length > 0
+  useEffect(() => {
+    const g = grillaRef.current
+    if (g) setAnchoGrilla(g.clientWidth)
+  }, [ancho, hayGrilla])
   // La lista se lee de un ref para que el listener se registre UNA vez: volver a suscribirse con
   // cada tecla del buscador es justo el trabajo que esta pantalla no tiene para gastar.
   const listaRef = useRef(lista)
@@ -413,6 +568,19 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
    * `resync` significa "te perdiste eventos y no puedo decirte cuáles": se vuelve a pedir el
    * catálogo entero, porque seguir con un estado incompleto que PARECE completo es peor que
    * recargar. Es la misma decisión que ya toma el servidor cuando descarta eventos viejos.
+   *
+   * 🩸 EL EVENTO `catalogo` Y EL CLIENTE EQUIVOCADO (22/08/2026, reporte del cliente: "cambio de
+   * comercio y la tablet sigue mostrando el primero"). El nombre del comercio viaja SOLO dentro
+   * del snapshot (`services/vidriera.js`), no en el QR ni por este canal. Y el celular SÍ
+   * republicaba al cambiar de cliente (`useVidriera.js`) — la cadena se cortaba en el nativo:
+   * `ServidorLocal.publicarCatalogo` reemplaza la variable y **nada más**, sin encolar evento ni
+   * hacer `notifyAll()`. Así que la tablet solo se enteraba si el vendedor generaba tantos toques
+   * como para desbordar el buffer del servidor y forzar un `resync` — de ahí que el síntoma fuera
+   * errático en vez de constante.
+   *
+   * El arreglo NO toca Java a propósito: el celular emite un evento `catalogo` por el canal que ya
+   * existe, y ese canal ya despierta al long-poll. Así el lado del vendedor se arregla por OTA;
+   * este lado necesita el APK igual, porque la tablet no recibe OTA nunca.
    */
   useEffect(() => {
     const off = escuchar(sesion, ({ eventos, resync }) => {
@@ -423,6 +591,12 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         if (typeof raw === 'string') { try { ev = JSON.parse(raw) } catch (_) { continue } }
         if (!ev || typeof ev !== 'object') continue
         if (ev.t === 'carrito') setPedido({ items: ev.items || [], unidades: ev.unidades || 0, total: ev.total || 0 })
+        // "Cambió el catálogo": otro comercio, otro precio, un producto nuevo. Se vuelve a pedir
+        // entero, igual que en `resync` — el snapshot es chico y partirlo en deltas sería un
+        // segundo formato para el mismo dato.
+        if (ev.t === 'catalogo') {
+          pedirCatalogo(sesion).then((c) => { if (vivo.current && c) setCatalogoVivo(c) }).catch(() => {})
+        }
         // "Mirá este": el vendedor le abre un producto. Si no está en el catálogo de la tablet
         // (entró después del snapshot), no se hace nada — mejor que abrir una ficha vacía.
         if (ev.t === 'destacar') {
@@ -442,18 +616,26 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
   }, [])
 
   /**
-   * El reloj del reposo. Se rearma con cada toque de la pantalla (el `onPointerDown` del contenedor)
-   * y con cada cambio de estado que signifique "acá está pasando algo".
+   * El reloj del reposo. Compara contra `ultimaActividad` en vez de rearmarse por las dependencias
+   * del efecto — ver el 🩸 de `REPOSO_MS`: así rearman TODOS los gestos (toque, scroll, buscador,
+   * filtros, stepper) y no solo tocar una tarjeta.
+   *
+   * `pedido` sigue en las dependencias por otro motivo: que el vendedor cargue algo en el carrito
+   * es actividad aunque nadie toque la tablet, y en ese momento hay una conversación en curso que
+   * el salvapantallas interrumpiría.
    *
    * ⚠️ Nada de `requestAnimationFrame`: con el documento oculto no dispara (regla 35), y esto es
    * justo una pantalla que se queda sola. `setInterval` sí corre.
    */
   useEffect(() => {
-    if (ficha) return                       // hay una ficha abierta: alguien está mirando algo
-    if (reposo) return                      // ya está en reposo; el carrusel lo maneja el otro efecto
-    const t = setTimeout(() => { if (vivo.current) setReposo(1) }, REPOSO_MS)
-    return () => clearTimeout(t)
-  }, [ficha, reposo, tocado, pedido])
+    if (ficha) { sellarActividad(); return } // hay una ficha abierta: alguien está mirando algo
+    if (reposo) return                       // ya está en reposo; el carrusel lo maneja el otro efecto
+    const i = setInterval(() => {
+      if (!vivo.current) return
+      if (Date.now() - ultimaActividad.current >= REPOSO_MS) setReposo(1)
+    }, REPOSO_CHEQUEO_MS)
+    return () => clearInterval(i)
+  }, [ficha, reposo, pedido, sellarActividad])
 
   // El carrusel: avanza mientras siga en reposo.
   useEffect(() => {
@@ -491,7 +673,9 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
     <div
       // Cualquier toque despierta la vidriera. Va en `onPointerDown` (no en `onClick`) para que la
       // pantalla vuelva en el momento en que el dedo baja, no cuando se completa un click.
-      onPointerDown={() => { if (reposo) setReposo(0) }}
+      // 🩸 Y el sello va FUERA del `if` (22/08/2026): estando despierta, esto no hacía nada — ni
+      // siquiera posponía el reposo. Ver el 🩸 de `REPOSO_MS`.
+      onPointerDown={() => { sellarActividad(); if (reposo) setReposo(0) }}
       /**
        * 🩸 `height`, NO `min-height` (18/08/2026). Con `min-height:100vh` el contenedor CRECE con el
        * contenido, así que el `flex:1;overflow-y:auto` de la grilla nunca llega a acotar nada: el
@@ -541,7 +725,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         <div style={{ ...sx('flex:none;padding:12px 14px 8px;display:flex;flex-direction:column;background:var(--surface);border-bottom:1px solid var(--line)'), '--gy': '9px' }}>
           <div style={{ ...sx('display:flex;align-items:center'), '--gx': '9px' }}>
             <div className="lu-campo" style={{ ...sx('flex:1;display:flex;align-items:center;background:var(--bg-app);border:1px solid var(--line2);border-radius:var(--r-md);padding:0 14px;height:50px'), '--gx': '9px' }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+              <Search size={19} />
               <input
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
@@ -602,6 +786,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
               key={p.id}
               p={p}
               url={fotos[p.id]}
+              alto={altoFoto}
               acusado={tocado === p.id}
               cantidad={cant[p.id] || 1}
               onTocar={alTocar}
@@ -688,15 +873,23 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
           <div
             onClick={(e) => e.stopPropagation()}
             className="lu-rise"
-            style={{ ...sx('width:min(760px,100%);max-height:100%;overflow:auto;display:flex;background:var(--surface);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px'), '--gx': '24px' }}
+            style={{
+              ...sx('width:100%;max-width:760px;max-height:100%;overflow:auto;display:flex;background:var(--surface);border-radius:22px;box-shadow:var(--shadow-lg);padding:22px'),
+              flexDirection: fichaEnFila ? 'row' : 'column',
+              ...(fichaEnFila ? { '--gx': '24px' } : { '--gy': '18px' }),
+            }}
           >
-            <div style={sx('flex:none;width:300px;max-width:42vw')}>
+            {/* Apilada, la foto se centra y se acota: a 478 px de ancho una foto cuadrada al 100 %
+                mide 434 px de alto y empuja el precio y el botón abajo de la pantalla. */}
+            <div style={fichaEnFila
+              ? sx('flex:none;width:300px;max-width:42vw')
+              : { ...sx('flex:none;width:100%;max-width:240px'), marginLeft: 'auto', marginRight: 'auto' }}>
               <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2);border-radius:16px;overflow:hidden')}>
                 {fotos[ficha.id] ? (
                   <img src={fotos[ficha.id]} alt="" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
                 ) : (
                   <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}>
-                    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                    <ImagenVacia size={46} w={1.4} />
                   </div>
                 )}
               </div>
@@ -729,20 +922,34 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
 
               <div style={sx('flex:1')} />
 
-              <div style={{ ...sx('margin-top:20px;display:flex;align-items:center'), '--gx': '12px' }}>
-                <div style={{ ...sx('flex:none;display:flex;align-items:center;padding:5px;border:1px solid var(--line2);border-radius:14px'), '--gx': '10px' }}>
+              {/* 🩸 APILADO, EL BOTÓN VA EN SU PROPIO RENGLÓN (ver `FICHA_FILA_MIN`). El stepper
+                  mide 166 px fijos y no se puede achicar sin romper el área táctil mínima, así que
+                  en una pantalla angosta compartir renglón con él SIEMPRE va a dejar al botón sin
+                  lugar. Separarlos es la única forma que no depende de cuánto mida la pantalla. */}
+              <div style={{
+                ...sx('margin-top:20px;display:flex'),
+                flexDirection: fichaEnFila ? 'row' : 'column',
+                alignItems: fichaEnFila ? 'center' : 'stretch',
+                ...(fichaEnFila ? { '--gx': '12px' } : { '--gy': '12px' }),
+              }}>
+                <div style={{ ...sx('flex:none;display:flex;align-items:center;justify-content:space-between;padding:5px;border:1px solid var(--line2);border-radius:14px'), '--gx': '10px' }}>
                   <button onClick={(e) => mover(e, ficha.id, -1)} className="lu-press"
-                    style={sx('width:48px;height:48px;display:grid;place-items:center;border:none;border-radius:11px;background:transparent;color:var(--muted);font-size:25px;cursor:pointer;user-select:none')}>−</button>
+                    style={sx('width:48px;height:48px;flex:none;display:grid;place-items:center;border:none;border-radius:11px;background:transparent;color:var(--muted);font-size:25px;cursor:pointer;user-select:none')}>−</button>
                   <span style={sx('min-width:38px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:700')}>{cant[ficha.id] || 1}</span>
                   <button onClick={(e) => mover(e, ficha.id, 1)} className="lu-press"
-                    style={sx('width:48px;height:48px;display:grid;place-items:center;border:none;border-radius:11px;background:var(--primary-tint);color:var(--deep);font-size:24px;cursor:pointer;user-select:none')}>+</button>
+                    style={sx('width:48px;height:48px;flex:none;display:grid;place-items:center;border:none;border-radius:11px;background:var(--primary-tint);color:var(--deep);font-size:24px;cursor:pointer;user-select:none')}>+</button>
                 </div>
                 {/* Vuelve a avisar con la cantidad de ahora. Sigue siendo una PROPUESTA: el pedido
-                    lo arma el vendedor en su celular. Por eso dice "pedir" y no "agregar". */}
+                    lo arma el vendedor en su celular. Por eso dice "pedir" y no "agregar".
+                    `white-space:nowrap`: si algún día vuelve a faltar lugar, que se note desbordando
+                    y no partiendo "Pedir 7" en dos renglones cortados, que fue lo que pasó. */}
                 <button
                   onClick={async () => { const p = ficha; setFicha(null); await tocar(sesion, p, cant[p.id] || 1) }}
                   className="lu-press"
-                  style={sx('flex:1;min-height:58px;border:none;border-radius:14px;background:var(--primary);color:var(--on-primary);font-size:15px;font-weight:600;cursor:pointer')}
+                  style={{
+                    ...sx('min-height:58px;padding:0 18px;border:none;border-radius:14px;background:var(--primary);color:var(--on-primary);font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap'),
+                    flex: fichaEnFila ? 1 : 'none',
+                  }}
                 >
                   Pedir {cant[ficha.id] || 1}
                 </button>

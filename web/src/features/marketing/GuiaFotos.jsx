@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
+import { ImagenVacia } from '../../components/icons'
 
 /**
  * Las reglas de cómo tienen que ser las fotos del catálogo, dentro de la app.
@@ -59,9 +60,7 @@ export default function GuiaFotos({ abierta = false, compacta = false }) {
         aria-expanded={open}
         style={sx('width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:transparent;border:none;cursor:pointer;color:var(--text);text-align:left')}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
-          <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-        </svg>
+        <span style={{ flex: 'none', display: 'flex' }}><ImagenVacia size={16} w={2} color="var(--primary)" /></span>
         <span style={{ flex: 1 }}>
           <span style={sx('display:block;font-size:13px;font-weight:600')}>Cómo tienen que ser las fotos</span>
           <span style={sx('display:block;font-size:11.5px;color:var(--muted);margin-top:1px')}>Cuadradas · fondo blanco · el archivo se llama como el código</span>

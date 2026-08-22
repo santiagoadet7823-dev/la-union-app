@@ -40,7 +40,7 @@ const MAX_VUELTAS = 50 // 50.000 pedidos: techo de seguridad, nunca un bucle inf
 // `*`: es la misma disciplina del ticket — una columna nueva en `pedidos` no debería aparecer sola
 // en una pantalla sin que alguien lo haya decidido.
 const SELECT = `
-  id, numero, id_vendedor, id_cliente, id_visita, estado, monto_total, peso_total,
+  id, numero, id_vendedor, id_cliente, id_repartidor, id_visita, estado, monto_total, peso_total,
   created_at, lat, lng, accuracy, distancia_m, origen, motivo_anulacion, anulado_por, anulado_ts,
   cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng ),
   vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre )
@@ -126,6 +126,46 @@ export async function itemsDePedido(idPedido) {
     .order('descripcion', { ascending: true })
   if (error) throw error
   return data || []
+}
+
+/**
+ * Las líneas de VARIOS pedidos, en lote. La usa el export: con `itemsDePedido` sería una consulta
+ * por pedido — un día de nueve vendedores son decenas de idas y vueltas por un archivo.
+ *
+ * ⚠️ **`pedido_items` NO tiene `id_empresa`.** El alcance de tenant lo pone la lista de ids, que
+ * viene de una consulta ya filtrada por empresa; el `pedidos!inner(id_empresa)` es el cinturón
+ * además de los tirantes, para que una llamada futura con ids de otro lado no cruce distribuidoras.
+ * Es el mismo truco que usa `RespaldoDatos` con esta tabla.
+ *
+ * ⚠️ Paginado por partida: PostgREST corta en 1.000 filas y **devuelve 200 igual**. Diez líneas por
+ * pedido hacen que 100 pedidos ya pasen el techo, así que acá no es hipotético. Se parte por LOTE DE
+ * IDS y no por `range()`: un `in` con mil uuid también hace explotar la URL.
+ *
+ * El código del producto se trae por relación porque la línea no lo copia (copia `descripcion` y
+ * `precio_unitario`, ver `db/43`). Si el producto se borró, viene null y el export deja la celda
+ * vacía — que es la verdad, no un cero.
+ *
+ * @returns {Promise<Map<string, object[]>>} id de pedido → sus líneas
+ */
+export async function itemsDePedidos(ids) {
+  const porPedido = new Map()
+  if (!ids?.length) return porPedido
+  const LOTE = 100
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const trozo = ids.slice(i, i + LOTE)
+    const { data, error } = await supabase
+      .from('pedido_items')
+      .select('id, id_pedido, id_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( codigo )')
+      .in('id_pedido', trozo)
+      .order('descripcion', { ascending: true })
+    if (error) throw error
+    for (const l of data || []) {
+      const arr = porPedido.get(l.id_pedido) || []
+      arr.push({ ...l, codigoProducto: l.producto?.codigo || null })
+      porPedido.set(l.id_pedido, arr)
+    }
+  }
+  return porPedido
 }
 
 /** Las personas que tienen pedidos en el rango, para el selector. Sale de lo ya cargado. */

@@ -30,6 +30,8 @@ import RailMapa, { RAIL_W } from './components/RailMapa'
 import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
 import DespachoGestion from './components/DespachoGestion'
+import ThemeToggle from '../../components/ThemeToggle'
+import { Alerta, AlertaCirculo, Check, ChevronRight, GestIcon, LogOut, Mapa, Profile } from '../../components/icons'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
 
@@ -79,7 +81,7 @@ const glass = glassBlur // alias local: este archivo lo usa ~10 veces como `...g
 // admin/superadmin; Empresas solo superadmin; el resto para todo gestor (incl. encargado).
 
 export default function SupervisionMovil({ role = 'encargado', onIrAJornada = null }) {
-  const { theme, isDark, toggleTheme } = useTheme()
+  const { theme, isDark } = useTheme()
   const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   // 🚨 SCOPE de LECTURA (regla 11): todo lo que CONSULTA usa `idEmpresaActiva`; la escritura de
@@ -509,7 +511,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             datos" (mapa vacío mudo): ahora se distingue y se puede reintentar. */}
         {recorridosError ? (
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 250, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--danger)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8 }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+            <AlertaCirculo size={34} w={1.5} color="var(--danger)" style={{ marginBottom: 8 }} />
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, color: 'var(--danger)' }}>No se pudieron cargar las ubicaciones</div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{recorridosError.message || 'Error de red o de sesión.'}</div>
             <button onClick={() => recargarPosiciones()} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 10, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
@@ -586,33 +588,30 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             <div style={{ padding: 6 }}>
               {onIrAJornada && (
                 <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
-                  <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg></div>
+                  <div style={acctIconBox}><Mapa size={15} /></div>
                   <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
-                  <Chevron />
+                  <ChevronRight />
                 </div>
               )}
               <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
-                <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg></div>
+                <div style={acctIconBox}><Profile size={15} /></div>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
-                <Chevron />
+                <ChevronRight />
               </div>
               <div onClick={() => { setAcctOpen(false); showToast('Ayuda y soporte · próximamente') }} style={acctItem}>
                 <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.4-1.4 1-1.4 2M12 17h.01" /></svg></div>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ayuda y soporte</span>
-                <Chevron />
+                <ChevronRight />
               </div>
             </div>
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
             <div style={{ padding: '13px 15px' }}>
               <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 9 }}>Apariencia</div>
-              <div style={{ display: 'flex', gap: 6, background: 'var(--surface2)', border: '1px solid var(--line)', borderRadius: 12, padding: 4 }}>
-                <div onClick={() => { if (!isDark) toggleTheme() }} style={themeBtn(isDark)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>Oscuro</div>
-                <div onClick={() => { if (isDark) toggleTheme() }} style={themeBtn(!isDark)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>Claro</div>
-              </div>
+              <ThemeToggle />
             </div>
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
             <div onClick={() => signOut()} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', cursor: 'pointer', color: 'var(--danger)', minHeight: 44, boxSizing: 'border-box' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></svg>
+              <LogOut size={16} />
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>Cerrar sesión</span>
             </div>
           </div>
@@ -622,7 +621,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* ===== ALERTA GPS APAGADO (si hay) ===== */}
       {Object.values(gpsOff).length > 0 && section === 'mapa' && !inmersivo && (
         <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', ...glass, border: '0.5px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
+          <Alerta size={15} style={{ flex: 'none' }} />
           {Object.values(gpsOff).map((u) => `${u.nombre} (${u.rol})`).join(', ')} · GPS desactivado
         </div>
       )}
@@ -772,7 +771,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around', padding: '8px 10px 8px' }}>
           <NavBtn active={section === 'mapa'} label="Mapa" onClick={() => { setSection('mapa'); cerrarTodo() }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg>
+            <Mapa size={22} />
           </NavBtn>
           <NavBtn active={section === 'dash'} label="Dashboard" onClick={() => { setSection('dash'); setPlusOpen(false); setAcctOpen(false); setPinId(null) }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" rx="1" /><rect x="12.5" y="8" width="3" height="10" rx="1" /><rect x="18" y="5" width="3" height="13" rx="1" /></svg>
@@ -792,9 +791,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             <div style={{ padding: '8px 10px 6px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>Gestión</div>
             {gestionItems.map((it) => (
               <div key={it.key} onClick={() => { setPlusOpen(false); setGestion(it.key) }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 10px', borderRadius: 12, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box' }}>
-                <div style={{ width: 34, height: 34, flex: 'none', borderRadius: 10, background: 'var(--surface2)', color: 'var(--deep)', display: 'grid', placeItems: 'center' }}><GestIcon k={it.key} /></div>
+                <div style={{ width: 34, height: 34, flex: 'none', borderRadius: 10, background: 'var(--surface2)', color: 'var(--deep)', display: 'grid', placeItems: 'center' }}><GestIcon k={it.key} size={16} /></div>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>{it.label}</span>
-                <Chevron />
+                <ChevronRight />
               </div>
             ))}
           </div>
@@ -892,7 +891,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {/* ===== TOAST ===== */}
       {toast && (
         <div style={{ position: 'absolute', top: safeTop(HEADER_H + 14), left: 16, right: 16, zIndex: 'var(--z-toast)', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 13, boxShadow: 'var(--shadow-lg)', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9 }} className="lu-rise">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <Check size={16} color="var(--success)" />
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
       )}
@@ -905,29 +904,7 @@ const acctItem = { display: 'flex', alignItems: 'center', gap: 12, padding: '10p
 const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', display: 'grid', placeItems: 'center' }
 const sheetLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--faint)' }
 
-/** Un dato del resumen del día en la tarjeta ampliada del pin. `px` escala con `pinK`. */
-function Chevron() {
-  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-}
-
 // Íconos de las acciones de gestión del menú "+".
-function GestIcon({ k }) {
-  const inner = {
-    clientes: <><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></>,
-    zonas: <><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
-    catalogo: <path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />,
-    faltante: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
-    invitar: <><circle cx="9" cy="8" r="3.2" /><path d="M4 21c0-3.4 2.4-5.5 5-5.5s5 2.1 5 5.5" /><path d="M18 8v6M15 11h6" /></>,
-    usuarios: <><circle cx="9" cy="8" r="3" /><path d="M2.5 21c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><path d="M17 7.7a3 3 0 0 1 0 5.6" /></>,
-    empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
-  }[k]
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{inner}</svg>
-}
-
-function themeBtn(active) {
-  return { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 38, borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, background: active ? 'var(--surface)' : 'transparent', color: active ? 'var(--text)' : 'var(--muted)', boxShadow: active ? 'var(--shadow)' : 'none' }
-}
-
 /**
  * Botón del rail vertical. 44×44 (área táctil mínima), mismo glass/sombra que tenían los
  * chips de la franja vieja.

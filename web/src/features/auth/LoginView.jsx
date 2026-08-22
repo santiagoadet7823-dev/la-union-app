@@ -6,6 +6,7 @@ import { APP_VERSION } from '../../version'
 import { initials } from '../../lib/format'
 import Isotipo from '../../components/Isotipo'
 import Overlay from '../../components/Overlay'
+import { SunMoon } from '../../components/icons'
 import { disponible as vidrieraDisponible } from '../../services/vidrieraTablet'
 
 /**
@@ -97,14 +98,12 @@ export default function LoginView({ onTablet }) {
         <div style={sx('display:flex;justify-content:flex-end')}>
           <button onClick={toggleTheme} className="lu-press" title="Cambiar tema" aria-label="Cambiar tema"
             style={sx('width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer')}>
-            {isDark
-              ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6" /></svg>
-              : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--deep)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8.2 8.2 0 0 1 9.5 4 8.4 8.4 0 1 0 20 14.5Z" /></svg>}
+            <SunMoon size={20} dark={isDark} />
           </button>
         </div>
 
         {/* Marca. El isotipo va sobre su propio negro, el mismo del splash nativo. */}
-        <div style={sx('display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:6px')}>
+        <div style={{ ...sx('display:flex;flex-direction:column;align-items:center;margin-top:6px'), '--gy': '10px' }}>
           <div style={sx('width:64px;height:64px;border-radius:18px;background:#0C0C0C;display:grid;place-items:center;border:1px solid var(--line)')}>
             <Isotipo size={44} />
           </div>
@@ -116,7 +115,7 @@ export default function LoginView({ onTablet }) {
 
         {/* ---- Errores: tres causas, tres formas. ---- */}
         {tipoError === 'red' && (
-          <div className="lu-rise" style={sx('margin-top:18px;display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:var(--r-lg);background:var(--warning-tint);border:1px solid var(--warning)')}>
+          <div className="lu-rise" style={{ ...sx('margin-top:18px;display:flex;align-items:flex-start;padding:14px;border-radius:var(--r-lg);background:var(--warning-tint);border:1px solid var(--warning)'), '--gx': '12px' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.8" strokeLinecap="round" style={{ flex: 'none', marginTop: 1 }}><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01M3 3l18 18" /></svg>
             <div>
               <div style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.35')}>Sin conexión</div>
@@ -130,7 +129,7 @@ export default function LoginView({ onTablet }) {
 
         {(tipoError === 'pass' || tipoError === 'otro') && (
           <div className="lu-rise" style={sx('margin-top:18px;padding:14px;border-radius:var(--r-lg);background:var(--danger-tint);border:1px solid var(--danger)')}>
-            <div style={sx('display:flex;gap:12px;align-items:flex-start')}>
+            <div style={{ ...sx('display:flex;align-items:flex-start'), '--gx': '12px' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="1.8" strokeLinecap="round" style={{ flex: 'none', marginTop: 1 }}><circle cx="12" cy="12" r="9.2" /><path d="M12 7.5v5.2M12 16.3h.01" /></svg>
               <div>
                 <div style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.35')}>
@@ -143,7 +142,7 @@ export default function LoginView({ onTablet }) {
                 </div>
               </div>
             </div>
-            <div style={sx('display:flex;gap:8px;margin-top:12px;flex-wrap:wrap')}>
+            <div style={{ ...sx('display:flex;margin-top:12px;flex-wrap:wrap'), '--gx': '8px' }}>
               {tipoError === 'pass' && (
                 <button onClick={() => { setMailRecuperar(email); setHoja('recuperar') }} className="lu-press"
                   style={sx('min-height:44px;padding:0 16px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);color:var(--text);font-size:var(--fs-sm);font-weight:600;cursor:pointer')}>
@@ -170,14 +169,14 @@ export default function LoginView({ onTablet }) {
         )}
 
         {/* ---- Camino principal: Google (13 de 14) ---- */}
-        <div style={sx('margin-top:22px;display:flex;flex-direction:column;gap:12px')}>
+        <div style={{ ...sx('margin-top:22px;display:flex;flex-direction:column'), '--gy': '12px' }}>
 
           {/* Tarjeta de la última cuenta. OJO: no entra sola — en el APK, Google abre igual el
               selector de cuentas del sistema. Lo que ahorra es no tener que acordarse con cuál
               de las cuentas del teléfono se entra, que es el error real que se comete. */}
           {ultimo && !form && (
             <button onClick={entrarConGoogle} disabled={!hasSupabase || !!cargando} className="lu-press"
-              style={sx('display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 16px;border:none;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);text-align:left;cursor:pointer;box-shadow:var(--shadow-lg)')}>
+              style={{ ...sx('display:flex;align-items:center;width:100%;min-height:64px;padding:10px 16px;border:none;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);text-align:left;cursor:pointer;box-shadow:var(--shadow-lg)'), '--gx': '12px' }}>
               <span style={sx('width:42px;height:42px;flex:none;border-radius:var(--r-pill);background:rgba(255,255,255,.9);color:#0B2B2A;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:var(--fs-lg);overflow:hidden')}>
                 {ultimo.foto
                   ? <img src={ultimo.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -196,22 +195,24 @@ export default function LoginView({ onTablet }) {
           )}
 
           <button onClick={entrarConGoogle} disabled={!hasSupabase || !!cargando} className="lu-press"
-            style={sx('display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:56px;border-radius:var(--r-md);background:#FFFFFF;color:#1F2937;border:1px solid #DADCE0;font-size:var(--fs-lg);font-weight:600;cursor:pointer;box-shadow:var(--shadow)')}>
+            style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:var(--r-md);background:#FFFFFF;color:#1F2937;border:1px solid #DADCE0;font-size:var(--fs-lg);font-weight:600;cursor:pointer;box-shadow:var(--shadow)'), '--gx': '12px' }}>
             {cargando === 'google'
               ? <span className="lu-spin" style={{ width: 20, height: 20, borderRadius: 999, border: '2.5px solid #DADCE0', borderTopColor: '#1F2937' }} />
               : <GoogleIcon />}
-            {cargando === 'google' ? 'Elegí tu cuenta…' : (ultimo && !form ? 'Usar otra cuenta de Google' : 'Continuar con Google')}
+            {/* El texto va en un <span> y no suelto: la separación de Chrome 79 la da
+                `[style*="--gx"] > * + *`, y ese selector NO alcanza a un nodo de texto. */}
+            <span>{cargando === 'google' ? 'Elegí tu cuenta…' : (ultimo && !form ? 'Usar otra cuenta de Google' : 'Continuar con Google')}</span>
           </button>
 
           {/* ---- Camino secundario: email + contraseña (1 de 14) ---- */}
           {!form ? (
             <button onClick={() => setForm(true)} className="lu-press"
-              style={sx('display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line);color:var(--muted);font-size:var(--fs-md);font-weight:600;cursor:pointer')}>
+              style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line);color:var(--muted);font-size:var(--fs-md);font-weight:600;cursor:pointer'), '--gx': '8px' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2.8" y="5" width="18.4" height="14" rx="2.6" /><path d="m3.6 6.6 8.4 6 8.4-6" /></svg>
-              Ingresar con email y contraseña
+              <span>Ingresar con email y contraseña</span>
             </button>
           ) : (
-            <form onSubmit={entrarConEmail} className="lu-rise" style={sx('display:flex;flex-direction:column;gap:10px;padding-top:4px')}>
+            <form onSubmit={entrarConEmail} className="lu-rise" style={{ ...sx('display:flex;flex-direction:column;padding-top:4px'), '--gy': '10px' }}>
               <div style={sx('display:flex;align-items:center;justify-content:space-between')}>
                 <span style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.06em;text-transform:uppercase')}>Email y contraseña</span>
                 <button type="button" onClick={() => setForm(false)}
@@ -237,8 +238,8 @@ export default function LoginView({ onTablet }) {
                   </svg>
                 </button>
               </div>
-              <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:8px')}>
-                <label style={sx('display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;padding-right:8px')}>
+              <div style={{ ...sx('display:flex;align-items:center;justify-content:space-between'), '--gx': '8px' }}>
+                <label style={{ ...sx('display:flex;align-items:center;min-height:44px;cursor:pointer;padding-right:8px'), '--gx': '10px' }}>
                   {/* Se persiste al tocarla, no al entrar: si alguien la apaga en un teléfono
                       prestado y después no llega a ingresar, igual quedó dicho que no se guarde. */}
                   <input type="checkbox" checked={recordar}
@@ -252,9 +253,9 @@ export default function LoginView({ onTablet }) {
                 </button>
               </div>
               <button type="submit" disabled={!puedeEnviar} className="lu-press"
-                style={{ ...sx('display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700'), cursor: puedeEnviar ? 'pointer' : 'not-allowed', opacity: puedeEnviar ? 1 : 0.6 }}>
+                style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700'), '--gx': '10px', cursor: puedeEnviar ? 'pointer' : 'not-allowed', opacity: puedeEnviar ? 1 : 0.6 }}>
                 {cargando === 'email' && <span className="lu-spin" style={{ width: 20, height: 20, borderRadius: 999, border: '2.5px solid rgba(0,0,0,.18)', borderTopColor: 'var(--on-primary)' }} />}
-                {cargando === 'email' ? 'Entrando…' : 'Ingresar'}
+                <span>{cargando === 'email' ? 'Entrando…' : 'Ingresar'}</span>
               </button>
               {/* Que quede escrito en la pantalla, no solo en el código: se guarda el email y nada más. */}
               <div style={sx('font-size:var(--fs-xs);color:var(--faint);line-height:1.5')}>
@@ -272,7 +273,7 @@ export default function LoginView({ onTablet }) {
 
         <div style={sx('flex:1;min-height:20px')} />
 
-        <div style={sx('display:flex;flex-direction:column;align-items:center;gap:10px')}>
+        <div style={{ ...sx('display:flex;flex-direction:column;align-items:center'), '--gy': '10px' }}>
           <div style={sx('font-size:var(--fs-sm);color:var(--muted);text-align:center;line-height:1.5')}>¿Todavía no tenés acceso?</div>
           <button onClick={() => setHoja('acceso')} className="lu-press"
             style={sx('min-height:48px;padding:0 20px;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:var(--fs-md);font-weight:600;cursor:pointer')}>
@@ -340,8 +341,9 @@ export default function LoginView({ onTablet }) {
           que lo haga vas a ver una pantalla de espera.
         </div>
         <button onClick={() => { setHoja(null); entrarConGoogle() }} className="lu-press"
-          style={sx('display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:56px;margin-top:18px;border-radius:var(--r-md);background:#FFFFFF;color:#1F2937;border:1px solid #DADCE0;font-size:var(--fs-lg);font-weight:600;cursor:pointer')}>
-          <GoogleIcon /> Continuar con Google
+          style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin-top:18px;border-radius:var(--r-md);background:#FFFFFF;color:#1F2937;border:1px solid #DADCE0;font-size:var(--fs-lg);font-weight:600;cursor:pointer'), '--gx': '12px' }}>
+          <GoogleIcon />
+          <span>Continuar con Google</span>
         </button>
       </Overlay>
     </div>

@@ -726,7 +726,23 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
-Hay varios números que conviven. **1.20.0 es OTA + PWA, SIN APK**: es JS puro (pantalla de Pedidos para gestión, "Mis pedidos" del vendedor, anular/borrar, el alto de la botonera medido en vez de adivinado, el estado de fotos de la vidriera y el diagnóstico de la OTA). No se tocó ni un `.java`, ni el manifest, ni `capacitor.config.ts`, así que `versionName`/`versionCode` se quedan en 1.18.0/36. Sus dos migraciones (`db/45`, `db/46`) van **antes** del bundle, por el mismo motivo de siempre: la cola de escrituras corta al primer error y reintenta, así que un insert contra columnas inexistentes taponaría también el catálogo.
+Hay varios números que conviven. **1.21.0 sale por los TRES canales: APK + OTA + PWA.** No porque haya cambiado nada nativo — no se tocó un solo `.java`, ni el manifest, ni `capacitor.config.ts` — sino porque tres de sus arreglos viven en `VidrieraTablet.jsx`, y **esa pantalla sólo corre en la tablet de vidriera, que no puede recibir una OTA nunca** (ver el bloque 🔴 de abajo). El APK es el único vehículo que la alcanza, y se instala **por USB**.
+
+> ⚠️ **`min_version` SÍ se sube a 1.21.0, por decisión explícita del dueño (22/08/2026).**
+> Técnicamente no hacía falta: los 9 teléfonos del parque reciben todo lo suyo por OTA — íconos,
+> aviso de WiFi en la vidriera, evento `catalogo`, export de pedidos y módulo de entregas es todo JS.
+> El costo de subirlo son **~22 MB de descarga por teléfono** (el `.apk` mide 22,4 MB), en datos del
+> empleado, para un APK cuyo código nativo es **idéntico** al 1.18.0 que ya tienen. Se planteó y se
+> decidió hacerlo igual.
+>
+> Lo que SÍ se gana: el parque queda todo en la misma `versionName`, y eso simplifica el gate de
+> `VER_CANAL` (regla 44) y cualquier decisión futura que se tome mirando `estado_dispositivo.app_version`.
+
+Qué lleva 1.21.0: íconos centralizados (13 exports nuevos, ~45 SVG inline menos), salvapantallas de
+la vidriera a 5 min **con el reloj arreglado**, fotos de la grilla cuadradas de verdad, aviso de WiFi
+en la pantalla del QR, el evento `catalogo` que hace que la tablet cambie de cliente, la **jerarquía
+en las notificaciones** (Edge Function, deploy aparte), el **export de pedidos a TSV** para facturar,
+y el **módulo de entregas del repartidor** (asignación + hoja real + recorrido óptimo).
 
 > 🩸 **1.19.0 SE PUBLICÓ Y NO LA RECIBIÓ NADIE. Es el precedente que hay que tener presente antes de
 > dar por cerrado cualquier release.** Salió el 19/08 por los tres canales: bundle correcto
@@ -756,11 +772,11 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.20.0` ✅ publicado | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.18.0` ✅ publicado | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `36` ✅ publicado | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.20.0` ✅ publicado | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | `1.18.0` ✅ publicado (18/08/2026 — los 9 equipos reinstalan solos) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.21.0` ⏳ sin publicar | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.21.0` ⏳ sin publicar | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `37` ⏳ sin publicar | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | `1.20.0` ✅ publicado → pasa a `1.21.0` | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | `1.18.0` → pasa a **`1.21.0`** en este release (decisión del dueño; ver la nota de arriba) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la

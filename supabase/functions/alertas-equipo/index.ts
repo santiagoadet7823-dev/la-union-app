@@ -36,9 +36,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { enviarPush, getAccessToken } from './fcm.ts'
 
-// Quién recibe los avisos de una empresa. El `superadmin` los recibe de TODAS: es quien opera el
-// SaaS, no un supervisor de un tenant.
-const ROLES_SUPERVISOR = ['admin', 'encargado', 'propietario']
+// Quién recibe avisos. El `superadmin` los recibe de TODAS las empresas: es quien opera el SaaS,
+// no un supervisor de un tenant.
+//
+// 🩸 `'propietario'` estaba acá y era un rol MUERTO: se eliminó en `db/31` el 10/08/2026. No hacía
+// daño (ningún perfil lo tiene) pero es exactamente el tipo de lista que hace creer que un rol
+// sigue vivo.
+const ROLES_SUPERVISOR = ['admin', 'encargado']
 
 /**
  * 🩸 Primera versión del APK que tiene el canal `avisos` creado al arrancar (LaUnionApp.java).
@@ -190,35 +194,81 @@ Deno.serve(async (req) => {
     if (errVig) return json({ error: 'vigilancia_equipo: ' + errVig.message }, 500)
     const vig = (filas || []) as FilaVigilancia[]
 
-    // ---- 3) Destinatarios: supervisores con token. Los superadmin reciben de TODAS las empresas —
-    // son quienes operan el SaaS, no supervisores de un tenant.
+    // ---- 3) Destinatarios: supervisores con token, y la JERARQUÍA.
     //
+    // 🩸 EL PUSH IGNORABA LA JERARQUÍA Y LA CAMPANITA NO (22/08/2026, reporte del cliente: "las
+    // notificaciones llegan a todos por igual"). Esto seleccionaba por `rol` + `activo` y filtraba
+    // solo por `id_empresa`: cualquier encargado recibía el aviso de CUALQUIER persona de su
+    // empresa. Y lo peor no es que llegaran de más — es que `alertas_sel` (la campanita) SÍ obedece
+    // `ids_a_mi_cargo()` desde `db/40`. Así que el encargado recibía "Sin reportar · Fulano", tocaba
+    // el cartel, abría la campanita… y el aviso NO estaba, porque RLS se lo filtraba.
+    // **El push estaba filtrando información que la policy protege.**
+    //
+    // La regla vive en `ids_a_mi_cargo()` (`db/40`) y acá se aplica INVERTIDA: en vez de "a quiénes
+    // veo", "quiénes me ven". No se puede llamar a esa función desde acá — corre como `service_role`,
+    // que no tiene sesión — así que la regla se replica, y por eso queda escrita al lado de `aCargo`
+    // con la referencia al SQL que manda. Si `db/40` cambia, esto cambia.
+    //
+    // Una sola consulta a `perfiles` en vez de dos: hace falta el `nivel` de TODOS (el de los
+    // supervisores para saber hasta dónde llegan, y el de los sujetos para saber a quién alcanzan).
+    // La tabla tiene ~15 filas; si alguna vez pasa las 1.000 de PostgREST, esto hay que paginarlo.
+    const { data: perfiles } = await supabase
+      .from('perfiles')
+      .select('id, id_empresa, rol, nivel, activo')
+    const nivelDe = new Map<string, number>(
+      (perfiles || []).map((f: Record<string, any>) => [f.id as string, Number(f.nivel ?? 0)]),
+    )
     // Dos consultas y el join en JS, a propósito: el embed `estado_dispositivo(fcm_token)` de
     // PostgREST depende de que exista la FK declarada entre las dos tablas, y si algún día alguien
     // la borra esto fallaría en silencio justo cuando más se necesita.
-    const { data: sups } = await supabase
-      .from('perfiles')
-      .select('id, id_empresa, rol')
-      .in('rol', [...ROLES_SUPERVISOR, 'superadmin'])
-      .eq('activo', true)
     const { data: disp } = await supabase
       .from('estado_dispositivo')
       .select('id_usuario, fcm_token, app_version')
       .not('fcm_token', 'is', null)
     const dispDe = new Map((disp || []).map((d: Record<string, any>) => [d.id_usuario, d]))
-    const destinos = (sups || [])
-      .map((s: Record<string, any>) => {
-        const d = dispDe.get(s.id as string)
+    const destinos = (perfiles || [])
+      .filter((f: Record<string, any>) => f.activo && [...ROLES_SUPERVISOR, 'superadmin'].includes(f.rol))
+      .map((f: Record<string, any>) => {
+        const d = dispDe.get(f.id as string)
         return {
-          id: s.id as string,
-          empresa: s.id_empresa as string,
-          global: s.rol === 'superadmin',
+          id: f.id as string,
+          empresa: f.id_empresa as string,
+          rol: f.rol as string,
+          nivel: Number(f.nivel ?? 0),
+          global: f.rol === 'superadmin',
           token: (d?.fcm_token as string) || null,
           // Ver VER_CANAL: a un APK viejo NO se le manda channel_id o se queda mudo.
           canal: versionOk(d?.app_version ?? null, VER_CANAL) ? CANAL_AVISOS : null,
         }
       })
       .filter((d) => !!d.token)
+    type Destino = typeof destinos[number]
+
+    /**
+     * ¿El destino `d` tiene a `sujeto` a su cargo? Es `ids_a_mi_cargo()` (`db/40`) dado vuelta,
+     * regla por regla:
+     *   · superadmin → todos, de todas las empresas
+     *   · admin      → toda su empresa
+     *   · encargado  → su empresa Y `nivel(sujeto) < greatest(nivel(encargado), 1)`
+     *
+     * El `greatest(…, 1)` no es un detalle: un encargado al que nadie le puso nivel queda en 0, y sin
+     * ese piso no supervisaría ni a un vendedor. Hoy en la base hay exactamente ese caso.
+     *
+     * Y el SUJETO nunca recibe su propio aviso: un encargado es a la vez supervisado y supervisor, y
+     * avisarle a él que dejó de reportar no le sirve a nadie.
+     */
+    const aCargo = (d: Destino, sujeto: string, empresaSujeto: string) => {
+      if (d.id === sujeto) return false
+      if (d.global) return true
+      if (d.empresa !== empresaSujeto) return false
+      if (d.rol === 'admin') return true
+      if (d.rol !== 'encargado') return false
+      return (nivelDe.get(sujeto) ?? 0) < Math.max(d.nivel, 1)
+    }
+
+    /** A quiénes les corresponde el aviso sobre `sujeto`. */
+    const destinatariosDe = (sujeto: string, empresaSujeto: string) =>
+      destinos.filter((d) => aCargo(d, sujeto, empresaSujeto))
 
     const sa = JSON.parse(Deno.env.get('FCM_SERVICE_ACCOUNT') || '{}')
     const hayFcm = !!(sa.client_email && sa.private_key && sa.project_id)
@@ -227,12 +277,19 @@ Deno.serve(async (req) => {
     const errores: string[] = []
     const tokensMuertos = new Set<string>()
 
-    /** Manda a los supervisores de `idEmpresa` (más los superadmin), salteando al sujeto del aviso. */
-    const mandar = async (idEmpresa: string, sujeto: string | null, titulo: string, cuerpo: string, tag: string, data: Record<string, string>) => {
+    /**
+     * Manda a una lista YA RESUELTA de destinatarios.
+     *
+     * 🩸 Antes esto recibía `idEmpresa` y armaba la lista solo. Ahora la arma quien llama, con
+     * `destinatariosDe()`, porque con jerarquía **el mensaje depende de quién lo recibe**: el
+     * agrupado ("3 móviles sin reportar") tiene que contar a la gente de ESE supervisor y no a la de
+     * la empresa. Decirle "3" a quien tiene 1 a cargo es tan incorrecto como mandarle el aviso ajeno.
+     *
+     * `omitidos` cuenta los avisos que no le tocan a nadie — con jerarquía eso deja de ser
+     * imposible: alguien de nivel alto puede no tener a nadie por encima.
+     */
+    const enviarA = async (para: Destino[], titulo: string, cuerpo: string, tag: string, data: Record<string, string>) => {
       if (!accessToken) return
-      // El SUJETO del aviso nunca lo recibe: un encargado es a la vez supervisado y supervisor, y
-      // avisarle a él que dejó de reportar no le sirve a nadie.
-      const para = destinos.filter((d) => (d.global || d.empresa === idEmpresa) && d.id !== sujeto)
       if (!para.length) { omitidos++; return }
       for (const d of para) {
         if (tokensMuertos.has(d.id)) continue // ya sabemos que su token no sirve
@@ -254,29 +311,28 @@ Deno.serve(async (req) => {
     if (esResumen) {
       if (!hayFcm) return json({ error: 'Falta FCM_SERVICE_ACCOUNT' }, 500)
       accessToken = await getAccessToken(sa)
-      const porEmpresa = new Map<string, FilaVigilancia[]>()
-      for (const f of vig) {
-        const arr = porEmpresa.get(f.id_empresa) || []
-        arr.push(f)
-        porEmpresa.set(f.id_empresa, arr)
-      }
-      let empresas = 0
-      for (const [idEmpresa, filasEmpresa] of porEmpresa) {
-        const txt = textoResumen(filasEmpresa, minSil)
-        if (!txt) continue // nadie en ventana: no se manda nada
-        empresas++
-        // 🩸 `tag` FIJO por empresa: es lo que hace que "se actualice cada hora" sea literal — Android
-        // REEMPLAZA el cartel anterior con el mismo tag. Con un tag distinto por hora, el supervisor
-        // terminaría el día con doce tarjetas apiladas diciendo casi lo mismo.
+      // 🩸 EL RESUMEN TAMBIÉN ES POR DESTINATARIO (22/08/2026). Antes se agrupaba por empresa y
+      // salía un solo texto para todos sus supervisores. Con jerarquía eso miente dos veces: le
+      // nombra al encargado gente que no supervisa, y le cuenta un total que no es el suyo.
+      let mandados = 0
+      for (const d of destinos) {
+        const suyas = vig.filter((f) => aCargo(d, f.id_usuario, f.id_empresa))
+        const txt = textoResumen(suyas, minSil)
+        if (!txt) continue // nadie a cargo en ventana: no se manda nada
+        mandados++
+        // 🩸 `tag` FIJO: es lo que hace que "se actualice cada hora" sea literal — Android REEMPLAZA
+        // el cartel anterior con el mismo tag. Con un tag distinto por hora, el supervisor terminaría
+        // el día con doce tarjetas apiladas diciendo casi lo mismo. Ya no lleva el id de empresa
+        // porque ahora se manda de a un destinatario, y un teléfono es de una sola persona.
         //
         // Límite honesto: FCM no puede CANCELAR una notificación ya entregada, así que el último
         // resumen se queda hasta que alguien lo descarte. Fuera de la ventana simplemente no se
         // manda uno nuevo.
-        await mandar(idEmpresa, null, txt.titulo, txt.cuerpo, `lu-resumen-${idEmpresa}`, { clase: 'resumen' })
+        await enviarA([d], txt.titulo, txt.cuerpo, 'lu-resumen', { clase: 'resumen' })
       }
       await limpiarMuertos()
       return json({
-        resumen: true, evaluados: vig.length, empresas, enviados, fallidos, omitidos,
+        resumen: true, evaluados: vig.length, con_resumen: mandados, enviados, fallidos, omitidos,
         destinatarios: destinos.length, tokens_muertos: tokensMuertos.size, errores,
       })
     }
@@ -387,15 +443,25 @@ Deno.serve(async (req) => {
     }
     accessToken = await getAccessToken(sa)
 
-    // 🩸 EL BURST, AGRUPADO. Si en la misma pasada se abren varios incidentes de una empresa, va UN
-    // cartel. Seis notificaciones seguidas no informan seis veces más: enseñan a ignorarlas.
-    const porEmpresaNuevas = new Map<string, Record<string, any>[]>()
+    // 🩸 EL BURST, AGRUPADO — Y AGRUPADO POR DESTINATARIO (22/08/2026). Si en la misma pasada se
+    // abren varios incidentes, a cada supervisor le va UN cartel. Seis notificaciones seguidas no
+    // informan seis veces más: enseñan a ignorarlas.
+    //
+    // El agrupamiento era por EMPRESA y ahora es por PERSONA, porque con jerarquía el conteo cambia
+    // según quién mira: si se abren 3 incidentes y un encargado supervisa a 1 de esos 3, tiene que
+    // recibir el aviso individual de ese, no un "3 móviles sin reportar" que incluye a dos personas
+    // que ni siquiera puede ver en la campanita.
+    const porDestino = new Map<string, { d: Destino; lista: Record<string, any>[] }>()
     for (const a of pushables) {
-      const arr = porEmpresaNuevas.get(a.id_empresa) || []
-      arr.push(a)
-      porEmpresaNuevas.set(a.id_empresa, arr)
+      for (const d of destinatariosDe(a.id_usuario, a.id_empresa)) {
+        const e = porDestino.get(d.id) || { d, lista: [] }
+        e.lista.push(a)
+        porDestino.set(d.id, e)
+      }
     }
-    for (const [idEmpresa, lista] of porEmpresaNuevas) {
+    // Un incidente que no le toca a NADIE igual queda abierto y sellado como avisado: el panel lo
+    // muestra y el resumen lo cuenta. Lo que no hace es interrumpir a alguien que no corresponde.
+    for (const { d, lista } of porDestino.values()) {
       if (lista.length === 1) {
         const a = lista[0]
         const f = porUsuario.get(a.id_usuario)
@@ -406,17 +472,17 @@ Deno.serve(async (req) => {
           ? `Hace ${dur(min)} que no manda ubicación. Última señal ${hhmm(a.desde)}.`
           : `Sigue reportando pero no se movió desde las ${hhmm(a.desde)}.`
         if (a.motivo) cuerpo += ` (${a.motivo})`
-        await mandar(idEmpresa, a.id_usuario, titulo, cuerpo, `lu-alerta-${a.id_usuario}-${a.tipo}`,
+        await enviarA([d], titulo, cuerpo, `lu-alerta-${a.id_usuario}-${a.tipo}`,
           { clase: a.tipo, id_usuario: a.id_usuario, alerta_id: a.id })
         continue
       }
-      // Agrupado: el `tag` es de la empresa, no de una persona. El sujeto se pasa null porque son
-      // varios y no hay uno solo al que saltear; el detalle está en el panel y en el resumen.
+      // Agrupado: el `tag` es fijo porque va a UN teléfono, y un teléfono es de una sola persona.
+      // El detalle está en el panel y en el resumen.
       const nombres = lista.slice(0, 3).map((a) => corto(porUsuario.get(a.id_usuario)?.nombre ?? null))
       if (lista.length > 3) nombres.push(`y ${lista.length - 3} más`)
-      await mandar(idEmpresa, null, `${lista.length} móviles sin reportar`,
+      await enviarA([d], `${lista.length} móviles sin reportar`,
         `${nombres.join(', ')}. Miralos en el panel del equipo.`,
-        `lu-alerta-grupo-${idEmpresa}`, { clase: 'grupo' })
+        'lu-alerta-grupo', { clase: 'grupo' })
     }
     if (pushables.length) {
       await supabase
@@ -432,7 +498,7 @@ Deno.serve(async (req) => {
       const cuerpo = a.tipo === 'sin_reportar'
         ? `Estuvo ${dur(a.minutos ?? 0)} sin mandar ubicación.`
         : `Estuvo ${dur(a.minutos ?? 0)} en el mismo lugar.`
-      await mandar(a.id_empresa, a.id_usuario, titulo, cuerpo, `lu-alerta-${a.id_usuario}-${a.tipo}`,
+      await enviarA(destinatariosDe(a.id_usuario, a.id_empresa), titulo, cuerpo, `lu-alerta-${a.id_usuario}-${a.tipo}`,
         { clase: 'resuelta', id_usuario: a.id_usuario })
     }
 

@@ -208,11 +208,119 @@ de agrupar por *qué hace falta desplegar*:
 |---|---|---|
 | **A — Base y consola** (sin release) | #16 protección de contraseñas filtradas · #14 rotar la key de Stadia · #3 versionar `ingesta_tokens` + `mi_token_ingesta` · #11 `UNIQUE (id_empresa, codigo)` en `clientes` · #13 las 4 columnas sin versionar | Ninguno necesita bundle. Se hacen y se verifican con un `select` el mismo día. **#3 es el más urgente de todos: sin él, una base recreada desde `db/` no puede recibir una sola posición** |
 | **B — Una sola OTA** | #12 decidir `AdminView` (borrar 2 vistas, rescatar `ReplayJornada`) · #9 el copy de `PermisoSiemprePrompt` · #18 unificar `getAccessToken` (copiado 3 veces) · #10 `build:apk` con `CAP_BUILD=1` adentro · #15 config de ESLint y sacar el `\|\| true` · #17 sanear docs | Todo JS/docs. Un solo bundle, una sola verificación en el emulador. ⚠️ **Verificar en el DOM, no en el build**: `npm run build` da EXIT=0 con un `ReferenceError` que el `ErrorBoundary` tapa |
-| **C — El próximo APK, TODO en un solo build** | P7 el doble conteo de la telemetría · P8 `cola.remove(0)` sin cuarentena (**la única violación viva de la regla 20**) · P9 los defaults de Java que difieren de producción · P10 actualización que no dependa del WebView · 4-ter la ventana de horario por FCM | Un APK cuesta una visita física o una ventana de Tailscale por equipo. Se junta todo o no se junta nada |
+| **C — El próximo APK, TODO en un solo build** | P7 el doble conteo de la telemetría · P8 `cola.remove(0)` sin cuarentena (**la única violación viva de la regla 20**) · P9 los defaults de Java que difieren de producción · P10 actualización que no dependa del WebView · 4-ter la ventana de horario por FCM · P11 vidriera: reinstalar por USB — son SEIS arreglos acumulados (gap ×2, botón Pedir, salvapantallas 5 min, fotos cortadas, cambio de cliente) | Un APK cuesta una visita física o una ventana de Tailscale por equipo. Se junta todo o no se junta nada |
 
 > ✅ **La decisión que condicionaba el bloque C ya está tomada (17/08/2026): se descarta Flutter.**
 > Las 5 tareas son nativas y ahora tienen **un solo destino**: `web/android/app/src/main/java/`.
 > Se escriben una vez y no hay que elegir cliente.
+>
+> 🟠 **P11 (20/08/2026) — la tablet de la vidriera acumula TRES arreglos sin publicar.** Ninguno le
+> puede llegar por OTA: no inicia sesión ni toca internet, así que se queda congelada en el bundle
+> que trajo su APK (§6). Todos necesitan **un APK nuevo**:
+>
+> 🩸 **Y el USB NO es el único camino — esto estaba mal escrito acá (corregido el 22/08/2026).**
+> Verificado en el código: `UpdatePrompt` se monta **fuera del `<Gate/>`** y su única condición es
+> `nativo`, sin sesión; `apkCheck()` no pide sesión; y `app_config` tiene `app_config_sel` **`to
+> public using (true)`**, o sea legible por `anon` (verificado en la base viva). El impedimento de la
+> tablet **no es el canal de actualización: es que no tiene internet**. El hotspot del vendedor es
+> `startLocalOnlyHotspot`, sin salida a la red — eso es el diseño, no una falla.
+>
+> **Conectándola UNA vez a un WiFi común con internet, se actualiza sola**: lee `min_version`, baja el
+> `.apk` de GitHub Releases y lanza el instalador. El USB sigue sirviendo, pero es la opción cara.
+> Dos condiciones: que su APK instalado tenga el plugin `ApkUpdater` (existe desde 1.12.0, y por el
+> registro la tablet está en 1.18.0 — **no verificable desde la base**, porque nunca escribe latido),
+> y que alguien toque el diálogo de instalación de Android salvo que la app sea su propio instalador
+> de registro (ver la nota del `adb install -r -i` en `CLAUDE.md` §6).
+>
+> Los seis arreglos:
+> 1. El `gap` de flexbox en `VidrieraTablet` (commit `511aebb`, 19/08 21:48). El APK 1.18.0 que
+>    corre en esa tablet se compiló el 18/08 18:08, **un día antes** del arreglo.
+> 2. El `gap` de flexbox en **`LoginView`** — 14 contenedores, y es la PRIMERA pantalla que ve la
+>    tablet (ahí está "Soy una tablet · escanear código"). Se había dado por cerrado el tema
+>    mirando solo `VidrieraTablet`.
+> 3. **La ficha grande apilada**: el botón "Pedir N" medía 34,8 px y caía 9,5 px fuera de la
+>    pantalla. Es lo que reportó el cliente con una foto. Medido y arreglado; detalle en
+>    [HANDOFF_VIDRIERA.md](HANDOFF_VIDRIERA.md) §4.B-bis.
+> 4. **(22/08) El salvapantallas a los 30 s.** El número sube a **5 min**, pero el problema de
+>    fondo era otro: el reloj **casi no se rearmaba** — no lo tocaban el scroll, el buscador, los
+>    filtros ni el stepper, y el despertador de la raíz sólo actuaba estando ya dormida. Ahora se
+>    mide contra un sello de actividad. Verificado con reloj falso: a los 4 min sigue despierta, a
+>    los 6 se duerme, un toque la despierta, y 2 min después de un scroll sigue despierta.
+> 5. **(22/08) Las fotos cortadas.** El alto estaba FIJO en 190 px con el ancho de columna elástico:
+>    a 478 px la caja quedaba **219×190** y `object-fit:cover` se comía **29 px (12,8 %)** del
+>    producto. Ahora se calcula del ancho real de la grilla. Medido en 10 anchos: el recorte pasa de
+>    **6,7–180 px a 0–0,7 px**.
+> 6. **(22/08) La tablet se quedaba con el PRIMER cliente.** El catálogo se republicaba bien desde el
+>    celular, pero `ServidorLocal.publicarCatalogo` reemplaza la variable **y nada más**: no encola
+>    evento ni despierta el long-poll. El celular ahora emite un evento `catalogo` (eso sí viaja por
+>    OTA) y la tablet lo escucha (eso necesita el APK).
+>
+> 🩸 **Y uno que apareció al verificar**: `VidrieraTablet` ponía `vivo.current = false` al limpiar
+> el efecto de montaje y **nunca lo volvía a poner en `true`**. Con `<StrictMode>` —que `main.jsx`
+> usa— React 18 invoca cada efecto dos veces en desarrollo, así que **la pantalla entera quedaba
+> muerta en dev**: sin fotos, sin reloj de reposo, sin acuse del toque, sin resync. En producción no
+> pasa, por eso nunca se notó — y por eso importa: una pantalla que sólo se puede probar en la
+> tablet es una pantalla que no se prueba.
+
+---
+
+## 🔴 El Dashboard se cae por timeout, y empeora solo (medido el 22/08/2026)
+
+**Síntoma:** el Dashboard tira **HTTP 500 / `57014 canceling statement due to statement timeout`** al
+pedir el horizonte "mes". Se ve en la consola en cada intento, y los números no cargan.
+
+**No es un bug nuevo ni lo introdujo 1.21.0** — apareció al verificar otra cosa. Es la RPC
+`metricas_actividad` (`db/21`, endurecida en `db/33`/`db/40`) contra el tamaño actual de `posiciones`.
+
+### Lo medido, contra la base viva
+
+`statement_timeout` del rol `authenticated` = **8 s** (`anon` 3 s). El costo es **lineal en puntos**,
+~26 µs por posición:
+
+| Rango | Posiciones | Tiempo | |
+|---|---|---|---|
+| 1 día | 20.133 | **0,55 s** | ✅ |
+| 7 días | 134.906 | **4,30 s** | ✅ |
+| 30 días | 207.630 | **7,21 s** | ⚠️ a 0,8 s del muro |
+| 150 días | 207.632 | 5,24 s | (mismo dato; la diferencia es caché) |
+
+### Dos hipótesis probadas y DESCARTADAS
+
+- **No es `work_mem`.** El plan derrama ~25 MB a disco (`temp read=3116`), pero subírselo a 64 MB
+  bajó de 5.535 ms a 5.197 ms: **6 %**. El derrame no era el cuello; el trabajo es CPU.
+- **No es un índice faltante.** `posiciones` no tiene índice por `id_empresa`, que es por donde
+  filtra la función — pero **una empresa tiene 207.415 filas de 207.618**. Un índice sobre una
+  columna con un 99,9 % de un solo valor no evita leer nada.
+
+El costo real son **207 k filas × haversine (6 llamadas trigonométricas por fila) × 4 pasadas de
+window function**, en una función que recomputa todo en cada carga de pantalla.
+
+### 🔴 Y esto empeora sin que nadie toque el código
+
+Es la regla 50 otra vez. Hoy la tabla tiene **10 días** de datos (12/08–22/08), pero la retención es
+de **45**. A ~20.000 puntos por día, cuando se llene:
+
+**45 días ≈ 900.000 filas ≈ 23 segundos.** Ahí **también falla el horizonte de 7 días**, no sólo el de
+mes. Y cada mejora de densidad del GPS acelera la cuenta.
+
+### El arreglo, y por qué NO se hizo acá
+
+Lo correcto es **precomputar**: una tabla de resumen diario (`metricas_dia`) que llene un cron una vez
+por día, y que el Dashboard lea 93 filas en vez de recalcular 200.000. Es lo que convierte 7 segundos
+en milisegundos y lo que hace que deje de crecer.
+
+Eso es una migración + un cron + cambiar el hook, con su propia verificación (los números nuevos
+tienen que dar **idénticos** a los de hoy sobre los mismos días — regla 49). **No entra apurado en un
+release de otra cosa.**
+
+Parches que NO recomiendo, y por qué:
+- Subir `statement_timeout` de la función a 30 s: esconde el problema y deja un Dashboard que tarda
+  7 segundos en abrir, hasta que a los 45 días tarde 23.
+- Cambiar el haversine por una aproximación barata: cambia los kilómetros que la app viene
+  informando. Eso es cambiar una decisión, no optimizar (regla 50-bis).
+
+**Mientras tanto**: los horizontes de **día y semana funcionan** (0,55 s y 4,3 s). El que falla es
+"mes".
 
 ---
 

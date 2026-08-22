@@ -4,6 +4,7 @@ import { useCatalog } from '../../context/CatalogContext'
 import Overlay from '../../components/Overlay'
 import { inputStyle } from '../../components/form'
 import { btnPrimario } from '../../lib/botones'
+import { Basura, Editar } from '../../components/icons'
 
 /**
  * Gestor de categorías del catálogo (agregar / renombrar / quitar). Las categorías se guardan
@@ -86,10 +87,10 @@ export default function GestionarCategorias({ onClose, onToast }) {
                     <span style={sx('flex:1;font-size:13.5px;font-weight:500')}>{c.nombre}</span>
                     <span style={sx('font-size:10.5px;color:var(--faint);font-family:var(--font-mono)')}>{n}</span>
                     <button onClick={() => { setEditId(c.id); setEditVal(c.nombre) }} title="Renombrar" style={sx('width:32px;height:32px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--deep);cursor:pointer')}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                      <Editar size={14} />
                     </button>
                     <button onClick={() => setConfirmDel(c.id)} title="Quitar" style={sx('width:32px;height:32px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--danger);cursor:pointer')}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+                      <Basura size={14} />
                     </button>
                   </>
                 )}

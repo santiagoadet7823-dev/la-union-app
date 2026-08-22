@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext'
 import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
 import { usePedidos, itemsDePedido, vendedoresDe } from './usePedidos'
+import { exportarPedidosTsv } from './exportarPedidos'
+import { Bajar } from '../../components/icons'
 
 /**
  * REVISAR LOS PEDIDOS. Pantalla de gestión (encargado / admin / superadmin).
@@ -51,6 +53,7 @@ export default function PedidosView({ onToast }) {
   const [detalle, setDetalle] = useState(null)   // { pedido, lineas } — el pedido abierto
   const [ticket, setTicket] = useState(null)     // { pedido, lineas } — el comprobante
   const [cargandoDetalle, setCargandoDetalle] = useState(false)
+  const [exportando, setExportando] = useState(false)
 
   const dias = RANGOS.find((r) => r.key === rango)?.dias ?? 6
   // `useMemo` sobre el rango: sin él, cada render arma dos Date nuevas, cambian las dependencias
@@ -64,6 +67,31 @@ export default function PedidosView({ onToast }) {
   const vivos = pedidos.filter((p) => p.estado !== 'Anulado')
   const totalVendido = vivos.reduce((a, p) => a + Number(p.monto_total || 0), 0)
   const anulados = pedidos.length - vivos.length
+
+  /**
+   * Bajar el archivo para facturar en el sistema del cliente. Ver `exportarPedidos.js`: el formato
+   * es PROVISORIO hasta que llegue una muestra del export real.
+   *
+   * Se exporta lo que está EN PANTALLA — mismo rango, misma persona, mismo filtro de anulados — y
+   * no "los de hoy" por su cuenta: si el botón bajara algo distinto de lo que la lista muestra, no
+   * habría forma de revisar antes de facturar, que es justo para lo que sirve esta pantalla.
+   *
+   * Los anulados se sacan SIEMPRE, aunque estén visibles: un pedido anulado no se factura, y
+   * mandarlo al otro sistema es exactamente el error que la anulación viene a evitar.
+   */
+  async function exportar() {
+    const paraExportar = pedidos.filter((p) => p.estado !== 'Anulado')
+    if (!paraExportar.length) { onToast?.('No hay pedidos para exportar en este rango.'); return }
+    setExportando(true)
+    try {
+      const r = await exportarPedidosTsv(paraExportar, { nombre: `pedidos-${RANGOS.find((x) => x.key === rango)?.label.toLowerCase().replace(' ', '')}` })
+      onToast?.(`${r.pedidos} pedidos · ${r.filas} renglones` + (r.sinLineas ? ` · ⚠ ${r.sinLineas} sin líneas` : ''))
+    } catch (e) {
+      onToast?.('No se pudo exportar: ' + (e?.message || 'sin conexión'))
+    } finally {
+      setExportando(false)
+    }
+  }
 
   async function abrir(pedido) {
     setCargandoDetalle(true)
@@ -109,6 +137,24 @@ export default function PedidosView({ onToast }) {
           <input type="checkbox" checked={verAnulados} onChange={(e) => setVerAnulados(e.target.checked)} />
           Ver anulados
         </label>
+
+        {/* Para facturar en el sistema del cliente. Va con los filtros y no arriba del todo porque
+            lo que baja es EXACTAMENTE lo que la lista muestra. */}
+        <button
+          onClick={exportar}
+          disabled={exportando || cargando}
+          className="lu-press"
+          style={{
+            ...sx('margin-left:auto;display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
+            border: '1px solid var(--line2)',
+            background: 'var(--surface)',
+            color: 'var(--muted)',
+            opacity: exportando || cargando ? 0.5 : 1,
+          }}
+        >
+          <Bajar size={14} />
+          {exportando ? 'Armando…' : 'Exportar para facturar'}
+        </button>
       </div>
 
       {/* ── Resumen ─────────────────────────────────────────────────────────────────────── */}

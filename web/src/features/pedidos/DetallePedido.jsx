@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
+import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
+import { asignarRepartidor } from '../repartidor/useEntregas'
 import { anularPedido, borrarPedido } from './anularPedido'
 
 /**
@@ -29,6 +31,12 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
   const [motivo, setMotivo] = useState('')
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
   const [trabajando, setTrabajando] = useState(false)
+  // Sólo los repartidores del equipo. El hook ya trae vendedor/repartidor/encargado activos y con
+  // el scope de empresa puesto, así que acá alcanza con quedarse con el rol que corresponde.
+  // Devuelve el array directo, no un objeto: ojo al destructurar.
+  const equipo = usePerfilesEquipo()
+  const repartidores = (equipo || []).filter((u) => u.rol === 'repartidor')
+  const [asignando, setAsignando] = useState(false)
 
   const pedido = detalle?.pedido || null
   const lineas = detalle?.lineas || []
@@ -55,6 +63,28 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
     } catch (e) {
       onToast?.('No se pudo anular: ' + (e?.message || 'sin conexión'))
     } finally { setTrabajando(false) }
+  }
+
+  /**
+   * Le pone (o le saca) el repartidor al pedido. **Es el eslabón que faltaba en toda la app**: la
+   * columna `id_repartidor` existe desde el día uno y no había una sola línea que la escribiera, así
+   * que `RepartidorView` no podía tener nunca nada que mostrar.
+   *
+   * No hace falta migración: verificado contra la base viva, para un `admin` `ids_a_mi_cargo()` es
+   * su empresa entera, así que el `USING` y el `WITH CHECK` de `pedidos_upd` se cumplen por
+   * `id_vendedor` antes y después del cambio. Un `encargado` sólo puede asignar los pedidos de su
+   * propia gente, que es exactamente lo que corresponde.
+   */
+  async function alAsignar(idRepartidor) {
+    setAsignando(true)
+    try {
+      await asignarRepartidor(pedido, idRepartidor)
+      const quien = repartidores.find((r) => r.id === idRepartidor)?.nombre
+      onToast?.(idRepartidor ? `Asignado a ${quien || 'el repartidor'}` : 'Sin repartidor asignado')
+      onRecargar?.()
+    } catch (e) {
+      onToast?.('No se pudo asignar: ' + (e?.message || 'sin conexión'))
+    } finally { setAsignando(false) }
   }
 
   async function alBorrar() {
@@ -174,6 +204,35 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                 : ' · sin distancia de referencia'}
             </div>
           </div>
+
+          {/* ── Reparto ───────────────────────────────────────────────────────────────────────
+              No aparece en un pedido anulado: no se reparte lo que no se factura. */}
+          {!anulado && (
+            <div style={sx('margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
+              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:7px')}>Reparto</div>
+              {repartidores.length === 0 ? (
+                // Un selector vacío es peor que ningún selector: promete algo y no se puede usar.
+                <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.5')}>
+                  No hay ningún repartidor activo en el equipo. Se dan de alta desde <b>Usuarios</b>.
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={pedido.id_repartidor || ''}
+                    disabled={asignando}
+                    onChange={(e) => alAsignar(e.target.value || null)}
+                    style={sx('width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px')}
+                  >
+                    <option value="">Sin asignar</option>
+                    {repartidores.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                  </select>
+                  <div style={sx('margin-top:6px;font-size:11px;color:var(--faint);line-height:1.45')}>
+                    Le aparece en su hoja de entregas del día y entra en su recorrido óptimo.
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {lineas.map((l) => (
             <div key={l.id} style={sx('display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)')}>

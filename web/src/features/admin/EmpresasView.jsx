@@ -5,6 +5,7 @@ import { invalidarTrackCache } from '../../services/tracking'
 import { useDevice } from '../../context/DeviceContext'
 import { CabeceraTabla } from './ui'
 import CategoriasRastreo from './CategoriasRastreo'
+import { Bell } from '../../components/icons'
 
 /**
  * Gestión de empresas (solo superadmin). Alta de distribuidoras (tenants) y
@@ -256,7 +257,7 @@ export default function EmpresasView({ onToast }) {
           verlo desde la PC: una web no recibe notificaciones push).
         </div>
         <div style={sx('font-size:12px;color:var(--muted);margin:-10px 0 14px;display:flex;gap:6px;align-items:flex-start')}>
-          <span aria-hidden="true">🔔</span>
+          <span style={{ flex: 'none', marginTop: 1 }}><Bell size={14} /></span>
           <span>
             Un mismo problema avisa <strong>una sola vez</strong>, y una segunda cuando se resuelve.
             La persona del aviso nunca lo recibe.

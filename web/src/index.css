@@ -351,11 +351,19 @@ body {
    número ni tocar el className de 20 elementos. `> * + *` no toca al primer hijo, que es
    exactamente lo que hace `gap`.
 
-   ⚠️ ALCANCE: esto rige SOLO donde se declara `--gx`/`--gy`, o sea hoy la vidriera. No se aplicó
-   dentro de `sx()` a propósito: convertir `gap` en márgenes en TODA la app cambiaría anchos
-   totales en decenas de pantallas que hoy andan bien, y ninguna de ellas corre en Chrome 79.
-   ⚠️ Con `flex-wrap:wrap` el primer elemento de la segunda fila también recibe el margen. Los dos
-   casos que envuelven son filas de precios con dos elementos, que no llegan a envolver. */
+   ⚠️ ALCANCE: esto rige SOLO donde se declara `--gx`/`--gy`. No se aplicó dentro de `sx()` a
+   propósito: convertir `gap` en márgenes en TODA la app cambiaría anchos totales en decenas de
+   pantallas que hoy andan bien y que no corren en Chrome 79.
+   🩸 **Pero la lista de las que SÍ corren ahí era incompleta** (20/08/2026). Decía "solo la
+   vidriera", y la tablet arranca en `LoginView`: es la pantalla donde está el botón "Soy una
+   tablet · escanear código". O sea que el logo, los botones de Google y de email y el pie con ese
+   mismo botón se venían viendo con todo pegado, en la primera pantalla que ve la tablet. Ya está
+   convertida. La superficie completa de la tablet es **`LoginView` → `ParearTablet` →
+   `VidrieraTablet`**; `ParearTablet` se revisó y no usa `gap`.
+   ⚠️ `> * + *` NO alcanza a un NODO DE TEXTO suelto. Un `<button><svg/>Texto</button>` queda sin
+   separación aunque declare `--gx`: el texto va envuelto en un `<span>` (ver los 4 botones de
+   `LoginView`). Con `gap` esto no pasaba, porque el texto suelto sí es un ítem flex.
+   ⚠️ Con `flex-wrap:wrap` el primer elemento de la segunda fila también recibe el margen. */
 [style*="--gx"] > * + * { margin-left: var(--gx); }
 [style*="--gy"] > * + * { margin-top: var(--gy); }
 

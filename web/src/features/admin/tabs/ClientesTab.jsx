@@ -6,6 +6,7 @@ import { useAuth } from '../../../context/AuthContext'
 import ImportarClientes from '../ImportarClientes'
 import FichaCliente from './FichaCliente'
 import { panel, label10, cliGrid, miniLbl, EmptyState } from '../ui'
+import { Check, Mas, Search } from '../../../components/icons'
 
 /**
  * Pestaña "Clientes": cartera real (tabla en PC / tarjetas en teléfono). La ficha
@@ -94,7 +95,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   ) : (
     <button onClick={async () => { const { ok, error } = await updateCliente(c.id, { activo: true }); onToast(ok ? `${c.name} confirmado` : 'Error: ' + (error?.message || '')) }}
       className="lu-press" style={sx('display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border:1px solid var(--warning);border-radius:var(--r-pill);background:var(--warning-tint);color:var(--warning);font-size:10.5px;font-weight:700;cursor:pointer')}>
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>Confirmar
+      <Check size={11} w={3} />Confirmar
     </button>
   ))
 
@@ -112,7 +113,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         background: marcada ? 'var(--primary)' : 'transparent',
         color: 'var(--on-primary)',
       }}>
-      {marcada && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
+      {marcada && <Check size={12} w={3.5} />}
     </span>
   )
 
@@ -153,7 +154,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 21h14" /></svg>Importar planilla
             </button>
             <button onClick={onNuevoCliente} className="lu-press" style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:var(--r-md);padding:9px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Nuevo cliente
+              <Mas size={13} w={2.5} />Nuevo cliente
             </button>
           </div>
         </div>
@@ -163,7 +164,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         {/* Buscador. El contenedor marca el foco con :focus-within — el input no lleva borde
             propio, así el campo se lee como una sola pieza. */}
         <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:42px;margin-bottom:12px')}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" style={{ flex: 'none' }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
+          <Search size={15} style={{ flex: 'none' }} />
           <input
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}

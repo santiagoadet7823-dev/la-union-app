@@ -8,6 +8,7 @@ import { uid } from '../../lib/uid'
 import Overlay from '../../components/Overlay'
 import { Field, inputStyle } from '../../components/form'
 import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
+import { ImagenVacia } from '../../components/icons'
 
 /**
  * Alta / edición de producto (modal). Lo usa el admin/encargado para cargar y mantener
@@ -145,7 +146,7 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
             {preview ? (
               <img src={preview} alt="" style={sx('width:100%;height:100%;object-fit:cover')} />
             ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+              <ImagenVacia size={24} />
             )}
           </div>
           <div style={sx('display:flex;flex-direction:column;gap:6px')}>

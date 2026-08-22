@@ -26,6 +26,8 @@ import BurbujasEquipo from './components/BurbujasEquipo'
 import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
+import ThemeToggle from '../../components/ThemeToggle'
+import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
 import { APP_VERSION } from '../../version'
 
 /**
@@ -63,7 +65,7 @@ const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).j
 const SIDEBAR_W = 232
 
 export default function SupervisionDesktop({ role = 'admin', vista = null, onIrAJornada = null }) {
-  const { theme, isDark, toggleTheme } = useTheme()
+  const { theme, isDark } = useTheme()
   const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
   const { isMobile, setMode } = useDevice()
   const { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn } = useEquipoEnVivo()
@@ -362,7 +364,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         <nav style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 10px' }}>
           <SideGroup label="Monitoreo">
             <SideItem active={view === 'mapa'} label="Monitoreo en vivo" onClick={() => irA('mapa')}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg>
+              <Mapa size={18} />
             </SideItem>
             <SideItem active={view === 'dash'} label="Dashboard" onClick={() => irA('dash')}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" rx="1" /><rect x="12.5" y="8" width="3" height="10" rx="1" /><rect x="18" y="5" width="3" height="13" rx="1" /></svg>
@@ -384,7 +386,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         {/* Pie: cambiar a vista celular (útil en la PWA de escritorio). */}
         <div style={{ flex: 'none', padding: 10, borderTop: '1px solid var(--line)' }}>
           <div onClick={() => setMode('mobile')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5" /><path d="M11 18h2" /></svg>
+            <Smartphone size={17} />
             Cambiar a vista Celular
           </div>
         </div>
@@ -406,7 +408,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           {/* Hamburguesa (solo mobile) */}
           {isMobile && (
             <button onClick={() => setDrawerOpen(true)} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 38, height: 38, border: '1px solid var(--line)', borderRadius: 10, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+              <Menu size={18} />
             </button>
           )}
 
@@ -443,28 +445,25 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   <div style={{ padding: 6 }}>
                     {onIrAJornada && (
                       <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
-                        <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z" /><path d="M9 7v13M15 4v13" /></svg></div>
+                        <div style={acctIconBox}><Mapa size={15} /></div>
                         <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
-                        <Chevron />
+                        <ChevronRight />
                       </div>
                     )}
                     <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
-                      <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></svg></div>
+                      <div style={acctIconBox}><Profile size={15} /></div>
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
-                      <Chevron />
+                      <ChevronRight />
                     </div>
                   </div>
                   <div style={{ height: 1, background: 'var(--line)' }} />
                   <div style={{ padding: '13px 15px' }}>
                     <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 9 }}>Apariencia</div>
-                    <div style={{ display: 'flex', gap: 6, background: 'var(--surface2)', border: '1px solid var(--line)', borderRadius: 12, padding: 4 }}>
-                      <div onClick={() => { if (!isDark) toggleTheme() }} style={themeBtn(isDark)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>Oscuro</div>
-                      <div onClick={() => { if (isDark) toggleTheme() }} style={themeBtn(!isDark)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>Claro</div>
-                    </div>
+                    <ThemeToggle />
                   </div>
                   <div style={{ height: 1, background: 'var(--line)' }} />
                   <div onClick={() => signOut()} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', cursor: 'pointer', color: 'var(--danger)' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></svg>
+                    <LogOut size={16} />
                     <span style={{ fontSize: 13.5, fontWeight: 600 }}>Cerrar sesión</span>
                   </div>
                 </div>
@@ -503,7 +502,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
               {/* Banner GPS apagado (mismo patrón que el panel). */}
               {gpsOffArr.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, fontWeight: 600 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></svg>
+                  <Alerta size={16} style={{ flex: 'none' }} />
                   Alerta GPS: {gpsOffArr.map((u) => `${u.nombre} (${u.rol})`).join(', ')} {gpsOffArr.length > 1 ? 'tienen' : 'tiene'} el GPS DESACTIVADO.
                 </div>
               )}
@@ -527,7 +526,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     <SelectorEmpresa />
                     {/* Selector de fecha */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : '#fff' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" /></svg>
+                      <Calendario size={14} style={{ flex: 'none' }} />
                       <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
                       {!esHoy && <span onClick={() => cambiarFecha(hoyStr())} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
                     </div>
@@ -538,14 +537,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {trails.length > 0 && (
                       <PistaBoton texto="Paradas" lado="abajo">
                       <div onClick={() => setDwellOn((v) => !v)} title="Muestra un cartel donde la persona estuvo detenida más de 3 minutos, con el tiempo y la batería del equipo." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: dwellOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${dwellOn ? 'transparent' : 'var(--line)'}`, color: dwellOn ? '#fff' : 'var(--muted)' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
+                        <Reloj size={15} />
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Paradas</span>
                       </div>
                       </PistaBoton>
                     )}
                     {/* Toggle "Clientes" (capa de comercios geolocalizados) */}
                     <div onClick={() => setShowClientes((v) => !v)} title="Muestra los clientes geolocalizados de la cartera como puntos en el mapa." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: showClientes ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${showClientes ? 'transparent' : 'var(--line)'}`, color: showClientes ? '#fff' : 'var(--muted)' }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+                      <Pin size={15} />
                       <span style={{ fontSize: 12, fontWeight: 600 }}>Clientes{showClientes && clientMarkers.length ? ` · ${clientMarkers.length}` : ''}</span>
                     </div>
                     {/* Centrar y SEGUIR la última posición. Es el segundo zoom: tocar una burbuja
@@ -576,7 +575,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     />
                     {/* Sync */}
                     <div onClick={doSync} title="Actualizar ubicaciones" style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
-                      <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></svg></div>
+                      <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><Refrescar size={17} /></div>
                     </div>
                     {/* Pantalla completa */}
                     <BtnInmersivo activo={false} onToggle={() => { setInmersivo(true); setAcctOpen(false); setDrawerOpen(false) }} style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--line)', boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none', color: 'var(--muted)' }} />
@@ -587,7 +586,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       MUDO (no se distinguía de "no hay datos"). Ahora se ve y se puede reintentar. */}
                   {recorridosError && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 14px 12px', background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, fontWeight: 600 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+                      <AlertaCirculo size={16} style={{ flex: 'none' }} />
                       <span style={{ flex: 1 }}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {recorridosError.message || 'Error de red o sesión.'}</span>
                       <button onClick={doSync} style={{ flex: 'none', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
                     </div>
@@ -716,7 +715,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', top: 74, right: 22, zIndex: 'var(--z-toast)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: '11px 15px', display: 'flex', alignItems: 'center', gap: 9, animation: 'lu-rise .2s ease' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <Check size={16} color="var(--success)" />
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
       )}
@@ -779,14 +778,6 @@ const label10 = { fontSize: 10.5, fontWeight: 600, letterSpacing: '.07em', textT
 const acctItem = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', borderRadius: 11, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box', color: 'var(--text)' }
 const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', display: 'grid', placeItems: 'center' }
 
-function Chevron() {
-  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-}
-
-function themeBtn(active) {
-  return { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 38, borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, background: active ? 'var(--surface)' : 'transparent', color: active ? 'var(--text)' : 'var(--muted)', boxShadow: active ? 'var(--shadow)' : 'none' }
-}
-
 // Grupo del sidebar (título + ítems).
 function SideGroup({ label, children }) {
   return (
@@ -818,17 +809,3 @@ function Chip({ on, dim, color, dotRadius, count, label, onClick }) {
   )
 }
 
-// Íconos de las acciones de gestión (idénticos a los del menú "+" de la vista móvil).
-function GestIcon({ k }) {
-  const inner = {
-    reportes: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5" /><path d="M9 17v-3M12 17v-5M15 17v-2" /></>,
-    clientes: <><circle cx="12" cy="8" r="3.2" /><path d="M5 21c0-3.5 3.1-6 7-6s7 2.5 7 6" /></>,
-    zonas: <><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
-    catalogo: <path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />,
-    faltante: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
-    invitar: <><circle cx="9" cy="8" r="3.2" /><path d="M4 21c0-3.4 2.4-5.5 5-5.5s5 2.1 5 5.5" /><path d="M18 8v6M15 11h6" /></>,
-    usuarios: <><circle cx="9" cy="8" r="3" /><path d="M2.5 21c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><path d="M17 7.7a3 3 0 0 1 0 5.6" /></>,
-    empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
-  }[k]
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{inner}</svg>
-}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos, kgFmt } from '../../../lib/format'
 import { panel, label10, fieldLabel, asignGrid } from '../ui'
+import { Check } from '../../../components/icons'
 
 // Demo estático de órdenes (andamiaje del ruteo — el eje pedidos aún no está cableado).
 const ORDENES = [
@@ -95,7 +96,7 @@ export default function RuteoTab({ onToast }) {
           const on = !!selOrders[i]
           return (
             <div key={o[0]} onClick={() => setSelOrders((v) => ({ ...v, [i]: !v[i] }))} style={{ ...asignGrid, ...sx('padding:10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer'), background: on ? 'var(--primary-tint)' : 'transparent' }}>
-              <span style={sx('display:flex')}><span style={{ ...sx('width:18px;height:18px;border-radius:6px;display:grid;place-items:center'), border: `1.5px solid ${on ? 'var(--primary)' : 'var(--line2)'}`, background: on ? 'var(--primary)' : 'transparent' }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={on ? 'var(--on-primary)' : 'transparent'} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span></span>
+              <span style={sx('display:flex')}><span style={{ ...sx('width:18px;height:18px;border-radius:6px;display:grid;place-items:center'), border: `1.5px solid ${on ? 'var(--primary)' : 'var(--line2)'}`, background: on ? 'var(--primary)' : 'transparent' }}><Check size={11} w={3.2} color={on ? 'var(--on-primary)' : 'transparent'} /></span></span>
               <span style={sx('font-family:var(--font-mono);font-size:11.5px;color:var(--deep);font-weight:600')}>{o[0]}</span>
               <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{o[1]}</span>
               <span style={sx('color:var(--muted)')}>{o[2]}</span>

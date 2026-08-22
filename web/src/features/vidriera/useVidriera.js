@@ -145,8 +145,14 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
 
   /**
    * 🩸 CAMBIAR DE CLIENTE NO CORTA EL ENLACE (18/08/2026): se republica el catálogo con el comercio
-   * nuevo y la tablet cambia el encabezado sola. `republicar` ya existía en el servicio y no tenía
-   * quién lo llamara — este es el caso para el que se escribió.
+   * nuevo. `republicar` ya existía en el servicio y no tenía quién lo llamara — este es el caso para
+   * el que se escribió.
+   *
+   * 🩸 **Y acá decía "y la tablet cambia el encabezado sola", que era FALSO** (22/08/2026, reporte
+   * del cliente: "queda el primero que se dio check-in"). Este efecto siempre corrió bien; lo que
+   * fallaba estaba dos capas abajo, en `ServidorLocal.publicarCatalogo`, que reemplaza la variable y
+   * **nada más** — sin encolar evento ni despertar el long-poll. Desde 1.21.0 `republicar()` emite
+   * además un evento `catalogo`. Ver el 🩸 de `services/vidriera.js`.
    *
    * Se saltea la primera vuelta: `abrirVidriera` ya publicó con el comercio de ese momento.
    */
