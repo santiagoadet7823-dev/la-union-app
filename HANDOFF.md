@@ -281,38 +281,60 @@ Salió por los tres canales, en este orden: `db/47` → Edge Function → OTA �
 **Valores anteriores, por si hay que volver:** `bundle_version`/`latest_version` `1.20.0`,
 `min_version` `1.18.0`, `bundle_url` → `ota-1.20.0/bundle.zip`, `apk_url` → `apk-1.18.0/app-release.apk`.
 
-### 🔴 Y la línea de base dice algo que NO esperaba: el auto-update del APK no está funcionando
+### La línea de base del parque, y una conclusión que hubo que corregir
 
-`min_version` estaba en **1.18.0 desde el 18/08**. Cuatro días después, al publicar 1.21.0, el estado
-de `estado_dispositivo` era:
+⚠️ **Primero se escribió acá que "el auto-update del APK no funciona". Era FALSO**, y salió de
+mirar a los rezagados sin mirar al resto. El dato completo:
 
-| | Bundle (OTA) | APK |
+| APK | Equipos | Bundle que corren |
 |---|---|---|
-| 10 de 13 equipos | `1.20.0` — al día | — |
-| **Gabriel tevez** | `1.20.0`, latido de **hoy 13:48** | **`1.13.0`** ← el problema |
-| Eduardo ruiz | `1.14.0`, sin latido desde el 20/08 | `1.13.0` |
-| Alejandro mercado | `1.15.1`, sin latido desde el 18/08 | `1.13.0` |
-| Santiago prueba 1 | `1.14.5`, sin latido desde el 14/08 | `1.13.0` |
+| **1.18.0** | **9** | `1.20.0` los nueve — al día |
+| `1.13.0` | 4 | `1.20.0` (Gabriel) · `1.15.1` · `1.14.5` · `1.14.0` |
 
-**La OTA funciona** (10 de 13 al día). **El APK no.** Gabriel estuvo activo hoy, corre el bundle más
-nuevo — o sea que bajó y aplicó una OTA — y sin embargo sigue **cuatro días** por debajo de un
-`min_version` que debería haberlo hecho reinstalar. Su equipo ve el cartel y no pasa nada.
+**El auto-update del APK SÍ funciona: 9 de 13 equipos pasaron solos de ≤1.13.0 a 1.18.0** cuando se
+subió `min_version` el 18/08. Eso es justamente lo que se esperaba que hiciera.
 
-Las tres explicaciones posibles, ninguna verificada todavía:
-1. Falta el permiso de **"instalar apps desconocidas"**, así que el instalador de Android nunca
-   completa (`apkStartUpdate` devuelve `needsPermission` y abre Ajustes; si nadie los toca, ahí queda).
-2. El equipo **no es su propio instalador de registro** (`adb install -r -i`), así que la instalación
-   silenciosa no aplica y hace falta un toque humano que nadie da — exactamente el problema de la
-   regla 48, pero para el APK en vez de para la OTA.
-3. La descarga falla y el freno de 6 h (`APK_REINTENTO_MS`) esconde el reintento.
+De los 4 que quedaron en `1.13.0`, **tres no están corriendo la app**: sus bundles quedaron en 1.14.0,
+1.14.5 y 1.15.1, o sea que **tampoco toman OTAs**, y sus latidos son del 14, 18 y 20/08. No hay un
+mecanismo roto ahí — hay teléfonos apagados o sin usar. No se puede actualizar lo que no arranca.
 
-**Consecuencia práctica para 1.21.0**: subir `min_version` a 1.21.0 **probablemente no entregue el
-APK solo**. Lo que sí va a llegar es la OTA. Y eso significa que **la tablet tampoco se va a
-actualizar sola con solo ponerla en un WiFi** — el mecanismo existe y está bien cableado, pero en la
-calle no está cerrando.
+### 🔴 Queda UNA anomalía real: Gabriel tevez
 
-👉 **Lo primero a mirar mañana**: por qué Gabriel sigue en 1.13.0. Es un caso reproducible, con un
-equipo activo, y contesta a la vez la pregunta de la tablet.
+| | Gabriel | Los 9 que sí actualizaron |
+|---|---|---|
+| Bundle (OTA) | `1.20.0` — **el más nuevo** | `1.20.0` |
+| APK | **`1.13.0`** | `1.18.0` |
+| Equipo | SM-A075M | 4 de ellos, el MISMO SM-A075M |
+| `notif_permiso` | `granted` | `granted` |
+| `bateria_exenta` | `true` | `true` |
+| `instalado_ts` | 07/08 16:01 | 07/08, misma tanda |
+| Latido | **22/08 13:48** (activo hoy) | idem |
+
+O sea: **baja y aplica OTAs, pero no el APK**, con el mismo modelo, los mismos permisos y la misma
+fecha de instalación que cuatro compañeros que sí se actualizaron. En la telemetría es
+**indistinguible** de ellos.
+
+### 🚩 Y por eso no se puede saber más: el camino del APK NO TIENE TELEMETRÍA
+
+`estado_dispositivo` tiene `bundle_aplicado`, `bundle_encolado` y `ota_error` — los tres se
+agregaron en 1.20.0 (`db/46`) justamente porque, con 1.19.0, "falló la descarga", "está bajada
+esperando" y "ni lo intentó" se veían **idénticos desde el servidor**.
+
+**Para el APK esa ceguera sigue intacta.** No hay `apk_error`, ni `apk_intento_ts`, ni nada. Las tres
+explicaciones posibles del caso de Gabriel — falta el permiso de "instalar apps desconocidas", el
+equipo no es su propio instalador de registro (`adb install -r -i`), o la descarga falla y el freno
+de 6 h (`APK_REINTENTO_MS`) esconde el reintento — **se ven todas igual: nada**.
+
+👉 **Lo que corresponde**: darle al camino del APK la misma telemetría que se le dio a la OTA en
+1.20.0. Es la misma lección de 1.19.0, una capa más abajo. Con eso, el caso de Gabriel se contesta
+solo en el próximo intento en vez de requerir tener el teléfono en la mano.
+
+### Lo que esto significa para la tablet
+
+Que el mecanismo **funciona en general** (9 de 9 equipos activos), así que conectar la tablet a un
+WiFi con internet es una vía razonable y vale la pena probarla antes de sacar el cable. Pero el caso
+de Gabriel dice que **puede no cerrar y que no habría forma de enterarse desde acá**. Si se prueba
+con la tablet, hay que confirmar el resultado **mirando la tablet**, no el servidor.
 
 ---
 
