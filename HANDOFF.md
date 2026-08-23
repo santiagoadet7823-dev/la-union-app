@@ -264,6 +264,58 @@ de agrupar por *qué hace falta desplegar*:
 
 ---
 
+## 🟢 RELEASE 1.21.0 — publicado el 22/08/2026 21:13 (hora Salta)
+
+Salió por los tres canales, en este orden: `db/47` → Edge Function → OTA → PWA → push.
+
+| Paso | Resultado |
+|---|---|
+| `db/47` (`alertas_upd` jerarquizada) | ✅ aplicada y verificada: `alertas_sel` y `alertas_upd` nombran las dos a `ids_a_mi_cargo()` |
+| Edge Function `alertas-equipo` v4 | ✅ invocada a mano: **200**, `enviados 12 · fallidos 0 · errores []` |
+| OTA `ota-1.21.0/bundle.zip` | ✅ 1.315.521 bytes. **Bajado y abierto** para comprobar (lección de 1.19.0): `index.html` en la raíz, y los cambios presentes en el chunk moderno **y** en el legacy — `1.21.0`, `3e5` (los 5 min del reposo), `tab-separated-values`, `Ordenar por recorrido`, `no cambies el WiFi` |
+| APK `apk-1.21.0/app-release.apk` | ✅ 22.462.721 bytes, `versionCode 37`, base `./`, firmado |
+| `app_config` | ✅ `bundle_version`/`latest_version`/`min_version` = 1.21.0, las dos URLs devuelven 200 |
+| PWA (GitHub Pages) | ✅ workflow `completed success` |
+| `push-actualizacion` | ✅ **200**, `{"version":"1.21.0","enviados":13,"fallidos":0,"errores":[]}` |
+
+**Valores anteriores, por si hay que volver:** `bundle_version`/`latest_version` `1.20.0`,
+`min_version` `1.18.0`, `bundle_url` → `ota-1.20.0/bundle.zip`, `apk_url` → `apk-1.18.0/app-release.apk`.
+
+### 🔴 Y la línea de base dice algo que NO esperaba: el auto-update del APK no está funcionando
+
+`min_version` estaba en **1.18.0 desde el 18/08**. Cuatro días después, al publicar 1.21.0, el estado
+de `estado_dispositivo` era:
+
+| | Bundle (OTA) | APK |
+|---|---|---|
+| 10 de 13 equipos | `1.20.0` — al día | — |
+| **Gabriel tevez** | `1.20.0`, latido de **hoy 13:48** | **`1.13.0`** ← el problema |
+| Eduardo ruiz | `1.14.0`, sin latido desde el 20/08 | `1.13.0` |
+| Alejandro mercado | `1.15.1`, sin latido desde el 18/08 | `1.13.0` |
+| Santiago prueba 1 | `1.14.5`, sin latido desde el 14/08 | `1.13.0` |
+
+**La OTA funciona** (10 de 13 al día). **El APK no.** Gabriel estuvo activo hoy, corre el bundle más
+nuevo — o sea que bajó y aplicó una OTA — y sin embargo sigue **cuatro días** por debajo de un
+`min_version` que debería haberlo hecho reinstalar. Su equipo ve el cartel y no pasa nada.
+
+Las tres explicaciones posibles, ninguna verificada todavía:
+1. Falta el permiso de **"instalar apps desconocidas"**, así que el instalador de Android nunca
+   completa (`apkStartUpdate` devuelve `needsPermission` y abre Ajustes; si nadie los toca, ahí queda).
+2. El equipo **no es su propio instalador de registro** (`adb install -r -i`), así que la instalación
+   silenciosa no aplica y hace falta un toque humano que nadie da — exactamente el problema de la
+   regla 48, pero para el APK en vez de para la OTA.
+3. La descarga falla y el freno de 6 h (`APK_REINTENTO_MS`) esconde el reintento.
+
+**Consecuencia práctica para 1.21.0**: subir `min_version` a 1.21.0 **probablemente no entregue el
+APK solo**. Lo que sí va a llegar es la OTA. Y eso significa que **la tablet tampoco se va a
+actualizar sola con solo ponerla en un WiFi** — el mecanismo existe y está bien cableado, pero en la
+calle no está cerrando.
+
+👉 **Lo primero a mirar mañana**: por qué Gabriel sigue en 1.13.0. Es un caso reproducible, con un
+equipo activo, y contesta a la vez la pregunta de la tablet.
+
+---
+
 ## 🔴 El Dashboard se cae por timeout, y empeora solo (medido el 22/08/2026)
 
 **Síntoma:** el Dashboard tira **HTTP 500 / `57014 canceling statement due to statement timeout`** al
