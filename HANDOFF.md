@@ -14,9 +14,13 @@
 > Reparto del parque al 28/08 (`estado_dispositivo`): **7 equipos en 1.21.0** con latido de hoy ·
 > 3 en 1.20.0 sin reportar desde el 22/08 · 5 filas viejas o sin latido. Publicar no es entregar.
 >
-> 🔴 **Si sos una sesión nueva HOY: empezá por el 🟢 RELEASE 1.22.0 y el 🔵 hueco de Luis Mendoza**,
-> los dos justo abajo de §1; el detalle de qué entró está en la 🟠 del 28/08 (tarde) y la 🔵 del
-> 27-28. **Ya no queda trabajo sin publicar de esas dos sesiones.**
+> 🔴 **Si sos una sesión nueva: empezá por las cuatro secciones que están justo abajo de §1**, en
+> este orden — 🔑 tokens y el paquete del cliente · 🟢 release 1.22.0 · 🔵 el hueco de Luis Mendoza ·
+> 🟠 qué entró en 1.22.0. **No queda trabajo sin publicar.**
+>
+> **Lo que está esperando NO es técnico:** el envío automático de precios está listo de punta a punta
+> y el token ya está emitido, pero no puede arrancar hasta que el cliente conteste cuatro preguntas
+> (§ 🔑, al final). La primera se lleva puestas 355 fotos.
 >
 > Complementarios: [CLAUDE.md](CLAUDE.md) (reglas operativas — leerlo entero antes de tocar código) ·
 > [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) (arquitectura y deuda técnica) ·
@@ -39,6 +43,114 @@ cobra por abono P2P — **no hay pasarela de pago en la app**; la palanca es `em
 ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta).
 
 Todo en español: código, comentarios, UI y commits.
+
+---
+
+## 🔑 TOKENS DE INGESTA Y EL PAQUETE DEL CLIENTE — cerrado el 29/08/2026
+
+### El token de precios está EMITIDO y el círculo quedó cerrado
+
+| | |
+|---|---|
+| Estado | **1 token de precios activo**, a nombre de `Supermercado La unión` (rol `marketing`), empresa LA UNIÓN |
+| Emitido por | El usuario, con el SQL de [GUIA_TOKENS_INGESTA.md](GUIA_TOKENS_INGESTA.md) §3.2. **El valor no pasó por Claude** |
+| Endpoint | `ingest-precios` **v2** — desde ahora deja de rechazar todo con 401 |
+
+**Todo lo operativo de tokens vive en [GUIA_TOKENS_INGESTA.md](GUIA_TOKENS_INGESTA.md)** (documento
+interno, no va al cliente): emitir, revocar, rotar, sumar una empresa y las consultas de auditoría.
+Lo que sigue son las tres respuestas que hay que tener a mano.
+
+### 1. ⏳ El token NO VENCE
+
+Verificado sobre la base: `ingesta_tokens` es `token · id_usuario · id_empresa · creado · revocado ·
+proposito`. **No hay columna de expiración.** Vale hasta que alguien lo revoque a mano.
+
+Es deliberado: un vencimiento automático haría que el envío del ERP muera un martes a las 6 AM sin que
+nadie tocara nada, y el síntoma sería un catálogo congelado que nadie mira. Un `401` sorpresa en el
+servidor del cliente es peor que una llave larga. La contrapartida es que la seguridad depende de que
+la llave se cuide, no de que caduque: por eso `scripts/cliente/token.txt` está en el `.gitignore`
+—este repo es público— y el valor se entrega por canal privado.
+
+⚠️ **Revocar NO borra la fila** (queda con `revocado = true`, sirve para auditar). Si el valor se
+filtró de verdad, hay que **borrar la fila**, no sólo revocarla.
+
+### 2. 🩸 La trampa del `on conflict`, que ya mordió una vez
+
+El único es `(id_usuario, proposito)`: **una cuenta tiene UN token de precios**. Llamar
+`mi_token_ingesta('precios')` dos veces con el mismo usuario hace `do update set revocado = false` y
+**devuelve el MISMO valor**, no uno nuevo.
+
+Pasó el 29/08: el token efímero de la prueba de punta a punta quedó atado al superadmin, y regenerar
+con esa cuenta habría devuelto un valor que ya había pasado por la sesión de Claude. Se borró la fila
+y se emitió limpio a nombre de marketing. **Por eso el SQL de la guía fuerza `token =
+gen_random_uuid()`**: para que "generar" signifique generar.
+
+⚠️ **Y `mi_token_ingesta()` NO se puede llamar desde el SQL editor de Supabase**: resuelve la
+identidad con `auth.uid()`, que corriendo como `postgres` viene NULL y tira `sin empresa`. El camino
+real de hoy es el `insert … on conflict` de la guía. **No hay pantalla que la llame** — el teléfono
+sólo usa la variante sin argumentos, para el token de GPS.
+
+### 3. 🟢 UNA SEGUNDA EMPRESA YA SE PUEDE — el bloqueante murió en `db/48`
+
+Estaba anotado como el impedimento para el segundo cliente. **Verificado sobre la base viva el
+29/08**, ya no existe:
+
+```
+productos_codigo_norm_uidx  ON productos (id_empresa, codigo_norm)   ← por EMPRESA
+clientes_codigo_norm_uidx   ON clientes  (id_empresa, codigo_norm)   ← por EMPRESA
+```
+
+Antes el único de `codigo` era **global** y dos distribuidoras no podían compartir un código. Ahora sí.
+
+Sumar una empresa al envío automático **no toca código ni despliega nada**: fila en `empresas` →
+usuario con rol de catálogo → emitir el token → mandarle el mismo paquete. **La URL del endpoint es
+idéntica para todos**; lo único que cambia es el token, y `id_empresa` sale de ahí y nunca del
+archivo.
+
+⚠️ **Pero `empresas.activo` sigue sin gatear nada.** Desactivar una empresa **NO apaga su token**: si
+un cliente deja de pagar, hay que revocárselo a mano. Hoy `Prueba SaaS` está en `activo = false` y eso
+no significa nada técnicamente.
+
+### El paquete que se le manda al cliente
+
+Se arma en `../DisT-At - lista de precios (para el cliente).zip` — **8 archivos, 40 KB, sin el
+token adentro** (verificado). Numerados por orden de lectura, y el `0 - LEEME PRIMERO` explica qué es
+cada uno en castellano llano, para alguien que no programa.
+
+🩸 **Es un paquete de WINDOWS, y eso ahora es explícito.** El servidor del cliente es Windows, así que
+la guía dejó de ser "Windows o Linux": son seis pasos numerados, con dónde está PowerShell, cómo se
+abre el Programador de tareas y qué tildar en cada pestaña. **`enviar-precios.sh` salió del paquete**
+(sigue en `scripts/cliente/` por si algún día aparece un servidor Linux).
+
+**La sección que más valor tiene es 🔌 "Si el servidor se apaga o se reinicia"**, porque es la
+pregunta que iban a hacer igual. Arranca por la buena noticia —las tareas programadas sobreviven al
+apagado y casi siempre no hay que hacer nada—, después una comprobación de dos minutos, y después los
+cuatro motivos por los que podría no volver solo:
+
+| | Caso | Cómo se reconoce |
+|---|---|---|
+| A | La corrida se perdió y no se recuperó | Falta la tilde de *"ejecutar lo antes posible si se pasó por alto"* |
+| B | La tarea quedó deshabilitada | Estado dice "Deshabilitado" |
+| C | **Cambió la contraseña de la cuenta que corre la tarea** | El que no se ve venir. Se delata porque **el registro del script ni siquiera se escribe**: nunca llegó a arrancar |
+| D | El archivo del export no está | O el ERP no arrancó, o es una unidad de red no montada — **la tarea corre SIN sesión iniciada**, así que las unidades con letra no existen: va la ruta UNC |
+
+Y dos trampas de Windows que muerden en producción y quedaron escritas: **"Iniciar en" dice opcional y
+no lo es** (sin él la tarea no encuentra el `token.txt`), y **una tarea programada no hereda las
+variables de entorno del usuario** — por eso el token va en un archivo y no en una variable.
+
+### 🔴 Lo que sigue bloqueado, y no es técnico
+
+El envío automático **no puede arrancar** hasta que el cliente conteste. Está todo en
+[PARA_EL_CLIENTE_LISTA_PRECIOS.md](PARA_EL_CLIENTE_LISTA_PRECIOS.md) §1:
+
+1. 🔴 **¿La lista a nivel unidad conserva los códigos?** — de esto dependen **355 fotos**.
+2. ¿Pueden mandar la descripción completa, o los 20 caracteres son un límite del sistema?
+3. La tabla de los 20 rubros.
+4. ¿UTF-8 o Windows-1252?
+5. ¿A qué hora termina el export? (para agendar el envío después)
+
+Y el orden no se puede saltear: **la primera carga va A MANO**. El pasaje a unidades reemplaza el
+catálogo entero y el freno del 20 % lo va a rechazar con un 409 **a propósito**.
 
 ---
 

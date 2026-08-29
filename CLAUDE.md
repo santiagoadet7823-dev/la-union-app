@@ -23,6 +23,11 @@ Documentos complementarios:
   esencial vs. archivable.
 - [DOCUMENTACION_FUNCIONAL.md](DOCUMENTACION_FUNCIONAL.md) — qué hace cada función y de qué rol es.
   **Empezar por acá** para saber qué está vivo, qué es demo y qué es código muerto.
+- [GUIA_TOKENS_INGESTA.md](GUIA_TOKENS_INGESTA.md) — **INTERNO.** Las llaves que dejan que un sistema
+  externo escriba: emitir, revocar, rotar, y **cómo sumar una segunda empresa** (el único global que lo
+  bloqueaba murió en `db/48`). 🔴 Dos cosas que hay que saber antes de tocar un token: **no vencen
+  nunca**, y el único es `(id_usuario, proposito)`, así que regenerar con la misma cuenta devuelve
+  **el mismo valor** salvo que se fuerce `gen_random_uuid()`.
 - [PLAN_SAAS.md](PLAN_SAAS.md) — migración planificada a `corporaciones → empresas`.
 - [PLAN_BACKEND_DEDICADO.md](PLAN_BACKEND_DEDICADO.md) — propuesta: backend Supabase self-hosted
   dedicado para un cliente (viabilidad, guía de puesta en marcha, qué replicar) + diseño de un
