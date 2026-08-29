@@ -1,22 +1,22 @@
 # HANDOFF — DisT-At
 
-> **Actualizado el 28/08/2026 · `APP_VERSION 1.21.0` · APK 1.21.0 · `app_config` en `1.21.0`
-> (bundle + latest + `min_version`), publicado el 23/08.** Escrito para retomar el proyecto **en otra
+> **Actualizado el 29/08/2026 · `APP_VERSION 1.22.0` · APK **1.21.0** (sin cambios nativos) ·
+> `app_config`: bundle+latest en `1.22.0`, `min_version` en `1.21.0`. Publicado el 29/08.** Escrito para retomar el proyecto **en otra
 > máquina y en una sesión nueva, sin memoria previa.** Si estás leyendo esto en la PC nueva:
 > empezá por §2.
 >
-> ⚠️ **1.21.0 YA ESTÁ PUBLICADO** — verificado contra `app_config` el 28/08. `CLAUDE.md §6` y la
-> versión anterior de este encabezado decían "⏳ sin publicar" y estaban **desactualizados**: es la
-> cuarta vez que esa tabla miente sobre la versión. **El trabajo del 27-28/08 sale como `1.22.0`.**
+> ✅ **1.22.0 PUBLICADO el 29/08** (OTA + PWA + `app_config` + Edge Function; **sin APK**, no hubo
+> cambios nativos). Se llevó todo lo que estaba pendiente: el arreglo de la cola de escritura, las
+> escalas de precio, Destacados, el envío multi-horario y el refresco del catálogo.
+> ⏳ **Falta sólo el push de aviso**, que lleva la `service_role` key y tiene que correrlo una
+> persona. La OTA se aplica sola igual (regla 48): el push acelera, no habilita.
 >
 > Reparto del parque al 28/08 (`estado_dispositivo`): **7 equipos en 1.21.0** con latido de hoy ·
 > 3 en 1.20.0 sin reportar desde el 22/08 · 5 filas viejas o sin latido. Publicar no es entregar.
 >
-> 🔴 **Si sos una sesión nueva HOY: leé primero la sección 🟠 del 28/08 (tarde) y después la 🔵 del
-> 27-28**, las dos justo abajo de §1. Hay trabajo grande **implementado y verificado pero SIN
-> PUBLICAR**, una cola de escritura que estuvo taponada dos días en producción, y **`db/51` ya
-> aplicada en la base viva** (la base va adelante del bundle: es aditiva, así que el 1.21.0 que
-> corre en la calle no se entera).
+> 🔴 **Si sos una sesión nueva HOY: empezá por el 🟢 RELEASE 1.22.0 y el 🔵 hueco de Luis Mendoza**,
+> los dos justo abajo de §1; el detalle de qué entró está en la 🟠 del 28/08 (tarde) y la 🔵 del
+> 27-28. **Ya no queda trabajo sin publicar de esas dos sesiones.**
 >
 > Complementarios: [CLAUDE.md](CLAUDE.md) (reglas operativas — leerlo entero antes de tocar código) ·
 > [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) (arquitectura y deuda técnica) ·
@@ -39,6 +39,134 @@ cobra por abono P2P — **no hay pasarela de pago en la app**; la palanca es `em
 ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta).
 
 Todo en español: código, comentarios, UI y commits.
+
+---
+
+## 🟢 RELEASE 1.22.0 — publicado el 29/08/2026 (madrugada, hora Salta)
+
+Salió por los canales que correspondían, en este orden: `db/51` → `db/52` → OTA → PWA → `app_config`
+→ Edge Function. **Sin APK: no cambió una línea de código nativo**, es todo JS + SQL.
+
+| Paso | Resultado |
+|---|---|
+| `db/51` (`destacado` + `importar_precios`) | ✅ aplicada. `proacl` **idéntico** antes y después |
+| `db/52` (`sello_precios()`) | ✅ aplicada. `authenticated=X` sí, `anon` no |
+| OTA `ota-1.22.0/bundle.zip` | ✅ 1.327.808 bytes. **Bajado y abierto**: `index.html` en la raíz, y `1.22.0`, `Destacados`, `destacado`, `sello_precios`, `PRECIO POR CANTIDAD`, `Precios actualizados` y `cuarentena` presentes en los **53 chunks modernos Y los 51 legacy** |
+| PWA (GitHub Pages) | ✅ workflow `completed success`; verificado sobre el sitio en vivo: sirve `1.22.0` |
+| `app_config` | ✅ `bundle_version`/`latest_version` = 1.22.0, `bundle_url` → ota-1.22.0. Las dos URLs devuelven 200 |
+| Edge Function `ingest-precios` | ✅ **v2**, con `destacado`, `falta-encabezado` y `p_pisar_descripcion`. Cierra el pendiente **N4** |
+| `push-actualizacion` | ⏳ **NO enviado** — ver abajo |
+
+### 🔴 `min_version` NO se subió, y es a propósito
+
+Quedó en **1.21.0**. `apkCheck()` ofrece el APK mientras `instalada < min_version`, y `apk_url`
+apunta a `apk-1.21.0`: subir `min_version` a 1.22.0 dejaría a cada teléfono **bajando 21,7 MB de un
+APK que ya tiene**, en loop, porque la condición no se levantaría nunca. Es exactamente el gasto que
+el freno de `APK_REINTENTO_MS` existe para acotar. Cuando haya un APK 1.22.0 de verdad, ahí se sube.
+
+**Valores anteriores, por si hay que volver:** `bundle_version`/`latest_version` `1.21.0`,
+`bundle_url` → `ota-1.21.0/bundle.zip`.
+
+### ⏳ Lo único que quedó sin hacer del release: el push de aviso
+
+Lleva la `service_role` key y **no está en Vault** (`vault.decrypted_secrets` vacío), así que lo
+tiene que correr una persona. El SQL está en `CLAUDE.md §3`; el `timeout_milliseconds := 60000` no
+es opcional.
+
+⚠️ **No es el mecanismo, es el aviso** (regla 48): desde 1.12.1 la OTA se descarga y se aplica sola
+en el próximo arranque en frío. El push acelera, no habilita.
+
+### Cómo se cerró la verificación, y qué NO se pudo verificar
+
+**Verificado en pantalla, con sesión real** (el usuario logueó; Claude no escribe credenciales):
+- El switch **Destacado** de la ficha escribió a la base por la write queue.
+- `EstadoCatalogo`: pasó de *"La lista de precios nunca se importó"* (ámbar) a **"Precios
+  actualizados hace 1 min · 3 filas · planilla"** al insertar una fila real.
+- El **sello** (`sello_precios`) devolvió el timestamp correcto con la sesión del usuario.
+
+**Verificado con render aislado** (`createRoot` en un módulo efímero, la técnica de la regla 51 —
+el `GpsGate` no deja entrar a la vista de vendedor sin GPS real):
+- Chips: `["◆ Destacados","Todos","★ Ofertas","Almacén","Bebidas","Otros"]` — **Destacados primero**.
+- El `+` de una tarjeta **NO** abre la ficha (el `stopPropagation`); la tarjeta sí.
+- La escalera en vivo: a 6 unidades el precio pasa de $5.700 a **$5.400** y el total a **$32.400**.
+- Con vidriera viva, tocar manda a la tablet **y** abre la ficha, con el toast.
+- `AvisoVidriera` corregido, leído del DOM: `6 × $5.700 ~~tachado~~ $5.400 = $32.400`.
+
+**Verificado de punta a punta contra el endpoint real** (token efímero, revocado al terminar):
+sin encabezado → `400 falta-encabezado`; `destacado=si` → alta con `true`; **reenvío SIN la columna →
+el precio se actualiza a 1999 y el destacado sigue en `true`**; token inválido → 401. Producto de
+prueba, bitácora y token limpiados (529 productos, 0 restos, 0 destacados).
+
+🔴 **LO QUE NO SE PUDO VERIFICAR: el botón ATRÁS nativo.** El emulador **no bootea en esta máquina**
+—queda en `offline` con WHPX operativo, se confirmó otra vez— así que sigue vigente lo que ya estaba
+anotado: no gastar tiempo ahí sin hardware nuevo.
+Lo que sí se comprobó, en el navegador y contra el módulo real: al montar la ficha, la pila de
+`services/atras.js` pasa de **0 a 1**, o sea que hay un handler registrado y el atrás **no cae en el
+`minimizeApp()`** de la pila vacía (regla 27). Falta la mitad nativa —que Capacitor dispare ese
+handler—, que es genérica y la comparte con todos los overlays de la app.
+
+---
+
+## 🔵 EL HUECO DE LUIS MENDOZA DEL 27/08 — no era un hueco
+
+**Reporte:** *"entre las 13:30 y las 18:30 hay un hueco grande de no tener ubicaciones"*.
+
+**No falta un solo dato.** Luis subió **1.671 puntos** ese día, **601 de ellos dentro de esa
+ventana** —uno cada ~30 s— y su hueco más largo de todo el día fue de **24,5 minutos** (16:14 →
+16:39). Reportó todas las horas: 13h=103 · 14h=142 · 15h=146 · 16h=82 · 17h=137 · 18h=192.
+
+**Lo que pasó es que no se movió.** Distancia media al comercio **LJ CRISTIAN SANCHEZ (código 793,
+Las Lajitas)**, media hora por media hora:
+
+| Bloque | Puntos | Metros recorridos | Distancia media al 793 |
+|---|---|---|---|
+| 13:00 | 72 | 1.315 | 596 m ← llegando |
+| **13:30** | 31 | 478 | **3 m** |
+| **14:00** | 80 | 370 | **9 m** |
+| **14:30** | 62 | 102 | **5 m** |
+| 15:00 | 88 | 1.555 | 154 m ← una vuelta |
+| 15:30 | 58 | 590 | 176 m |
+| **16:00** | 30 | 79 | **9 m** |
+| **16:30** | 52 | 19 | **3 m** |
+| **17:00** | 75 | 290 | **6 m** |
+| **17:30** | 62 | 40 | **3 m** |
+| **18:00** | 63 | 29 | **2 m** |
+| 18:30 | 129 | 4.753 | 442 m ← se fue |
+
+En cinco horas recorrió **~3,5 km, y 2,1 de esos son la única vuelta de 15:00-15:30**. El resto del
+tiempo estuvo a menos de 10 metros del mismo punto.
+
+**Por eso el mapa se ve vacío: el mapa dibuja movimiento, y no hubo.** Se suma que en esa ventana su
+precisión se degradó (p50 **25,8 m** contra 8,8 m el resto del día), así que **el 31,8 % de esos
+puntos supera el techo de 30 m** y se dibuja punteado en vez de línea llena.
+
+**Y no hizo un solo check-in ese día.** En los últimos 20 días registró **4 visitas en total** (3 el
+10/08 y 1 el 13/08), así que la app no tiene forma de decir si estaba trabajando ahí adentro.
+
+### 🩸 Lo que apareció de paso, y es un problema de verdad: los avisos MIENTEN
+
+Luis tiene **15 avisos `sin_reportar` en 3 días** (26, 27 y 28/08), uno de ellos de **454 minutos**,
+mientras sube 1.671 puntos por día con un hueco máximo de 24,5 min. El aviso está mal.
+
+**Cuatro hipótesis medidas y DESCARTADAS** — no repetirlas:
+
+1. **El filtro de precisión de `vigilancia_equipo`** (`accuracy <= 30`). Refutada: el hueco máximo
+   contando **sólo** los fixes confiables es **24,6 min**, prácticamente idéntico a los 24,5 de
+   contar todos. No es eso.
+2. **Empresa cruzada** entre `posiciones` y `perfiles`. Refutada: las dos dicen
+   `645aa685-…`.
+3. **El latido JS congelado** (patrón A2). Su `estado_dispositivo` está clavado en **26/08 13:12**
+   con `fix_total: 8`, así que el WebView sí está muerto — pero `vigilancia_equipo` lee `posiciones`,
+   no el latido.
+4. **Subida tardía en lote** (los puntos existen hoy pero no existían cuando corrió el cron).
+   Refutada: `posiciones` es insert-only, así que el orden físico (`ctid`) ≈ orden de inserción, y
+   el desfase entre orden de captura y orden de inserción va de **−45 a +58 posiciones** — minutos,
+   no horas. Los puntos de las 13 se insertaron antes que los de las 18.
+
+**Queda abierto.** Lo que hay que hacer es correr `vigilancia_equipo()` **durante la jornada** (no de
+madrugada, cuando `en_ventana` es false para todos) y comparar su `ultimo_ts` contra
+`max(posiciones.ts)` en vivo. Si divergen, el problema está adentro de la RPC; si coinciden, está en
+el cron o en el antirrebote del índice.
 
 ---
 
