@@ -280,12 +280,12 @@ falla por red, se puede reintentar sin riesgo.
 
 ## 4-bis. Cuándo se envía
 
-**No hace falta que nadie toque nada: lo agenda el servidor de ustedes, VARIAS VECES POR DÍA.** Es
-una tarea programada de Windows (o un `cron` en Linux) que corre el export y hace el POST.
+**No hace falta que nadie toque nada: lo agenda el servidor de ustedes, VARIAS VECES POR DÍA.** Son
+tres **tareas programadas de Windows** que ejecutan el script de envío.
 
-**Ya les pasamos los scripts hechos** — Windows, Linux y un ejemplo en Java para llamarlo desde
-adentro del sistema de gestión. Están en `GUIA_ENVIO_AUTOMATICO_PRECIOS.md`, que trae el paso a paso
-para agendarlos.
+**Ya les pasamos los scripts hechos**, en **PowerShell** (que viene instalado en Windows, no hay que
+instalar nada) más un ejemplo en Java para llamarlo desde adentro del sistema de gestión. El paso a
+paso está en la guía de instalación.
 
 ### 🔴 Por qué son varios horarios y no uno solo
 

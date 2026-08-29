@@ -59,11 +59,10 @@ una hora fija (está explicado en la guía, §5).
 | Archivo | Qué es |
 |---|---|
 | **`ESPECIFICACION_LISTA_PRECIOS.md`** | Las columnas, los escalones de descuento, el endpoint y los códigos de respuesta. Es el documento para quien programe el export |
-| **`GUIA_ENVIO_AUTOMATICO_PRECIOS.md`** | El paso a paso para dejarlo andando solo: Programador de tareas de Windows campo por campo, `cron` para Linux, y qué hacer con cada error |
+| **`GUIA_ENVIO_AUTOMATICO_PRECIOS.md`** | El paso a paso para dejarlo andando solo **en Windows**: el Programador de tareas campo por campo, qué hacer con cada error, y qué hacer si el servidor se apaga o se reinicia |
 | **`plantilla-lista-precios.xlsx`** | La planilla con las 22 columnas y una hoja INSTRUCTIVO. Sirve para la carga manual y como referencia del formato |
-| **`enviar-precios.ps1`** + **`.bat`** | Windows. Hace el envío, guarda un registro diario y reintenta si falla la red |
-| **`enviar-precios.sh`** | Linux / macOS, para `cron` |
-| **`EnviarPrecios.java`** | Por si prefieren llamarlo desde adentro del sistema de gestión en vez de agendar una tarea aparte |
+| **`enviar-precios.ps1`** + **`.bat`** | Los dos programitas que hacen el envío, escritos en **PowerShell** (viene con Windows, no hay que instalar nada). Guardan un registro diario y reintentan si falla la red |
+| **`EnviarPrecios.java`** | Opcional: por si prefieren llamarlo desde adentro del sistema de gestión en vez de agendar una tarea aparte |
 
 **El token va aparte, por canal privado.** Identifica a la distribuidora: quien lo tenga puede
 escribir el catálogo. No va dentro del archivo, no va en un correo junto con esto, y no va a ningún
@@ -96,7 +95,7 @@ endpoint sin que nadie mire — de hecho **nuestro freno de seguridad lo va a re
 
 **Tres envíos por día, lunes a sábado: 06:00, 11:00 y 16:00.**
 
-Son tres tareas programadas con el mismo script, cambiando sólo la hora. Los horarios son una
+Son tres tareas programadas de Windows con el mismo script, cambiando sólo la hora. Los horarios son una
 sugerencia: si les queda mejor 12:30 y 17:00, se cambia el número y listo.
 
 **Por qué tres y no uno.** Ustedes corrigen precios a media mañana y a la tarde. Con un solo envío a

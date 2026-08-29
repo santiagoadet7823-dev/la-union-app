@@ -1,9 +1,12 @@
 # LÉAME PRIMERO — qué es cada archivo de esta carpeta
 
-Además de este, la carpeta tiene **8 archivos**. Parecen muchos, pero cada uno es para una persona
+Además de este, la carpeta tiene **7 archivos**. Parecen muchos, pero cada uno es para una persona
 distinta y en un momento distinto. **Nadie tiene que leerlos todos.**
 
 Están numerados por orden: el **1** es el que abre, y de ahí en adelante cada uno tiene su momento.
+
+> **Todo esto está preparado para Windows.** Los programitas que hacen el envío están escritos en
+> **PowerShell**, que ya viene instalado en Windows: no hay que descargar ni instalar nada.
 
 Este documento explica **qué es cada uno y quién lo necesita**, sin dar nada por sabido.
 
@@ -21,9 +24,9 @@ Funciona así, y son tres piezas:
 **1. Su sistema genera un archivo.** El mismo tipo de archivo que ya exporta hoy: una lista de
 productos con sus precios, en texto.
 
-**2. Un "programita" lo manda por internet.** Ese programita es uno de los archivos de esta carpeta.
-Nosotros ya lo escribimos: ustedes sólo tienen que decirle dónde está su archivo y a qué hora
-mandarlo.
+**2. Un "programita" de Windows lo manda por internet.** Ese programita es uno de los archivos de
+esta carpeta y está escrito en PowerShell. Nosotros ya lo escribimos: ustedes sólo tienen que
+decirle dónde está su archivo y a qué hora mandarlo.
 
 **3. Nuestro sistema lo recibe y actualiza el catálogo.** Y los celulares de los vendedores buscan
 la lista nueva solos, sin que nadie cierre y abra nada.
@@ -37,7 +40,7 @@ la lista nueva solos, sin que nadie cierre y abra nada.
 
 ---
 
-## Los 8 archivos, y quién lee cada uno
+## Los 7 archivos, y quién lee cada uno
 
 | # | Archivo | ¿Quién lo lee? |
 |---|---|---|
@@ -47,8 +50,7 @@ la lista nueva solos, sin que nadie cierre y abra nada.
 | 4 | `4 - plantilla-lista-precios.xlsx` | Quien **carga precios a mano**, y como modelo del formato |
 | 5 | `scripts/enviar-precios.ps1` | Nadie lo lee. Se copia y funciona |
 | 6 | `scripts/enviar-precios.bat` | **El único que hay que editar**, y es una línea |
-| 7 | `scripts/enviar-precios.sh` | Sólo si el servidor es Linux |
-| 8 | `scripts/EnviarPrecios.java` | Opcional, para su programador |
+| 7 | `scripts/EnviarPrecios.java` | Opcional, para su programador |
 
 ---
 
@@ -96,7 +98,8 @@ cuatro que es técnico.
 # 3. `3 - Guia de instalacion (servidor).md`
 
 ### Qué es
-El **instructivo de instalación**. Explica cómo dejar el envío funcionando solo.
+El **instructivo de instalación paso a paso, para Windows**. Explica cómo dejar el envío funcionando
+solo. Son seis pasos y se hacen una sola vez.
 
 ### Qué tiene adentro
 - Dónde copiar los archivos y dónde guardar la llave (el token).
@@ -107,6 +110,11 @@ El **instructivo de instalación**. Explica cómo dejar el envío funcionando so
   hora.
 - **Qué hacer con cada error**, en una tabla: si el sistema contesta tal cosa, significa esto y se
   arregla así.
+- 🔌 **Qué hacer si el servidor se apaga o se reinicia.** Un corte de luz, una actualización de
+  Windows, alguien que apagó la máquina un viernes. La buena noticia es que las tareas programadas
+  sobreviven al apagado y casi siempre no hay que hacer nada; el documento trae igual una
+  comprobación de dos minutos y los cuatro motivos posibles por los que podría no volver solo, con
+  la solución de cada uno.
 - Cómo darse cuenta, dentro de tres meses, de que **sigue funcionando**. Esta parte se suele saltear
   y es la que importa: un envío automático que deja de correr **no avisa**.
 
@@ -139,6 +147,9 @@ Quien administre el servidor donde corre el sistema de gestión.
 
 Un **script** es una lista de instrucciones escritas en un archivo de texto, que la computadora lee
 y ejecuta sola, siempre igual. Es como una receta: no piensa, hace exactamente lo que dice.
+
+Este está escrito en **PowerShell**, que es el lenguaje que trae Windows para automatizar tareas.
+Viene instalado de fábrica: **no hay que descargar ni instalar nada.**
 
 **Ustedes no tienen que entenderlo ni modificarlo.** Se copia a una carpeta y funciona.
 
@@ -176,9 +187,12 @@ el catálogo sin que nadie se entere hasta que un vendedor abre la app frente a 
 El **botón de arranque**. Es un archivo de dos líneas cuyo único trabajo es llamar al anterior.
 
 ### ¿Por qué existe, si ya está el otro?
-Porque el programador de tareas de Windows no puede llamar directamente al archivo `.ps1`: hay que
-invocarlo de una forma particular, y escribir eso a mano en la configuración de la tarea es la forma
-más fácil de equivocarse. Acá queda escrito bien, una sola vez.
+Porque el Programador de tareas de Windows no puede llamar directamente a un archivo de PowerShell:
+hay que invocarlo de una forma particular, y escribir eso a mano en la configuración de la tarea es
+la forma más fácil de equivocarse. Acá queda escrito bien, una sola vez.
+
+De paso, resuelve solo la protección de Windows que bloquea la ejecución de scripts, **sin que haya
+que desactivarla en el servidor**.
 
 ### Lo único que hay que editar de toda la carpeta
 
@@ -193,20 +207,7 @@ Donde dice `C:\ERP\export\lista-precios.txt` va la ruta real. Nada más.
 
 ---
 
-# 7. `scripts/enviar-precios.sh`
-
-### Qué es
-**Exactamente lo mismo que el punto 5, pero para servidores Linux.**
-
-### Cuándo se usa
-Sólo si el servidor donde corre el sistema de gestión es Linux. **Si es Windows, se ignora este
-archivo por completo.**
-
-Su administrador va a saber cuál de los dos corresponde con sólo mirarlo.
-
----
-
-# 8. `scripts/EnviarPrecios.java`
+# 7. `scripts/EnviarPrecios.java`
 
 ### Qué es
 Una **alternativa opcional**, y en realidad es la mejor de las dos.
