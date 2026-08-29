@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { isNative } from './platform'
 import { idsEnEspejo } from './data/espejoFotos'
+import { escaleraDe, precioPara } from '../lib/precios'
 
 /**
  * VIDRIERA — el enlace local entre el celular del vendedor y la tablet del cliente.
@@ -91,6 +92,10 @@ export function snapshotCatalogo(productos, comercio, enEspejo) {
     fotosTotal: conFoto.length,
     // Lista explícita campo por campo. NO se hace `{...p, nivel: undefined}`: un spread arrastra
     // cualquier columna que alguien agregue en el futuro, y la próxima podría ser el costo.
+    // 🔴 `destacado` (db/51) NO VA, y no es un olvido: significa "esto no rota / hay que
+    // liquidarlo". Es una decisión comercial de la distribuidora sobre su propio stock, y esta
+    // pantalla la mira el COMERCIANTE. Del lado del cliente el destacado se ve porque el vendedor
+    // se lo abre, no porque la tablet lo etiquete.
     productos: vivos.map((p) => ({
       id: p.id,
       nombre: p.name || '',
@@ -102,6 +107,12 @@ export function snapshotCatalogo(productos, comercio, enEspejo) {
       unidades: p.unidades != null ? Number(p.unidades) : null,
       kg: Number(p.kg) || 0,
       unidadVenta: p.unidadVenta || null,
+      // Los descuentos por cantidad (db/48). SÍ cruzan la frontera, y a propósito: son precios de
+      // VENTA, o sea exactamente lo que el comerciante va a pagar. Lo que sigue sin viajar es
+      // `nivel` (la rentabilidad), que es de dónde sale nuestro margen.
+      // Va enumerado a mano como todo el resto — ver el 🔴 de arriba: nada de spread.
+      // Una tablet con un APK viejo recibe este campo y lo ignora; el precio plano se sigue viendo.
+      escalas: escaleraDe(p),
       // 🩸 `foto` DICE LO QUE EL TELÉFONO TIENE, no lo que Storage tiene (18/08/2026). Acá decía
       // `!!p.imagen` —la URL— y el servidor local sirve desde la carpeta `espejo/`, que se llena
       // recién cuando alguien aprieta "Preparar catálogo". Con el espejo a medias la tablet pedía
@@ -186,8 +197,21 @@ export async function emitirCarrito(cart, productos) {
     .map(([id, n]) => {
       const p = (productos || []).find((x) => String(x.id) === String(id))
       if (!p) return null
-      const unit = p.oferta && p.precioOferta != null ? Number(p.precioOferta) : Number(p.price) || 0
-      return { id: p.id, nombre: p.name || '', cantidad: n, unitario: unit, subtotal: unit * n }
+      // 🩸 El precio ya no se decide acá (27/08/2026): era una de las once copias de la misma regla.
+      // Con escalones por cantidad, esta copia le habría mostrado al CLIENTE un total distinto del
+      // que el vendedor ve en su celular — las dos pantallas mirando el mismo pedido y discutiendo.
+      const r = precioPara(p, n)
+      return {
+        id: p.id,
+        nombre: p.name || '',
+        cantidad: n,
+        unitario: r.precio,
+        subtotal: r.precio * n,
+        // `base` y `ahorro` viajan RESUELTOS, igual que el resto: la tablet no sabe de dónde sale un
+        // precio y no tiene por qué saberlo. Es la misma frontera que el catálogo.
+        base: r.base,
+        ahorro: r.ahorroTotal,
+      }
     })
     .filter(Boolean)
   await emitir({
@@ -195,6 +219,7 @@ export async function emitirCarrito(cart, productos) {
     items,
     unidades: items.reduce((a, i) => a + i.cantidad, 0),
     total: items.reduce((a, i) => a + i.subtotal, 0),
+    ahorro: items.reduce((a, i) => a + i.ahorro, 0),
   })
 }
 

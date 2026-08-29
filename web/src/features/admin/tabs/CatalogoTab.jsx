@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos, hoyStr } from '../../../lib/format'
+import { COLUMNAS_ESCALA, escalasAColumnas, escaleraDe } from '../../../lib/precios'
 import { useAuth } from '../../../context/AuthContext'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useDevice } from '../../../context/DeviceContext'
@@ -8,6 +9,7 @@ import { panel, label10, EmptyState, FilaTabla, CabeceraTabla } from '../ui'
 import ImportarProductos from '../ImportarProductos'
 import ImportarFotos from '../ImportarFotos'
 import GestionarCategorias from '../../catalog/GestionarCategorias'
+import EstadoCatalogo from '../../catalog/EstadoCatalogo'
 import { descargarArchivo } from '../../../services/download'
 import { Bajar, Basura, Editar, ImagenVacia, Mas, Subir } from '../../../components/icons'
 
@@ -35,16 +37,31 @@ function Thumb({ src }) {
 
 function PrecioCelda({ p }) {
   const enOferta = p.oferta && p.precioOferta != null
+  // Los escalones se muestran ACÁ porque ésta es la pantalla desde la que marketing controla la
+  // lista: si el precio por volumen no se ve en la tabla, la única forma de auditarlo es abrir los
+  // 529 productos de a uno. Va como una línea chica y no como columna nueva — la tabla ya está
+  // apretada y esto se lee de un vistazo.
+  const escalas = escaleraDe(p)
   return (
     <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600')}>
-      {enOferta ? (
-        <span style={sx('display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.25')}>
-          <span style={sx('font-size:10px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.price)}</span>
-          <span style={sx('color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
-        </span>
-      ) : (
-        <span style={sx('color:var(--deep)')}>{fmtPesos(p.price)}</span>
-      )}
+      <span style={sx('display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.25')}>
+        {enOferta ? (
+          <>
+            <span style={sx('font-size:10px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.price)}</span>
+            <span style={sx('color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
+          </>
+        ) : (
+          <span style={sx('color:var(--deep)')}>{fmtPesos(p.price)}</span>
+        )}
+        {escalas.length > 0 && (
+          <span
+            title={escalas.map((e) => `Desde ${e.desde} u: ${fmtPesos(e.precio)} c/u`).join('\n')}
+            style={sx('font-size:9.5px;font-weight:500;color:var(--muted)')}
+          >
+            {escalas.map((e) => `${e.desde}+`).join(' · ')}
+          </span>
+        )}
+      </span>
     </span>
   )
 }
@@ -142,11 +159,21 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
         nivel: p.nivel != null ? p.nivel : '',
         oferta: p.oferta ? 'si' : 'no',
         precio_oferta: p.precioOferta != null ? p.precioOferta : '',
+        destacado: p.destacado ? 'si' : 'no',
+        // Los 5 pares `desde_N`/`precio_N`. Salen vacíos —no en 0— cuando el producto no usa ese
+        // tramo: un `0` en `desde_1` significa BORRAR la escala al reimportar (lib/precios.js), así
+        // que exportar ceros haría que bajar la planilla y volver a subirla borre los descuentos de
+        // todo el catálogo. Es la trampa del ida y vuelta.
+        ...escalasAColumnas(p.escalas),
       }))
       const ws = XLSX.utils.json_to_sheet(filas)
       // Un ancho por columna, en el mismo orden que `filas`. Si se agrega una columna arriba y acá
       // no, todas las siguientes quedan con el ancho de la anterior.
-      ws['!cols'] = [{ wch: 10 }, { wch: 44 }, { wch: 10 }, { wch: 8 }, { wch: 9 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 7 }, { wch: 7 }, { wch: 12 }]
+      ws['!cols'] = [
+        { wch: 10 }, { wch: 44 }, { wch: 10 }, { wch: 8 }, { wch: 9 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 },
+        // Los 10 de la escala: `desde_N` angosto, `precio_N` un poco más ancho.
+        ...COLUMNAS_ESCALA.flatMap(() => [{ wch: 9 }, { wch: 11 }]),
+      ]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Productos')
       const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
@@ -213,6 +240,9 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
       <div style={{ ...panel, minWidth: isMobile ? 0 : 760 }}>
+        {/* Va ARRIBA de la barra de acciones, no al pie: es lo que hay que ver ANTES de cargar algo.
+            Ver el encabezado del componente — los dos números que faltaban cuando la cola se tapó. */}
+        <EstadoCatalogo />
         <div style={sx('display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px')}>
           <div style={label10}>
             Catálogo · {visibles.length === productos.length ? `${productos.length} productos` : `${visibles.length} de ${productos.length}`}
@@ -292,6 +322,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
                       {p.marca && <span style={sx('margin-right:7px;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--surface2);border-radius:99px;padding:2px 7px;vertical-align:middle')}>{p.marca}</span>}
                       {p.name}
                       {p.oferta && <span style={sx('margin-left:7px;font-size:9.5px;font-weight:700;color:var(--warning);border:1px solid var(--warning);border-radius:99px;padding:1px 6px;vertical-align:middle')}>OFERTA</span>}
+                      {p.destacado && <span style={sx('margin-left:7px;font-size:9.5px;font-weight:700;color:var(--primary);border:1px solid var(--primary);border-radius:99px;padding:1px 6px;vertical-align:middle')}>DESTACADO</span>}
                     </span>
                   ), estilo: sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
                   { label: 'Categoría', contenido: p.cat, estilo: sx('color:var(--muted)') },

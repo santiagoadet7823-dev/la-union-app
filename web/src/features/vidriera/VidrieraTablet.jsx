@@ -167,6 +167,10 @@ const ESTILO_GRILLA = sx(`flex:1;overflow-y:auto;padding:${GRILLA_PAD}px;display
  */
 const Tarjeta = memo(function Tarjeta({ p, url, alto, acusado, cantidad, onTocar, onMover }) {
   const enOferta = p.oferta && p.precioOferta != null
+  // Se deriva DENTRO del componente y desde `p`, que es estable (sale del `useMemo` de `ordenados`).
+  // Pasarla como prop nueva rompería el `memo` de las 529 tarjetas, que es justo lo que se vino a
+  // arreglar el 18/08 — ver el encabezado de este componente.
+  const escalones = Array.isArray(p.escalas) ? p.escalas : []
   return (
           <div
             onClick={() => onTocar(p)}
@@ -240,6 +244,39 @@ const Tarjeta = memo(function Tarjeta({ p, url, alto, acusado, cantidad, onTocar
                   <span style={sx('font-size:16px;font-weight:700;color:var(--deep)')}>{fmtPesos(p.precio)}</span>
                 )}
               </div>
+              {/* 🩸 LA ESCALERA DE DESCUENTOS (27/08/2026). Es la razón de ser de la pantalla: el
+                  comerciante tiene que ver solo que llevando más le sale más barato, sin que nadie
+                  se lo cuente. Estática — no se recalcula al mover el stepper — porque son 529
+                  tarjetas en una tablet de 2 GB, y el tramo que aplica se resalta y nada más.
+
+                  Los tramos llegan YA RESUELTOS en el snapshot: la tablet no decide un precio.
+
+                  ⚠️ CHROME 79 (la tablet es de dic-2019): NADA de `gap` en flexbox — va `--gx`. Cada
+                  chip con `flex:none` (si no se encogen) y `white-space:nowrap` (si no se parte el
+                  texto, que es el bug de "Pedir 7"). Y nunca un nodo de texto suelto como hijo del
+                  contenedor: `> * + *` no lo alcanza. Ver index.css §"SEPARACIÓN EN FLEXBOX". */}
+              {escalones.length > 0 && (
+                <div
+                  className="lu-chips"
+                  style={{ ...sx('margin-top:6px;display:flex;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none'), '--gx': '6px' }}
+                >
+                  {escalones.map((e) => {
+                    const activo = cantidad >= e.desde
+                    return (
+                      <span
+                        key={e.desde}
+                        style={{
+                          ...sx('flex:none;white-space:nowrap;padding:2px 7px;border-radius:7px;font-size:11px;line-height:1.45'),
+                          background: activo ? 'var(--success-tint)' : 'var(--surface2)',
+                          color: activo ? 'var(--success)' : 'var(--muted)',
+                          fontWeight: activo ? 700 : 500,
+                        }}
+                      >{e.desde}+ {fmtPesos(e.precio)}</span>
+                    )
+                  })}
+                </div>
+              )}
+
               {(p.unidades != null || p.kg > 0) && (
                 <div style={sx('margin-top:3px;font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
                   {[p.unidades != null ? `×${p.unidades} u` : null, p.kg > 0 ? `${String(p.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
@@ -590,7 +627,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
         let ev = raw
         if (typeof raw === 'string') { try { ev = JSON.parse(raw) } catch (_) { continue } }
         if (!ev || typeof ev !== 'object') continue
-        if (ev.t === 'carrito') setPedido({ items: ev.items || [], unidades: ev.unidades || 0, total: ev.total || 0 })
+        if (ev.t === 'carrito') setPedido({ items: ev.items || [], unidades: ev.unidades || 0, total: ev.total || 0, ahorro: ev.ahorro || 0 })
         // "Cambió el catálogo": otro comercio, otro precio, un producto nuevo. Se vuelve a pedir
         // entero, igual que en `resync` — el snapshot es chico y partirlo en deltas sería un
         // segundo formato para el mismo dato.
@@ -815,6 +852,13 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
           <div style={sx('flex:none;text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
             <div style={sx('font-size:10.5px;color:var(--faint)')}>{pedido.unidades} u</div>
             <div style={sx('font-size:19px;font-weight:700;color:var(--deep)')}>{fmtPesos(pedido.total)}</div>
+            {/* 🩸 EL AHORRO, tercer renglón de esta columna (27/08/2026). Llega YA CALCULADO en el
+                evento `carrito`: la tablet no resuelve precios, igual que con el total. Un celular
+                con un bundle anterior no manda `ahorro` y acá simplemente no se dibuja — por eso el
+                guardado es `> 0` y no `!= null`. */}
+            {pedido.ahorro > 0 && (
+              <div style={sx('font-size:11.5px;font-weight:600;color:var(--success)')}>ahorra {fmtPesos(pedido.ahorro)}</div>
+            )}
           </div>
         </div>
       )}
@@ -917,6 +961,40 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
               {(ficha.unidades != null || ficha.kg > 0) && (
                 <div style={sx('margin-top:7px;font-size:13px;color:var(--faint);font-family:var(--font-mono)')}>
                   {[ficha.unidades != null ? `×${ficha.unidades} u` : null, ficha.kg > 0 ? `${String(ficha.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
+                </div>
+              )}
+
+              {/* La escalera en grande. Va ARRIBA del spacer `flex:1` de abajo: metida después, le
+                  empujaría la fila de acción fuera de la pantalla, que es exactamente el bug del
+                  botón "Pedir 7" cortado que reportó el cliente el 20/08.
+                  Acá el tramo activo se resalta contra el stepper, así que el comerciante ve en vivo
+                  cómo baja el precio mientras sube la cantidad — que es la venta.
+                  ⚠️ Chrome 79: `--gx`, `flex:none` y `white-space:nowrap` en cada fila. */}
+              {Array.isArray(ficha.escalas) && ficha.escalas.length > 0 && (
+                <div style={sx('margin-top:14px;display:flex;flex-direction:column;padding:11px 13px;border-radius:14px;background:var(--surface2)')}>
+                  <span style={sx('font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)')}>Llevando más</span>
+                  {ficha.escalas.map((e) => {
+                    const activo = (cant[ficha.id] || 1) >= e.desde
+                    return (
+                      <div
+                        key={e.desde}
+                        style={{
+                          ...sx('margin-top:7px;display:flex;align-items:baseline;justify-content:space-between;font-family:var(--font-mono);font-variant-numeric:tabular-nums'),
+                          '--gx': '12px',
+                        }}
+                      >
+                        <span style={{
+                          ...sx('flex:none;white-space:nowrap;font-size:14px'),
+                          color: activo ? 'var(--success)' : 'var(--muted)',
+                          fontWeight: activo ? 700 : 500,
+                        }}>Desde {e.desde} u</span>
+                        <span style={{
+                          ...sx('flex:none;white-space:nowrap;font-size:19px;font-weight:700'),
+                          color: activo ? 'var(--success)' : 'var(--muted)',
+                        }}>{fmtPesos(e.precio)}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 

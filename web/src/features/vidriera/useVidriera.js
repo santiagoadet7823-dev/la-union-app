@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { abrirVidriera, cerrarVidriera, republicar, alTocar, alCaerse, disponible, emitirCarrito, destacar } from '../../services/vidriera'
 import { estadoEspejo } from '../../services/data/espejoFotos'
 import { publicar as publicarBt, detener as detenerBt, disponible as btDisponible } from '../../services/vidrieraBluetooth'
@@ -156,13 +156,41 @@ export function useVidriera({ productos, comercio, cart, onToque }) {
    *
    * Se saltea la primera vuelta: `abrirVidriera` ya publicó con el comercio de ese momento.
    */
+  /**
+   * 🩸 Y TAMBIÉN CUANDO CAMBIAN LOS PRECIOS, no sólo el comercio (27/08/2026).
+   *
+   * Esta condición miraba únicamente `comercio?.id`, así que un precio corregido —o una escala de
+   * descuentos cargada— desde otra pantalla dejaba a la tablet mostrando los números viejos hasta
+   * que el vendedor cambiara de cliente. Con precio plano eso era raro; con descuentos por cantidad
+   * es la información que el comerciante está mirando para decidir cuánto lleva.
+   *
+   * No se dispara con la IDENTIDAD de `productos`: ese array se reemplaza en cada mutación del
+   * catálogo (incluida una foto nueva) y republicar 529 productos por el hotspot cada vez sería
+   * caro y para nada. Va una huella de lo que de verdad se ve del otro lado. El `useMemo` sólo la
+   * recalcula cuando el array cambia de identidad, que es poco frecuente.
+   */
+  const huellaPrecios = useMemo(
+    () => (productos || [])
+      .map((p) => `${p.id}:${p.price}:${p.oferta ? 1 : 0}:${p.precioOferta ?? ''}:${(p.escalas || []).map((e) => `${e.desde}-${e.precio}`).join(',')}`)
+      .join('|'),
+    [productos],
+  )
+
   const comercioPub = useRef(null)
+  const preciosPub = useRef(null)
   useEffect(() => {
-    if (!red) { comercioPub.current = comercio?.id ?? null; return }
-    if (comercioPub.current === (comercio?.id ?? null)) return
+    if (!red) {
+      comercioPub.current = comercio?.id ?? null
+      preciosPub.current = huellaPrecios
+      return
+    }
+    const cambioComercio = comercioPub.current !== (comercio?.id ?? null)
+    const cambioPrecios = preciosPub.current !== huellaPrecios
+    if (!cambioComercio && !cambioPrecios) return
     comercioPub.current = comercio?.id ?? null
+    preciosPub.current = huellaPrecios
     republicar({ productos, comercio })
-  }, [red, comercio, productos])
+  }, [red, comercio, productos, huellaPrecios])
 
   /**
    * 🩸 EL FRENO. La sesión ahora dura la jornada, así que necesita una forma de terminarse sola: un

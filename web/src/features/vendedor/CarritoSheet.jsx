@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
+import { precioPara } from '../../lib/precios'
 import Overlay from '../../components/Overlay'
 
 /**
@@ -30,11 +31,11 @@ import Overlay from '../../components/Overlay'
  * o tres ítems la hoja quedaba pegada abajo, encimada con la botonera del sistema.
  *
  * props: { productos, cart, quitados, addCart, quitarLinea, vaciar, deshacer, recuperar,
- *          cartCount, cartKg, cartTotal, onConfirmar, onCerrar }
+ *          cartCount, cartKg, cartTotal, cartAhorro, onConfirmar, onCerrar }
  */
 export default function CarritoSheet({
   productos, cart, quitados = {}, addCart, quitarLinea, vaciar, deshacer, recuperar,
-  cartCount, cartKg, cartTotal, onConfirmar, onCerrar,
+  cartCount, cartKg, cartTotal, cartAhorro = 0, onConfirmar, onCerrar,
 }) {
   // "Se vació" es local del sheet y no del hook: es un estado de PRESENTACIÓN (mostrar la tira de
   // deshacer), y el respaldo real de lo vaciado vive en `useJornada`.
@@ -45,6 +46,16 @@ export default function CarritoSheet({
   const lineas = Object.entries(cart)
     .map(([id, qty]) => ({ p: productos.find((x) => x.id === id), qty }))
     .filter((l) => l.p)
+    // 🩸 EL PRECIO SALE DE `lib/precios.js`, NO DE ACÁ (27/08/2026). Este archivo tenía una COPIA
+    // independiente del `precioEfectivo` de `useJornada`: el subtotal de cada renglón se recalculaba
+    // con ella mientras el total del pie llegaba ya calculado como prop. Con un precio plano las dos
+    // daban lo mismo; con escalones por cantidad, la primera que quedara desactualizada haría que el
+    // pie no sumara los renglones que están arriba — y ese total es el que se guarda como
+    // `pedidos.monto_total`.
+    //
+    // `pr` se resuelve una vez por renglón acá y no dentro del JSX: el mismo objeto alimenta el
+    // subtotal, el ahorro y el empujón, y así los tres no se pueden contradecir.
+    .map((l) => ({ ...l, pr: precioPara(l.p, l.qty) }))
 
   // Intención de compra: lo que salió del pedido. Lo más reciente primero — es lo que el vendedor
   // acaba de escuchar y sobre lo que todavía puede repreguntar.
@@ -52,8 +63,6 @@ export default function CarritoSheet({
     .map(([id, q]) => ({ p: productos.find((x) => x.id === id), cantidad: q.cantidad, ts: q.ts }))
     .filter((l) => l.p)
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-
-  const precio = (p) => (p.oferta && p.precioOferta != null ? p.precioOferta : (p.price || 0))
 
   function alVaciar() {
     vaciar?.()
@@ -86,9 +95,19 @@ export default function CarritoSheet({
               >Deshacer</button>
             </div>
           ) : (
-            <div style={sx('display:flex;justify-content:space-between;align-items:baseline;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
-              <span style={sx('font-size:12.5px;color:var(--muted)')}>Total</span>
-              <span style={sx('font-size:21px;font-weight:700;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
+            <div style={sx('display:flex;flex-direction:column;gap:2px')}>
+              <div style={sx('display:flex;justify-content:space-between;align-items:baseline;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                <span style={sx('font-size:12.5px;color:var(--muted)')}>Total</span>
+                <span style={sx('font-size:21px;font-weight:700;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
+              </div>
+              {/* El ahorro del pedido entero. Es el número que el vendedor le dice al comerciante
+                  para cerrar, y el que justifica haber empujado a llevar más. */}
+              {cartAhorro > 0 && (
+                <div style={sx('display:flex;justify-content:space-between;align-items:baseline;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                  <span style={sx('font-size:11.5px;color:var(--muted)')}>Ahorra por cantidad</span>
+                  <span style={sx('font-size:13px;font-weight:600;color:var(--success)')}>{fmtPesos(cartAhorro)}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -123,7 +142,7 @@ export default function CarritoSheet({
         </div>
       ) : (
         <div style={sx('display:flex;flex-direction:column')}>
-          {lineas.map(({ p, qty }) => (
+          {lineas.map(({ p, qty, pr }) => (
             <div key={p.id} style={sx('display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)')}>
               {p.imagen
                 ? <img src={p.imagen} alt="" style={sx('width:46px;height:46px;flex:none;border-radius:10px;object-fit:cover;background:var(--surface2)')} />
@@ -133,8 +152,19 @@ export default function CarritoSheet({
                 <div style={{ ...sx('font-size:13px;font-weight:500;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</div>
                 {/* El subtotal de la línea, que es lo que el cliente pregunta ("¿cuánto van los seis?"). */}
                 <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--faint);margin-top:2px')}>
-                  {qty} × {fmtPesos(precio(p))} = <span style={sx('color:var(--deep);font-weight:600')}>{fmtPesos(qty * precio(p))}</span>
+                  {qty} × {fmtPesos(pr.precio)} = <span style={sx('color:var(--deep);font-weight:600')}>{fmtPesos(qty * pr.precio)}</span>
+                  {pr.ahorroTotal > 0 && (
+                    <span style={sx('color:var(--success)')}> · ahorra {fmtPesos(pr.ahorroTotal)}</span>
+                  )}
                 </div>
+                {/* 🩸 EL EMPUJÓN. Es lo único de esta pantalla que no describe lo que ya pasó: le
+                    da al vendedor la frase exacta para decirle al comerciante. Sin esto, el
+                    descuento por volumen sólo lo descubre quien ya pensaba comprar de más. */}
+                {pr.siguiente && (
+                  <div style={sx('font-size:11px;color:var(--primary);margin-top:3px')}>
+                    {pr.siguiente.faltan} más y {pr.precio === pr.siguiente.precio ? 'mejora' : `paga ${fmtPesos(pr.siguiente.precio)} c/u`}
+                  </div>
+                )}
               </div>
 
               <div style={sx('display:flex;align-items:center;gap:5px;flex:none')}>

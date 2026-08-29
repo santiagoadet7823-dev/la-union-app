@@ -1,5 +1,6 @@
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
+import { precioPara } from '../../lib/precios'
 import { btnPrimario, btnSecundario } from '../../lib/botones'
 
 /**
@@ -25,8 +26,21 @@ import { btnPrimario, btnSecundario } from '../../lib/botones'
  */
 export default function AvisoVidriera({ aviso, comercio, onSumar, onDescartar }) {
   if (!aviso) return null
-  const precio = aviso.oferta && aviso.precioOferta != null ? aviso.precioOferta : aviso.price
   const n = aviso._cant || 1
+  // 🩸 EL PRECIO SALE DE `precios.js`, NO DE UNA CUENTA A MANO (28/08/2026, regla 52).
+  //
+  // Acá decía `aviso.oferta && aviso.precioOferta != null ? aviso.precioOferta : aviso.price`. Era
+  // el ÚNICO de los 11 lugares de la regla 52 que quedó sin migrar cuando se agregaron los
+  // escalones —y está nombrado en la regla, que es lo que más duele—, así que este cartel
+  // **ignoraba los descuentos por cantidad**.
+  //
+  // El fallo, con el comerciante enfrente: el cliente toca en la tablet un producto con escalón a
+  // partir de 6 y pone 6. La tablet muestra $1.750 c/u, este cartel mostraba `6 × $1.850 = $11.100`,
+  // el vendedor tocaba "Sumar 6" y el carrito —que sí usa `precioDe`— cobraba $10.500. Tres números
+  // distintos para el mismo producto, y el del medio era el que la persona leía en voz alta.
+  //
+  // La cantidad importa: `precioPara` resuelve el escalón CONTRA `n`, no contra 1.
+  const { precio, base, conDescuento } = precioPara(aviso, n)
 
   return (
     <div style={sx('position:fixed;left:12px;right:12px;bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:var(--z-aviso);pointer-events:none;display:flex;justify-content:center')}>
@@ -51,6 +65,9 @@ export default function AvisoVidriera({ aviso, comercio, onSumar, onDescartar })
             <div style={{ ...sx('font-size:13px;font-weight:500;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{aviso.name}</div>
             <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--deep);margin-top:2px')}>
               {n > 1 && <span style={sx('color:var(--muted);font-weight:600')}>{n} × </span>}
+              {/* Con descuento se muestra tachado el de lista: es la misma señal que la grilla y la
+                  tablet, y sin ella el número más bajo parece un error de precio. */}
+              {conDescuento && <span style={sx('color:var(--faint);font-weight:500;text-decoration:line-through;margin-right:5px')}>{fmtPesos(base)}</span>}
               {fmtPesos(precio)}
               {n > 1 && <span style={sx('color:var(--muted);font-weight:600')}> = {fmtPesos(n * precio)}</span>}
             </div>

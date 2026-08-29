@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { normalizar, codigoKey } from '../../lib/texto'
+import { codigoKey } from '../../lib/texto'
+import { filaAImportar, mapearEncabezados } from '../../lib/planillaProductos'
 import { useCatalog } from '../../context/CatalogContext'
 import { descargarArchivo } from '../../services/download'
 import { Bajar, ChevronLeft, Subir } from '../../components/icons'
@@ -14,31 +15,21 @@ import { Bajar, ChevronLeft, Subir } from '../../components/icons'
  * Las fotos NO van en la planilla (se cargan después desde el form de cada producto).
  */
 
-// Encabezados aceptados → campo interno.
-//
-// Claves YA NORMALIZADAS con `normalizar()` (minúsculas, sin tildes, puntuación → espacio): una
-// sola entrada cubre "Precio Unitario", "precio_unitario" y "precio-unitario". Antes había que
-// listar cada separador a mano, y a `peso_kg` y `nivel_rentabilidad` les faltaba la variante con
-// espacio — una planilla con "Peso Kg" en el encabezado se importaba sin peso y sin avisar.
-const ALIAS = {
-  codigo: 'codigo', cod: 'codigo', code: 'codigo', sku: 'codigo',
-  descripcion: 'descripcion', nombre: 'descripcion', producto: 'descripcion', detalle: 'descripcion',
-  precio: 'precio_unitario', 'precio unitario': 'precio_unitario',
-  peso: 'peso_kg', 'peso kg': 'peso_kg', kg: 'peso_kg', kilos: 'peso_kg',
-  unidades: 'unidades', 'unidades por bulto': 'unidades', bulto: 'unidades', 'x bulto': 'unidades',
-  categoria: 'categoria', rubro: 'categoria',
-  marca: 'marca', proveedor: 'marca',
-  'unidad venta': 'unidad_venta', unidad: 'unidad_venta', 'se vende por': 'unidad_venta', presentacion: 'unidad_venta',
-  nivel: 'nivel_rentabilidad', 'nivel rentabilidad': 'nivel_rentabilidad', rentabilidad: 'nivel_rentabilidad',
-  oferta: 'oferta', 'precio oferta': 'precio_oferta',
-}
-// `unidad_venta` (UN, FDO, CJ, DISPL, PACK, CJN, BOLSA) se normaliza a MAYÚSCULA y se acepta
-// cualquier otro texto tal cual: el día que aparezca un envase nuevo, la planilla no tiene por qué
-// fallar — para eso está la ficha del producto.
-const norm = normalizar
-const soloNum = (v) => { const s = norm(v).replace(/[^\d.]/g, ''); return s === '' ? null : Number(s) }
-// "sí/si/true/1/x" → true; "no/false/0/vacío" → false.
-const aBool = (v) => /^(si|sí|s|true|1|x|oferta)$/i.test(String(v ?? '').trim())
+/**
+ * 🩸 EL PARSEO DE LA FILA NO VIVE ACÁ (27/08/2026). La tabla de encabezados y el armado de cada
+ * fila se mudaron a `lib/planillaProductos.js` porque desde hoy tienen DOS consumidores: esta
+ * pantalla y la Edge Function `ingest-precios`, que corre en Deno y no puede importar un `.jsx`.
+ * Copiar la tabla de alias habría sido la regla 36 otra vez.
+ *
+ * Ahí también quedó el arreglo del parser de números: `soloNum` hacía
+ * `normalizar(v).replace(/[^\d.]/g,'')` y `normalizar()` convierte **toda la puntuación en
+ * espacios, el punto incluido**, así que no podía leer NINGÚN decimal — "1450.50" entraba como
+ * 145050. No dejó daño porque el catálogo salió de un PDF sin pesos y con precios enteros; con la
+ * lista del ERP en español muerde el primer día.
+ */
+
+/** Las columnas de la previsualización. UNA definición: la usan la cabecera y cada fila. */
+const COLS_PREVIEW = '95px 1fr 80px 150px 100px 115px'
 
 export default function ImportarProductos({ onClose, onToast }) {
   // `productosTodos` incluye los descontinuados, y tiene que ser así: uno que vuelve en la lista es
@@ -69,9 +60,11 @@ export default function ImportarProductos({ onClose, onToast }) {
   async function descargarPlantilla() {
     try {
       const XLSX = await import('xlsx')
+      // Los ejemplos van a NIVEL UNIDAD (27/08/2026): el catálogo dejó de tener filas de fardo y de
+      // caja cerrada. El fardo de 6 no es una fila: es el primer escalón (`desde_1 = 6`).
       const ejemplo = [
-        { codigo: '0041', descripcion: 'MANAOS 12X600ML COLA FDO', precio: 9150, peso: 7.2, unidades: 12, categoria: 'Bebidas', marca: 'MANAOS', unidad_venta: 'FDO', nivel: 3, oferta: 'no', precio_oferta: '' },
-        { codigo: '1164', descripcion: 'VIRULANA DEA 45G UN', precio: 450, peso: 0.045, unidades: '', categoria: 'Limpieza', marca: 'DEA', unidad_venta: 'UN', nivel: 2, oferta: 'si', precio_oferta: 390 },
+        { codigo: '0011', descripcion: 'MANAOS COLA 3LT', precio: 1850, peso: 3.1, unidades: 6, categoria: 'Bebidas', marca: 'MANAOS', unidad_venta: 'UN', nivel: 3, oferta: 'no', precio_oferta: '', desde_1: 6, precio_1: 1750, desde_2: 60, precio_2: 1690, desde_3: '', precio_3: '', desde_4: '', precio_4: '', desde_5: '', precio_5: '' },
+        { codigo: '1164', descripcion: 'VIRULANA DEA 45G', precio: 450, peso: 0.045, unidades: 12, categoria: 'Limpieza', marca: 'DEA', unidad_venta: 'UN', nivel: 2, oferta: 'si', precio_oferta: 390, desde_1: 24, precio_1: 410, desde_2: '', precio_2: '', desde_3: '', precio_3: '', desde_4: '', precio_4: '', desde_5: '', precio_5: '' },
       ]
       const ws = XLSX.utils.json_to_sheet(ejemplo)
       const wb = XLSX.utils.book_new()
@@ -97,33 +90,18 @@ export default function ImportarProductos({ onClose, onToast }) {
       const raw = XLSX.utils.sheet_to_json(ws, { defval: '' })
       const vistos = new Set()
       const filas = raw.map((r, i) => {
-        const campo = {}
-        for (const k of Object.keys(r)) {
-          const dest = ALIAS[norm(k)]
-          if (dest && campo[dest] == null) campo[dest] = r[k]
-        }
-        const codigo = String(campo.codigo ?? '').trim()
-        const descripcion = String(campo.descripcion ?? '').trim()
-        const codKey = codigoKey(codigo)
-        const categoria = String(campo.categoria ?? '').trim()
+        const campo = mapearEncabezados(r)
+        const base = filaAImportar(campo)
+        const codKey = codigoKey(base.codigo)
         let estado = 'ok'
-        if (!descripcion) estado = 'sin-desc'
+        if (!base.descripcion) estado = 'sin-desc'
         else if (codKey && vistos.has(codKey)) estado = 'dup'
         else if (codKey && existentes.has(codKey)) estado = 'update'
         if (codKey) vistos.add(codKey)
         return {
+          ...base,
           fila: i + 2,
-          codigo, descripcion,
-          precio_unitario: soloNum(campo.precio_unitario),
-          peso_kg: soloNum(campo.peso_kg),
-          unidades: soloNum(campo.unidades),
-          categoria,
-          marca: String(campo.marca ?? '').trim(),
-          unidad_venta: String(campo.unidad_venta ?? '').trim().toUpperCase(),
-          catDesconocida: !!(categoria && catsValidas.size && !catsValidas.has(categoria.toLowerCase())),
-          nivel_rentabilidad: soloNum(campo.nivel_rentabilidad),
-          oferta: campo.oferta === '' || campo.oferta == null ? null : aBool(campo.oferta),
-          precio_oferta: soloNum(campo.precio_oferta),
+          catDesconocida: !!(base.categoria && catsValidas.size && !catsValidas.has(base.categoria.toLowerCase())),
           estado,
         }
       })
@@ -144,6 +122,11 @@ export default function ImportarProductos({ onClose, onToast }) {
     return c
   }, [parsed])
 
+  const conAvisos = useMemo(
+    () => (parsed || []).filter((f) => f.avisos?.length > 0).length,
+    [parsed],
+  )
+
   async function importar() {
     if (!parsed) return
     const rows = parsed
@@ -160,6 +143,14 @@ export default function ImportarProductos({ onClose, onToast }) {
         nivel_rentabilidad: f.nivel_rentabilidad,
         oferta: f.oferta,
         precio_oferta: f.precio_oferta,
+        // ⚠️ OTRA LISTA BLANCA EXPLÍCITA, la tercera del camino de importación (las otras dos están
+        // en `CatalogContext`: `addProducto` e `importProductos`). Un campo que se agregue a
+        // `filaAImportar` y no acá se pierde **sin un solo error**: la planilla se lee bien, el
+        // resumen dice que entró, y el dato no llega. Es lo que pasó con `marca` y `unidad_venta`.
+        destacado: f.destacado,
+        // `null` = la planilla no traía columnas de escala → no se toca la que el producto ya tiene.
+        // `[]` = vino `desde_1 = 0` → se borra. Ver `escalasDeFila` en lib/precios.js.
+        escalas: f.escalas,
       }))
     if (!rows.length) { onToast?.('No hay filas válidas para importar'); return }
     setBusy(true)
@@ -233,8 +224,10 @@ export default function ImportarProductos({ onClose, onToast }) {
         </div>
 
         <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.5')}>
-          Columnas: <b>codigo</b>, <b>descripcion</b>, <b>precio</b>, <b>peso</b>, <b>unidades</b>, <b>categoria</b>, <b>marca</b>, <b>unidad_venta</b> (UN/FDO/CJ…), <b>nivel</b> (1–4, rentabilidad), <b>oferta</b> (si/no) y <b>precio_oferta</b>. Solo <b>descripcion</b> es obligatoria.<br />
-          Los <b>ceros de adelante del código no importan</b>: <b>0041</b> y <b>41</b> son el mismo producto.
+          Columnas: <b>codigo</b>, <b>descripcion</b>, <b>precio</b>, <b>peso</b>, <b>unidades</b>, <b>categoria</b>, <b>marca</b>, <b>unidad_venta</b>, <b>nivel</b> (1–4, rentabilidad), <b>oferta</b> (si/no) y <b>precio_oferta</b>. Solo <b>descripcion</b> es obligatoria.<br />
+          Descuentos por cantidad: hasta 5 pares <b>desde_1</b>/<b>precio_1</b> … <b>desde_5</b>/<b>precio_5</b>. <b>desde</b> va en <b>unidades sueltas</b> (un fardo de 6 es <b>6</b>) y <b>precio</b> es el de <b>una</b> unidad a partir de esa cantidad. Para borrar los descuentos de un producto: <b>desde_1 = 0</b>.<br />
+          Los <b>ceros de adelante del código no importan</b>: <b>0041</b> y <b>41</b> son el mismo producto.<br />
+          Los decimales van con punto o coma (<b>1450,50</b>), <b>sin separador de miles</b>: <b>1.450</b> es ambiguo y esa celda no se importa.
         </div>
 
         {busy && <div style={sx('padding:20px;text-align:center;color:var(--faint);font-family:var(--font-mono);font-size:12px')}>Procesando…</div>}
@@ -268,22 +261,47 @@ export default function ImportarProductos({ onClose, onToast }) {
               </span>
             </label>
 
+            {/* Una sola definición de las columnas: estaba escrita dos veces (cabecera y fila) y
+                agregar una desalineaba la mitad de la tabla. */}
             <div style={sx('border:1px solid var(--line);border-radius:12px;overflow:hidden')}>
-              <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 90px 110px 120px', gap: 8, ...sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
-                <span>Código</span><span>Descripción</span><span style={sx('text-align:right')}>Precio</span><span>Categoría</span><span>Estado</span>
+              <div style={{ display: 'grid', gridTemplateColumns: COLS_PREVIEW, gap: 8, ...sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
+                <span>Código</span><span>Descripción</span><span style={sx('text-align:right')}>Precio</span><span>Descuentos</span><span>Categoría</span><span>Estado</span>
               </div>
               <div style={{ maxHeight: 360, overflow: 'auto' }}>
                 {parsed.map((f, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 90px 110px 120px', gap: 8, alignItems: 'center', ...sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)') }}>
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: COLS_PREVIEW, gap: 8, alignItems: 'center', ...sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)') }}>
                     <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.codigo || '—'}</span>
-                    <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.descripcion || <span style={sx('color:var(--faint)')}>(fila {f.fila})</span>}</span>
+                    <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
+                      {f.descripcion || <span style={sx('color:var(--faint)')}>(fila {f.fila})</span>}
+                      {/* Los avisos van pegados a la fila que los produjo: una lista aparte obliga a
+                          buscar la fila 214 entre 529, y entonces nadie la busca. */}
+                      {f.avisos?.length > 0 && (
+                        <span title={f.avisos.join('\n')} style={sx('color:var(--warning)')}> ⚠</span>
+                      )}
+                    </span>
                     <span style={sx('text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--muted)')}>{f.precio_unitario != null ? f.precio_unitario : '—'}</span>
+                    {/* `null` (la planilla no trae columnas de escala) y `[]` (viene desde_1 = 0, que
+                        BORRA) son cosas distintas y tienen que verse distintas antes de confirmar. */}
+                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
+                      {f.escalas == null
+                        ? <span style={sx('color:var(--faint)')}>—</span>
+                        : f.escalas.length === 0
+                          ? <span style={sx('color:var(--warning)')}>se borran</span>
+                          : f.escalas.map((e) => `${e.desde}+ ${e.precio}`).join(' · ')}
+                    </span>
                     <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.categoria || '—'}{f.catDesconocida && <span title="Categoría no gestionada" style={sx('color:var(--warning)')}> ⚠</span>}</span>
                     <span>{estadoPill(f.estado)}</span>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* El conteo total de avisos, para que no haya que scrollear 529 filas buscando ⚠. */}
+            {conAvisos > 0 && (
+              <div style={sx('padding:9px 12px;border-radius:10px;background:var(--warning-tint);color:var(--warning);font-size:11.5px')}>
+                {conAvisos} {conAvisos === 1 ? 'fila tiene' : 'filas tienen'} algo que se va a ignorar (números ambiguos o escalones incompletos). Pasá el mouse por el ⚠ para ver qué.
+              </div>
+            )}
           </>
         )}
       </div>

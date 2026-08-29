@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
+import { escaleraDe, precioDe } from '../../../lib/precios'
 import { ImagenVacia, Search } from '../../../components/icons'
 import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
+import FichaProducto from '../FichaProducto'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
 import { useAltoMedido } from '../../../hooks/useAltoMedido'
@@ -27,7 +29,7 @@ export default function VisitaCatalogo({ j }) {
   // El build daba verde: Vite no detecta TDZ. Si mañana un hook nuevo necesita otro campo de `j`,
   // ya lo tiene arriba; no hay motivo para volver a bajar esta línea.
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
-  const { vid, PRODUCTS, visitC, timer, cart, quitados, addCart, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, search, setSearch, catFilter, setCatFilter, quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido } = j
+  const { vid, PRODUCTS, visitC, timer, cart, quitados, addCart, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, cartAhorro, search, setSearch, catFilter, setCatFilter, quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido } = j
 
   // 🩸 LA SESIÓN DE VIDRIERA NO VIVE ACÁ: vive en `useJornada` (18/08/2026). Primero se mudó desde
   // la ventana del QR —cerrarla desconectaba la tablet— y después un nivel más arriba, porque esta
@@ -46,11 +48,28 @@ export default function VisitaCatalogo({ j }) {
 
   const [verQr, setVerQr] = useState(false)
   const [verCarrito, setVerCarrito] = useState(false)
+  // El producto abierto en grande. Se guarda el ID y no el objeto: el catálogo se reemplaza entero
+  // en cada mutación (una foto nueva, un precio corregido) y un objeto capturado acá se quedaría
+  // mostrando el precio viejo con el comerciante mirando la pantalla.
+  const [fichaId, setFichaId] = useState(null)
 
   const CATS = [...new Set(PRODUCTS.map((p) => p.cat))]
   const hayOfertas = PRODUCTS.some((p) => p.oferta)
-  // Fila de chips: Todos · Ofertas (si hay) · una por categoría.
-  const chips = ['Todos', ...(hayOfertas ? ['Ofertas'] : []), ...CATS]
+  const hayDestacados = PRODUCTS.some((p) => p.destacado)
+  /* Fila de chips: Destacados (si hay) · Todos · Ofertas (si hay) · una por categoría.
+   *
+   * 🩸 DESTACADOS VA PRIMERO Y ES DELIBERADO (28/08/2026, pedido del cliente). Es lo que la
+   * distribuidora quiere empujar —baja rotación, sobrestock— y lo que un vendedor nunca ofrece solo,
+   * porque vende lo que el comercio le pide. Puesto en cuarto lugar sería un chip que nadie toca.
+   *
+   * ⚠️ Pero el filtro por DEFECTO sigue siendo 'Todos' (`useJornada`): aparecer primero no es estar
+   * seleccionado. Arrancar en Destacados escondería los 529 productos detrás de un puñado, justo
+   * cuando el comerciante empieza a dictar el pedido.
+   *
+   * Si no hay ninguno marcado el chip no existe, mismo criterio que Ofertas: un filtro que siempre
+   * da vacío enseña a ignorar la fila entera.
+   */
+  const chips = [...(hayDestacados ? ['Destacados'] : []), 'Todos', ...(hayOfertas ? ['Ofertas'] : []), ...CATS]
 
   // Los ids sugeridos se resuelven contra el catálogo cargado: si un producto se dio de baja
   // después del pedido, simplemente no aparece.
@@ -59,10 +78,30 @@ export default function VisitaCatalogo({ j }) {
   const q = search.trim().toLowerCase()
   const items = PRODUCTS.filter((p) => {
     if (q && !p.name.toLowerCase().includes(q)) return false
+    if (catFilter === 'Destacados') return p.destacado
     if (catFilter === 'Ofertas') return p.oferta
     if (catFilter !== 'Todos' && p.cat !== catFilter) return false
     return true
   })
+
+  const enDestacados = catFilter === 'Destacados'
+  const ficha = fichaId ? PRODUCTS.find((p) => p.id === fichaId) : null
+
+  /**
+   * 🩸 EL TOQUE HACE LAS DOS COSAS A LA VEZ, no una o la otra (28/08/2026).
+   *
+   * Abre el producto grande en el celular Y —si la vidriera está viva— se lo abre al comerciante en
+   * la tablet. Es exactamente el gesto que se pidió ("el vendedor toca cada producto y le aparece en
+   * la tablet"), y es el mismo criterio que ya usa la tablet cuando el toque lo da el cliente: ahí
+   * `alTocar` abre la ficha y avisa al mismo tiempo, porque las dos mitades son de la MISMA
+   * conversación (ver el 🩸 de `VidrieraTablet`).
+   *
+   * Sin tablet no se pierde nada: queda la ficha del celular, que se le da vuelta al comerciante.
+   */
+  const abrirFicha = (p) => {
+    setFichaId(p.id)
+    if (vid.activa) { vid.destacar(p); showToast(`Se lo mostramos: ${p.name}`) }
+  }
 
   return (
     <div style={{ ...sx('flex:1;display:flex;flex-direction:column;overflow:hidden'), '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px' }}>
@@ -151,7 +190,7 @@ export default function VisitaCatalogo({ j }) {
                 >
                   <div style={{ ...sx('font-size:11.5px;font-weight:500;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), maxWidth: 168 }}>{p.name}</div>
                   <div style={sx('margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11px;color:var(--deep);font-weight:600')}>
-                    {fmtPesos(p.oferta && p.precioOferta != null ? p.precioOferta : p.price)}
+                    {fmtPesos(precioDe(p, Math.max(1, q)))}
                     {q > 0 ? <span style={sx('color:var(--muted);font-weight:400')}> · {q} en el pedido</span> : ''}
                   </div>
                 </button>
@@ -167,18 +206,21 @@ export default function VisitaCatalogo({ j }) {
           {chips.map((c) => {
             const on = catFilter === c
             const esOfertas = c === 'Ofertas'
+            const esDestacados = c === 'Destacados'
             return (
               <button
                 key={c}
                 onClick={() => setCatFilter(c)}
                 style={{
                   ...sx('flex:none;min-height:32px;padding:0 13px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap'),
-                  border: `1px solid ${on ? 'var(--primary)' : 'var(--line2)'}`,
+                  // Destacados apagado ya va con borde de color: es el único chip que hay que
+                  // aprender a tocar, y uno gris entre quince categorías grises no se ve.
+                  border: `1px solid ${on || esDestacados ? 'var(--primary)' : 'var(--line2)'}`,
                   background: on ? 'var(--primary-tint)' : 'transparent',
-                  color: on ? 'var(--deep)' : (esOfertas ? 'var(--warning)' : 'var(--muted)'),
+                  color: on ? 'var(--deep)' : (esOfertas ? 'var(--warning)' : (esDestacados ? 'var(--primary)' : 'var(--muted)')),
                 }}
               >
-                {esOfertas ? '★ Ofertas' : c}
+                {esOfertas ? '★ Ofertas' : (esDestacados ? '◆ Destacados' : c)}
               </button>
             )
           })}
@@ -186,6 +228,14 @@ export default function VisitaCatalogo({ j }) {
       )}
 
       <div style={sx('flex:1;overflow-y:auto;padding:0 14px 180px')}>
+        {/* Una línea de instrucción, sólo en Destacados. El gesto (tocar la tarjeta para abrirla
+            grande / mandarla a la tablet) es nuevo y no se descubre solo: en el resto de la grilla
+            tocar una tarjeta no hace nada desde siempre. */}
+        {enDestacados && items.length > 0 && (
+          <div style={sx('margin:8px 0 2px;font-size:11.5px;color:var(--muted);line-height:1.45')}>
+            Tocá un producto para {vid.activa ? 'mostrárselo grande en la tablet' : 'verlo grande y mostrárselo'}.
+          </div>
+        )}
         {PRODUCTS.length === 0 ? (
           <div style={{ ...card, textAlign: 'center', padding: '34px 18px', marginTop: 12 }}>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px')}>El catálogo está vacío</div>
@@ -200,11 +250,20 @@ export default function VisitaCatalogo({ j }) {
             {items.map((p) => {
               const qty = cart[p.id] || 0
               const enOferta = p.oferta && p.precioOferta != null
+              const escalones = escaleraDe(p)
               return (
                 <div
                   key={p.id}
+                  // En Destacados la tarjeta ENTERA abre la ficha: el gesto que se pidió es "tocar el
+                  // producto", no "encontrar un botón". En el resto de los filtros la grilla sigue
+                  // funcionando como siempre — es la pantalla de toma de pedido y ahí el toque útil
+                  // es el stepper, que ya está en la calle.
+                  onClick={enDestacados ? () => abrirFicha(p) : undefined}
+                  className={enDestacados ? 'lu-press' : undefined}
+                  role={enDestacados ? 'button' : undefined}
                   style={{
                     ...sx('display:flex;flex-direction:column;background:var(--surface);border-radius:14px;overflow:hidden'),
+                    cursor: enDestacados ? 'pointer' : 'default',
                     // El marco SIEMPRE es el nivel de rentabilidad; el estado "en carrito"
                     // se marca con un anillo (box-shadow) para no pisar ese código de color.
                     border: `2px solid ${rentColor(p.nivel)}`,
@@ -223,6 +282,12 @@ export default function VisitaCatalogo({ j }) {
                     )}
                     {enOferta && (
                       <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:#3d2c00;font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
+                    )}
+                    {/* El rombo marca el destacado en el resto de los filtros: dentro de Destacados
+                        lo son todos y repetirlo 20 veces es ruido. Va abajo de OFERTA cuando hay las
+                        dos, que es el caso más común (algo que no rota y encima está en promoción). */}
+                    {p.destacado && !enDestacados && (
+                      <span style={{ ...sx('position:absolute;left:6px;background:var(--primary);color:var(--on-primary);font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)'), top: enOferta ? 28 : 6 }}>◆</span>
                     )}
                     {qty > 0 && (
                       <span style={sx('position:absolute;top:6px;right:6px;width:22px;height:22px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:99px;font-family:var(--font-mono);font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>{qty}</span>
@@ -257,6 +322,28 @@ export default function VisitaCatalogo({ j }) {
                       )}
                     </div>
 
+                    {/* LA ESCALERA. Estática: no se recalcula al mover el stepper, y el tramo que
+                        aplica se resalta. El vendedor tiene que poder decir "si te llevás seis te
+                        sale mil setecientos cincuenta" sin tocar nada — es el dato que vende. */}
+                    {escalones.length > 0 && (
+                      <div style={sx('margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+                        {escalones.map((e) => {
+                          const activo = qty >= e.desde
+                          return (
+                            <span
+                              key={e.desde}
+                              style={{
+                                ...sx('padding:1px 5px;border-radius:6px;font-size:9.5px;line-height:1.5;white-space:nowrap'),
+                                background: activo ? 'var(--success-tint)' : 'var(--surface2)',
+                                color: activo ? 'var(--success)' : 'var(--muted)',
+                                fontWeight: activo ? 700 : 500,
+                              }}
+                            >{e.desde}+ {fmtPesos(e.precio)}</span>
+                          )
+                        })}
+                      </div>
+                    )}
+
                     {(p.unidades != null || p.kg > 0) && (
                       <div style={sx('margin-top:2px;font-size:10.5px;color:var(--faint);font-family:var(--font-mono)')}>
                         {[p.unidades != null ? `×${p.unidades} u` : null, p.kg > 0 ? `${String(p.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
@@ -265,9 +352,12 @@ export default function VisitaCatalogo({ j }) {
 
                     {/* Stepper compacto (es la pantalla de toma de pedido). */}
                     <div style={sx('margin-top:9px;display:flex;align-items:center;justify-content:space-between;gap:6px')}>
-                      <button onClick={() => addCart(p.id, -1)} disabled={qty === 0} style={{ ...sx('width:34px;height:34px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;font-size:18px;user-select:none;background:transparent'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
+                      {/* `stopPropagation` porque en Destacados la tarjeta es un botón: sin esto,
+                          tocar el − o el + abriría también la ficha (y con la vidriera viva le
+                          mandaría el producto a la tablet cada vez que el vendedor sube una unidad). */}
+                      <button onClick={(e) => { e.stopPropagation(); addCart(p.id, -1) }} disabled={qty === 0} style={{ ...sx('width:34px;height:34px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;font-size:18px;user-select:none;background:transparent'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
                       <div style={{ ...sx('flex:1;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600'), color: qty > 0 ? 'var(--deep)' : 'var(--faint)' }}>{qty}</div>
-                      <button onClick={() => addCart(p.id, 1)} style={sx('width:34px;height:34px;flex:none;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
+                      <button onClick={(e) => { e.stopPropagation(); addCart(p.id, 1) }} style={sx('width:34px;height:34px;flex:none;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
                     </div>
                   </div>
                 </div>
@@ -282,7 +372,7 @@ export default function VisitaCatalogo({ j }) {
           productos={PRODUCTS} cart={cart} quitados={quitados} addCart={addCart}
           quitarLinea={quitarDelCarrito} vaciar={vaciarCarrito} deshacer={deshacerCarrito}
           recuperar={recuperarQuitado}
-          cartCount={cartCount} cartKg={cartKg} cartTotal={cartTotal}
+          cartCount={cartCount} cartKg={cartKg} cartTotal={cartTotal} cartAhorro={cartAhorro}
           onCerrar={() => setVerCarrito(false)}
           onConfirmar={() => {
             const total = cartTotal
@@ -293,6 +383,21 @@ export default function VisitaCatalogo({ j }) {
             confirmarPedido()
             showToast(`Pedido confirmado · ${fmtPesos(total)}`)
           }}
+        />
+      )}
+
+      {/* La ficha grande. Va ANTES del aviso de la vidriera a propósito: `AvisoVidriera` usa
+          `--z-aviso` (550) contra los `--z-sheet` (300) de esta hoja, así que el cartel de "el
+          cliente está mirando X" se sigue viendo por encima — que es justo lo que se quiere cuando
+          el comerciante toca otra cosa mientras el vendedor tiene una ficha abierta. */}
+      {ficha && (
+        <FichaProducto
+          producto={ficha}
+          cart={cart}
+          addCart={addCart}
+          puedeMostrar={vid.activa}
+          onMostrar={() => { vid.destacar(ficha); showToast(`Se lo mostramos: ${ficha.name}`) }}
+          onCerrar={() => setFichaId(null)}
         />
       )}
 

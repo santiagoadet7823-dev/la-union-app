@@ -111,10 +111,48 @@ planilla y se importa. **No hay que cargar 500 precios a mano.**
 ### Columnas que entiende la planilla
 
 `codigo` · `descripcion` · `precio` · `peso` · `unidades` · `categoria` · `marca` ·
-`unidad_venta` · `nivel` · `oferta` · `precio_oferta`
+`unidad_venta` · `nivel` · `oferta` · `precio_oferta` ·
+`desde_1`/`precio_1` … `desde_5`/`precio_5`
 
 Solo **`descripcion`** es obligatoria. Los encabezados admiten variantes (`cod`, `sku`, `nombre`,
 `rubro`, `precio unitario`…), con o sin mayúsculas y acentos.
+
+### Los DESCUENTOS POR CANTIDAD (desde el 27/08/2026)
+
+Los cinco pares del final son la escala de precios por volumen: *"comprando `desde_N` o más, cada
+unidad sale `precio_N`"*.
+
+| Regla | |
+|---|---|
+| **La cantidad va en unidades sueltas** | Un fardo de 6 se escribe `6`. Diez fardos, `60`. Nunca en fardos ni en cajas |
+| **El precio es el de UNA unidad** | No el total del combo |
+| **Tiene que ir en aumento** | `desde_2` mayor que `desde_1`, y así |
+| **Se pueden usar menos de 5** | Los pares que sobran se dejan vacíos |
+| **Para BORRAR la escala** de un producto | `desde_1 = 0` |
+
+Ejemplo, con el precio base en 1.850:
+
+```
+codigo   descripcion       precio   desde_1  precio_1   desde_2  precio_2
+0011     MANAOS COLA 3LT   1850     6        1750       60       1690
+```
+
+Se lee: 1 a 5 unidades → $1.850 · 6 a 59 → $1.750 · 60 o más → $1.690.
+
+El vendedor ve la escalera en la tarjeta del producto y el ahorro en el carrito; el comerciante la
+ve en la tablet. **La rentabilidad (`nivel`) sigue sin viajar a la tablet** — eso no cambió.
+
+> Si un producto está en oferta **y** además tiene escala, se cobra **el más barato de los dos**.
+
+### ⚠️ Los decimales: punto o coma, pero SIN separador de miles
+
+`1450,50` y `1450.50` se entienden los dos. **`1.450` no**: puede ser mil cuatrocientos cincuenta o
+uno coma cuarenta y cinco, y la app no lo adivina — marca la celda con un ⚠ en la previsualización y
+no la importa. Es a propósito: un precio inventado en el catálogo no se descubre hasta que un
+vendedor cobra mal.
+
+Antes de confirmar, la pantalla muestra una columna **Descuentos** con la escala de cada fila, y un
+cartel con cuántas filas tienen algo que se va a ignorar. **Leelos.**
 
 ### Cómo funciona la importación
 

@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { useCatalog } from '../../context/CatalogContext'
 import { useAuth } from '../../context/AuthContext'
 import { CATEGORIAS } from '../../lib/categoria'
+import { MAX_ESCALONES, avisosDeEscala, normalizarEscalas } from '../../lib/precios'
 import { subirImagenProducto } from '../../services/data/productoImagen'
 import { uid } from '../../lib/uid'
 import Overlay from '../../components/Overlay'
@@ -58,7 +59,34 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
   const [unidadVenta, setUnidadVenta] = useState(producto?.unidadVenta || '')
   const [nivel, setNivel] = useState(producto?.nivel || null)
   const [oferta, setOferta] = useState(!!producto?.oferta)
+  const [destacado, setDestacado] = useState(!!producto?.destacado)
   const [precioOferta, setPrecioOferta] = useState(producto?.precioOferta != null ? String(producto.precioOferta) : '')
+
+  /**
+   * Descuentos por cantidad. El estado es de FILAS DE TEXTO (5 fijas, con las de más abajo vacías) y
+   * no un array de escalones: mientras alguien está tipeando, `desde` puede valer "6" y `precio`
+   * todavía nada, y eso no es un escalón — es una fila a medio llenar. Convertir en cada tecla haría
+   * desaparecer la fila que se está escribiendo. Se convierte una sola vez, al guardar.
+   */
+  const escalasIniciales = normalizarEscalas(producto?.escalas)
+  const [usaEscalas, setUsaEscalas] = useState(escalasIniciales.length > 0)
+  const [filasEscala, setFilasEscala] = useState(() =>
+    Array.from({ length: MAX_ESCALONES }, (_, i) => ({
+      desde: escalasIniciales[i] ? String(escalasIniciales[i].desde) : '',
+      precio: escalasIniciales[i] ? String(escalasIniciales[i].precio) : '',
+    })),
+  )
+  const setFilaEscala = (i, campo, valor) =>
+    setFilasEscala((prev) => prev.map((f, j) => (j === i ? { ...f, [campo]: valor } : f)))
+
+  // Las filas completas, normalizadas (ordenadas, sin repetidos, sin `desde <= 1`). Es lo que se
+  // guarda y lo que alimenta los avisos: una sola derivación para las dos cosas.
+  const escalasArmadas = usaEscalas
+    ? normalizarEscalas(filasEscala
+      .filter((f) => String(f.desde).trim() !== '' && String(f.precio).trim() !== '')
+      .map((f) => ({ desde: f.desde, precio: f.precio })))
+    : []
+  const avisosEscala = avisosDeEscala(escalasArmadas, precio)
 
   // Imagen: `preview` es lo que se muestra (URL actual o object URL del archivo elegido);
   // `file` es el archivo nuevo a subir (null si no se cambió).
@@ -92,6 +120,10 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
       nivel_rentabilidad: nivel || null,
       oferta,
       precio_oferta: oferta && precioOferta ? Number(precioOferta) : null,
+      destacado,
+      // Con el switch apagado se manda [] y no null: apagarlo es BORRAR la escala, y `null` en el
+      // patch de `updateProducto` viajaría tal cual a una columna `not null` (db/48).
+      escalas: escalasArmadas,
     }
 
     // El id se necesita antes de subir la foto (la ruta en Storage lo usa). En alta lo
@@ -234,6 +266,92 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
       </Field>
       {oferta && (
         <Field label="Precio de oferta ($)"><input value={precioOferta} onChange={(e) => setPrecioOferta(soloNum(e.target.value))} inputMode="decimal" placeholder="6900" style={inputStyle} className="lu-input" /></Field>
+      )}
+
+      {/* ── DESTACADO (db/51) ────────────────────────────────────────────────────────────────
+          Lo que hay que empujar: baja rotación, sobrestock, algo por vencer. Junta los productos en
+          un chip propio que el vendedor tiene PRIMERO en la fila de filtros, y desde ahí se los abre
+          grandes al comerciante en la tablet.
+
+          🔴 NO ES "OFERTA" Y NO SE TOCAN LOS PRECIOS. Un destacado puede estar a precio de lista: la
+          apuesta es que lo vea, no que se lo regalen. Por eso son dos switches y no un estado. */}
+      <Field label="Destacado">
+        <div style={sx('display:flex;align-items:center;gap:10px')}>
+          <button
+            type="button"
+            onClick={() => setDestacado((v) => !v)}
+            style={{
+              ...sx('width:46px;height:26px;border-radius:99px;position:relative;cursor:pointer;border:none;flex:none;transition:background .15s'),
+              background: destacado ? 'var(--primary)' : 'var(--line2)',
+            }}
+          >
+            <span style={{ ...sx('position:absolute;top:3px;width:20px;height:20px;border-radius:99px;background:#fff;transition:left .15s'), left: destacado ? 23 : 3 }} />
+          </button>
+          <span style={sx('font-size:12.5px;color:var(--muted)')}>{destacado ? 'Aparece primero en la pantalla del vendedor' : 'No destacado'}</span>
+        </div>
+      </Field>
+
+      {/* ── DESCUENTOS POR CANTIDAD (db/48) ──────────────────────────────────────────────────
+          Detrás de un switch, con el mismo patrón que la oferta de arriba: el 90 % de los productos
+          no tiene escala y el formulario no tiene por qué mostrarle cinco filas vacías a nadie.
+
+          🩸 EXISTE AUNQUE LOS PRECIOS VENGAN DEL ERP. La escala se carga por planilla o por el
+          endpoint automático, pero sin este editor la única forma de corregir UN producto mal
+          cargado sería rearmar y volver a subir la lista entera — y, sobre todo, no habría manera de
+          verificar el cálculo sin depender de que el cliente exporte algo. */}
+      <Field label="Descuentos por cantidad">
+        <div style={sx('display:flex;align-items:center;gap:10px')}>
+          <button
+            type="button"
+            onClick={() => setUsaEscalas((v) => !v)}
+            style={{
+              ...sx('width:46px;height:26px;border-radius:99px;position:relative;cursor:pointer;border:none;flex:none;transition:background .15s'),
+              background: usaEscalas ? 'var(--primary)' : 'var(--line2)',
+            }}
+          >
+            <span style={{ ...sx('position:absolute;top:3px;width:20px;height:20px;border-radius:99px;background:#fff;transition:left .15s'), left: usaEscalas ? 23 : 3 }} />
+          </button>
+          <span style={sx('font-size:12.5px;color:var(--muted)')}>
+            {usaEscalas ? 'Baja el precio por volumen' : 'Un solo precio'}
+          </span>
+        </div>
+      </Field>
+
+      {usaEscalas && (
+        <div style={sx('display:flex;flex-direction:column;gap:7px')}>
+          <div style={sx('font-size:11px;color:var(--faint);line-height:1.45')}>
+            La cantidad va en <b>unidades sueltas</b>: un fardo de 6 es <b>6</b>. El precio es el de
+            <b> una</b> unidad a partir de esa cantidad. Dejá vacías las filas que no uses.
+          </div>
+          {filasEscala.map((f, i) => (
+            <div key={i} style={sx('display:grid;grid-template-columns:1fr 1.2fr;gap:8px;align-items:center')}>
+              <input
+                value={f.desde}
+                onChange={(e) => setFilaEscala(i, 'desde', soloNum(e.target.value))}
+                inputMode="numeric"
+                placeholder={i === 0 ? 'Desde 6 u' : 'Desde…'}
+                style={inputStyle}
+                className="lu-input"
+              />
+              <input
+                value={f.precio}
+                onChange={(e) => setFilaEscala(i, 'precio', soloNum(e.target.value))}
+                inputMode="decimal"
+                placeholder={i === 0 ? '$ por unidad' : '$…'}
+                style={inputStyle}
+                className="lu-input"
+              />
+            </div>
+          ))}
+          {/* Los avisos NO bloquean el guardado: describen. El de "no es más barato que el tramo
+              anterior" es el que importa — es casi siempre un error de tipeo, no lo ataja ningún
+              tipo de dato, y nadie lo nota hasta que un vendedor cobra de más por comprar más. */}
+          {avisosEscala.length > 0 && (
+            <div style={sx('padding:8px 10px;border-radius:9px;background:var(--warning-tint);color:var(--warning);font-size:11px;line-height:1.5')}>
+              {avisosEscala.map((a, i) => <div key={i}>{a}</div>)}
+            </div>
+          )}
+        </div>
       )}
     </Overlay>
   )

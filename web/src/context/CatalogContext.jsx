@@ -2,10 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth } from './AuthContext'
 import { inferCategoria } from '../lib/categoria'
 import { codigoKey } from '../lib/texto'
+import { normalizarEscalas } from '../lib/precios'
 import { uid } from '../lib/uid'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
 import { startPosQueue } from '../services/sync/queue'
-import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo } from '../services/data/catalogo'
+import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo, selloDePrecios } from '../services/data/catalogo'
 import { BUCKET_PRODUCTOS, rutasImagenProducto } from '../services/data/productoImagen'
 
 /**
@@ -55,15 +56,36 @@ function mapProducto(p) {
     nivel: p.nivel_rentabilidad != null ? Number(p.nivel_rentabilidad) : null,
     oferta: !!p.oferta,
     precioOferta: p.precio_oferta != null ? Number(p.precio_oferta) : null,
+    // DESTACADO (db/51): lo que hay que empujar. Alimenta el chip "Destacados" del vendedor, que va
+    // primero en la fila de filtros. Es un flag explícito —lo marca el catálogo o la lista del ERP—
+    // y NO se deduce del historial de pedidos: ver el encabezado de db/51_destacado.sql.
+    destacado: !!p.destacado,
     // `marca` es un EJE DISTINTO de `cat`, no un sinónimo (db/38). Hasta que existió la columna, la
     // marca se venía colando dentro de la categoría: por eso "Manaos" quedó partido en 5 categorías
     // por tamaño de envase y 183 productos cayeron en "Otros".
     marca: p.marca || null,
     unidadVenta: p.unidad_venta || null,
+    // Escalones de precio por cantidad (db/48). Se NORMALIZA al leer aunque la base ya guarde la
+    // forma canónica: la columna es `jsonb` y la puede haber escrito la planilla, el editor de la
+    // ficha o el endpoint del ERP. Que las tres ordenen bien es una suposición; esto es un hecho.
+    // El `check` de la base sólo valida que sea un array de hasta 5, no la forma de adentro.
+    escalas: normalizarEscalas(p.escalas),
     // NULL = vigente, igual que `clientes.archivado_ts` (ver `descontinuado_ts` en db/38).
     descontinuado: !!p.descontinuado_ts,
   }
 }
+
+/**
+ * Cada cuánto se pregunta el sello de precios con la app ABIERTA, y el piso mínimo entre dos
+ * consultas. El piso es lo que evita que abrir y cerrar la app diez veces en un mostrador dispare
+ * diez viajes:  es un gesto humano y se repite mucho más seguido que el reloj.
+ *
+ * 20 min contra un envío que llega 3 veces al día: el peor caso es que un precio nuevo tarde 20
+ * minutos en verse si el vendedor tiene la app abierta y quieta — y 0 si la vuelve a abrir, que es
+ * lo que pasa en cada comercio.
+ */
+const REFRESCO_MS = 20 * 60 * 1000
+const SELLO_MIN_MS = 5 * 60 * 1000
 
 export function CatalogProvider({ children }) {
   const { idEmpresa, rol, user } = useAuth()
@@ -87,6 +109,11 @@ export function CatalogProvider({ children }) {
     setZonas(raw?.zonas || [])
     setCategorias(raw?.categorias || [])
   }, [])
+
+  // El sello de la última importación de precios que este teléfono ya aplicó, y cuándo se preguntó
+  // por última vez. Van en refs y no en estado: cambiarlos no tiene que redibujar nada.
+  const selloRef = useRef(null)
+  const ultimoSelloChequeoRef = useRef(0)
 
   const recargar = useCallback(async () => {
     setLoading(true)
@@ -122,6 +149,56 @@ export function CatalogProvider({ children }) {
   }, [idEmpresa, aplicar])
 
   useEffect(() => { recargar() }, [recargar])
+
+  /**
+   * 🩸 QUE UN PRECIO NUEVO LLEGUE AL TELÉFONO QUE YA ESTÁ EN LA CALLE (29/08/2026).
+   *
+   * Hasta hoy el efecto de arriba era TODO el refresco: una sola carga al montar. El vendedor abre
+   * la app a las 8 y el catálogo le queda congelado la jornada entera. Con el envío automático de
+   * precios pasando a varios horarios —porque la distribuidora corrige precios a media mañana y a
+   * la tarde— eso deja de ser un detalle: el teléfono mostraría los precios de las 6 hasta el día
+   * siguiente, y el vendedor cobraría mal con el comerciante enfrente.
+   *
+   * CÓMO, sin quemar los datos del empleado (regla 48). No se recarga por reloj: se pregunta el
+   * SELLO —una fila, ~200 bytes— y sólo si cambió se paga `recargar()`, que baja 529 productos y
+   * 2.014 clientes. Con tres envíos por día son tres recargas, no una cada veinte minutos.
+   *
+   * CUÁNDO se pregunta:
+   *   · al volver la app a primer plano — que es el gesto real: el vendedor la abre en cada
+   *     comercio, y ése es justo el momento en que el precio importa;
+   *   · y cada `REFRESCO_MS` mientras está abierta, para el caso de que la tenga a la vista.
+   * Con un piso de `SELLO_MIN_MS` entre consultas, para que abrir y cerrar la app diez veces en un
+   * mostrador no dispare diez viajes.
+   *
+   * ⚠️ `visibilitychange` y NO `requestAnimationFrame` ni nada que dependa de frames: con el
+   * documento oculto rAF no corre (regla 35), y esto tiene que despertar justo al volver.
+   */
+  useEffect(() => {
+    if (!idEmpresa) return undefined
+    let vivo = true
+
+    const chequear = async () => {
+      if (!vivo || document.visibilityState !== 'visible') return
+      const ahora = Date.now()
+      if (ahora - ultimoSelloChequeoRef.current < SELLO_MIN_MS) return
+      ultimoSelloChequeoRef.current = ahora
+      const sello = await selloDePrecios(idEmpresa)
+      if (!vivo || !sello) return
+      // La primera vuelta sólo memoriza: no se sabe con qué lista se arrancó, y recargar acá sería
+      // pagar la bajada completa en cada arranque para nada.
+      if (selloRef.current === null) { selloRef.current = sello; return }
+      if (sello !== selloRef.current) {
+        selloRef.current = sello
+        recargar()
+      }
+    }
+
+    const alVolver = () => { if (document.visibilityState === 'visible') chequear() }
+    document.addEventListener('visibilitychange', alVolver)
+    const i = setInterval(chequear, REFRESCO_MS)
+    chequear()
+    return () => { vivo = false; document.removeEventListener('visibilitychange', alVolver); clearInterval(i) }
+  }, [idEmpresa, recargar])
   // Arranca el auto-flush GLOBAL de ambas colas offline (escrituras de catálogo + posiciones GPS),
   // independiente del rastreo. Así el recorrido capturado sin internet sube al reconectar/volver a
   // primer plano aunque la jornada ya haya terminado.
@@ -159,7 +236,13 @@ export function CatalogProvider({ children }) {
   /** Alta de producto (admin/encargado), offline-first. */
   const addProducto = useCallback(async (p) => {
     const row = {
-      id: uid(),
+      // 🩸 SE RESPETA EL `id` QUE MANDA EL LLAMADOR (27/08/2026). Acá había un `uid()` a secas que
+      // DESCARTABA el id recibido, y `NuevoProducto.jsx` lo genera antes de guardar justamente
+      // porque la ruta de la foto en Storage es `${idEmpresa}/${id}.webp`: la imagen se subía con un
+      // id y la fila quedaba con otro. La foto se veía igual (la URL es absoluta), así que el bug
+      // era invisible — pero `deleteProducto` borra por `rutasImagenProducto(idEmpresa, id)` y nunca
+      // encontraba ese archivo. Cada alta con foto dejaba una huérfana en el bucket.
+      id: p.id || uid(),
       id_empresa: idEmpresa,
       codigo: p.codigo || null,
       descripcion: p.descripcion,
@@ -171,6 +254,17 @@ export function CatalogProvider({ children }) {
       nivel_rentabilidad: p.nivel_rentabilidad ?? null,
       oferta: !!p.oferta,
       precio_oferta: p.precio_oferta ?? null,
+      destacado: !!p.destacado,
+      // 🩸 `marca` y `unidad_venta` FALTABAN ACÁ (encontrado el 27/08/2026 al agregar `escalas`).
+      // Esta lista es una lista blanca IMPLÍCITA: se arma campo por campo y lo que no está, no se
+      // guarda. `NuevoProducto.jsx` los manda en `base` desde que existen (db/38), así que dar de
+      // alta un producto desde el formulario venía perdiendo la marca y la unidad de venta **sin un
+      // solo error** — el alta decía "listo" y el producto quedaba a medias. Es el modo de falla que
+      // esta forma de escribir invita: agregar una columna en la base y en el form no alcanza, hay
+      // que acordarse de esta lista.
+      marca: p.marca ?? null,
+      unidad_venta: p.unidad_venta ?? null,
+      escalas: normalizarEscalas(p.escalas),
     }
     setProductos((prev) => [...prev, mapProducto(row)].sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'insert', payload: row })
@@ -195,8 +289,10 @@ export function CatalogProvider({ children }) {
     if ('nivel_rentabilidad' in patch) vista.nivel = patch.nivel_rentabilidad ?? null
     if ('oferta' in patch) vista.oferta = !!patch.oferta
     if ('precio_oferta' in patch) vista.precioOferta = patch.precio_oferta ?? null
+    if ('destacado' in patch) vista.destacado = !!patch.destacado
     if ('marca' in patch) vista.marca = patch.marca || null
     if ('unidad_venta' in patch) vista.unidadVenta = patch.unidad_venta || null
+    if ('escalas' in patch) vista.escalas = normalizarEscalas(patch.escalas)
     if ('descontinuado_ts' in patch) vista.descontinuado = !!patch.descontinuado_ts
     setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, ...vista } : p)).sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id, payload: patch })
@@ -484,7 +580,7 @@ export function CatalogProvider({ children }) {
    * Un producto que vuelve a aparecer se REACTIVA solo (`descontinuado_ts = null`) conservando su
    * foto y su historial. Ese es todo el argumento de descontinuar en vez de borrar.
    *
-   * @param {Array<{codigo?, descripcion, precio_unitario?, peso_kg?, unidades?, categoria?, marca?, unidad_venta?, nivel_rentabilidad?, oferta?, precio_oferta?}>} rows
+   * @param {Array<{codigo?, descripcion, precio_unitario?, peso_kg?, unidades?, categoria?, marca?, unidad_venta?, nivel_rentabilidad?, oferta?, precio_oferta?, destacado?}>} rows
    * @param {{listaCompleta?: boolean}} [opts]
    * @returns {{insertados:number, actualizados:number, descontinuados:number, saltados:number, avisos:string[]}}
    */
@@ -515,6 +611,15 @@ export function CatalogProvider({ children }) {
         if (r.nivel_rentabilidad != null && r.nivel_rentabilidad !== '') patch.nivel_rentabilidad = Number(r.nivel_rentabilidad) || null
         if (r.oferta != null && r.oferta !== '') patch.oferta = !!r.oferta
         if (r.precio_oferta != null && r.precio_oferta !== '') patch.precio_oferta = Number(r.precio_oferta) || null
+        // `destacado` viene como `null` cuando la columna no estaba en la planilla (db/51): sin esta
+        // guarda, subir la lista de precios de todos los días desmarcaría todos los destacados.
+        if (r.destacado != null && r.destacado !== '') patch.destacado = !!r.destacado
+        // Escalones (db/48). El importador manda `escalas: null` cuando la planilla no trae NINGUNA
+        // columna de escala, y un array (posiblemente vacío) cuando sí: así una planilla de sólo
+        // código y precio no borra la escala que el producto ya tenía, y `desde_1 = 0` sí la borra.
+        // Es la misma semántica de "celda vacía no toca" del resto, pero necesita el `null` porque
+        // acá el valor vacío legítimo —la escala borrada— también es un array vacío.
+        if (r.escalas != null) patch.escalas = normalizarEscalas(r.escalas)
         // Volvió a la lista: se reactiva solo, con su foto y su historial intactos.
         if (existente.descontinuado) patch.descontinuado_ts = null
         if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
@@ -534,6 +639,8 @@ export function CatalogProvider({ children }) {
         nivel_rentabilidad: r.nivel_rentabilidad ? Number(r.nivel_rentabilidad) : null,
         oferta: !!r.oferta,
         precio_oferta: r.precio_oferta ? Number(r.precio_oferta) : null,
+        destacado: !!r.destacado,
+        escalas: normalizarEscalas(r.escalas),
         imagen_url: null,
         descontinuado_ts: null,
       })
@@ -575,6 +682,7 @@ export function CatalogProvider({ children }) {
         if ('precio_oferta' in q) v.precioOferta = q.precio_oferta ?? null
         if ('marca' in q) v.marca = q.marca || null
         if ('unidad_venta' in q) v.unidadVenta = q.unidad_venta || null
+        if ('escalas' in q) v.escalas = normalizarEscalas(q.escalas)
         if ('descontinuado_ts' in q) v.descontinuado = !!q.descontinuado_ts
         return { ...p, ...v }
       }).sort((a, b) => a.name.localeCompare(b.name)))

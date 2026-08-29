@@ -24,14 +24,60 @@ import { persistence } from '../persistence'
  * masiva nueva tiene que entrar por acá, no por un `for` que llame N veces a `enqueueMutacion`.
  */
 const KEY = 'lu-write-queue'
+const QKEY = 'lu-write-cuarentena'
 const MAX = 2000
+const MAX_Q = 500
 
 let flushing = false
 let started = false
 
+/**
+ * 🩸 CÓDIGOS QUE NO SE ARREGLAN REINTENTANDO — y por qué esto existe (28/08/2026).
+ *
+ * **Esta cola estuvo TAPONADA DOS DÍAS y nadie se enteró.** El 26/08 a las 15:29:09 una mutación
+ * sobre el producto `0218` empezó a devolver **23505** (código duplicado). La cola es FIFO y hacía
+ * `if (error) break` para CUALQUIER error, así que a partir de ese segundo **no subió una sola
+ * mutación más**: 147 fotos que marketing cargó bien —los archivos estaban en Storage— quedaron sin
+ * su `imagen_url`, y la persona las vio desaparecer del catálogo una y otra vez. Medido en los logs:
+ * **665 PATCH con 409 en un solo día**, uno cada 30 segundos, contra el mismo id.
+ *
+ * Es EXACTAMENTE la regla 19 de CLAUDE.md —la lección que la cola de posiciones ya había pagado en
+ * julio con 264 puntos atascados— que nunca se aplicó acá. Peor: el bloque de `borrarArchivos` de
+ * más abajo ya razonaba sobre este mismo peligro ("un fallo de PERMISO no puede frenar la cola:
+ * sería un archivo perdido bloqueando altas y ediciones detrás suyo") y lo resolvía para UNA
+ * operación. Para el resto seguía cortando.
+ *
+ * ⚠️ `23505` no está en la lista de `queue.js` y acá es el que más importa: las posiciones suben con
+ * `ignoreDuplicates`, las mutaciones de catálogo no.
+ */
+const CODIGOS_PERMANENTES = new Set([
+  '23505', // unique_violation — el código que ya existe en otro producto (el bug del 26/08)
+  '42501', // violación de RLS
+  '23514', // check constraint
+  '22P02', // sintaxis inválida (uuid/numérico corrupto en la cola)
+  '23503', // FK: la fila referenciada ya no existe
+])
+
 async function read() { return (await persistence.get(KEY, [])) || [] }
 async function write(arr) {
   await persistence.set(KEY, arr.length > MAX ? arr.slice(-MAX) : arr)
+}
+
+async function leerCuarentena() { return (await persistence.get(QKEY, [])) || [] }
+
+/**
+ * Aparta una mutación que no va a entrar nunca, para que la cola siga.
+ *
+ * 🩸 SE AÍSLA, NO SE BORRA (regla 20). El bundle 1.5.26 borró 264 puntos reales por hacer justo lo
+ * contrario. Una mutación trabada es recuperable —se puede leer, entender y reaplicar a mano—; una
+ * borrada no, y encima se lleva puesta la edición de alguien sin dejar rastro de qué era.
+ */
+async function aislar(m, motivo) {
+  const marcada = { ...m, _motivo: motivo, _aislado_en: new Date().toISOString() }
+  let q = (await leerCuarentena()).concat([marcada])
+  if (q.length > MAX_Q) q = q.slice(-MAX_Q)
+  console.warn(`[writeQueue] mutación a CUARENTENA (${motivo}):`, m.op, m.table, m.id, '· en cuarentena:', q.length)
+  try { await persistence.set(QKEY, q) } catch (_) { /* si no entra, ya estaba trabada igual */ }
 }
 
 /** Encola una mutación para sincronizar. */
@@ -91,7 +137,25 @@ export async function flushMutaciones() {
         // mutaciones encoladas por una versión más nueva. Antes esto pasaba en absoluto silencio.
         console.error('[writeQueue] operación desconocida, se descarta', m)
       }
-      if (error) break
+      /* 🩸 ACÁ ESTABA EL `if (error) break` A SECAS, y costó dos días de fotos (28/08/2026).
+       *
+       * Un error TRANSITORIO (sin red, timeout, 5xx) se corta y se reintenta: no se pierde nada y
+       * el orden se respeta. Uno PERMANENTE no se arregla nunca, y dejarlo al frente de una cola
+       * FIFO **bloquea todo lo que venga detrás para siempre** — que es literalmente lo que pasó.
+       *
+       * La diferencia importa más de lo que parece: el síntoma no es "falla", es "se guardó y
+       * después desapareció". La persona ve la foto en pantalla (el merge optimista ya la puso),
+       * cierra, vuelve, y no está. Y el servidor no muestra nada raro: sólo un PATCH que reintenta.
+       */
+      if (error) {
+        if (CODIGOS_PERMANENTES.has(error.code)) {
+          await aislar(m, `${error.code}: ${error.message}`)
+          const qp = await read()
+          await write(qp.slice(1))
+          continue // la cola SIGUE con la próxima
+        }
+        break // transitorio: se reintenta en el próximo flush, sin perder el orden
+      }
       const q2 = await read()
       await write(q2.slice(1)) // re-leer por si entraron nuevas mientras tanto
     }
@@ -104,6 +168,19 @@ export async function flushMutaciones() {
 
 /** Cantidad de mutaciones pendientes (para diagnóstico/estado). */
 export async function pendingMutaciones() { return (await read()).length }
+
+/**
+ * Las mutaciones aisladas, para poder MOSTRARLAS y decidir qué hacer con ellas.
+ *
+ * 🩸 No alcanza con aislar: hay que **verlo**. El taponamiento del 26/08 duró dos días porque no
+ * había ningún número que mirar — la persona cargaba fotos, la pantalla decía que sí, y nadie tenía
+ * forma de saber que nada estaba subiendo. Una cola que se cura sola y en silencio sigue siendo una
+ * cola que miente, sólo que más despacio.
+ */
+export async function cuarentenaMutaciones() { return await leerCuarentena() }
+
+/** Vacía la cuarentena. Sólo para después de haber MIRADO qué había (regla 20). */
+export async function limpiarCuarentena() { await persistence.set(QKEY, []) }
 
 /**
  * Las mutaciones pendientes de UNA tabla, para poder MOSTRARLAS.

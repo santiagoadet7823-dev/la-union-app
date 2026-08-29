@@ -79,3 +79,9 @@ graphify-out/
 # cualquiera de los dos es publicar el plano de la flota junto con el método de acceso.
 INVENTARIO_TELEFONOS.md
 /scripts/diagnostico-*.txt
+
+# 🔴 El token de ingesta del cliente NUNCA entra al repo (y este repo es PUBLICO).
+# La guia le dice a la distribuidora que cree este archivo al lado del script; si alguien copia
+# esa carpeta de vuelta aca, que no se suba.
+scripts/cliente/token.txt
+scripts/cliente/registros/

@@ -3,6 +3,7 @@ import { useCatalog } from '../../context/CatalogContext'
 import { useGps } from '../../context/GpsContext'
 import { uid } from '../../lib/uid'
 import { hoyStr } from '../../lib/format'
+import { precioDe, totalesDeCarrito } from '../../lib/precios'
 import { persistence } from '../../services/persistence'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { supabase } from '../../services/supabase'
@@ -317,12 +318,16 @@ export function useJornada() {
 
   // --- carrito ---
   const prodById = (id) => PRODUCTS.find((p) => p.id === id)
-  // Precio que se cobra: el de oferta cuando el producto está en oferta y tiene precio_oferta.
-  const precioEfectivo = (p) => (p && p.oferta && p.precioOferta != null ? p.precioOferta : (p?.price || 0))
-  const entries = Object.entries(cart)
-  const cartCount = entries.reduce((a, [, v]) => a + v, 0)
-  const cartKg = entries.reduce((a, [id, v]) => a + v * (prodById(id)?.kg || 0), 0)
-  const cartTotal = entries.reduce((a, [id, v]) => a + v * precioEfectivo(prodById(id)), 0)
+  /**
+   * 🩸 EL PRECIO YA NO SE DECIDE ACÁ (27/08/2026). Vivía en esta línea un `precioEfectivo(p)` que
+   * miraba sólo la oferta, y era UNA de ONCE copias de la misma regla repartidas por 7 archivos.
+   * Con precio plano las once coincidían por casualidad; con los escalones por cantidad (db/48) la
+   * primera que quedara sin actualizar haría que el pie del carrito no sumara los renglones de
+   * arriba — y ese número es el que se guarda como `pedidos.monto_total`. La regla vive en
+   * `lib/precios.js` y nadie más la reimplementa. Ver el encabezado de ese archivo.
+   */
+  const { unidades: cartCount, kg: cartKg, total: cartTotal, ahorro: cartAhorro } =
+    totalesDeCarrito(cart, prodById)
   const timer = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
   // --- ruta / metas ---
@@ -418,7 +423,15 @@ export function useJornada() {
       // diciendo lo que se vendió aunque marketing le haya cambiado el nombre o lo haya borrado.
       descripcion: prod.name,
       cantidad,
-      precio_unitario: precioEfectivo(prod),
+      // 🔑 ACÁ SE CONGELA EL ESCALÓN. `precioDe(prod, cantidad)` resuelve el precio por volumen que
+      // corresponde a ESTA cantidad y lo copia en la línea, igual que la descripción: el
+      // comprobante de dentro de seis meses tiene que seguir diciendo a cuánto se vendió aunque
+      // marketing haya cambiado la escala. Y es también lo que hace que la ENTREGA PARCIAL no
+      // reabra el precio (decisión del 27/08): si el repartidor entrega 40 de 60, el comerciante
+      // paga los 40 al precio que se le pactó — el faltante lo puso la distribuidora, no él.
+      // `useEntregas.guardarEntregado` escribe `cantidad_entregada` y NO toca esta columna: no es
+      // un olvido, es la decisión.
+      precio_unitario: precioDe(prod, cantidad),
       peso_kg: prod.kg || 0,
     }))
 
@@ -462,7 +475,7 @@ export function useJornada() {
     catLoading, PRODUCTS,
     clients, clientsFiltrados, buscaCli, setBuscaCli, soloPendientes, setSoloPendientes,
     nextId, done, conPedido, montoHoy, visitC,
-    cartCount, cartKg, cartTotal, timer,
+    cartCount, cartKg, cartTotal, cartAhorro, timer,
     pend, pendingCoords, meta, efect,
     toast, showToast, startVisit, endVisit, cancelVisit, addCart,
     quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido,

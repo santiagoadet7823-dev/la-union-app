@@ -24,6 +24,9 @@ Documentos complementarios:
 - [DOCUMENTACION_FUNCIONAL.md](DOCUMENTACION_FUNCIONAL.md) — qué hace cada función y de qué rol es.
   **Empezar por acá** para saber qué está vivo, qué es demo y qué es código muerto.
 - [PLAN_SAAS.md](PLAN_SAAS.md) — migración planificada a `corporaciones → empresas`.
+- [PLAN_BACKEND_DEDICADO.md](PLAN_BACKEND_DEDICADO.md) — propuesta: backend Supabase self-hosted
+  dedicado para un cliente (viabilidad, guía de puesta en marcha, qué replicar) + diseño de un
+  selector de backend en runtime para que la misma app sirva cloud y self-hosted según el usuario.
 - [legal/](legal/) — borradores de términos y condiciones y de política de privacidad.
 
 ---
@@ -589,6 +592,40 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     módulo de prueba efímero y comparar la excepción antes y después. Llamarlo a mano NO sirve —
     `useState` tira "Invalid hook call" primero y tapa el `ReferenceError`.
 
+52. 🩸 **UN PRECIO SE PREGUNTA EN UN SOLO LUGAR: `web/src/lib/precios.js`.** (27/08/2026.) Al agregar
+    los precios por cantidad se contó dónde vivía la regla del precio efectivo, que hasta entonces
+    era una sola condición (`¿está en oferta?`): estaba **copiada en 11 lugares de 7 archivos** — 5
+    que devuelven el valor (`useJornada`, `CarritoSheet`, `VisitaCatalogo`, `AvisoVidriera`,
+    `services/vidriera`) y 6 que deciden si se tacha el precio de lista. Con un precio plano las
+    once coincidían por casualidad; con escalones, la primera que quede sin actualizar hace que el
+    celular del vendedor y la tablet del cliente muestren **números distintos con el comerciante
+    enfrente**, y que el pie del carrito no sume los renglones de arriba — que es el número que se
+    guarda como `pedidos.monto_total`. Es la regla 36 aplicada al precio.
+    **Nadie resuelve un precio por su cuenta.** `precioPara(producto, cantidad)` y punto.
+    ⚠️ Y su gemelo del lado de la planilla es **`lib/planillaProductos.js`**: los encabezados y el
+    parseo de una fila los comparten la pantalla de importación y la Edge Function `ingest-precios`,
+    que corre en Deno. Por eso esos módulos llevan imports con **`.js` explícito** (Vite resuelve sin
+    extensión, Deno no) y por eso existe `scripts/sync-ingest-precios.mjs`.
+    🩸 De paso quedó documentado que `soloNum` **no podía leer NINGÚN decimal**: hacía
+    `normalizar(v).replace(/[^\d.]/g,'')` y `normalizar()` convierte el punto en espacio, así que
+    `"1450.50"` entraba como **145050**. No dejó daño porque el catálogo salió de un PDF sin pesos y
+    con precios enteros. El parser nuevo **no adivina** los ambiguos (`1.450`): los rechaza y los
+    informa con el número de fila.
+
+53. 📋 **AVISAR CUANDO QUEDA ~25 % DE CONTEXTO, Y USAR ESE AVISO PARA ACTUALIZAR EL HANDOFF.**
+    (28/08/2026, pedido explícito.) Al detectar que la sesión se acerca al límite: cortar en el
+    próximo punto seguro, **escribir en [HANDOFF.md](HANDOFF.md) qué quedó hecho, qué quedó verificado
+    y qué quedó SIN PUBLICAR**, y proponer abrir una sesión nueva. El handoff es el único puente entre
+    sesiones — lo que no queda escrito ahí se pierde, y este repo ya tiene cuatro precedentes de una
+    tabla de versiones que mentía porque nadie la actualizó al cerrar.
+    **Qué tiene que decir el aviso**, en una línea y sin adornos: cuánto contexto queda, qué está a
+    medio hacer, y —si hay trabajo sin publicar— **el número de versión con el que sale**.
+    ⚠️ **Es una regla de conducta, no un disparador exacto.** Desde adentro de la sesión no hay una
+    lectura numérica del contexto restante: se estima por el largo de la conversación y por los avisos
+    del harness, así que el 25 % es un objetivo, no una garantía. Vale como red — **si el trabajo
+    importa, el handoff se actualiza antes, sin esperar el aviso.** Un respaldo más confiable es
+    mostrar el uso de contexto en la statusline de Claude Code, que se configura aparte.
+
 ---
 
 ## 3. Comandos
@@ -679,10 +716,11 @@ adb shell dumpsys notification --noredact | grep -i channel   # en qué canal ca
 | `web/src/services/persistence/` | Puerto localStorage (web) / SQLite (nativo), con timeouts y fallback |
 | `web/src/services/{supabase,ota,tracking,battery,download,recorridos}.js` | Servicios sueltos |
 | `web/src/services/{maps,routing,report}/` | Basemaps (Stadia/OSM), OSRM, export PNG |
-| `web/src/lib/` | `format.js` (**`hoyStr`**), `sx.js`, `glass.js`, `colors.js`, `uid.js` |
+| `web/src/lib/` | `format.js` (**`hoyStr`**), `sx.js`, `glass.js`, `colors.js`, `uid.js`, **`precios.js`** (la ÚNICA fuente de "cuánto sale esto") y **`planillaProductos.js`** (encabezados de la planilla; lo comparte la Edge Function `ingest-precios`) |
 | `web/src/hooks/` | `usePublishPosition`, `useRecorridosDelDia`, `useEquipoEnVivo`, `useEstadoDispositivo`… |
 | `db/` | ⚠️ Histórico, **no** fuente de verdad. Leer `00_LEER_PRIMERO.md` |
 | `supabase/functions/snap-recorridos/` | Edge Function: recorridos pegados a calles (OSRM **foot**) |
+| `supabase/functions/ingest-precios/` | Edge Function: el ERP del cliente postea la lista de precios. **Su `lib/` es una COPIA** de `web/src/lib/` — ver `LEER.md` de esa carpeta |
 | `web/android/app/src/main/java/com/launion/app/` | **17 clases** nativas escritas a mano: 9 plugins de Capacitor + `UploaderGpsService` (1.452 LOC) + `VentanaRastreo` + 4 receivers + `LaUnionApp` + `MainActivity` |
 | `web/patches/` | Patch de background-geolocation (4 cambios, todos necesarios) |
 
@@ -692,7 +730,8 @@ adb shell dumpsys notification --noredact | grep -i channel   # en qué canal ca
 |---|---|
 | Agregar una vista o cambiar quién ve qué | `web/src/App.jsx` (`decidirSupervisionMovil` / `decidirPanelDireccion`) + **`web/src/lib/gestion.js`** (`GESTION_ITEMS`) + **`features/supervision/components/DespachoGestion.jsx`** — el despacho estaba copiado en las dos supervisiones y se unificó el 10/08/2026, antes de que `PanelDireccion` lo volviera una tercera copia (regla 31) |
 | Dar una capacidad extra a alguien sin cambiarle el rol | `perfiles.permisos` + el campo `permiso` de la fila en `web/src/lib/gestion.js` + la policy correspondiente (ver `db/23_perfiles_permisos.sql`) |
-| Agregar un campo a cliente/producto | Migración en la base viva + `mapCliente`/`mapProducto` en `CatalogContext.jsx:18-48` + el form correspondiente |
+| Agregar un campo a cliente/producto | Migración en la base viva + `mapCliente`/`mapProducto` en `CatalogContext.jsx` + el form correspondiente. ⚠️ `addProducto` es una **lista blanca implícita**: lo que no esté ahí no se guarda al dar de alta |
+| Tocar CUALQUIER cosa de precios | **`web/src/lib/precios.js`** y nada más. La regla estaba copiada en 11 lugares de 7 archivos y se unificó el 27/08/2026 (regla 52) |
 | Agregar un tipo de mutación offline | `web/src/services/sync/writeQueue.js` — la op debe ser **idempotente** en reintento |
 | Cambiar la frecuencia/precisión del GPS | `web/src/services/gpsConfig.js` (constantes) y `geolocation/estados.js` (presets). Leer antes las reglas 11 y 16 |
 | Cambiar el proveedor de ruteo | `web/src/services/routing/index.js` — es el único punto de swap, por diseño |
@@ -766,17 +805,20 @@ y el **módulo de entregas del repartidor** (asignación + hoja real + recorrido
 
 Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambio NATIVO (la vidriera: hotspot local, servidor HTTP, escaner de QR y union a la red de la tablet), asi que los plugins solo viajan en el APK. El bundle 1.15.0 va igual por OTA para los que ya lo tengan instalado. ⚠️ 1.13.0 es un cambio NATIVO (el ancla del uploader): sale por APK, y hay que publicar la misma versión como OTA para los que ya lo tienen.
 
-> 🩸 **Esta tabla se desincronizó en 3 de 3 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
-> cuando era 1.10.0). Es el documento que más se lee y mentía sobre la versión. **Actualizarla es un
+> 🩸 **Esta tabla se desincronizó en 4 de 4 releases** (decía 1.6.0 cuando era 1.6.3; decía 1.8.0
+> cuando era 1.10.0; y hasta el 28/08/2026 decía que 1.21.0 estaba **sin publicar** cuando llevaba
+> cinco días arriba y en 7 de los teléfonos). Es el documento que más se lee y mentía sobre la
+> versión. **Antes de creerle a esta tabla, correr un `select * from app_config`** — son diez
+> segundos y es la única fuente que no se desactualiza sola. **Actualizarla es un
 > paso del release, no un "después lo arreglo":** va junto con el `UPDATE` de `app_config`.
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.21.0` ⏳ sin publicar | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.21.0` ⏳ sin publicar | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `37` ⏳ sin publicar | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | `1.20.0` ✅ publicado → pasa a `1.21.0` | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | `1.18.0` → pasa a **`1.21.0`** en este release (decisión del dueño; ver la nota de arriba) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.21.0` ✅ publicado (23/08) → el trabajo del 27-28/08 sale como **1.22.0** | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.21.0` ✅ publicado | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `37` ✅ publicado → el próximo es **38** | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | **`1.21.0`** ✅ (verificado contra la base viva el 28/08; `updated_at` 23/08 00:10 UTC) | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | **`1.21.0`** ✅ (ya subido) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la
@@ -923,19 +965,22 @@ Lista accionable y priorizada en **[HANDOFF.md §4](HANDOFF.md)**; el detalle t�
   > baja a alguien **conservando** su historial, el único camino es `activo=false`. Y ojo con
   > `estado_dispositivo` y `recorridos_snap`: **no tienen FK a `perfiles`**, así que no se van solas
   > y hay que limpiarlas a mano o quedan huérfanas.
-- 🟠 **`clientes_codigo_key` es `UNIQUE (codigo)` GLOBAL**, no por empresa: dos distribuidoras no
-  pueden usar el mismo código de cliente. **Con 2 empresas vivas en la base (04/08/2026) ya dejó de ser
-  hipotético.**
+- ✅ **`clientes_codigo_key` / `productos_codigo_key` eran `UNIQUE (codigo)` GLOBAL — RESUELTO el
+  27/08/2026 (`db/48`).** Dos distribuidoras no podían usar el mismo código: la segunda no podía ni
+  **crear** el producto. Ahora es `unique (id_empresa, codigo_norm)` sobre una columna generada que
+  espeja `codigoKey()` — así la regla "0041 ≡ 41" es una restricción de la base y el webhook del ERP
+  puede hacer un upsert atómico en vez de parear en memoria.
 - 🟠 **`firmas_ins`** sigue siendo `to authenticated` sin alcance (el bucket de firmas de entrega).
   Hoy no muerde —la tabla `pedidos` está vacía y nadie firma nada— pero cuando arranque el módulo
   de entregas hay que darle el mismo tratamiento que `db/25`.
-- 🔴 **Objetos vivos sin versionar en ningún `.sql`, y creciendo.** Confirmado contra la base viva el
-  04/08/2026: `posiciones.bateria`, `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, las 5 ya
-  listadas en `00_LEER_PRIMERO.md`, **y cuatro nuevas**: la tabla **`ingesta_tokens`**, la RPC
-  **`mi_token_ingesta`**, la tabla `ubicaciones_compartidas` y la RPC `ultimas_posiciones_compartidas`.
-  Las dos primeras son las que autentican al uploader nativo: **sin ellas una base recreada desde `db/`
-  no puede recibir una sola posición.** Peor: el encabezado de `ingest-posiciones` cita un
-  `db/16_ingesta_tokens.sql` **que no existe** (`db/16` es `visitas`).
+- 🟠 **Objetos vivos sin versionar en ningún `.sql`.** Confirmado contra la base viva el 04/08/2026:
+  `posiciones.bateria`, `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor`, las 5 ya listadas en
+  `00_LEER_PRIMERO.md`, más `ubicaciones_compartidas` y su RPC `ultimas_posiciones_compartidas`.
+  ✅ **`ingesta_tokens` y `mi_token_ingesta` YA NO están en esta lista**: se versionaron el 27/08 en
+  `db/48`, que además le agregó a la tabla la columna `proposito` (`gps` / `precios`). Eran las dos
+  que autentican al uploader nativo — sin ellas, una base recreada desde `db/` no podía recibir una
+  sola posición. ⚠️ El encabezado de `ingest-posiciones` sigue citando un `db/16_ingesta_tokens.sql`
+  **que no existe** (`db/16` es `visitas`): corregir esa referencia a `db/48`.
 - 🟠 **Key de Stadia** hardcodeada en `web/src/services/maps/basemap.js:13` — mover a `VITE_STADIA_KEY` y
   rotar. **No es Google Maps**: Google Maps es código muerto y `GUIA_API_KEY_GOOGLE_MAPS.md` está
   obsoleta. Si la key de Stadia vence, la app **no se rompe**: se queda con OSM y se ocultan las capas

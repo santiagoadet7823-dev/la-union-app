@@ -1,8 +1,22 @@
 # HANDOFF — DisT-At
 
-> **Actualizado el 17/08/2026 · `APP_VERSION 1.14.5` · APK 1.13.0.** Escrito para retomar el proyecto
-> **en otra máquina y en una sesión nueva, sin memoria previa.** Si estás leyendo esto en la PC nueva:
+> **Actualizado el 28/08/2026 · `APP_VERSION 1.21.0` · APK 1.21.0 · `app_config` en `1.21.0`
+> (bundle + latest + `min_version`), publicado el 23/08.** Escrito para retomar el proyecto **en otra
+> máquina y en una sesión nueva, sin memoria previa.** Si estás leyendo esto en la PC nueva:
 > empezá por §2.
+>
+> ⚠️ **1.21.0 YA ESTÁ PUBLICADO** — verificado contra `app_config` el 28/08. `CLAUDE.md §6` y la
+> versión anterior de este encabezado decían "⏳ sin publicar" y estaban **desactualizados**: es la
+> cuarta vez que esa tabla miente sobre la versión. **El trabajo del 27-28/08 sale como `1.22.0`.**
+>
+> Reparto del parque al 28/08 (`estado_dispositivo`): **7 equipos en 1.21.0** con latido de hoy ·
+> 3 en 1.20.0 sin reportar desde el 22/08 · 5 filas viejas o sin latido. Publicar no es entregar.
+>
+> 🔴 **Si sos una sesión nueva HOY: leé primero la sección 🟠 del 28/08 (tarde) y después la 🔵 del
+> 27-28**, las dos justo abajo de §1. Hay trabajo grande **implementado y verificado pero SIN
+> PUBLICAR**, una cola de escritura que estuvo taponada dos días en producción, y **`db/51` ya
+> aplicada en la base viva** (la base va adelante del bundle: es aditiva, así que el 1.21.0 que
+> corre en la calle no se entera).
 >
 > Complementarios: [CLAUDE.md](CLAUDE.md) (reglas operativas — leerlo entero antes de tocar código) ·
 > [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) (arquitectura y deuda técnica) ·
@@ -25,6 +39,300 @@ cobra por abono P2P — **no hay pasarela de pago en la app**; la palanca es `em
 ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta).
 
 Todo en español: código, comentarios, UI y commits.
+
+---
+
+## 🟠 SESIÓN DEL 28/08/2026 (tarde) — Destacados, el paquete de envío automático, y un precio que mentía
+
+**Estado en una línea: todo implementado y verificado; `db/51` YA APLICADA en la base viva; el
+bundle SIGUE SIN PUBLICAR.** Va todo junto en **1.22.0**, decidido con el usuario.
+
+### 1. Filtro "Destacados" — el chip que va primero
+
+Pedido del cliente: un filtro que junte los productos **de baja rotación** para que el vendedor los
+saque; toca uno y se le abre al comerciante en la tablet para que decida si lo suma.
+
+🔴 **La decisión de diseño que hay que entender antes de tocarlo: el flag es EXPLÍCITO, no
+calculado.** Medido contra la base viva ANTES de escribir una línea:
+
+| | |
+|---|---|
+| productos | **529** (0 descontinuados) · 355 con foto |
+| pedidos | **3 en total, y los 3 ANULADOS** · 3 líneas en `pedido_items` · 82 visitas |
+
+Una RPC "los que menos se pidieron" —el espejo de `productos_sugeridos_cliente` (`db/44`)— devolvería
+hoy **526 de 529**: el chip nacería indistinguible de "Todos". Es la advertencia que `db/44` se
+escribió a sí misma ("no da resultados el día 1"), y acá duraría meses. Y `productos` no tiene ni
+stock ni rotación: **el único sistema que sabe qué no se mueve es el ERP del cliente**.
+
+Por eso, columna `destacado` que se llena por **dos caminos con el mismo nombre de campo**: a mano
+desde la ficha del producto, y desde la lista de precios del ERP (columna nueva `destacado`, con
+sinónimos `baja_rotacion`, `liquidar`, `empujar`…). Cuando haya historial de verdad se le puede
+sumar una **sugerencia** automática, pero la decisión sigue siendo del cliente: un producto puede no
+rotar porque no lo quiere nadie o porque hay que liquidarlo, y esa diferencia no está en los datos.
+
+**Qué se tocó:**
+
+| Dónde | Qué |
+|---|---|
+| **`db/51_destacado.sql`** | Columna + `importar_precios` con el campo. ✅ **APLICADA** (`apply_migration`, 28/08). El cuerpo salió de `pg_get_functiondef` sobre la base viva, no de fusionar `db/49` + `db/50` a ojo (regla 5) |
+| `VisitaCatalogo.jsx` | El chip **primero** de la fila, con color propio. El filtro por defecto **sigue en 'Todos'** — aparecer primero no es estar seleccionado |
+| **`FichaProducto.jsx`** (nuevo) | El producto grande del lado del vendedor. Va por `Overlay variant="sheet"`, así que hereda la pila de `atras.js` (reglas 26-27) y el z-index por token |
+| `NuevoProducto` · `CatalogoTab` · `ImportarProductos` · `CatalogContext` · `planillaProductos` · `ingest-precios` | El campo, punta a punta |
+
+🩸 **Tocar la tarjeta hace las DOS cosas a la vez** (abre grande en el celular **y** manda a la
+tablet si la vidriera está viva), que es el mismo criterio que ya usa la tablet cuando el toque lo da
+el cliente. Sin tablet no se pierde el gesto: queda la ficha del celular, que se le da vuelta al
+comerciante. Eso era la mitad que faltaba — la vidriera necesita hotspot, pareo y tablet, y **la
+mayoría de las visitas no la tienen**.
+
+⚠️ **`destacado` NO viaja en `snapshotCatalogo`, y no es un olvido.** Significa "esto no rota / hay
+que liquidarlo": es una decisión comercial de la distribuidora y esa pantalla la mira el
+**comerciante**. Está comentado en `services/vidriera.js` para que nadie lo agregue "por
+completitud".
+
+⚠️ **Hay TRES listas blancas explícitas en el camino de importación** y un campo que falte en
+cualquiera se pierde **sin un solo error**: `addProducto` e `importProductos` (`CatalogContext`) y el
+`.map()` de `ImportarProductos`. Es lo que ya pasó con `marca` y `unidad_venta` el 27/08.
+
+### 2. 🩸 `AvisoVidriera` violaba la regla 52 — y mentía con los escalones
+
+`AvisoVidriera.jsx:28` resolvía el precio a mano (`oferta ? precioOferta : price`) y **no importaba
+nada de `lib/precios.js`**. Era el **único de los 11 lugares de la regla 52 que quedó sin migrar**, y
+está nombrado en la propia regla.
+
+**El fallo, medido con el código real:** el cliente toca en la tablet un producto con escalón desde 6
+y pone 6. La tablet muestra $1.750 c/u; el cartel del celular mostraba `6 × $1.850 = `**$11.100**; el
+vendedor toca "Sumar 6" y el carrito —que sí usa `precioDe`— cobra **$10.500**. Tres números
+distintos del mismo producto, y el del medio es el que la persona lee en voz alta.
+
+Arreglado con `precioPara(aviso, n)` (la cantidad importa: el escalón se resuelve contra `n`, no
+contra 1), y con el precio de lista tachado cuando hay descuento.
+
+### 3. El envío automático de precios — el paquete "todo hecho" para el cliente
+
+La pregunta era *"¿lo hace en cierto horario o cómo?"*. **Respuesta: tarea programada del lado de
+ellos, 06:00, lunes a sábado** (la jornada arranca 07:30-08:00 y el catálogo se carga al abrir la
+app, así que a las 06:00 la lista del día ya está arriba, con margen para dos reintentos).
+
+| Archivo | Qué es |
+|---|---|
+| **[GUIA_ENVIO_AUTOMATICO_PRECIOS.md](GUIA_ENVIO_AUTOMATICO_PRECIOS.md)** (nuevo) | El paso a paso: Programador de tareas de Windows campo por campo, `cron`, qué hacer con cada código de respuesta, y cómo saber dentro de tres meses que sigue funcionando |
+| `scripts/cliente/enviar-precios.ps1` + `.bat` | Windows. Registro diario, reintentos **sólo** de red, TLS 1.2 explícito |
+| `scripts/cliente/enviar-precios.sh` | Linux/cron |
+| `scripts/cliente/EnviarPrecios.java` | Para colgarlo del final del export del ERP, que es mejor que una hora fija |
+| `ESPECIFICACION_LISTA_PRECIOS.md` | **Versión 3**: columna `destacado` (§1 y §2-bis) y **§4-bis "Cuándo se envía"** |
+| `plantilla-lista-precios.xlsx` | Regenerada: **22 columnas**, INSTRUCTIVO actualizado, y el conteo de fotos corregido de 227 a **355** |
+
+🔴 **El token no está escrito en ningún archivo** (regla 25): los scripts lo leen de `DISTAT_TOKEN` o
+de un `token.txt` con permisos restringidos. La guía dice **dónde** ponerlo, nunca cuál es.
+
+🔴 **Los scripts NUNCA mandan `?lista_completa=1`.** Las bajas se siguen haciendo a mano, leyendo el
+conteo antes de confirmar.
+
+### 4. 🟠 El agujero que se tapó de paso: nadie miraba si la lista llegó
+
+`ingestas_precios` guarda cada corrida desde `db/48` y **no la leía nadie**. Si el cron del cliente se
+muere un martes, el catálogo se congela y el primero que se entera es un vendedor cobrando mal frente
+a un comercio. Es *"avisar no es actualizar"* una capa más arriba.
+
+**`features/catalog/EstadoCatalogo.jsx`** (nuevo, montado en `CatalogoTab`, o sea en las cuatro
+pantallas que editan catálogo) muestra dos números que hasta hoy no existían:
+
+- **"Precios actualizados hace N h · N filas"**, en ámbar pasadas **36 h** sin ingesta.
+- **El contador de cuarentena de la cola de escritura** (pendiente **N3**), que aparece **sólo si hay
+  algo aislado**. Es el número cuya ausencia hizo que el taponamiento durara dos días: la pantalla
+  decía que sí (merge optimista) y nada subía.
+
+### 5. Regla 53 en `CLAUDE.md` — aviso de contexto
+
+Pedido explícito: avisar al ~25 % de contexto restante para actualizar el HANDOFF y abrir una sesión
+nueva. Queda escrito en `CLAUDE.md §2 → General`. ⚠️ **La regla dice de sí misma que es conducta y no
+un disparador exacto**: desde adentro de la sesión no hay una lectura numérica del contexto, así que
+el 25 % es un objetivo, no una garantía. El respaldo confiable sería mostrarlo en la statusline, que
+se configura aparte y **no se hizo**.
+
+### 6. Lo verificado, y con qué
+
+| Qué | Cómo |
+|---|---|
+| Columna y RPC | `information_schema` + **`proacl` idéntico antes y después** (`{postgres=X,service_role=X}`) |
+| **"Celda vacía no borra"** | Tres llamadas reales a `importar_precios` contra la base: alta con `destacado=si` → **t**; envío diario **sin la columna** → **sigue en t** (y el precio sí cambió, o sea que la fila entró de verdad); `destacado=no` → **f**. Producto de descarte borrado y bitácora limpia (529 productos, 0 restos) |
+| Parseo de la columna | 8 casos contra `filaAImportar` + un archivo tabulado real: `si`/`SI`/`no`/vacío/ausente y los 4 sinónimos. **Ausente → `null`**, que es todo el contrato |
+| Chips y filtro | 8 casos sobre las expresiones exactas del componente: Destacados primero, no existe si no hay ninguno, y Todos/Ofertas/categoría **intactos** |
+| Regla 52 | Los tres lugares dan 1.750 para 6 unidades. Se reprodujo el número viejo: **11.100 contra 10.500** |
+| Build | `npm run build` EXIT=0 |
+
+🔴 **LO QUE FALTA VERIFICAR, Y NO ES OPCIONAL: la pantalla.** La sesión de la PWA está cerrada y
+Claude no puede escribir credenciales (regla 43). **Un build en verde no prueba nada de esto**
+(regla 51: Vite no detecta TDZ y el `ErrorBoundary` se come la pantalla entera). Falta, con la
+sesión abierta:
+
+1. Marcar 3 productos → el chip **Destacados** aparece **primero**.
+2. Desmarcarlos todos → el chip **no existe**.
+3. Tocar un destacado **sin tablet** → se abre la ficha grande con la escalera.
+4. **Botón ATRÁS de Android** (emulador) → cierra la ficha, **no la app**.
+5. Tocar el `+` de una tarjeta en Destacados → **NO** abre la ficha (el `stopPropagation`).
+6. Con vidriera viva: tocar → la tablet abre la ficha (`VidrieraTablet:639`).
+
+### 7. Lo que sigue pendiente de esto
+
+- **N1** — publicar 1.22.0 por los tres canales. Ahora lleva también todo lo de arriba.
+- **N2** — leer la cola trabada de marketing **antes** de sacarle nada (regla 20). Sin hacer.
+- **N4** — redesplegar `ingest-precios`. `sync-ingest-precios.mjs` ya corrió y el `--check` da al día,
+  pero **el deploy no se hizo**.
+- **N5** — las tres preguntas al cliente siguen sin respuesta.
+- **N6** — no hay ningún token de precios emitido: el endpoint rechaza todo con 401.
+
+---
+
+## 🔵 SESIONES DEL 27-28/08/2026 — Precios por cantidad, ingesta desde el ERP, y una cola taponada
+
+**Estado en una línea: todo implementado y verificado contra datos reales; NADA publicado.** Los 9
+teléfonos siguen corriendo el bundle `1.21.0` que ya estaba.
+
+### 0. 🔴 Lo primero que hay que hacer al abrir la sesión
+
+| # | Qué | Por qué es lo primero |
+|---|---|---|
+| **A** | **Pedirle a marketing que lea su cola trabada** | Hay una mutación en el `localStorage` de esa persona que estuvo bloqueando la cola dos días. Se reparó el daño y se arregló el código, pero **esa entrada sigue ahí** y hay que ver qué era antes de sacarla (regla 20). El snippet, abajo |
+| **B** | **Publicar** por los tres canales (APK + OTA + PWA) | Sin publicar, el arreglo de la cola **no llega a nadie** y el problema de las fotos se repite en la próxima tanda |
+| **C** | **Redesplegar `ingest-precios`** desde `supabase/functions/ingest-precios/` | Lo desplegado son copias condensadas de los módulos de `lib/` y le faltan los dos cambios del 28/08. Correr `node scripts/sync-ingest-precios.mjs` primero. Ver el `LEER.md` de esa carpeta |
+
+---
+
+### 1. 🔴 La cola de escritura estuvo TAPONADA DOS DÍAS (28/08)
+
+Marketing reportó que cargó más de 100 fotos y "no se guardaron o se borraron".
+
+**No se perdió ninguna.** Los archivos estaban todos en Storage; lo que faltaba era el vínculo: **147
+productos con la foto en el bucket y `imagen_url` en NULL**. Ya se reparó con un UPDATE que
+reconstruye la URL desde `storage.objects` (208 → 355 productos con foto, verificado con `curl`:
+HTTP 200, `image/webp`).
+
+**La causa:** `writeQueue.js` hacía `if (error) break` ante CUALQUIER error. La cola es FIFO, así que
+**una sola mutación que falla siempre bloquea todo lo que venga detrás, para siempre**. El 26/08 a
+las 15:29:09 una mutación sobre el producto `0218` empezó a dar `23505` (código duplicado) y desde
+ese segundo no subió nada más.
+
+Es la **regla 19/20 de CLAUDE.md** —lo que la cola de POSICIONES ya había pagado en julio con 264
+puntos atascados— que nunca se aplicó a la cola de escritura. Peor: el propio archivo ya razonaba
+sobre este peligro para la operación `borrarArchivos` y lo resolvía **para una sola operación**.
+
+**Arreglado** (sin publicar): `CODIGOS_PERMANENTES` + cuarentena `lu-write-cuarentena`. Se aísla, no
+se borra, con `_motivo` y payload intactos. Verificado reproduciendo el escenario real contra el
+código de producción: 5 fotos detrás de un 23505 **suben igual**, y se cumple la invariante de la
+regla 21 (`subidas + aisladas == total`). Un error **transitorio** sigue cortando y conservando el
+orden — esa distinción es todo el arreglo.
+
+**Falta**: un contador de cuarentena visible en la pantalla de catálogo. Esto falló dos días porque
+**no había ningún número que mirar**: la persona cargaba fotos, la pantalla decía que sí (merge
+optimista) y nada subía. El síntoma que engaña no es "falla", es *"se guardó y después desapareció"*.
+
+**El snippet para la persona de marketing** (sólo lee, no borra):
+
+```js
+copy(JSON.stringify(JSON.parse(localStorage['lu-write-queue']).slice(0,3), null, 2))
+```
+
+> 🩸 **Cómo se rastreó, que es lo reutilizable.** (1) Contar Storage contra `imagen_url` → el
+> problema es el vínculo, no el archivo. (2) Agrupar por día → el corte fue **de 10 segundos**, y un
+> corte así de filoso es firma de cola taponada, no de "a veces falla". (3) `query_logs` sobre
+> `edge_logs` → **665 PATCH con 409 en un día**, todos al mismo `id`, uno cada 30 s.
+> ⚠️ **`postgres_logs` filtrado por `error_severity` devuelve VACÍO** aunque los errores existan: ese
+> campo llega en blanco. Hay que buscar por `event_message` (`duplicate`, `violates`).
+
+---
+
+### 2. Precios por cantidad (escalas) — implementado, sin publicar
+
+El cliente pidió precios por volumen: precio base + hasta 5 escalones. **Decisión cerrada: todo pasa
+a UNIDAD** — nada de fardo ni caja cerrada como fila; `desde_N` se cuenta en unidades sueltas.
+Oferta vs escalón: gana el más barato. Entrega parcial: el precio **se congela** al tomar el pedido
+(es lo que el sistema ya hacía; `useEntregas` no toca `precio_unitario`, y está comentado para que no
+parezca olvido).
+
+**Migraciones aplicadas** (`db/48`, `db/49`, `db/50`): columna `escalas jsonb`, `codigo_norm`
+generada, **`unique(id_empresa, codigo_norm)` reemplazando el único GLOBAL** en `productos` y
+`clientes`, `ingesta_tokens` por fin versionada + columna `proposito`, tabla `ingestas_precios`, y la
+RPC `importar_precios`.
+
+**Código nuevo**: `web/src/lib/precios.js` (la ÚNICA fuente de "cuánto sale esto") y
+`web/src/lib/planillaProductos.js` (encabezados + parseo, compartido con la Edge Function).
+Escalera en las tarjetas del vendedor y de la tablet, ahorro en los dos carritos, editor de 5 filas
+en la ficha del producto.
+
+> 🩸 **La regla del precio estaba copiada en 11 lugares de 7 archivos.** Es la regla 52 de CLAUDE.md.
+> Con precio plano coincidían por casualidad; con escalones, la primera que quede sin actualizar hace
+> que el celular y la tablet muestren números distintos con el comerciante enfrente.
+
+**Tres bugs que aparecieron al medir y quedaron arreglados:**
+
+- `soloNum` **no podía leer NINGÚN decimal**, ni con punto: `normalizar()` convierte el punto en
+  espacio, así que `"1450.50"` entraba como **145050**. No dejó daño porque el catálogo salió de un
+  PDF sin pesos. El parser nuevo **no adivina** los ambiguos (`1.450`): los rechaza con el nº de fila.
+- `addProducto` perdía **`marca` y `unidad_venta`** en silencio (lista blanca implícita).
+- `addProducto` descartaba el `id` del llamador → **fotos huérfanas** en Storage que `deleteProducto`
+  no podía encontrar nunca.
+
+**Verificado** (suites en el scratchpad, no en el repo — no hay framework de tests): 33 casos de
+`precios.js`, el mapeo de encabezados, la RPC contra la base con un producto de descarte, y el
+endpoint de punta a punta con archivo tabulado real.
+
+⚠️ **`PROTOCOLO` (services/vidriera.js) NO SE TOCA.** La tablet valida igualdad estricta al escanear
+el QR: subirlo deja **toda tablet existente sin poder parear**, y esa tablet no recibe OTA nunca.
+
+---
+
+### 3. La ingesta desde el ERP y el primer archivo real
+
+**`supabase/functions/ingest-precios`** está desplegada y probada: token opaco en `ingesta_tokens`
+con `proposito='precios'`, `id_empresa` **del token y nunca del payload**, freno de bajas (>20 % del
+catálogo → **409 sin escribir**) y bitácora en `ingestas_precios`. Un token de GPS no puede escribir
+precios (probado: 401).
+
+**Hoy no hay ningún token de precios emitido**, así que el endpoint rechaza todo con 401. Se mintea
+con `mi_token_ingesta('precios')` y sólo lo puede pedir quien ya edita el catálogo.
+
+**`ARTIK.csv`** (541 filas, 19 columnas, `;`) llegó el 28/08. Análisis completo y el documento para
+reenviarle al cliente: [REVISION_ARTIK.md](REVISION_ARTIK.md).
+
+- ✅ Separador, decimales con punto, códigos sin ceros: todo bien. **Los 3 escalones están en el
+  formato correcto** (columnas 12-17, con el `0011` cargado de ejemplo).
+- 🔴 **Falta la fila de encabezados** — va con el **mismo separador que los datos** (`;`), no comas.
+- 🔴 **407 de 541 descripciones cortadas a 20 caracteres.** Por eso `db/50` agregó
+  `p_pisar_descripcion`: el envío automático **no toca los nombres** de productos que ya existen.
+- ⚠️ Los tramos del ejemplo están contados **en fardos, no en unidades**. Puede que el archivo sea
+  anterior a la spec v2 — está preguntado, no reclamado.
+- ⚠️ Falta que manden la **tabla de los 20 rubros** (columna 6, códigos `01`…`20`).
+
+Probado contra las 541 filas reales: sin encabezado lo detecta y responde `falta-encabezado`
+mostrando la primera línea; con el encabezado agregado, las 541 entran con código, descripción y
+precio, cero ambiguos, y el escalón del `0011` sale correcto.
+
+---
+
+### 4. Lo entregado al cliente
+
+| Archivo | Qué es |
+|---|---|
+| `plantilla-lista-precios.xlsx` | Planilla con las 21 columnas + hoja INSTRUCTIVO. **Versión 2**, a nivel unidad |
+| [ESPECIFICACION_LISTA_PRECIOS.md](ESPECIFICACION_LISTA_PRECIOS.md) | La spec del endpoint para quien programe el export |
+| [REVISION_ARTIK.md](REVISION_ARTIK.md) | La devolución del primer archivo de prueba |
+
+🔴 **Sigue sin respuesta y condiciona todo**: ¿la lista a nivel unidad **conserva los códigos**? Las
+355 fotos se parean por código — si cambian, el catálogo queda gris y hay que recargarlas a mano.
+
+---
+
+### 5. Lo comercial que cambió el 27/08
+
+El cliente **sacó el pago del backend dedicado** y ofreció a cambio ayudar con marketing (tiene
+contactos para revender la app). Se sigue en la Supabase compartida pagando planes;
+`PLAN_BACKEND_DEDICADO.md` queda como **propuesta archivada, no como plan vigente**.
+
+⚠️ Esto contradice el alto de features del 17/08 y la facturación cerrada en USD 500 + 250/mes **sin
+modificaciones**: se cotiza aparte.
 
 ---
 
@@ -1319,6 +1627,48 @@ cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files
 3. **`npm run lint` es `eslint . || true` — nunca falla**, y además no hay archivo de config de ESLint
    en el repo. **No sirve como verificación.** Y **no hay tests**.
 
+### 3.7 ⏳ Pendientes de instalar — evaluados el 25/08/2026, no instalados todavía
+
+Dos herramientas externas investigadas a pedido del dueño para ayudar a captar clientes y ordenar el
+despliegue. Quedan documentadas acá para que la sesión de la PC nueva sepa qué instalar; ninguna de
+las dos se instaló/desplegó en esta máquina.
+
+**agency-agents (subagentes Sales/Marketing/DevOps para Claude Code)**
+- **Repo:** https://github.com/msitarzewski/agency-agents (MIT, 230+ agentes)
+- **Para qué:** subagentes de IA — archivos `.md` con frontmatter YAML (`name`/`description`) que
+  Claude Code lee directo desde `.claude/agents/`, sin conversión — especializados en
+  prospección/ventas B2B, growth/contenido/SEO y DevOps/mobile-release. No es una plataforma de
+  despliegue ni de leads: da un "personaje experto" más estructurado que un prompt genérico.
+- **Cómo se instala:** copiar directo (sin build) los archivos curados de abajo a `.claude/agents/`
+  — quedan disponibles como `subagent_type` del Agent tool tras reiniciar la sesión. **No correr
+  `scripts/install.sh`** del repo: instala para múltiples herramientas (Cursor, Copilot, etc.) y el
+  catálogo completo de 230+, mucho más de lo que hace falta acá.
+- **Selección curada (16 de 230+, priorizando B2B/logística sobre redes de consumo masivo):**
+  - Sales (`sales/`): `sales-outbound-strategist.md`, `sales-offer-lead-gen-strategist.md`,
+    `sales-discovery-coach.md`, `sales-proposal-strategist.md`, `sales-pipeline-analyst.md`
+  - Marketing (`marketing/`): `marketing-growth-hacker.md`, `marketing-content-creator.md`,
+    `marketing-seo-specialist.md`, `marketing-linkedin-content-creator.md`,
+    `marketing-email-strategist.md`, `marketing-app-store-optimizer.md`
+  - Engineering/DevOps (`engineering/`): `engineering-devops-automator.md`,
+    `engineering-mobile-release-engineer.md`, `engineering-sre.md`,
+    `engineering-backend-architect.md`, `engineering-database-optimizer.md`
+
+**wacrm — CRM open-source con WhatsApp oficial (evaluado, no desplegado)**
+- **Repo:** https://github.com/ArnasDon/wacrm (MIT, 2.000+ estrellas, activo)
+- **Para qué:** CRM self-hosted (bandeja compartida multi-agente, pipeline de ventas Kanban,
+  broadcasts con plantillas aprobadas, automatizaciones) conectado a WhatsApp por la **Meta Cloud
+  API** — la API OFICIAL de WhatsApp Business, legal y sin riesgo de baneo del número. Para captar y
+  gestionar clientes de DisT-At.
+- **Cómo se instala:** fork del repo. Stack Next.js 16 + React + TypeScript + **Supabase** — mismo
+  backend que ya usa La Unión (§3.5). Antes de desplegarlo de verdad hace falta: verificación de
+  negocio en Meta Business Manager, un número de WhatsApp dedicado, elegir hosting
+  (Hostinger/Vercel/VPS), y decidir si usa un proyecto Supabase nuevo o reutiliza
+  `lqhtxivednffpiicnbog`.
+- **Es un proyecto aparte**, no vive en este repo — no toca el código de DisT-At.
+- **Alternativas evaluadas y descartadas:** Frappe CRM (stack Python/Frappe pesado, no encaja con lo
+  ya instalado), OpenWA / Evolution API / MultiWA (usan WhatsApp Web no oficial vía Baileys — riesgo
+  de baneo, incumplen el requisito de "legal").
+
 ---
 
 ## 4. Pendientes
@@ -1425,8 +1775,18 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 
 ### 🔴 Hacer ya
 
+> **Lo de arriba de esta tabla es lo del 27-28/08 y lo del 28/08 a la tarde** (Destacados, el
+> paquete de envío automático y el arreglo de la regla 52) y va primero: ver las secciones 🟠 y 🔵
+> debajo de §1. **Todo eso sale junto en 1.22.0.**
+
 | # | Pendiente | Por qué duele | Qué lo cierra |
 |---|---|---|---|
+| **N1** | 🔴 **Publicar el arreglo de la cola de escritura** (APK + OTA + PWA) | Está implementado y verificado, y **sin publicar no llega a nadie**. Mientras tanto, cualquier error permanente de una mutación vuelve a taponar la cola de esa persona y sus ediciones dejan de subir en silencio — pasó dos días con 147 fotos. Va junto con las escalas de precio, que ya están hechas | Subir `APP_VERSION`, `versionName`, `versionCode`; `CAP_BUILD=1`; los tres canales; y **cerrar el release mirando `estado_dispositivo.bundle_aplicado`, no la respuesta del push** (precedente 1.19.0) |
+| **N2** | 🔴 **Leer la cola trabada de marketing antes de sacarle nada** | La mutación que bloqueó dos días sigue en el `localStorage` de esa persona. Puede ser un cambio de código legítimo que haya que aplicar a mano. **Regla 20: lo que no se pudo inspeccionar no se destruye** | `copy(JSON.stringify(JSON.parse(localStorage['lu-write-queue']).slice(0,3), null, 2))` en la consola de la app, y decidir con eso a la vista |
+| **N3** | ✅ **HECHO el 28/08 (tarde)** — `features/catalog/EstadoCatalogo.jsx`, montado en `CatalogoTab` (o sea en las cuatro pantallas que editan catálogo). Muestra el contador de cuarentena **sólo si hay algo aislado**, y de paso el renglón de "precios actualizados hace N h" que faltaba para el envío automático. Sin publicar | | |
+| **N4** | 🔴 **Redesplegar `ingest-precios` desde el repo** | Lo desplegado son copias **condensadas** de los tres módulos de `lib/` y **le faltan los dos cambios del 28/08** (`falta-encabezado` y `p_pisar_descripcion`). No está en uso —no hay token emitido— pero hay que alinearlo antes de emitir el primero | `node scripts/sync-ingest-precios.mjs` y desplegar los 4 archivos. Ver `supabase/functions/ingest-precios/LEER.md` |
+| **N5** | 🟠 **Que el cliente responda tres cosas** | Condicionan el trabajo que sigue, y una de ellas se lleva puestas las 355 fotos | (a) ¿la lista a nivel unidad **conserva los códigos**?; (b) ¿pueden mandar la descripción completa o es ancho fijo?; (c) la **tabla de los 20 rubros**. Todo está en [REVISION_ARTIK.md](REVISION_ARTIK.md) |
+| **N6** | 🟡 **Emitir el token de precios y hacer la primera carga a mano** | El pasaje a unidad **reemplaza el catálogo entero**: es demasiado grande para un endpoint sin nadie mirando, y el freno del 20 % lo va a rechazar a propósito | Primero un archivo de prueba de 20 filas **sin** tildar "lista completa", revisar en la app, y recién después la lista entera desde la pantalla leyendo el conteo de bajas |
 | **0** | ⏳ **MEDIR 1.13.0 — lo primero de la sesión del martes 11/08** | El arreglo del **ancla** es nativo y **no se pudo probar**: el emulador no tiene GPS real ni Doze. Un arreglo sin medir no está confirmado. ⚠️ **La jornada del 10/08 no sirve: el APK se compiló ese día 13:08 y llegó a la tarde, así que es PRE-fix** | El **% de km falso** (trinquete parado: hops ≥ 9 m con neto < 40 m en ±6 puntos) tiene que bajar en los 5 con `apk_version=1.13.0` y quedarse igual en **Gabriel tevez**, que es el control porque no lo recibió. Tabla de línea de base y la advertencia sobre el criterio viejo, en §1. **Si no baja en ninguno, volver sobre `UploaderGpsService.java`** |
 | **0-bis** | ⏳ **Mandar el push de aviso de 1.13.0** | Los tres canales están publicados pero **nadie avisó a los teléfonos**. Sin el push, los que no se actualizan solos no se enteran | El `net.http_post` a `push-actualizacion` de `CLAUDE.md §3`, con `timeout_milliseconds := 60000`. Lo tiene que correr una persona: lleva la `service_role` key |
 | **0-ter** | 🔴 **Terminar de actualizar 2 teléfonos** | **Eduardo ruiz** nunca se conectó (parece que no le entregaron el equipo) y **Gabriel tevez** no tiene adb remoto | Eduardo: `adb install -r -i com.launion.app` por Tailscale cuando aparezca. Gabriel: por cable cuando venga — y aprovechar para dejarle `adb tcpip 5555`, así deja de depender de una visita. ⚠️ **El `-i` no es opcional**: sin él el equipo no queda como su propio instalador y la próxima tampoco es silenciosa |
@@ -1436,7 +1796,7 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 | **A3** | 🟠 **La telemetría de descartes cuenta dos veces** (§3 H5) | En `UploaderGpsService.java:749` el fix retenido suma `cDescMovimiento++`, y en `:759-762` **ese mismo fix** vuelve a sumar `cGuardados++` al encolarse. La suma de destinos supera `fix_total` en **todos** los equipos (Agustin +592, Javier +138, Orlando +103). O sea que **`fix_desc_movimiento` no significa "descartados" sino "diferidos"**, y todo porcentaje de descarte por movimiento citado en esta bitácora está inflado. Mientras siga así, la invariante "cada fix tiene destino conocido" **no puede cerrar por definición** | **APK**: no sumar `cDescMovimiento` al retener, o descontarlo al encolar. Recién después se puede verificar `fix_total = guardados + descartes` |
 | 1 | **Respaldar el keystore** (§2.1) | Punto único de falla, y se está por mudar de disco | Contraseñas a un gestor + `.keystore` en 2 lugares |
 | 2 | **Cerrar el circuito de recuperación de contraseña** | Está **roto en producción**: el botón manda el mail y no hay pantalla donde poner la nueva. Ver §5 | Vista nueva + handler de `PASSWORD_RECOVERY` |
-| 3 | **Versionar `ingesta_tokens` y `mi_token_ingesta`** | Recrear la base desde `db/` deja al uploader nativo sin poder autenticarse. Y la Edge Function referencia un `db/16_ingesta_tokens.sql` **que no existe** | Migración nueva contra la base viva |
+| 3 | ✅ **HECHO el 27/08 (`db/48`)** — `ingesta_tokens` versionada, con `proposito` (`gps` / `precios`) y único `(id_usuario, proposito)`. `mi_token_ingesta` pasó a tomar un parámetro con default, así el `rpc('mi_token_ingesta')` sin argumentos del uploader nativo sigue andando sin APK nuevo | | |
 | 4 | **Unificar la ventana de rastreo**, hoy implementada 3 veces | `dentroDeHorario()` (JS), `VentanaRastreo.dentro()` (Java) y `en_ventana` (SQL). Tocar una sin las otras hace que **los avisos al supervisor mientan en silencio** | Una sola fuente — el SQL es el candidato: se verifica con un `select` |
 | 4-bis | ⚠️ **1.11.0 publicada** (arranque del rastreo al horario) — **SUPERADA por 1.13.0, y la medición NUNCA se hizo.** Sigue vigente como deuda | Se publicó en los tres canales el 05/08 (verificado por MCP el 07/08). Pero **un arreglo sin medir no está confirmado**: la línea de base era 51 min de mediana de retraso sobre 29 días hábiles (`db/30`) | Consulta contra `posiciones`: primer punto del día por usuario vs. las 08:00, sobre los días hábiles desde el 05/08. Si sigue arriba de ~15 min, el arreglo no alcanzó |
 | 4-ter | **Que un cambio de horario llegue al teléfono con la app cerrada** | Las prefs con la ventana solo las escribe `configurar()` con la app viva. Si el admin cambia el horario y la persona no abre la app en días, el teléfono sigue con la ventana vieja — y ahora también con la alarma calculada sobre ella | `LaUnionMessagingService` escribiendo la ventana en prefs desde un data-message de FCM (corre en nativo, con el WebView muerto) |
@@ -1454,7 +1814,7 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 |---|---|---|
 | 9 | **Corregir el copy de `PermisoSiemprePrompt.jsx`** | Hoy le dice a TODOS *"En Xiaomi, Huawei y similares, activá Inicio automático"*, y **va a ser falso para el 100 % del parque nuevo**: Samsung no tiene lista de autostart. Sale por OTA y depende del pendiente #7 (saber la marca). Ver §7.8 |
 | 10 | Script `build:apk` con `CAP_BUILD=1` incorporado | `cross-env` por Windows. Cierra el riesgo #4 de la auditoría, vigente desde julio |
-| 11 | `UNIQUE (id_empresa, codigo)` en `clientes` | Hoy es UNIQUE global: **dos distribuidoras no pueden usar el mismo código**. Con 2 empresas vivas ya muerde |
+| 11 | ✅ **HECHO el 27/08 (`db/48`)** — `unique (id_empresa, codigo_norm)` en `clientes` **y** en `productos`, sobre una columna generada que espeja `codigoKey()` (ignora los ceros a la izquierda). Verificado antes de migrar: 0 colisiones en 529 productos y 2.014 clientes |
 | 12 | Decidir `AdminView` | Está **inalcanzable** y con él 3 vistas muertas (511 L). Borrar `RecorridosView` y `MapaOperativo`; **rescatar `ReplayJornada`** (reproduce la jornada como película, no hay nada equivalente) colgándola de "Menú" |
 | 13 | Versionar las 4 columnas restantes | `posiciones.bateria`, `perfiles.numero`, `zonas.numero`, `zonas.id_vendedor` + `ubicaciones_compartidas` y su RPC |
 | 14 | Rotar la key de Stadia y moverla a `VITE_STADIA_KEY` | Está commiteada: considerarla quemada. Agregarla como secret del workflow o la PWA pierde esas capas |
@@ -2333,7 +2693,13 @@ No son tareas: son decisiones pendientes.
 
 ## 9. Si sos una sesión nueva en la máquina nueva
 
-1. Leé **[CLAUDE.md](CLAUDE.md) entero** — son 45 reglas y **cada una costó un bug de producción**.
+0. **Antes que nada: la sección 🔵 del 27-28/08**, justo debajo de §1. Hay trabajo implementado y
+   verificado **sin publicar**, y una cola de escritura que estuvo taponada dos días en producción.
+   Los pendientes concretos son **N1 a N6** al principio de §4.
+1. Leé **[CLAUDE.md](CLAUDE.md) entero** — son 52 reglas y **cada una costó un bug de producción**.
+   Las dos más nuevas: la **52** (un precio se pregunta en un solo lugar) y el refuerzo de la **19/20**
+   (una cola FIFO no puede cortar ante un error permanente — le pasó a la de posiciones en julio y a
+   la de escritura en agosto).
 2. Para el estado de la base: **consultá la base viva por el MCP de Supabase**, nunca los `db/*.sql`
    (son el registro de migraciones ya aplicadas, no la fuente de verdad; y `db/historico/` tiene
    políticas **inseguras** que reabren agujeros si se re-ejecutan).
