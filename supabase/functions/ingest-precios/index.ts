@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
           primera_linea_recibida: r.primeraLinea?.slice(0, 200),
           separador_detectado: r.separador === '\t' ? 'TAB' : r.separador,
           ejemplo: ['codigo', 'descripcion', 'precio', 'peso', 'unidades', 'categoria', 'marca',
-                    'unidad_venta', 'nivel', 'oferta', 'precio_oferta',
+                    'unidad_venta', 'nivel', 'oferta', 'precio_oferta', 'destacado',
                     'desde_1', 'precio_1', 'desde_2', 'precio_2', 'desde_3', 'precio_3',
                     'desde_4', 'precio_4', 'desde_5', 'precio_5'].join(r.separador || ';'),
         }, 400)
