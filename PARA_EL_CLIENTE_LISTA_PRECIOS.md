@@ -59,14 +59,17 @@ una hora fija (está explicado en la guía, §5).
 | Archivo | Qué es |
 |---|---|
 | **`ESPECIFICACION_LISTA_PRECIOS.md`** | Las columnas, los escalones de descuento, el endpoint y los códigos de respuesta. Es el documento para quien programe el export |
-| **`GUIA_ENVIO_AUTOMATICO_PRECIOS.md`** | El paso a paso para dejarlo andando solo **en Windows**: el Programador de tareas campo por campo, qué hacer con cada error, y qué hacer si el servidor se apaga o se reinicia |
+| **`GUIA_ENVIO_AUTOMATICO_PRECIOS.md`** | El paso a paso, que ahora son **tres pasos**: copiar la carpeta, comprobar el token y ejecutar el instalador. Incluye qué hacer con cada error y qué hacer si el servidor se apaga |
 | **`plantilla-lista-precios.xlsx`** | La planilla con las 22 columnas y una hoja INSTRUCTIVO. Sirve para la carga manual y como referencia del formato |
-| **`enviar-precios.ps1`** + **`.bat`** | Los dos programitas que hacen el envío, escritos en **PowerShell** (viene con Windows, no hay que instalar nada). Guardan un registro diario y reintentan si falla la red |
+| **`instalar.ps1`** | 🔴 **El instalador.** Clic derecho → Ejecutar con PowerShell y queda todo andando: elige el archivo con una ventana, hace un envío de prueba, programa el envío por hora y comprueba que funcione |
+| **`revisar.ps1`** | Para saber en cualquier momento si sigue funcionando. No cambia nada: mira e informa, con un veredicto de una línea |
+| **`enviar-precios.ps1`** + **`.bat`** | Los programitas que hacen el envío, en **PowerShell** (viene con Windows). Los usa el instalador; no hay que tocarlos |
+| **`token.txt`** | 🔑 La llave, **ya cargada**. No hay que completar nada |
 | **`EnviarPrecios.java`** | Opcional: por si prefieren llamarlo desde adentro del sistema de gestión en vez de agendar una tarea aparte |
 
-**El token va aparte, por canal privado.** Identifica a la distribuidora: quien lo tenga puede
-escribir el catálogo. No va dentro del archivo, no va en un correo junto con esto, y no va a ningún
-repositorio.
+🔑 **El token ya viene cargado en `token.txt`.** Del lado de ustedes no hay que completar nada.
+🔴 **Pero eso vuelve sensible a toda la carpeta:** ese archivo identifica a la distribuidora, y quien
+lo tenga puede reescribir el catálogo. No la copien a carpetas compartidas ni la reenvíen por chat.
 
 ---
 
@@ -86,20 +89,21 @@ endpoint sin que nadie mire — de hecho **nuestro freno de seguridad lo va a re
 | 3 | Lo cargamos a mano desde la app, **sin** tildar "lista completa", y revisamos que los precios y los escalones se vean bien | Nosotros |
 | 4 | Mandan **la lista entera** | Ustedes |
 | 5 | La cargamos a mano, tildando "lista completa vigente" y leyendo el conteo de bajas antes de confirmar | Nosotros |
-| 6 | Les entregamos el token y configuran las tareas programadas (§3 de la guía) | Los dos |
-| 7 | Verificamos al día siguiente que las tres corridas entraron solas | Los dos |
+| 6 | Ejecutan `instalar.ps1` en el servidor (el token ya viene adentro) | Ustedes |
+| 7 | Verificamos al día siguiente que los envíos por hora entraron solos | Los dos |
 
 ---
 
 ## 4. Cómo va a funcionar una vez andando
 
-**Tres envíos por día, lunes a sábado: 06:00, 11:00 y 16:00.**
+**Un envío por hora, todos los días, las 24 horas.**
 
-Son tres tareas programadas de Windows con el mismo script, cambiando sólo la hora. Los horarios son una
-sugerencia: si les queda mejor 12:30 y 17:00, se cambia el número y listo.
+Lo programa el instalador solo. Manda **siempre**, aunque el archivo no haya cambiado: reenviar es
+gratis y no rompe nada, y así cualquier precio que corrijan está arriba **como máximo una hora
+después**, sin que nadie tenga que acordarse de nada.
 
-**Por qué tres y no uno.** Ustedes corrigen precios a media mañana y a la tarde. Con un solo envío a
-las 6, el vendedor que ya salió a la calle se queda con la lista de las 6 hasta el día siguiente.
+⚠️ **Un envío sin cambios no le gasta datos a nadie**: nuestro sistema distingue "llegó una lista" de
+"cambió el catálogo", y los teléfonos sólo se bajan el catálogo cuando de verdad cambió algo.
 
 **Y la otra mitad, que ya está hecha:** desde la versión que publicamos ayer, el teléfono del
 vendedor **va a buscar la lista nueva solo**, sin cerrar y abrir la app. Consulta una línea de datos
@@ -116,8 +120,8 @@ el precio nuevo en el comercio siguiente.
 
 ### Cómo saber que sigue funcionando
 
-- **De su lado:** el script deja un registro por día con las tres respuestas del servidor. Si un día
-  el archivo tiene menos de tres, faltó una corrida.
+- **De su lado:** `revisar.ps1` da un veredicto de una línea, y el script deja un registro por día
+  con la respuesta de cada envío.
 - **Del nuestro:** la pantalla de catálogo muestra *"Precios actualizados hace N horas · N filas"*, y
   se pone en ámbar si pasan más de 36 horas sin recibir nada.
 

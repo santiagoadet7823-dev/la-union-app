@@ -1,252 +1,128 @@
 # Guía de instalación — envío automático de la lista de precios
 
-**Windows · 29/08/2026 · para quien administre el servidor de la distribuidora.**
+**Windows · 31/08/2026 · para el servidor de la distribuidora.**
 
-Esta guía deja el envío de la lista de precios funcionando **solo, tres veces por día**, sin que nadie
+Esta guía deja el envío de la lista de precios funcionando **solo, una vez por hora**, sin que nadie
 tenga que acordarse de nada.
 
-Está escrita para **Windows**, que es lo que ustedes usan. Los scripts están hechos en **PowerShell**,
-que viene instalado de fábrica en Windows: **no hay que descargar ni instalar nada**.
+**No hay que configurar nada a mano.** Preparamos un instalador que hace todo el trabajo: le decís
+cuál es tu archivo de precios y él se encarga del resto. Son **tres pasos** y se hace una sola vez.
 
-Toda la instalación son **seis pasos** y se hace una sola vez. Calculen media hora, con las pruebas
-incluidas.
-
-> Esta guía no explica el formato del archivo. Eso está en
-> **`2 - Especificacion del formato (tecnico).md`**, que es el documento para quien programe la
-> exportación.
+Está todo pensado para **Windows**. Los programas están escritos en **PowerShell**, que viene
+instalado de fábrica: **no hay que descargar ni instalar nada.**
 
 ---
 
-## Antes de empezar
+## Los tres pasos
 
-Tengan a mano estas tres cosas:
+### Paso 1 — Copiar la carpeta al servidor
 
-| Qué | Dónde lo consiguen |
-|---|---|
-| **La llave (token)** | Se la entregamos aparte, por canal privado. Es un código largo, parecido a `a1b2c3d4-…` |
-| **La ruta exacta del archivo** que exporta el sistema de gestión | Por ejemplo `C:\ERP\export\lista-precios.txt`. Si no la saben de memoria: abran la carpeta, clic derecho en el archivo → *Propiedades*, y copien la ubicación |
-| **A qué hora termina el proceso** que genera ese archivo | Para agendar el envío después, y no encima |
-
-### Sobre la llave, una sola vez y en serio
-
-El token es **la credencial que identifica a la distribuidora**. Quien lo tenga puede reescribirles el
-catálogo entero: los precios que ven los vendedores en la calle y los que ve el comerciante en la
-tablet.
-
-- No va en un chat grupal ni en un mail con varios destinatarios.
-- No va a ninguna carpeta compartida ni a un repositorio de código.
-- Va en un archivo en el servidor, con permisos restringidos. El **Paso 2** explica cómo.
-
-Si en algún momento sospechan que se filtró, avísennos: lo damos de baja y emitimos uno nuevo en un
-minuto. Rotarlo no tiene ningún costo, y es preferible hacerlo de más.
-
----
-
-## Paso 1 — Copiar la carpeta al servidor
-
-Copien la carpeta que les mandamos a un lugar fijo del servidor. Sugerimos:
+Copiá la carpeta que te mandamos a un lugar fijo del servidor. Sugerimos:
 
 ```
 C:\DisTAt\
 ```
 
-Puede ser otra ruta, pero que sea **una carpeta propia y estable**: no el Escritorio de un usuario, no
-Descargas, no una carpeta temporal. Si alguien la mueve después, el envío deja de funcionar.
+Puede ser otra ruta, pero que sea **una carpeta propia y estable**: no el Escritorio de un usuario,
+no Descargas, no una carpeta temporal. Si alguien la mueve después, el envío deja de funcionar.
 
-Adentro tienen que quedar, como mínimo, estos dos archivos:
+### Paso 2 — Comprobar que el token esté puesto
 
-```
-C:\DisTAt\enviar-precios.ps1
-C:\DisTAt\enviar-precios.bat
-```
+Dentro de la carpeta hay un archivo **`token.txt`** que ya viene con la llave adentro. **No hay que
+tocarlo.** Abrilo sólo para confirmar que tiene un código largo (algo como `a1b2c3d4-…`) y no un
+texto de ejemplo.
 
----
-
-## Paso 2 — Guardar la llave
-
-1. Dentro de `C:\DisTAt\`, creen un archivo de texto llamado **`token.txt`**.
-2. Peguen adentro **el token y nada más**: una sola línea, sin comillas, sin espacios antes ni
-   después, sin la palabra "token" ni dos puntos.
-3. Guarden y cierren.
-
-Después, restrinjan quién puede leerlo:
-
-> Clic derecho en `token.txt` → **Propiedades** → pestaña **Seguridad** → **Editar**.
-> Dejen únicamente la cuenta que va a correr la tarea y el grupo de Administradores. Quiten el resto.
-
-**¿Por qué un archivo y no una variable de entorno?** Porque una tarea programada corre en una sesión
-aparte y **no hereda** las variables de entorno del usuario. Es un error clásico: se configura la
-variable, funciona al probarlo a mano, y falla en silencio a las seis de la mañana.
-
----
-
-## Paso 3 — Decirle dónde está su archivo
-
-Este es **el único archivo que hay que editar de todo el paquete**, y es una sola línea.
-
-1. Clic derecho en `enviar-precios.bat` → **Editar** (se abre con el Bloc de notas).
-2. Busquen esta línea:
-
-```
-set ARCHIVO=C:\ERP\export\lista-precios.txt
-```
-
-3. Reemplacen la ruta por la real. **Sin comillas.**
-4. Guarden y cierren.
-
-Nada más. El resto del archivo no se toca.
-
----
-
-## Paso 4 — Probarlo a mano, ANTES de agendarlo
-
-No saltearse este paso. Es mucho más fácil corregir un error viéndolo en pantalla que descubrirlo a
-los tres días revisando un registro.
-
-**Abrir PowerShell:**
-
-> Menú Inicio → escriban `PowerShell` → clic derecho en **Windows PowerShell** → **Ejecutar como
-> administrador**.
-
-**Pararse en la carpeta y ejecutar:**
-
-```powershell
-cd C:\DisTAt
-.\enviar-precios.ps1 -Archivo "C:\ERP\export\lista-precios.txt"
-```
-
-*(La ruta entre comillas es la misma que pusieron en el Paso 3.)*
-
-### Qué tienen que ver
-
-Algo así. Lo que importa es el **`HTTP 200`**:
-
-```
-[2026-08-29 10:15:02] Enviando C:\ERP\export\lista-precios.txt (48213 bytes) a https://...
-[2026-08-29 10:15:04] HTTP 200 {"recibidas":541,"creados":3,"actualizados":511,...}
-```
-
-Si dice otra cosa, vayan a **"Qué hacer con cada respuesta"**, más abajo. Está todo contemplado.
-
-> **Si PowerShell responde "no se puede cargar porque la ejecución de scripts está deshabilitada":**
-> es una protección de Windows y **no hace falta desactivarla**. El archivo `.bat` del Paso 5 ya la
-> sortea correctamente para esta tarea puntual. Para la prueba de ahora, ejecuten en su lugar:
+> 🔴 **Ese archivo es la credencial que los identifica.** Quien lo tenga puede reescribir el catálogo
+> entero: los precios que ven los vendedores en la calle y los que ve el comerciante en la tablet.
+> No lo copien a carpetas compartidas ni lo manden por chat.
 >
-> ```powershell
-> powershell -ExecutionPolicy Bypass -File .\enviar-precios.ps1 -Archivo "C:\ERP\export\lista-precios.txt"
-> ```
+> Conviene restringir quién puede leerlo: clic derecho en `token.txt` → **Propiedades** → pestaña
+> **Seguridad** → **Editar**, y dejar sólo Administradores y la cuenta `SYSTEM`.
 
----
+### Paso 3 — Ejecutar el instalador
 
-## Paso 5 — Agendar la primera corrida (06:00)
-
-> Menú Inicio → escriban `Programador de tareas` → abrirlo.
-> En el panel derecho: **Crear tarea…**
+> Clic **derecho** sobre **`instalar.ps1`** → **Ejecutar con PowerShell**.
 >
-> ⚠️ **"Crear tarea", no "Crear tarea básica".** La versión básica no ofrece las opciones que
-> necesitamos.
+> ⚠️ **Tiene que ser como administrador.** Si te avisa que faltan permisos, cerralo y abrí PowerShell
+> como administrador (Menú Inicio → escribí `PowerShell` → clic derecho → *Ejecutar como
+> administrador*), y desde ahí ejecutá el instalador. El propio programa te dice los comandos.
 
-Completen las pestañas así.
+Y ya está. El instalador hace el resto:
 
-### Pestaña **General**
-
-| Campo | Qué poner |
+| | Qué hace |
 |---|---|
-| Nombre | `DisT-At — precios 06:00` |
-| ✅ | **Ejecutar tanto si el usuario inició sesión como si no** |
-| ✅ | **Ejecutar con los privilegios más altos** |
-| Configurar para | La versión de Windows del servidor |
+| 1 | Comprueba que el token esté puesto |
+| 2 | **Abre una ventana para que elijas tu archivo de precios** — no hay que escribir ninguna ruta |
+| 3 | Guarda esa elección |
+| 4 | Hace un **envío de prueba** y te dice en castellano cómo salió |
+| 5 | Programa el envío automático **cada 1 hora** |
+| 6 | **Dispara la tarea y comprueba que de verdad corrió** |
+| 7 | Te muestra un resumen de lo que quedó instalado |
 
-> Las dos tildes importan. Sin la primera, la tarea **no corre si nadie dejó la sesión abierta** — y
-> después de un reinicio, normalmente no hay nadie logueado.
+**Si algo falla, te lo dice ahí mismo, en pantalla, con la explicación de qué hacer.** No hay forma
+de que quede "instalado a medias" sin que te enteres.
 
-### Pestaña **Desencadenadores** → *Nuevo…*
-
-| Campo | Qué poner |
-|---|---|
-| Iniciar la tarea | Según una programación |
-| Configuración | **Diariamente**, a las **06:00** |
-| Repetir cada | *(dejar sin tildar)* |
-
-*(Si prefieren sólo días hábiles: elijan **Semanalmente** y tilden de lunes a sábado.)*
-
-### Pestaña **Acciones** → *Nueva…*
-
-| Campo | Qué poner |
-|---|---|
-| Acción | Iniciar un programa |
-| Programa o script | `C:\DisTAt\enviar-precios.bat` |
-| **Iniciar en (opcional)** | `C:\DisTAt` |
-
-> ⚠️ **El campo "Iniciar en" dice "opcional" y no lo es.** Sin él la tarea arranca parada en otra
-> carpeta, y no encuentra ni el `token.txt` ni dónde escribir el registro.
-
-### Pestaña **Condiciones**
-
-| Campo | Qué hacer |
-|---|---|
-| "Iniciar la tarea sólo si el equipo está conectado a la corriente alterna" | ❌ **Destildar** |
-| "Reactivar el equipo para ejecutar esta tarea" | ✅ Tildar, si el servidor se suspende |
-
-### Pestaña **Configuración**
-
-| Campo | Qué hacer |
-|---|---|
-| "Ejecutar la tarea lo antes posible si se pasó por alto un inicio programado" | ✅ **Tildar** |
-| "Si la tarea produce un error, reiniciar cada" | ✅ 15 minutos, hasta 2 veces |
-
-> 🔴 **La primera de estas dos es la que salva el día después de un corte de luz.** Con esa tilde, si
-> el servidor estaba apagado a las 06:00, Windows corre el envío apenas vuelve. Sin ella esa corrida
-> se pierde, y hay que esperar hasta las 11:00.
-
-Al dar Aceptar, Windows va a pedirles **la contraseña de la cuenta** con la que corre la tarea. Es
-normal: la necesita para poder ejecutarla sin que nadie esté logueado.
+> Se puede volver a ejecutar las veces que haga falta. Por ejemplo, si el sistema de gestión pasa a
+> generar el archivo en otra carpeta: se corre el instalador de nuevo, se elige el archivo nuevo, y
+> listo.
 
 ---
 
-## Paso 6 — Las otras dos corridas (11:00 y 16:00)
+## Cómo saber si está funcionando
 
-Una sola corrida a las 06:00 **no alcanza**. Si corrigen un precio a las diez de la mañana, el
-vendedor que ya salió sigue con la lista de las seis hasta el día siguiente. Por eso van tres.
+> Clic derecho sobre **`revisar.ps1`** → **Ejecutar con PowerShell**.
 
-**La forma más rápida:** clic derecho sobre la tarea que acaban de crear → **Exportar** → guarden el
-`.xml`. Después, en el panel derecho, **Importar tarea…** dos veces, y en cada una cambien sólo el
-nombre y la hora del desencadenador.
+No cambia nada: sólo mira e informa. Te dice, en castellano:
 
-| Tarea | Hora |
-|---|---|
-| `DisT-At — precios 06:00` | 06:00 |
-| `DisT-At — precios 11:00` | 11:00 |
-| `DisT-At — precios 16:00` | 16:00 |
+- Si la tarea existe, si está habilitada y cuándo corre la próxima.
+- Cómo terminó la última ejecución.
+- Cuántos envíos correctos y cuántos errores hubo hoy.
+- **Si tu archivo de precios existe y hace cuánto que el sistema de gestión no lo regenera** — que es
+  la forma de distinguir *"el envío se rompió"* de *"el que no está generando el archivo es su
+  sistema"*. Son dos problemas de dos dueños distintos y se confunden todo el tiempo.
+- Y un veredicto de una línea: **"TODO EN ORDEN"** o qué hay que mirar.
 
-*(Alternativa: una sola tarea con **tres desencadenadores diarios**. Funciona igual. Preferimos tres
-tareas separadas porque se leen mejor en la lista y se pueden desactivar de a una.)*
+**Si algo no cierra, mandanos una foto de esa pantalla.** Con eso solo alcanza para diagnosticar casi
+cualquier cosa.
 
-> **Los horarios son una sugerencia.** Si les queda mejor 12:30 y 17:00, cambien la hora del
-> desencadenador y listo. Agregar una cuarta corrida es duplicar la tarea otra vez.
->
-> 🔴 **Lo único que pedimos: que ninguna de ellas use `-ListaCompleta`.** Ese parámetro da de baja
-> productos, y eso no lo tiene que hacer algo que corre solo de madrugada.
-
-⚠️ **Cada corrida tiene que salir después del export.** Si el proceso que genera `lista-precios.txt`
-corre a las 05:50 y a veces se estira, muevan el envío quince minutos — o, mejor, cuélguenlo del final
-del export (ver la sección "Desde adentro del sistema de gestión").
+Para **forzar un envío ahora mismo**, sin esperar a la hora: doble clic en `enviar-precios.bat`.
 
 ---
 
-## Cómo saber que anduvo
+## Cómo funciona, una vez andando
 
-El script escribe un registro por día en:
+**Un envío por hora, todos los días, las 24 horas.**
+
+Manda **siempre**, aunque el archivo no haya cambiado. Es a propósito: reenviar es gratis, no rompe
+nada (si llega dos veces lo mismo, el catálogo queda igual), y garantiza que un precio corregido esté
+arriba **como máximo una hora después**, sin importar cuándo lo hayan cambiado.
+
+En el registro vas a ver una de estas dos líneas en cada envío:
 
 ```
-C:\DisTAt\registros\precios-2026-08-29.log
+Archivo NUEVO (cambio desde el envio anterior).
+El archivo NO cambio desde el envio anterior. Se manda igual.
 ```
 
-Ahí queda todo: a qué hora salió cada corrida, qué contestó nuestro sistema, cuántas filas entraron y
-si algo se rechazó. **Un día normal tiene tres respuestas**, una por corrida.
+Así se lee el registro de un vistazo: lo que importa son las líneas que dicen **NUEVO**.
 
-Y en el Programador de tareas, la columna **"Resultado de la última ejecución"** dice cómo terminó:
-`0x0` significa que salió bien.
+### Dos cosas que el envío automático NO hace
+
+- **Nunca da de baja productos.** Aunque un día el export salga incompleto por un filtro mal puesto,
+  los productos que falten **quedan como estaban**. Las bajas se hacen a mano, mirando el número
+  antes de confirmar.
+- **No pisa las descripciones** de los productos que ya existen.
+
+### El registro
+
+El programa deja un archivo por día en:
+
+```
+C:\DisTAt\registros\precios-2026-08-31.log
+```
+
+Ahí queda todo: a qué hora salió cada envío, qué contestó nuestro sistema, cuántas filas entraron y
+si algo se rechazó.
 
 ---
 
@@ -257,199 +133,146 @@ Pasa. Esto es lo que hay que saber.
 
 ### Primero, la buena noticia
 
-**Las tareas programadas sobreviven al apagado.** No viven en la memoria: quedan guardadas dentro de
-Windows. Cuando el servidor vuelve a encender siguen ahí, configuradas igual, y se ejecutan en el
-próximo horario **sin que nadie toque nada**.
+**La tarea programada sobrevive al apagado.** No vive en la memoria: queda guardada dentro de
+Windows. Cuando el servidor vuelve a encender sigue ahí, configurada igual, y se ejecuta en la
+siguiente hora **sin que nadie toque nada**.
 
-Y si dejaron tildado *"Ejecutar la tarea lo antes posible si se pasó por alto un inicio programado"*
-(Paso 5), Windows además **recupera la corrida perdida** apenas arranca.
+Y como corre **cada hora**, una corrida perdida se recupera sola en la próxima. No hay nada que
+rescatar.
 
 **En la enorme mayoría de los casos no hay que hacer absolutamente nada.**
 
-### La comprobación de dos minutos cuando el servidor vuelve
+### La comprobación de un minuto cuando el servidor vuelve
 
-Igual conviene mirar, sobre todo las primeras veces:
+> Clic derecho en **`revisar.ps1`** → **Ejecutar con PowerShell**.
 
-1. Abran el **Programador de tareas** y ubiquen las tres tareas `DisT-At — precios …`.
-2. Miren la columna **Estado**: tiene que decir **"Listo"**. Si dice **"Deshabilitado"**, vayan al
-   caso **B**.
-3. Miren **"Resultado de la última ejecución"**: `0x0` es correcto.
-4. Si quieren confirmar sin esperar al próximo horario: **clic derecho sobre una tarea → Ejecutar**.
-   Eso la dispara ahora mismo. Después revisen el registro del día en `C:\DisTAt\registros\`.
-
-Con esos cuatro pasos ya saben si quedó todo en orden.
-
-### Si no volvió solo: los cuatro motivos posibles
-
-Son estos, en orden de probabilidad. Todos se resuelven en minutos.
+Si dice **"TODO EN ORDEN"**, terminaste. Si no, te dice qué mirar. Los casos posibles son estos tres.
 
 ---
 
-#### A · La corrida se perdió y no se recuperó
+#### A · La tarea aparece "Deshabilitada"
 
-**Síntoma.** El registro del día no tiene las tres respuestas, o directamente no existe.
-
-**Por qué.** El servidor estaba apagado a esa hora y la tarea no tiene tildado *"Ejecutar la tarea lo
-antes posible si se pasó por alto un inicio programado"*.
-
-**Qué hacer ahora.** Clic derecho sobre la tarea → **Ejecutar**.
-
-**Para que no vuelva a pasar.** Clic derecho → **Propiedades** → pestaña **Configuración** → tilden esa
-opción → Aceptar. Háganlo en las tres tareas.
-
----
-
-#### B · La tarea aparece "Deshabilitada"
-
-**Síntoma.** En la columna Estado dice "Deshabilitado" en vez de "Listo".
+**Cómo se ve.** `revisar.ps1` avisa que la tarea existe pero está deshabilitada.
 
 **Por qué.** Alguien la deshabilitó, o una restauración del sistema la dejó así.
 
-**Qué hacer.** Clic derecho sobre la tarea → **Habilitar**. Después **Ejecutar**, para verificar.
+**Solución.** Programador de tareas → clic derecho sobre `DisT-At - enviar lista de precios` →
+**Habilitar**.
 
 ---
 
-#### C · Cambió la contraseña de la cuenta que corre la tarea
+#### B · El archivo de precios no está
 
-*Este es el que no se ve venir, y es más frecuente de lo que parece.*
+**Cómo se ve.** `revisar.ps1` dice que el archivo no existe, o que hace más de un día que no se
+regenera.
 
-**Síntoma.** La tarea figura como ejecutada pero falla siempre, con un resultado tipo `0x1` o un error
-de credenciales. Y —la pista que lo delata— **el registro del script no se escribe**: nunca llegó a
-arrancar.
+**Por qué.** Casi siempre: **el sistema de gestión no arrancó** después del reinicio, así que nunca
+generó el archivo.
 
-**Por qué.** Al crear la tarea, Windows guardó la contraseña de esa cuenta. Si después alguien la
-cambió, o venció por una política de expiración, la tarea ya no puede iniciar sesión para ejecutarse.
+**Solución.** Levantar el sistema de gestión. El envío se recupera solo en la próxima hora.
 
-**Qué hacer.** Clic derecho sobre la tarea → **Propiedades** → pestaña **General** → botón **Cambiar
-usuario o grupo…** → seleccionen la misma cuenta → **Aceptar**. Windows va a pedir la contraseña
-nueva. Repítanlo en las tres tareas.
-
-> Se evita del todo usando una cuenta de servicio cuya contraseña no expire. Si tienen esa política en
-> la empresa, vale la pena aplicarla acá.
+> ⚠️ Este caso **no es un problema del envío**. El envío manda lo que encuentra; si el archivo es
+> viejo, manda el viejo y lo anota en el registro. Por eso `revisar.ps1` los separa.
 
 ---
 
-#### D · El archivo del export no está donde estaba
+#### C · El archivo está en una carpeta de red y dejó de verse
 
-**Síntoma.** El registro dice `ERROR: no existe el archivo …`.
+**Cómo se ve.** Funcionaba y después del reinicio el registro dice `ERROR: no existe el archivo`.
 
-**Por qué.** Dos posibilidades, y conviene distinguirlas:
+**Por qué.** La tarea corre **sin que nadie inicie sesión**, y las unidades de red con letra
+(`Z:\…`) sólo existen cuando un usuario inicia sesión.
 
-- **El sistema de gestión no arrancó** después del reinicio, así que nunca generó el archivo. Es lo
-  más frecuente, y se resuelve del lado de ustedes: levanten el sistema y después corran la tarea a
-  mano.
-- **El archivo está en una unidad de red** (`Z:\…`, `\\servidor\carpeta\…`) que todavía no estaba
-  disponible cuando la tarea corrió. Las unidades con letra se conectan cuando un usuario inicia
-  sesión, y la tarea corre **sin** sesión iniciada.
-
-  *Solución:* en el Paso 3, usen la **ruta de red completa** (`\\servidor\carpeta\lista-precios.txt`)
-  en lugar de la letra de unidad, y corran el horario unos minutos más tarde para darle tiempo a la
-  red.
+**Solución.** El instalador ya convierte esas rutas a la forma `\\servidor\carpeta\…`, que sí
+funciona sin sesión. Si aun así falla, hay que darle permiso de lectura a la cuenta del equipo sobre
+esa carpeta compartida. Avisanos y lo vemos juntos.
 
 ---
+
+> **Un modo de falla que ya está resuelto y conviene saber que no va a pasar:** la tarea corre como
+> `SYSTEM`, que es una cuenta del sistema **sin contraseña y que no vence nunca**. Es la causa más
+> común de que una tarea programada deje de funcionar meses después —a alguien le vence o le cambian
+> la contraseña y la tarea deja de arrancar en silencio— y acá no puede ocurrir.
 
 ### Si el servidor va a estar apagado varios días
 
 No hay nada que preparar y no se rompe nada. El catálogo simplemente se queda con los últimos precios
 que recibió.
 
-Y **nos vamos a dar cuenta**: nuestra pantalla de catálogo muestra hace cuánto llegó la última lista y
-se pone en **ámbar pasadas 36 horas** sin recibir nada. Si igual saben de antemano que el servidor va
-a estar parado más de un día, avísennos y nos ahorramos el llamado.
-
-Cuando vuelva a encender: la comprobación de dos minutos de más arriba, y listo.
+Y **nos vamos a dar cuenta**: nuestra pantalla de catálogo muestra hace cuánto llegó la última lista
+y se pone en ámbar pasadas 36 horas sin recibir nada. Si igual saben de antemano que el servidor va a
+estar parado, avísennos y nos ahorramos el llamado.
 
 ---
 
 ## Qué hacer con cada respuesta
 
+`revisar.ps1` y el registro muestran la respuesta de nuestro sistema. Estas son todas las posibles:
+
 | Respuesta | Qué significa | Qué hacer |
 |---|---|---|
-| **`HTTP 200`** con `recibidas`, `actualizados`… | Entró bien | Nada. Si `rechazadas` no viene vacío, miren esas filas: el motivo llega con **el número de fila tal como se ve en Excel** |
-| `HTTP 400 falta-encabezado` | El archivo arranca directo con datos, sin la fila de nombres de columna | Agregar esa primera fila, **con el mismo separador que los datos**. La propia respuesta trae un ejemplo listo para copiar |
-| `HTTP 400 archivo-vacio` | El export no generó nada | Revisar el proceso del sistema de gestión. **No es un problema del envío** |
-| `HTTP 401` | La llave es inválida o fue dada de baja | Pídannos una nueva. **No reintentar** |
-| `HTTP 409 demasiadas-bajas` | Sólo puede pasar con `-ListaCompleta`: el archivo dejaría fuera más del 20 % del catálogo. **No se escribió nada** | Avísennos. Es el freno que impide que un export parcial borre el catálogo |
+| **`HTTP 200`** | Entró bien | Nada. Si aparece `rechazadas`, mirar esas filas: el motivo llega con **el número de fila tal como se ve en Excel** |
+| `HTTP 400 falta-encabezado` | El archivo arranca directo con datos, sin la fila con los nombres de columna | Agregar esa primera fila, **con el mismo separador que los datos**. La propia respuesta trae un ejemplo listo para copiar |
+| `HTTP 400 archivo-vacio` | El export no generó nada | Revisar el sistema de gestión. **No es un problema del envío** |
+| `HTTP 401` | La llave es inválida o fue dada de baja | Pedirnos una nueva. **No reintentar** |
+| `HTTP 409 demasiadas-bajas` | El archivo dejaría fuera más del 20 % del catálogo. **No se escribió nada** | Avisarnos. Es el freno que impide que un export parcial borre el catálogo |
 | `HTTP 413` | Más de 5.000 filas | Partir el envío, o avisarnos |
-| `Error de red` | No se llegó al servidor | El script reintenta solo a los 15 y a los 30 minutos. Si aun así falla, queda anotado en el registro |
+| `Error de red` | No se llegó al servidor | Reintenta solo a los 5 y a los 10 minutos. Si aun así falla, la próxima corrida es en una hora |
 
 ### Las dos filas rechazadas más frecuentes
 
-Las dos son de formato, no del envío, y se corrigen del lado del export:
+Las dos son de formato y se corrigen del lado del export:
 
 - **`precio ambiguo: "1.450"`** — el export está poniendo separador de miles. `1.450` puede ser mil
   cuatrocientos cincuenta o uno con cuarenta y cinco, y **el sistema no adivina**: rechaza esa fila y
-  deja entrar el resto. Se arregla exportando sin separador de miles.
-- **`desde_2 (5) no es mayor que desde_1 (10)`** — los escalones de descuento tienen que ir de menor a
-  mayor.
+  deja entrar el resto.
+- **`desde_2 (5) no es mayor que desde_1 (10)`** — los escalones de descuento tienen que ir de menor
+  a mayor.
+
+---
+
+## Cómo llega el precio nuevo al vendedor que ya está en la calle
+
+Esta es la otra mitad, y sin ella el envío por hora no serviría de nada.
+
+El teléfono del vendedor pregunta cada tanto —y cada vez que abre la app, que es lo que hace en cada
+comercio— **si el catálogo cambió**. Esa consulta es una línea de datos. Sólo si de verdad cambió
+algo se descarga el catálogo completo.
+
+Por eso los envíos que no traen cambios **no le gastan datos móviles a nadie**: llegan, se registran,
+y como no cambian nada, ningún teléfono se entera. Los que sí traen un precio nuevo llegan al
+vendedor en su próximo comercio.
 
 ---
 
 ## Desde adentro del sistema de gestión (opcional, y es la mejor opción)
 
-Si el sistema de gestión ya tiene un proceso que genera el export, lo más robusto es **llamar al envío
-al terminar ese proceso**, en vez de agendarlo a una hora fija. Así el envío ocurre siempre después de
-que el archivo está completo, y si el export se atrasa el envío se atrasa con él.
+Si el sistema de gestión ya tiene un proceso que genera el export, lo más robusto es **llamar al
+envío al terminar ese proceso**. Así el envío ocurre siempre después de que el archivo está completo.
 
 El archivo `scripts\EnviarPrecios.java` es exactamente eso, sin dependencias externas
-(`java.net.http`, Java 11 o superior). Son unas pocas líneas que su programador pega al final del
-proceso que ya exporta:
+(`java.net.http`, Java 11 o superior):
 
 ```java
 EnviarPrecios.Respuesta r = EnviarPrecios.enviar(Path.of(rutaExport), token, false);
 log.info("ingesta precios: HTTP {} {}", r.codigo, r.cuerpo);
 ```
 
-Es opcional. Si les resulta más simple la tarea programada, funciona perfectamente igual.
+**Es opcional y se puede sumar después.** Si se hace, conviene dejar igual la tarea de cada hora: una
+cosa no reemplaza a la otra, se complementan.
 
 ---
 
-## Cómo llega el precio nuevo al vendedor que ya está en la calle
+## Checklist
 
-Esta es la otra mitad de los tres horarios, y sin ella no servirían de nada.
-
-Hasta la versión anterior, la app cargaba el catálogo **una sola vez, al abrirse**: el vendedor que
-abría a las ocho tenía la lista de las seis hasta el día siguiente. Desde la versión que publicamos,
-el teléfono pregunta cada tanto —y cada vez que el vendedor vuelve a abrir la app, que es lo que hace
-en cada comercio— si entró una lista nueva. Esa consulta es **una línea de datos**; sólo si la lista
-cambió se descarga el catálogo completo, así no se le gastan los datos móviles al vendedor.
-
-**En la práctica:** ustedes mandan a las 11:00 y el vendedor ve el precio nuevo en el comercio
-siguiente. Con la app abierta y quieta, hasta veinte minutos.
+- [ ] Carpeta copiada a `C:\DisTAt\`
+- [ ] `token.txt` tiene la llave (no el texto de ejemplo)
+- [ ] `instalar.ps1` ejecutado como administrador, y terminó sin errores
+- [ ] El instalador mostró el resumen con la próxima corrida
+- [ ] Al día siguiente: `revisar.ps1` dice **"TODO EN ORDEN"**
+- [ ] Alguien de ustedes sabe que existe `revisar.ps1` y qué hace
 
 ---
 
-## Cómo saber que sigue funcionando dentro de tres meses
-
-Esta parte se suele saltear y es la que más importa: **un envío automático que deja de correr no
-avisa**. El catálogo se queda con los precios de la última vez que anduvo, y el primero en enterarse
-termina siendo un vendedor cobrando mal frente a un comercio.
-
-Hay dos controles, y conviene tener los dos:
-
-- **De su lado:** el registro diario en `C:\DisTAt\registros\`. Si un día **no hay archivo**, ninguna
-  de las tres tareas corrió; si el archivo tiene **menos de tres respuestas**, faltó alguna. Vale la
-  pena mirarlo todos los días la primera semana, y después de vez en cuando.
-- **Del nuestro:** la pantalla de catálogo muestra *"Precios actualizados hace N horas · N filas"*, y
-  se pone en **ámbar pasadas 36 horas** sin recibir una lista.
-
----
-
-## Checklist de puesta en marcha
-
-- [ ] Nos avisaron a qué hora termina el export, para agendar el envío después
-- [ ] Carpeta copiada en `C:\DisTAt\`
-- [ ] `token.txt` creado, con la llave adentro y permisos restringidos
-- [ ] `enviar-precios.bat` editado con la ruta real del archivo
-- [ ] Probado a mano desde PowerShell: **`HTTP 200`**
-- [ ] Las **tres** tareas creadas (06:00, 11:00, 16:00), de lunes a sábado
-- [ ] En las tres: *"Ejecutar tanto si el usuario inició sesión como si no"* ✅
-- [ ] En las tres: *"Ejecutar la tarea lo antes posible si se pasó por alto un inicio programado"* ✅
-- [ ] Al día siguiente: el registro tiene **tres** respuestas
-- [ ] Alguien de ustedes sabe dónde está el registro y qué mirar
-- [ ] Alguien de ustedes leyó la sección **"Si el servidor se apaga o se reinicia"**
-
----
-
-**Cualquier duda, por chica que parezca, pregúntennos.** Es preferible una consulta de dos minutos que
-un catálogo con precios equivocados.
+**Cualquier duda, por chica que parezca, pregúntennos.** Es preferible una consulta de dos minutos
+que un catálogo con precios equivocados.

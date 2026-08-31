@@ -1,243 +1,251 @@
 # LÉAME PRIMERO — qué es cada archivo de esta carpeta
 
-Además de este, la carpeta tiene **7 archivos**. Parecen muchos, pero cada uno es para una persona
-distinta y en un momento distinto. **Nadie tiene que leerlos todos.**
+Parecen muchos archivos, pero **cada uno es para una persona distinta y en un momento distinto.
+Nadie tiene que leerlos todos.**
 
-Están numerados por orden: el **1** es el que abre, y de ahí en adelante cada uno tiene su momento.
+Este documento explica qué es cada uno, sin dar nada por sabido.
 
-> **Todo esto está preparado para Windows.** Los programitas que hacen el envío están escritos en
-> **PowerShell**, que ya viene instalado en Windows: no hay que descargar ni instalar nada.
-
-Este documento explica **qué es cada uno y quién lo necesita**, sin dar nada por sabido.
+> **Todo está preparado para Windows.** Los programas están escritos en **PowerShell**, que ya viene
+> instalado: no hay que descargar ni instalar nada.
 
 ---
 
-## Primero, de qué se trata todo esto en una página
+## Si tenés diez segundos
+
+Para **poner esto a funcionar** sólo hace falta una cosa:
+
+> Copiar la carpeta al servidor y hacer clic derecho en **`instalar.ps1`** → **Ejecutar con
+> PowerShell** (como administrador).
+
+El instalador te va a pedir que elijas tu archivo de precios en una ventana, y hace todo lo demás
+solo. El resto de los archivos son documentación y respaldo.
+
+---
+
+## De qué se trata todo esto, en una página
 
 Hoy, cuando ustedes cambian un precio en su sistema de gestión, ese precio **no llega solo** a los
 celulares de los vendedores: alguien tiene que bajar una planilla, editarla y subirla a mano.
 
-Lo que estamos armando es que **eso pase solo, tres veces por día**.
+Lo que estamos armando es que **eso pase solo, una vez por hora**.
 
 Funciona así, y son tres piezas:
 
-**1. Su sistema genera un archivo.** El mismo tipo de archivo que ya exporta hoy: una lista de
-productos con sus precios, en texto.
+**1. Su sistema genera un archivo.** El mismo que ya exporta hoy: una lista de productos con sus
+precios, en texto. Siempre en la misma carpeta y con el mismo nombre.
 
-**2. Un "programita" de Windows lo manda por internet.** Ese programita es uno de los archivos de
-esta carpeta y está escrito en PowerShell. Nosotros ya lo escribimos: ustedes sólo tienen que
-decirle dónde está su archivo y a qué hora mandarlo.
+**2. Un programita lo manda por internet.** Nosotros ya lo escribimos. Corre solo, cada hora, aunque
+no haya nadie usando el servidor.
 
-**3. Nuestro sistema lo recibe y actualiza el catálogo.** Y los celulares de los vendedores buscan
-la lista nueva solos, sin que nadie cierre y abra nada.
+**3. Nuestro sistema lo recibe y actualiza el catálogo.** Y los celulares de los vendedores buscan la
+lista nueva solos, sin que nadie cierre y abra nada.
 
-### Dos palabras que van a aparecer todo el tiempo
+### Tres palabras que van a aparecer
 
 | Palabra | Qué es, en criollo |
 |---|---|
-| **La dirección (o URL)** | Es como la dirección de un buzón. El programita deja ahí el archivo y nosotros lo levantamos. Es siempre la misma y está escrita adentro de los archivos, no hay que tocarla |
-| **El token** | Es **la llave**. Prueba que quien deja el archivo en el buzón son ustedes y no otro. Se los entregamos **por separado**, no viene en esta carpeta. 🔴 **Quien tenga esa llave puede cambiarles el catálogo entero**: no se manda por correo junto con nada, no se pega en un chat grupal, no se guarda en un lugar compartido |
+| **Script** | Una lista de instrucciones guardada en un archivo, que la computadora lee y ejecuta sola, siempre igual. Como una receta: no piensa, hace exactamente lo que dice |
+| **Tarea programada** | El despertador de Windows. Se le dice "hacé esto cada una hora" y lo hace, aunque nadie haya iniciado sesión |
+| **El token** | 🔑 **La llave.** Prueba que quien manda la lista son ustedes y no otro. **Ya viene cargada**: no hay que completar nada. 🔴 Quien tenga esa llave puede reescribirles el catálogo entero, así que esta carpeta no se copia a lugares compartidos ni se reenvía por chat |
 
 ---
 
-## Los 7 archivos, y quién lee cada uno
+## Los archivos, y quién lee cada uno
 
 | # | Archivo | ¿Quién lo lee? |
 |---|---|---|
 | 1 | `1 - Que necesitamos de ustedes.md` | **Quien coordina.** Empezar acá |
 | 2 | `2 - Especificacion del formato (tecnico).md` | Quien **programa** el export en su sistema |
-| 3 | `3 - Guia de instalacion (servidor).md` | Quien **administra el servidor** |
+| 3 | `3 - Guia de instalacion Windows.md` | Quien **instala** en el servidor |
 | 4 | `4 - plantilla-lista-precios.xlsx` | Quien **carga precios a mano**, y como modelo del formato |
-| 5 | `scripts/enviar-precios.ps1` | Nadie lo lee. Se copia y funciona |
-| 6 | `scripts/enviar-precios.bat` | **El único que hay que editar**, y es una línea |
-| 7 | `scripts/EnviarPrecios.java` | Opcional, para su programador |
+| 5 | `scripts\instalar.ps1` | 🔴 **El que hay que ejecutar** |
+| 6 | `scripts\revisar.ps1` | Para saber si sigue funcionando |
+| 7 | `scripts\token.txt` | La llave. **Ya está completa**, no se toca |
+| 8 | `scripts\enviar-precios.ps1` y `.bat` | Los usa el instalador. Nadie los abre |
+| 9 | `scripts\EnviarPrecios.java` | Opcional, para su programador |
 
 ---
 
 # 1. `1 - Que necesitamos de ustedes.md`
 
-### Qué es
-El documento de arranque. **Es el que hay que leer primero.**
+**Qué es.** El documento de arranque. **Es el que hay que leer primero.**
 
-### Qué tiene adentro
+**Qué tiene adentro.**
 - **Cuatro preguntas que necesitamos que nos contesten**, y que hoy están frenando todo. La más
   importante: si la lista nueva conserva los códigos de producto que ya tienen. De esa respuesta
-  dependen **355 fotos de productos** que ya están cargadas — si los códigos cambian, el catálogo
-  que ve el comerciante queda gris y hay que cargarlas todas de nuevo a mano.
-- **El orden en que van a pasar las cosas**, paso por paso, diciendo qué hace cada uno.
+  dependen **355 fotos de productos** que ya están cargadas — si los códigos cambian, el catálogo que
+  ve el comerciante queda gris y hay que cargarlas todas de nuevo a mano.
+- El orden en que van a pasar las cosas, paso por paso, diciendo qué hace cada uno.
 - Cómo va a funcionar el día a día una vez que esté andando.
 
-### Quién lo lee
-Quien coordine de su lado. **No hace falta saber de programación.**
+**Quién lo lee.** Quien coordine de su lado. **No hace falta saber de programación.**
 
 ---
 
 # 2. `2 - Especificacion del formato (tecnico).md`
 
-### Qué es
-El **manual del formato**. Es la descripción exacta de cómo tiene que estar armado el archivo que su
-sistema va a generar.
+**Qué es.** El **manual del formato**: cómo tiene que estar armado el archivo que su sistema genera.
+Piénselo como el instructivo que da un banco para un archivo de pagos — dice qué columna va en qué
+lugar, qué se acepta y qué se rechaza.
 
-Piénselo como el instructivo que da un banco cuando uno le manda un archivo de pagos: dice qué
-columna va en qué lugar, qué se acepta y qué se rechaza.
-
-### Qué tiene adentro
-- **Las 22 columnas**, una por una: qué significa cada una y si es obligatoria.
-- **Los descuentos por cantidad** (a partir de tantas unidades, el precio baja) y cómo se escriben.
+**Qué tiene adentro.**
+- Las **22 columnas**, una por una: qué significa cada una y si es obligatoria.
+- Los **descuentos por cantidad** (a partir de tantas unidades el precio baja) y cómo se escriben.
 - **Reglas que evitan errores caros.** Por ejemplo: un precio escrito como `1.450` se rechaza a
   propósito, porque no hay forma de saber si son mil cuatrocientos cincuenta o uno con cuarenta y
   cinco. Preferimos rechazar esa fila antes que inventar un precio y que un vendedor cobre mal.
-- Los **códigos de respuesta**: qué contesta nuestro sistema cuando algo sale bien y cuándo no.
+- Los códigos de respuesta del sistema.
 
-### Quién lo lee
-**La persona que programe la exportación** desde el sistema de gestión. Es el único documento de los
-cuatro que es técnico.
+**Quién lo lee.** La persona que programe la exportación. **Es el único documento técnico.**
 
 ---
 
-# 3. `3 - Guia de instalacion (servidor).md`
+# 3. `3 - Guia de instalacion Windows.md`
 
-### Qué es
-El **instructivo de instalación paso a paso, para Windows**. Explica cómo dejar el envío funcionando
-solo. Son seis pasos y se hacen una sola vez.
+**Qué es.** El paso a paso para dejar el envío funcionando solo. **Son tres pasos**, porque el
+trabajo pesado lo hace el instalador.
 
-### Qué tiene adentro
-- Dónde copiar los archivos y dónde guardar la llave (el token).
-- **Cómo crear la "tarea programada" de Windows**, campo por campo, con lo que hay que tildar y lo
-  que hay que destildar. Una tarea programada es, literalmente, un despertador: le decís a la
-  computadora "todos los días a las 6 de la mañana hacé esto", y lo hace sola aunque no haya nadie.
-- Cómo hacer las **otras dos corridas** (11:00 y 16:00), que es duplicar la primera y cambiarle la
-  hora.
-- **Qué hacer con cada error**, en una tabla: si el sistema contesta tal cosa, significa esto y se
-  arregla así.
-- 🔌 **Qué hacer si el servidor se apaga o se reinicia.** Un corte de luz, una actualización de
-  Windows, alguien que apagó la máquina un viernes. La buena noticia es que las tareas programadas
-  sobreviven al apagado y casi siempre no hay que hacer nada; el documento trae igual una
-  comprobación de dos minutos y los cuatro motivos posibles por los que podría no volver solo, con
-  la solución de cada uno.
-- Cómo darse cuenta, dentro de tres meses, de que **sigue funcionando**. Esta parte se suele saltear
-  y es la que importa: un envío automático que deja de correr **no avisa**.
+**Qué tiene adentro.**
+- Los tres pasos: copiar la carpeta, comprobar el token, ejecutar el instalador.
+- Cómo usar `revisar.ps1` para saber si está funcionando.
+- Qué hacer con cada respuesta del sistema, en una tabla.
+- 🔌 **Qué hacer si el servidor se apaga o se reinicia.** La buena noticia es que la tarea sobrevive
+  al apagado y casi siempre no hay que hacer nada; el documento trae igual la comprobación de un
+  minuto y los tres casos posibles con su solución.
 
-### Quién lo lee
-Quien administre el servidor donde corre el sistema de gestión.
+**Quién lo lee.** Quien administre el servidor.
 
 ---
 
 # 4. `4 - plantilla-lista-precios.xlsx`
 
-### Qué es
-**Una planilla de Excel**, común y corriente. Se abre con doble clic.
+**Qué es.** Una planilla de Excel común. Se abre con doble clic.
 
-### Para qué sirve, y son dos cosas
-1. **Como modelo.** Muestra las 22 columnas con los nombres exactos y cuatro productos de ejemplo ya
-   cargados. Quien programe el export mira esto y sabe qué tiene que producir.
-2. **Para cargar precios a mano.** Mientras el envío automático no esté listo —y también después,
-   para correcciones sueltas— se puede llenar esta planilla y subirla desde la app.
+**Para qué sirve, y son dos cosas:**
+1. **Como modelo.** Muestra las 22 columnas con los nombres exactos y cuatro productos de ejemplo.
+   Quien programe el export mira esto y sabe qué tiene que producir.
+2. **Para cargar precios a mano**, mientras el envío automático no esté listo y también después, para
+   correcciones sueltas.
 
-### Tiene dos hojas
-- **`LISTA`**: las columnas y los ejemplos.
-- **`INSTRUCTIVO`**: la explicación de cada columna, escrita adentro de la misma planilla para no
-  tener que abrir otro documento.
+**Tiene dos hojas:** `LISTA` (columnas y ejemplos) e `INSTRUCTIVO` (la explicación de cada columna,
+adentro de la misma planilla).
 
 ---
 
-# 5. `scripts/enviar-precios.ps1`
+# 5. `scripts\instalar.ps1` 🔴 **el que hay que ejecutar**
 
-### Primero: ¿qué es un "script"?
+**Qué es.** El instalador. Se ejecuta **una sola vez**, y deja todo funcionando.
 
-Un **script** es una lista de instrucciones escritas en un archivo de texto, que la computadora lee
-y ejecuta sola, siempre igual. Es como una receta: no piensa, hace exactamente lo que dice.
+> Clic **derecho** → **Ejecutar con PowerShell**, como administrador.
 
-Este está escrito en **PowerShell**, que es el lenguaje que trae Windows para automatizar tareas.
-Viene instalado de fábrica: **no hay que descargar ni instalar nada.**
+**Qué hace, en orden:**
 
-**Ustedes no tienen que entenderlo ni modificarlo.** Se copia a una carpeta y funciona.
+| | |
+|---|---|
+| 1 | Comprueba que el token esté puesto |
+| 2 | **Abre una ventana para que elijas tu archivo de precios.** No hay que escribir ninguna ruta: se busca el archivo como cuando uno adjunta algo a un mail |
+| 3 | Guarda esa elección, así no hay que volver a decirlo nunca |
+| 4 | Hace un **envío de prueba** y te dice en castellano cómo salió |
+| 5 | Programa el envío automático **cada 1 hora** |
+| 6 | **Dispara la tarea y comprueba que de verdad corrió** — configurar no es lo mismo que funcionar |
+| 7 | Muestra un resumen de lo que quedó instalado |
 
-### Qué hace este, paso por paso
+**Si algo falla, te lo dice ahí mismo con la explicación de qué hacer.** No puede quedar instalado a
+medias sin que te enteres.
 
-Es el **cartero**. Cada vez que se ejecuta:
-
-1. **Busca el archivo** que exportó el sistema de gestión y se fija que exista y no esté vacío.
-2. **Avisa si el archivo es viejo.** Si tiene más de 20 horas —o sea, si el export de hoy no
-   corrió— lo anota en el registro. Igual lo manda: una lista vieja es mejor que ninguna.
-3. **Lo envía** a nuestro sistema, junto con la llave.
-4. **Anota la respuesta** en un archivo de registro, uno por día. Ahí queda escrito cuántas filas
-   entraron, cuántas se actualizaron y si algo se rechazó.
-5. **Si falló internet, vuelve a intentar** a los 15 minutos y a los 30. Si ahí tampoco pudo, deja
-   el error anotado y para.
-
-### Una cosa importante que hace, y es a propósito
-
-**Distingue dos tipos de problema.** Si el problema fue de internet, reintenta. Si el problema fue
-del archivo —una fila mal escrita, la llave vencida— **no reintenta**, porque el resultado iba a ser
-el mismo: eso necesita que lo mire una persona.
-
-### Y una cosa que NO hace, deliberadamente
-
-**Nunca da de baja productos.** Aunque un día el export salga incompleto por un filtro mal puesto,
-los productos que falten en el archivo **quedan como estaban**. Las bajas se hacen a mano, mirando el
-número antes de confirmar. Está pensado así para que un error de un martes a la mañana no les vacíe
-el catálogo sin que nadie se entere hasta que un vendedor abre la app frente a un comercio.
+Se puede volver a ejecutar cuando haga falta. Por ejemplo, si el sistema pasa a generar el archivo en
+otra carpeta: se corre de nuevo, se elige el archivo nuevo, y listo.
 
 ---
 
-# 6. `scripts/enviar-precios.bat` 🔴 **el único que hay que tocar**
+# 6. `scripts\revisar.ps1`
 
-### Qué es
-El **botón de arranque**. Es un archivo de dos líneas cuyo único trabajo es llamar al anterior.
+**Qué es.** El chequeo de "¿esto sigue andando?". **No cambia nada: sólo mira e informa.**
 
-### ¿Por qué existe, si ya está el otro?
-Porque el Programador de tareas de Windows no puede llamar directamente a un archivo de PowerShell:
-hay que invocarlo de una forma particular, y escribir eso a mano en la configuración de la tarea es
-la forma más fácil de equivocarse. Acá queda escrito bien, una sola vez.
+> Clic derecho → **Ejecutar con PowerShell**. Se puede correr cuantas veces se quiera.
 
-De paso, resuelve solo la protección de Windows que bloquea la ejecución de scripts, **sin que haya
-que desactivarla en el servidor**.
+Dice, en castellano: si la tarea existe y está habilitada, cuándo corre la próxima, cómo terminó la
+última, cuántos envíos correctos y cuántos errores hubo hoy, y **si el archivo de precios existe y
+hace cuánto que su sistema no lo regenera**.
 
-### Lo único que hay que editar de toda la carpeta
+Ese último punto es el que más ahorra tiempo: separa *"el envío se rompió"* de *"el que no está
+generando el archivo es su sistema"*. Son dos problemas de dos dueños distintos y se confunden todo
+el tiempo.
 
-Se abre con el Bloc de notas y se cambia **una línea**: la ruta del archivo que exporta el sistema
-de gestión.
+Termina con un veredicto de una línea: **"TODO EN ORDEN"** o qué hay que mirar.
 
-```
-set ARCHIVO=C:\ERP\export\lista-precios.txt
-```
-
-Donde dice `C:\ERP\export\lista-precios.txt` va la ruta real. Nada más.
+> **Si algo no cierra, mándennos una foto de esa pantalla.** Con eso solo alcanza para diagnosticar
+> casi cualquier cosa.
 
 ---
 
-# 7. `scripts/EnviarPrecios.java`
+# 7. `scripts\token.txt`
 
-### Qué es
-Una **alternativa opcional**, y en realidad es la mejor de las dos.
+**Qué es.** 🔑 La llave que identifica a la distribuidora. **Ya viene completa: no hay que tocarla.**
 
-### La diferencia con el resto
-Los archivos 5 y 6 arman un envío que sale **a una hora fija** (06:00, 11:00, 16:00). Eso funciona
-bien, pero tiene una debilidad: si un día el proceso que genera el archivo se atrasa y todavía no
-terminó a las 6, el envío sale con el archivo del día anterior.
+Sólo conviene restringir quién puede leerla: clic derecho → **Propiedades** → **Seguridad** →
+**Editar**, y dejar únicamente Administradores y la cuenta `SYSTEM`.
 
-Este archivo permite algo mejor: que el envío ocurra **justo después de que el archivo se terminó de
-generar**, sea la hora que sea. En vez de un despertador, es una consecuencia.
+🔴 **Quien tenga ese archivo puede reescribir el catálogo entero**: los precios que ven los vendedores
+en la calle y los que ve el comerciante en la tablet. Por eso esta carpeta no va a lugares
+compartidos.
 
-### Qué hay que hacer con él
-Dárselo a **la persona que programa su sistema de gestión**. Son unas pocas líneas que se pegan al
-final del proceso que ya genera el export. Si el sistema está hecho en Java —que es lo que nos
-comentaron— entra directo.
-
-**Es opcional.** Si les resulta más simple la tarea programada, funciona igual.
+Si alguna vez sospechan que se filtró, avísennos: la damos de baja y emitimos una nueva en un minuto.
 
 ---
 
-## Resumen: por dónde empezar
+# 8. `scripts\enviar-precios.ps1` y `scripts\enviar-precios.bat`
+
+**Qué son.** Los programitas que hacen el envío de verdad. **El instalador los usa solo; no hay que
+abrirlos ni editarlos.**
+
+**Qué hace el envío, cada vez que corre:**
+
+1. Busca el archivo que eligieron en el instalador y comprueba que exista y no esté vacío.
+2. **Se fija si cambió** desde el envío anterior y lo anota en el registro. **Lo manda igual** — es a
+   propósito: reenviar es gratis y así ningún cambio se puede perder.
+3. Lo envía junto con la llave.
+4. **Anota la respuesta** en un registro, uno por día.
+5. **Si falló internet, reintenta** a los 5 y a los 10 minutos.
+
+**Y algo que hace bien, que conviene saber:** distingue los dos tipos de problema. Si fue de
+internet, reintenta. Si fue del archivo —una fila mal escrita, la llave vencida— **no reintenta**,
+porque el resultado sería el mismo: eso necesita que lo mire una persona.
+
+**Y algo que NO hace, deliberadamente:** **nunca da de baja productos.** Aunque un día el export
+salga incompleto por un filtro mal puesto, los productos que falten **quedan como estaban**.
+
+> El `.bat` es sólo el puente que Windows necesita para llamar al `.ps1`. Se le puede hacer doble
+> clic para **forzar un envío ahora mismo**, sin esperar a la hora.
+
+---
+
+# 9. `scripts\EnviarPrecios.java`
+
+**Qué es.** Una alternativa **opcional**, y en realidad la mejor de las dos.
+
+**La diferencia.** El envío por hora funciona bien, pero es un reloj: manda lo que encuentre en ese
+momento. Este archivo permite algo mejor — que el envío ocurra **justo después de que el archivo
+terminó de generarse**, sea la hora que sea.
+
+**Qué hacer con él.** Dárselo a la persona que programa su sistema de gestión: son unas pocas líneas
+que se pegan al final del proceso que ya genera el export. Si el sistema está hecho en Java —que es
+lo que nos comentaron— entra directo.
+
+**Es opcional, y se puede sumar después.** Si se hace, conviene dejar igual la tarea de cada hora:
+una cosa no reemplaza a la otra, se complementan.
+
+---
+
+## Por dónde empezar
 
 | Paso | Qué | Quién |
 |---|---|---|
 | 1 | Leer el archivo **1** y contestarnos las **cuatro preguntas** | Quien coordina |
 | 2 | Pasarle los archivos **2** y **4** a quien programa el export | Quien coordina |
 | 3 | Mandarnos un **archivo de prueba de 20 filas** | Quien programa |
-| 4 | Lo revisamos juntos y les avisamos si algo hay que corregir | Nosotros |
-| 5 | Recién ahí: instalar los scripts siguiendo el archivo **3** | Quien administra el servidor |
+| 4 | Lo revisamos juntos y avisamos si hay que corregir algo | Nosotros |
+| 5 | Recién ahí: copiar la carpeta al servidor y ejecutar **`instalar.ps1`** | Quien administra el servidor |
 
 **Cualquier duda de cualquiera de los archivos, pregúntennos.** Es preferible una consulta de dos
 minutos que un catálogo con precios equivocados.

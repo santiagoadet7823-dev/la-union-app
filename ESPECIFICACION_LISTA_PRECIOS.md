@@ -280,39 +280,41 @@ falla por red, se puede reintentar sin riesgo.
 
 ## 4-bis. Cuándo se envía
 
-**No hace falta que nadie toque nada: lo agenda el servidor de ustedes, VARIAS VECES POR DÍA.** Son
-tres **tareas programadas de Windows** que ejecutan el script de envío.
+**No hace falta que nadie toque nada, ni configurar nada a mano: les pasamos un instalador.** Se
+ejecuta una vez, elige el archivo con una ventana —sin escribir rutas— y deja programado el envío
+**una vez por hora**.
 
-**Ya les pasamos los scripts hechos**, en **PowerShell** (que viene instalado en Windows, no hay que
-instalar nada) más un ejemplo en Java para llamarlo desde adentro del sistema de gestión. El paso a
-paso está en la guía de instalación.
+Todo está en **PowerShell**, que viene instalado en Windows: no hay que descargar nada. También va un
+ejemplo en Java para llamarlo desde adentro del sistema de gestión. El paso a paso está en la guía de
+instalación.
 
-### 🔴 Por qué son varios horarios y no uno solo
-
-Ustedes corrigen precios a media mañana y a la tarde. Con un solo envío a las 6, **el teléfono que
-ya salió a la calle se queda con la lista de las 6 hasta el día siguiente**, y el vendedor cobra un
-precio viejo con el comerciante enfrente. Por eso el envío es multi-horario, y por eso hicimos que
-la app **también** vaya a buscar la lista nueva sin que el vendedor tenga que cerrar y abrir nada
-(ver "Cómo llega al teléfono", abajo).
-
-### Los horarios
-
-| Corrida | Hora | Para qué |
-|---|---|---|
-| **1** | **06:00** | La lista del día. Los vendedores salen 07:30-08:00, así que llega con margen |
-| **2** | **11:00** | Las correcciones de la mañana |
-| **3** | **16:00** | Las de la tarde, antes del último tramo de la jornada |
-
-Son tres tareas programadas con el **mismo script**, cambiando sólo la hora. **Agregar o correr un
-horario es cambiar un número**: si les queda mejor 12:30 y 17:00, se cambia y listo. Si el ERP no
-tiene nada nuevo que mandar, el envío entra igual y no cambia nada — es idempotente.
+### La cadencia: una vez por hora, todos los días
 
 | | |
 |---|---|
-| **Días** | Lunes a sábado |
-| **Reintentos** | A los 15 y a los 30 minutos ante error de red o `5xx`. Después para y deja el error en el registro. Reintentar **no** duplica ni rompe nada |
+| **Cada** | **1 hora**, las 24 horas, todos los días |
+| **Manda** | **Siempre**, aunque el archivo no haya cambiado desde el envío anterior |
+| **Reintentos** | A los 5 y a los 10 minutos ante error de red o `5xx`. Si igual falla, la próxima corrida es en una hora: no hay nada que rescatar |
 | **`?lista_completa=1`** | 🔴 **Nunca en el envío automático.** Sin ese parámetro el envío **no da de baja nada**, que es lo que se quiere de algo que corre solo. Las bajas se hacen a mano desde la app |
-| **Si el export se atrasa** | Mejor todavía: llamar al envío **al terminar** el proceso que genera el archivo, en vez de a una hora fija (§5 de la guía) |
+| **Si el export se atrasa** | Mejor todavía: llamar al envío **al terminar** el proceso que genera el archivo, en vez de esperar a la hora (§5 de la guía) |
+
+**Por qué cada hora y no tres veces por día.** Ustedes corrigen precios a media mañana y a la tarde, y
+no siempre a la misma hora. Con el envío por hora, cualquier precio que cambien está arriba **como
+máximo 60 minutos después**, sin que nadie tenga que acordarse de nada.
+
+**Por qué manda aunque no haya cambiado.** Reenviar es gratis y es seguro: el endpoint es idempotente
+—si llega dos veces lo mismo, el catálogo queda igual— y así no hay ninguna situación en la que un
+cambio se pierda por una comparación mal hecha. El envío igual **detecta** si el archivo cambió y lo
+anota en el registro, para que se pueda leer de un vistazo:
+
+```
+Archivo NUEVO (cambio desde el envio anterior).
+El archivo NO cambio desde el envio anterior. Se manda igual.
+```
+
+⚠️ **Y un envío sin cambios no le cuesta datos a nadie.** Nuestro sistema distingue "llegó una lista"
+de "cambió el catálogo": si las 541 filas vienen iguales, la respuesta dice `actualizados: 0` y **los
+teléfonos ni se enteran**. Sólo se bajan el catálogo cuando de verdad cambió algo.
 
 ### Cómo llega al teléfono que ya está en la calle
 

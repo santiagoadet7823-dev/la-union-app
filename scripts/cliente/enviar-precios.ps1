@@ -5,11 +5,14 @@
 #   2. Lo manda por POST al endpoint de ingesta.
 #   3. Guarda la respuesta completa en un registro diario, y reintenta si fue un problema de red.
 #
-# CÓMO SE USA (a mano, para probar):
-#   .\enviar-precios.ps1 -Archivo "C:\ERP\export\lista-precios.txt"
+# CÓMO SE USA. Normalmente NO se ejecuta a mano: lo agenda `instalar.ps1`, que crea una tarea
+# programada de Windows que lo corre **una vez por hora**.
 #
-# CÓMO SE AGENDA: ver GUIA_ENVIO_AUTOMATICO_PRECIOS.md. En resumen, una tarea programada diaria a
-# las 06:00 que ejecute `enviar-precios.bat`.
+# Sin argumentos toma la ruta del archivo de `config.txt` (la que se eligió al instalar):
+#   .\enviar-precios.ps1
+#
+# Y se le puede pasar una ruta distinta para una prueba puntual:
+#   .\enviar-precios.ps1 -Archivo "C:\ERP\export\lista-precios.txt"
 #
 # 🔴 EL TOKEN NO VA ESCRITO EN ESTE ARCHIVO. Se lee de la variable de entorno DISTAT_TOKEN o del
 #    archivo `token.txt` que está al lado de este script. Ese archivo NO se comparte, no se sube a
@@ -17,16 +20,32 @@
 #    puede escribir el catálogo.
 
 param(
-  [Parameter(Mandatory = $true)][string]$Archivo,
+  # Sin valor, sale de `config.txt` (lo escribe `instalar.ps1` con el archivo que eligió la persona
+  # en el selector). Así la tarea programada no lleva ninguna ruta adentro: se cambia el archivo
+  # volviendo a correr el instalador, sin tocar la tarea.
+  [string]$Archivo = '',
   # `-ListaCompleta` da de baja todo producto que no venga en el archivo.
   # 🔴 NO USARLO EN LA TAREA PROGRAMADA. Existe sólo para una carga manual supervisada.
   [switch]$ListaCompleta,
   [int]$Reintentos = 2,
-  [int]$EsperaSegundos = 900
+  # 🩸 5 minutos, no 15. El envío corre CADA HORA: un reintento a los 15 y otro a los 30 se comía
+  # media hora de la ventana y se acercaba peligrosamente a la corrida siguiente. Con reintentos a
+  # los 5 y a los 10, el peor caso termina a los 10 minutos y quedan 50 de aire. Y si igual falla,
+  # la próxima corrida está a una hora, no a un día: no hay nada que rescatar a toda costa.
+  [int]$EsperaSegundos = 300
 )
 
 $ErrorActionPreference = 'Stop'
 $base = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ── De dónde sale el archivo a enviar ────────────────────────────────────────
+if ([string]::IsNullOrWhiteSpace($Archivo)) {
+  $archivoConfig = Join-Path $base 'config.txt'
+  if (Test-Path $archivoConfig) { $Archivo = (Get-Content $archivoConfig -Raw).Trim() }
+}
+if ([string]::IsNullOrWhiteSpace($Archivo)) {
+  throw "No se sabe qué archivo enviar. Corré instalar.ps1, o pasá -Archivo <ruta>."
+}
 
 # ── Configuración ────────────────────────────────────────────────────────────
 $url = 'https://lqhtxivednffpiicnbog.supabase.co/functions/v1/ingest-precios'
@@ -38,6 +57,14 @@ if ([string]::IsNullOrWhiteSpace($token)) {
 }
 if ([string]::IsNullOrWhiteSpace($token)) {
   throw "Falta el token. Ponerlo en la variable de entorno DISTAT_TOKEN o en $base\token.txt"
+}
+
+# 🩸 El token de EJEMPLO se ataja acá y con un mensaje claro (31/08/2026, encontrado probando).
+# Sin esto, un `token.txt` sin completar se mandaba tal cual y el servidor devolvía
+# `401 token-invalido` — técnicamente correcto y completamente inútil: manda a pedir un token nuevo
+# cuando el que hay nunca se pegó. Es el primer error que va a cometer quien instale.
+if ($token -like '*PEGAR-ACA*') {
+  throw "El archivo token.txt todavia tiene el texto de ejemplo. Hay que pegar adentro el token real que les entregamos."
 }
 
 # ── Registro ─────────────────────────────────────────────────────────────────
@@ -65,6 +92,23 @@ if ($info.Length -eq 0) { Escribir "ERROR: el archivo esta vacio ($Archivo)"; ex
 $horas = [math]::Round(((Get-Date) - $info.LastWriteTime).TotalHours, 1)
 if ($horas -gt 20) { Escribir "AVISO: el archivo tiene $horas horas. Puede que el export no haya corrido." }
 
+# ── ¿Es el mismo archivo que la vez pasada? ──────────────────────────────────
+# 🩸 SE DETECTA Y SE INFORMA, PERO NO SE FRENA (decisión del cliente, 31/08/2026: "por las dudas
+# que lo envíe igual así se actualiza"). Corriendo cada hora, la mayoría de los envíos van a ser
+# de un archivo sin cambios, y saberlo hace que el registro se pueda leer de un vistazo: lo que
+# importa son las líneas que dicen "archivo NUEVO".
+#
+# Reenviar es gratis y es seguro: el endpoint es idempotente, y desde db/53 un archivo sin cambios
+# entra como `actualizados: 0` y NO hace que los teléfonos se bajen el catálogo de nuevo.
+$hashActual = (Get-FileHash -Path $Archivo -Algorithm SHA256).Hash
+$archHash = Join-Path $base 'ultimo.hash'
+$hashPrevio = if (Test-Path $archHash) { (Get-Content $archHash -Raw).Trim() } else { '' }
+if ($hashActual -eq $hashPrevio) {
+  Escribir "El archivo NO cambio desde el envio anterior. Se manda igual."
+} else {
+  Escribir "Archivo NUEVO (cambio desde el envio anterior)."
+}
+
 $destino = $url
 if ($ListaCompleta) {
   $destino = "$url" + "?lista_completa=1"
@@ -88,6 +132,10 @@ for ($intento = 0; $intento -le $Reintentos; $intento++) {
     $cuerpo = [System.IO.File]::ReadAllBytes($Archivo)
     $r = Invoke-WebRequest -Uri $destino -Method Post -Headers $cabeceras -Body $cuerpo -UseBasicParsing -TimeoutSec 300
     Escribir "HTTP $($r.StatusCode) $($r.Content)"
+    # El hash se guarda SÓLO si el envío entró. Si falló, la próxima corrida lo tiene que seguir
+    # tratando como nuevo — si no, un archivo que nunca llegó figuraría como "sin cambios" para
+    # siempre y nadie se enteraría de que ese contenido jamás se subió.
+    Set-Content -Path $archHash -Value $hashActual -Encoding ascii
     exit 0
   } catch {
     $resp = $_.Exception.Response
