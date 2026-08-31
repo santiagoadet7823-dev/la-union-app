@@ -14,11 +14,12 @@ Este documento explica qué es cada uno, sin dar nada por sabido.
 
 Para **poner esto a funcionar** sólo hace falta una cosa:
 
-> Copiar la carpeta al servidor y hacer clic derecho en **`instalar.ps1`** → **Ejecutar con
-> PowerShell** (como administrador).
+> Copiar la carpeta al servidor y hacer clic **derecho** en **`instalar.ps1`** → **"Ejecutar con
+> PowerShell"**. Cuando Windows pregunte si permitís los cambios, decile que sí.
 
 El instalador te va a pedir que elijas tu archivo de precios en una ventana, y hace todo lo demás
-solo. El resto de los archivos son documentación y respaldo.
+solo. **No hay que abrir ninguna terminal ni escribir ningún comando.** El resto de los archivos son
+documentación y respaldo.
 
 ---
 
@@ -58,11 +59,11 @@ lista nueva solos, sin que nadie cierre y abra nada.
 | 2 | `2 - Especificacion del formato (tecnico).md` | Quien **programa** el export en su sistema |
 | 3 | `3 - Guia de instalacion Windows.md` | Quien **instala** en el servidor |
 | 4 | `4 - plantilla-lista-precios.xlsx` | Quien **carga precios a mano**, y como modelo del formato |
-| 5 | `scripts\instalar.ps1` | 🔴 **El que hay que ejecutar** |
-| 6 | `scripts\revisar.ps1` | Para saber si sigue funcionando |
-| 7 | `scripts\token.txt` | La llave. **Ya está completa**, no se toca |
-| 8 | `scripts\enviar-precios.ps1` y `.bat` | Los usa el instalador. Nadie los abre |
-| 9 | `scripts\EnviarPrecios.java` | Opcional, para su programador |
+| 5 | `instalar.ps1` | 🔴 **El que hay que ejecutar** |
+| 6 | `revisar.ps1` | Para saber si sigue funcionando |
+| 7 | `token.txt` | La llave. **Ya está completa**, no se toca |
+| 8 | `enviar-precios.ps1` y `.bat` | Los usa el instalador. Nadie los abre |
+| 9 | `EnviarPrecios.java` | Opcional, para su programador |
 
 ---
 
@@ -102,11 +103,11 @@ lugar, qué se acepta y qué se rechaza.
 
 # 3. `3 - Guia de instalacion Windows.md`
 
-**Qué es.** El paso a paso para dejar el envío funcionando solo. **Son tres pasos**, porque el
+**Qué es.** El paso a paso para dejar el envío funcionando solo. **Son dos pasos**, porque el
 trabajo pesado lo hace el instalador.
 
 **Qué tiene adentro.**
-- Los tres pasos: copiar la carpeta, comprobar el token, ejecutar el instalador.
+- Los dos pasos: copiar la carpeta y ejecutar el instalador con clic derecho.
 - Cómo usar `revisar.ps1` para saber si está funcionando.
 - Qué hacer con cada respuesta del sistema, en una tabla.
 - 🔌 **Qué hacer si el servidor se apaga o se reinicia.** La buena noticia es que la tarea sobrevive
@@ -132,11 +133,12 @@ adentro de la misma planilla).
 
 ---
 
-# 5. `scripts\instalar.ps1` 🔴 **el que hay que ejecutar**
+# 5. `instalar.ps1` 🔴 **el que hay que ejecutar**
 
 **Qué es.** El instalador. Se ejecuta **una sola vez**, y deja todo funcionando.
 
-> Clic **derecho** → **Ejecutar con PowerShell**, como administrador.
+> Clic **derecho** → **"Ejecutar con PowerShell"**. Windows va a pedir permiso de administrador:
+> aceptá. El instalador se encarga de pedírselo solo — no hay que abrir nada como administrador.
 
 **Qué hace, en orden:**
 
@@ -158,7 +160,7 @@ otra carpeta: se corre de nuevo, se elige el archivo nuevo, y listo.
 
 ---
 
-# 6. `scripts\revisar.ps1`
+# 6. `revisar.ps1`
 
 **Qué es.** El chequeo de "¿esto sigue andando?". **No cambia nada: sólo mira e informa.**
 
@@ -179,7 +181,7 @@ Termina con un veredicto de una línea: **"TODO EN ORDEN"** o qué hay que mirar
 
 ---
 
-# 7. `scripts\token.txt`
+# 7. `token.txt`
 
 **Qué es.** 🔑 La llave que identifica a la distribuidora. **Ya viene completa: no hay que tocarla.**
 
@@ -194,7 +196,7 @@ Si alguna vez sospechan que se filtró, avísennos: la damos de baja y emitimos 
 
 ---
 
-# 8. `scripts\enviar-precios.ps1` y `scripts\enviar-precios.bat`
+# 8. `enviar-precios.ps1` y `enviar-precios.bat`
 
 **Qué son.** Los programitas que hacen el envío de verdad. **El instalador los usa solo; no hay que
 abrirlos ni editarlos.**
@@ -220,7 +222,7 @@ salga incompleto por un filtro mal puesto, los productos que falten **quedan com
 
 ---
 
-# 9. `scripts\EnviarPrecios.java`
+# 9. `EnviarPrecios.java`
 
 **Qué es.** Una alternativa **opcional**, y en realidad la mejor de las dos.
 

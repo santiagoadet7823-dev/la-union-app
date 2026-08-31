@@ -5,15 +5,16 @@
 Esta guía deja el envío de la lista de precios funcionando **solo, una vez por hora**, sin que nadie
 tenga que acordarse de nada.
 
-**No hay que configurar nada a mano.** Preparamos un instalador que hace todo el trabajo: le decís
-cuál es tu archivo de precios y él se encarga del resto. Son **tres pasos** y se hace una sola vez.
+**No hay que configurar nada a mano, ni abrir una terminal, ni escribir un solo comando.** Preparamos
+un instalador que hace todo el trabajo: le decís cuál es tu archivo de precios y él se encarga del
+resto. Son **dos pasos** y se hace una sola vez.
 
 Está todo pensado para **Windows**. Los programas están escritos en **PowerShell**, que viene
 instalado de fábrica: **no hay que descargar ni instalar nada.**
 
 ---
 
-## Los tres pasos
+## Los pasos
 
 ### Paso 1 — Copiar la carpeta al servidor
 
@@ -26,38 +27,35 @@ C:\DisTAt\
 Puede ser otra ruta, pero que sea **una carpeta propia y estable**: no el Escritorio de un usuario,
 no Descargas, no una carpeta temporal. Si alguien la mueve después, el envío deja de funcionar.
 
-### Paso 2 — Comprobar que el token esté puesto
+### Paso 2 — Ejecutar el instalador
 
-Dentro de la carpeta hay un archivo **`token.txt`** que ya viene con la llave adentro. **No hay que
-tocarlo.** Abrilo sólo para confirmar que tiene un código largo (algo como `a1b2c3d4-…`) y no un
-texto de ejemplo.
+> Clic **DERECHO** sobre **`instalar.ps1`** → **"Ejecutar con PowerShell"**.
 
-> 🔴 **Ese archivo es la credencial que los identifica.** Quien lo tenga puede reescribir el catálogo
-> entero: los precios que ven los vendedores en la calle y los que ve el comerciante en la tablet.
-> No lo copien a carpetas compartidas ni lo manden por chat.
->
-> Conviene restringir quién puede leerlo: clic derecho en `token.txt` → **Propiedades** → pestaña
-> **Seguridad** → **Editar**, y dejar sólo Administradores y la cuenta `SYSTEM`.
+Eso es todo. **No hay que abrir ninguna terminal ni escribir ningún comando.**
 
-### Paso 3 — Ejecutar el instalador
+Windows va a mostrar su cartel de siempre preguntando si permitís que la aplicación haga cambios en
+el equipo: **decile que sí.** El instalador necesita ese permiso para dejar programado el envío
+automático, y se lo pide solo.
 
-> Clic **derecho** sobre **`instalar.ps1`** → **Ejecutar con PowerShell**.
->
-> ⚠️ **Tiene que ser como administrador.** Si te avisa que faltan permisos, cerralo y abrí PowerShell
-> como administrador (Menú Inicio → escribí `PowerShell` → clic derecho → *Ejecutar como
-> administrador*), y desde ahí ejecutá el instalador. El propio programa te dice los comandos.
+> **Si no ves "Ejecutar con PowerShell" al hacer clic derecho**, probá con *Mostrar más opciones*
+> (en Windows 11 el menú viejo está ahí).
 
-Y ya está. El instalador hace el resto:
+### Y de ahí en más, lo guía el instalador
+
+Lo primero que va a hacer es abrir una ventana para que **busques el archivo** que genera el sistema de
+gestión, igual que cuando adjuntás algo a un mail. **No hay que escribir ninguna ruta.**
+
+Y listo. De ahí en adelante hace todo solo:
 
 | | Qué hace |
 |---|---|
-| 1 | Comprueba que el token esté puesto |
-| 2 | **Abre una ventana para que elijas tu archivo de precios** — no hay que escribir ninguna ruta |
-| 3 | Guarda esa elección |
+| 1 | Comprueba que el token esté puesto *(ya viene cargado)* |
+| 2 | **Abre la ventana para que elijas tu archivo de precios** |
+| 3 | Guarda esa elección, así no hay que volver a decirlo nunca |
 | 4 | Hace un **envío de prueba** y te dice en castellano cómo salió |
 | 5 | Programa el envío automático **cada 1 hora** |
-| 6 | **Dispara la tarea y comprueba que de verdad corrió** |
-| 7 | Te muestra un resumen de lo que quedó instalado |
+| 6 | **Dispara la tarea y comprueba que de verdad corrió** — configurar no es lo mismo que funcionar |
+| 7 | Muestra un resumen de lo que quedó instalado |
 
 **Si algo falla, te lo dice ahí mismo, en pantalla, con la explicación de qué hacer.** No hay forma
 de que quede "instalado a medias" sin que te enteres.
@@ -65,6 +63,18 @@ de que quede "instalado a medias" sin que te enteres.
 > Se puede volver a ejecutar las veces que haga falta. Por ejemplo, si el sistema de gestión pasa a
 > generar el archivo en otra carpeta: se corre el instalador de nuevo, se elige el archivo nuevo, y
 > listo.
+
+### Sobre el token
+
+Dentro de la carpeta hay un archivo **`token.txt`** que **ya viene con la llave adentro. No hay que
+tocarlo.**
+
+> 🔴 **Ese archivo es la credencial que los identifica.** Quien lo tenga puede reescribir el catálogo
+> entero: los precios que ven los vendedores en la calle y los que ve el comerciante en la tablet.
+> No copien esta carpeta a lugares compartidos ni la reenvíen por chat.
+>
+> Conviene restringir quién puede leerlo: clic derecho en `token.txt` → **Propiedades** → pestaña
+> **Seguridad** → **Editar**, y dejar sólo Administradores y la cuenta `SYSTEM`.
 
 ---
 
@@ -265,9 +275,10 @@ cosa no reemplaza a la otra, se complementan.
 
 ## Checklist
 
-- [ ] Carpeta copiada a `C:\DisTAt\`
-- [ ] `token.txt` tiene la llave (no el texto de ejemplo)
-- [ ] `instalar.ps1` ejecutado como administrador, y terminó sin errores
+- [ ] Carpeta copiada a `C:\DisTAt\`, con los archivos sueltos adentro
+- [ ] `instalar.ps1` y `token.txt` están en la MISMA carpeta
+- [ ] Clic derecho en `instalar.ps1` → "Ejecutar con PowerShell", y se aceptó el cartel de Windows
+- [ ] El instalador terminó sin errores
 - [ ] El instalador mostró el resumen con la próxima corrida
 - [ ] Al día siguiente: `revisar.ps1` dice **"TODO EN ORDEN"**
 - [ ] Alguien de ustedes sabe que existe `revisar.ps1` y qué hace

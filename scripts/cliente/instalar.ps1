@@ -3,6 +3,8 @@
 #  Windows / PowerShell. Se ejecuta UNA sola vez.
 #
 #  Clic derecho sobre este archivo -> "Ejecutar con PowerShell"
+#  Windows va a pedir permiso de administrador: hay que aceptar. No hace falta
+#  abrir ninguna terminal ni escribir ningun comando.
 #
 #  Que hace, en orden:
 #    1. Comprueba que el token este puesto.
@@ -34,23 +36,48 @@ Write-Host '  ===============================================================' -
 Write-Host '   DisT-At - Instalacion del envio automatico de precios' -ForegroundColor Cyan
 Write-Host '  ===============================================================' -ForegroundColor Cyan
 
-# --- ¿Somos administradores? -------------------------------------------------
+# --- Permisos: se PIDEN solos, no se le piden a la persona -------------------
+#
+# 🩸 ANTES ESTO SOLO AVISABA (31/08/2026, encontrado probando la guia de verdad).
 # Crear una tarea programada que corra sin sesion iniciada necesita permisos de
-# administrador. Se avisa ACA y no a mitad de camino, con medio trabajo hecho.
+# administrador, y el instalador cortaba con un cartel que mandaba a abrir una
+# terminal, navegar hasta la carpeta y tipear el nombre del script. Tres pasos
+# manuales, con rutas que tienen espacios, para alguien que esta aprendiendo.
+# Y el primer intento real fallo justo ahi: la persona hizo `cd` a la carpeta que
+# extrajo del ZIP y `.\instalar.ps1` no existia, porque estaba en una subcarpeta.
+#
+# Ahora el script se re-lanza SOLO con permisos: Windows muestra su cartel de
+# siempre ("¿Permitir que esta aplicacion haga cambios?"), la persona dice que si,
+# y sigue. Cero comandos.
 $esAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
            ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $esAdmin) {
-  Titulo 'Faltan permisos'
-  Malo 'Hay que ejecutar este instalador COMO ADMINISTRADOR.'
-  Info ''
-  Info 'Cerra esta ventana y proba de nuevo asi:'
-  Info '  1. Menu Inicio -> escribi: PowerShell'
-  Info '  2. Clic DERECHO sobre "Windows PowerShell" -> "Ejecutar como administrador"'
-  Info "  3. Escribi:  cd `"$base`"     y despues:   .\instalar.ps1"
+  Titulo 'Permisos de administrador'
   Write-Host ''
-  Read-Host '  Enter para cerrar'
-  exit 1
+  Info 'Para dejar programado el envio automatico hace falta permiso de administrador.'
+  Info 'Windows va a mostrar un cartel preguntando si permitis los cambios: deci que SI.'
+  Write-Host ''
+  try {
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSCommandPath + '"')
+    ) -ErrorAction Stop
+    exit 0
+  } catch {
+    Malo 'No se pudo pedir el permiso (parece que dijiste que No, o esta bloqueado).'
+    Info ''
+    Info 'Proba de nuevo: clic derecho sobre instalar.ps1 -> "Ejecutar con PowerShell",'
+    Info 'y cuando Windows pregunte, aceptá.'
+    Write-Host ''
+    Read-Host '  Enter para cerrar'
+    exit 1
+  }
 }
+
+# Windows marca como "bloqueado" todo archivo que vino de internet, aunque sea
+# extraido de un ZIP que llego por mail, y eso hace que PowerShell se niegue a
+# ejecutarlos con un error de seguridad que no dice nada util. Se desbloquea la
+# carpeta entera acá, para que la persona no tenga que saber que esto existe.
+try { Get-ChildItem -LiteralPath $base -Recurse -File | Unblock-File -ErrorAction SilentlyContinue } catch {}
 
 # --- 1) El token -------------------------------------------------------------
 Titulo '1 de 6 - La llave (token)'
