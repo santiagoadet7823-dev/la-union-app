@@ -1,7 +1,8 @@
 # Especificación — Lista de precios y catálogo
 
-**Versión 3 — 28/08/2026.** Suma la columna `destacado` (§1) y la sección **4-bis: cuándo se
-envía**, con el horario recomendado y los reintentos. Todo lo demás de la versión 2 sigue igual: las
+**Versión 4 — 31/08/2026.** Cambia cómo se interpretan las columnas de descuento vacías o en cero
+(§2, regla 5) — es importante y les simplifica el export. Suma la columna `destacado` (§1) y la
+sección **4-bis: cuándo se envía**. Todo lo demás de la versión 2 sigue igual: las
 columnas anteriores, el separador y el endpoint **no cambiaron**, así que lo que ya esté programado
 sigue funcionando sin tocar una línea.
 
@@ -96,9 +97,33 @@ Hasta **5 pares**. Cada par dice: *"comprando `desde_N` o más, cada uno sale `p
 2. `precio_N` es el **precio de UNO**, no el total del combo.
 3. Si no se usan los 5, se dejan vacíos los pares que sobran. Se puede usar 1, 2 o 3.
 4. Producto sin descuentos por cantidad: todas las columnas `desde_*` y `precio_*` vacías.
-5. **Para borrar todos los escalones** de un producto: `desde_1 = 0`.
+5. **Un `0` en `desde_N` significa "este tramo no se usa".** Pueden mandar las columnas que sobran
+   en cero sin ningún problema: no se interpretan como un descuento, y **no borran nada**.
+   Un producto sin descuentos se manda con las seis columnas en cero, o vacías, como les resulte más
+   fácil de exportar.
 6. Si viene `desde_N` sin su `precio_N` (o al revés), ese escalón se ignora, **el resto de la fila
    entra igual**, y se informa en la respuesta.
+
+### 🔴 Cómo se saca un descuento que ya no existe
+
+Ésta es la parte que cambió respecto de la versión anterior, y conviene entenderla porque protege el
+catálogo:
+
+**Mientras el archivo no traiga NINGÚN descuento, no se borra ningún descuento.** Si las seis
+columnas vienen en cero en las 541 filas, el sistema entiende que su export todavía no maneja
+descuentos por cantidad, y deja intactos los que estén cargados de nuestro lado.
+
+**En cuanto alguna fila traiga un descuento real, el archivo pasa a mandar.** Ahí una fila con
+`desde_1 = 0` significa "este producto no tiene descuento" y se le quita el que tuviera.
+
+Dicho de otro modo: **el archivo tiene que demostrar que sabe hablar de descuentos antes de que se le
+permita borrarlos.** Es a propósito. Un export que sale con ceros por configuración —lo más normal
+del mundo en un sistema de gestión— no puede vaciarle los descuentos al catálogo sin que nadie se
+entere.
+
+> Antes de esta versión, `desde_1 = 0` borraba siempre. Con el envío corriendo cada hora, eso
+> significaba que un descuento cargado a las 10:05 desaparecía a las 11:00. Lo detectamos revisando
+> su primer archivo, antes de que pasara.
 
 ### Ejemplo
 

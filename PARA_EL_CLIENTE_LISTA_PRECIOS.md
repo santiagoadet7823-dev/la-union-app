@@ -40,13 +40,31 @@ y después hay que corregirlos a mano.
 La columna 6 del archivo trae códigos `01`…`20`. Necesitamos la equivalencia (qué rubro es cada
 número) para que las categorías entren con nombre y no con número.
 
-### 1.4 ¿En qué codificación exporta el sistema?
+### 1.4 Las columnas que hoy conviene NO mandar
+
+Revisamos su archivo de prueba (`ARTIK.csv`) contra nuestro catálogo y hay tres columnas que, tal
+como vienen hoy, **empeorarían los datos que ya tenemos**. No es un error de ustedes: es que esos
+campos todavía no están cargados de su lado.
+
+| Columna | Viene | Tenemos | Si la mandan |
+|---|---|---|---|
+| `unidades` | `1.00` en todas | 146 productos con las unidades reales (×12, ×15) | Los pisa a todos con 1 |
+| `categoria` | `01`, `03`, `04` | 421 productos con el rubro en texto (Bebidas, Almacén) | Los reemplaza por números |
+| `descripcion` | Cortada a 20 caracteres | Los nombres completos | La planilla manual sí los pisa |
+
+**Mándenlas vacías hasta que tengan el dato bien.** Una celda vacía no toca nada: es justamente lo
+que permite mandar sólo la lista de precios sin arrastrar el resto del maestro.
+
+Con los descuentos por cantidad ya no hace falta hacer nada: **el sistema ahora entiende solo que un
+cero no es un descuento** (ver §2, regla 5 de la especificación).
+
+### 1.5 ¿En qué codificación exporta el sistema?
 
 **UTF-8** es lo ideal. Si sólo exporta **Windows-1252 / Latin-1**, avísennos **antes**: se soporta,
 pero hay que configurarlo. Si no, los acentos y las `Ñ` llegan rotos y nadie se entera hasta que un
 vendedor lee la grilla.
 
-### 1.5 Y una de logística
+### 1.6 Y una de logística
 
 **¿A qué hora termina el proceso que genera el archivo?** El envío tiene que salir después. Si el
 export a veces se estira, lo mejor es colgar el envío del final de ese proceso en vez de agendarlo a

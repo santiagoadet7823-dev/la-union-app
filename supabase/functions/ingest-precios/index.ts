@@ -26,7 +26,7 @@
 // ⚠️ Los tres archivos de `lib/` se COPIAN desde `web/src/lib/` al desplegar
 // (`scripts/deploy-ingest-precios.sh`). No editarlos acá: la fuente es la del bundle.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { filaAImportar, mapearEncabezados, parsearTexto } from './lib/planillaProductos.js'
+import { filaAImportar, mapearEncabezados, parsearTexto, resolverEscalasDelArchivo } from './lib/planillaProductos.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -122,8 +122,8 @@ Deno.serve(async (req) => {
     if (crudas.length > MAX_FILAS) return json({ error: 'demasiadas-filas', max: MAX_FILAS, recibidas: crudas.length }, 413)
 
     // 3) Filas crudas → filas importables, con el MISMO código que la pantalla de importación.
-    const filas: Record<string, unknown>[] = []
     const rechazadas: { fila: number; codigo: string; motivo: string }[] = []
+    const utiles: Record<string, unknown>[] = []
     crudas.forEach((cruda, i) => {
       const f = filaAImportar(mapearEncabezados(cruda))
       // La fila 1 del archivo son los encabezados, así que la primera de datos es la 2. Es el mismo
@@ -137,7 +137,21 @@ Deno.serve(async (req) => {
       // queda sin tocar y el resto entra. Perder el precio base por un escalón mal cargado sería
       // peor que el escalón faltante. Pero se informan, uno por uno.
       for (const a of f.avisos) rechazadas.push({ fila: nroFila, codigo: f.codigo, motivo: a })
+      utiles.push(f as Record<string, unknown>)
+    })
 
+    /* 🔴 LA DECISIÓN DE BORRAR ESCALAS ES DEL ARCHIVO ENTERO, NO DE CADA FILA. (31/08/2026.)
+     *
+     * Va DESPUÉS del recorrido y antes de armar el payload, porque necesita ver todas las filas
+     * juntas: si ninguna trae un descuento de verdad, el ERP no está usando la función y entonces
+     * ninguna fila borra nada. El archivo real (`ARTIK.csv`) trae las tres columnas de escala en
+     * CERO, y un cero pedía borrar — con el envío cada hora, eso vaciaba las escalas todos los días.
+     * Ver el encabezado de `resolverEscalasDelArchivo`.
+     */
+    const esc = resolverEscalasDelArchivo(utiles)
+    const filas: Record<string, unknown>[] = []
+    esc.filas.forEach((fx) => {
+      const f = fx as Record<string, any>
       filas.push({
         codigo: f.codigo || null,
         // Cadena vacía = "no vino": la RPC hace `coalesce` contra la fila viva y no la pisa.
@@ -198,7 +212,14 @@ Deno.serve(async (req) => {
     // Las rechazadas de la RPC (filas sin código ni descripción) y las de acá (avisos de parseo)
     // se juntan: al cliente le da igual en qué capa se descartó algo, quiere la lista completa.
     const todas = [...(Array.isArray(data?.rechazadas) ? data.rechazadas : []), ...rechazadas]
-    return json({ ...data, rechazadas: todas, separador })
+    // Las escalas se informan SIEMPRE que el archivo hable de ellas, incluso para decir que no se
+    // tocó ninguna. Queda en el registro diario que guarda el script del cliente, que es el único
+    // lugar donde se puede notar un borrado que no correspondía.
+    const infoEscalas = esc.usaEscalas
+      ? { escalas_cargadas: esc.filas.filter((f) => Array.isArray((f as any).escalas) && (f as any).escalas.length > 0).length,
+          escalas_borradas: esc.aBorrar }
+      : (esc.neutralizadas > 0 ? { escalas_sin_tocar: esc.neutralizadas } : {})
+    return json({ ...data, rechazadas: todas, separador, ...infoEscalas })
   } catch (e) {
     return json({ error: 'excepcion', detalle: String((e as Error)?.message || e) }, 500)
   }

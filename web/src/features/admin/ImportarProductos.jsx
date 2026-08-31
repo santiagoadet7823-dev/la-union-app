@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { codigoKey } from '../../lib/texto'
-import { filaAImportar, mapearEncabezados } from '../../lib/planillaProductos'
+import { filaAImportar, mapearEncabezados, resolverEscalasDelArchivo } from '../../lib/planillaProductos'
 import { useCatalog } from '../../context/CatalogContext'
 import { descargarArchivo } from '../../services/download'
 import { Bajar, ChevronLeft, Subir } from '../../components/icons'
@@ -105,7 +105,10 @@ export default function ImportarProductos({ onClose, onToast }) {
           estado,
         }
       })
-      setParsed(filas)
+      // 🔴 La decisión de borrar escalas es del ARCHIVO, no de la fila (31/08/2026). Si ninguna fila
+      // trae un descuento de verdad, ninguna borra. Ver el encabezado de `resolverEscalasDelArchivo`:
+      // el ERP manda las columnas de escala en CERO, y un cero pedía borrar.
+      setParsed(resolverEscalasDelArchivo(filas).filas)
     } catch (err) {
       onToast?.('No se pudo leer la planilla (¿es .xlsx?)')
       setParsed(null)
@@ -126,6 +129,23 @@ export default function ImportarProductos({ onClose, onToast }) {
     () => (parsed || []).filter((f) => f.avisos?.length > 0).length,
     [parsed],
   )
+
+  /**
+   * Qué va a pasar con los descuentos por cantidad. Se muestra SIEMPRE que el archivo traiga
+   * columnas de escala, incluso para decir que no va a pasar nada — porque el problema original era
+   * justamente que las escalas se borraban en silencio.
+   *
+   * Se calcula sobre `parsed`, que ya pasó por `resolverEscalasDelArchivo`: `escalasBorra` conserva
+   * lo que la fila PIDIÓ, y `escalas` tiene lo que finalmente se va a hacer.
+   */
+  const escalas = useMemo(() => {
+    if (!parsed) return null
+    const pidieron = parsed.filter((f) => f.escalasBorra).length
+    const cargan = parsed.filter((f) => Array.isArray(f.escalas) && f.escalas.length > 0).length
+    const borran = parsed.filter((f) => Array.isArray(f.escalas) && f.escalas.length === 0).length
+    if (!pidieron && !cargan) return null   // el archivo no habla de escalas: no hay nada que decir
+    return { pidieron, cargan, borran }
+  }, [parsed])
 
   async function importar() {
     if (!parsed) return
@@ -241,6 +261,28 @@ export default function ImportarProductos({ onClose, onToast }) {
               {resumen['sin-desc'] > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--danger)', background: 'var(--danger-tint)' }}>{resumen['sin-desc']} sin descripción</span>}
               {listaCompleta && bajasSiCompleta > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{bajasSiCompleta} se dan de baja</span>}
             </div>
+
+            {/* 🔴 QUÉ VA A PASAR CON LOS DESCUENTOS POR CANTIDAD (31/08/2026).
+                Se dice SIEMPRE que el archivo hable de escalas — incluso para avisar que no va a
+                pasar nada. El problema que originó esto era justamente que las escalas se borraban
+                en silencio: el archivo del ERP trae las columnas en CERO, y un cero pedía borrar. */}
+            {escalas && (
+              <div style={{
+                ...sx('padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.5'),
+                border: `1px solid ${escalas.borran > 0 ? 'var(--warning)' : 'var(--line)'}`,
+                background: escalas.borran > 0 ? 'var(--warning-tint)' : 'var(--surface)',
+                color: 'var(--muted)',
+              }}>
+                {escalas.borran > 0 ? (
+                  <>⚠️ <b style={sx('color:var(--warning)')}>{escalas.borran}</b> producto{escalas.borran === 1 ? '' : 's'} se {escalas.borran === 1 ? 'queda' : 'quedan'} sin descuentos por cantidad
+                    {escalas.cargan > 0 && <> · <b>{escalas.cargan}</b> {escalas.cargan === 1 ? 'carga el suyo' : 'cargan los suyos'}</>}.</>
+                ) : escalas.cargan > 0 ? (
+                  <><b style={sx('color:var(--success)')}>{escalas.cargan}</b> producto{escalas.cargan === 1 ? '' : 's'} con descuentos por cantidad. No se borra ninguno.</>
+                ) : (
+                  <>Ninguna fila trae descuentos por cantidad, así que <b>no se va a borrar ninguna escala</b>. Las que estén cargadas quedan como están.</>
+                )}
+              </div>
+            )}
 
             {/* La opción destructiva. Va DESPUÉS del resumen y con el número a la vista, no como un
                 tilde suelto arriba: lo que tiene que decidir la persona no es "¿es la lista

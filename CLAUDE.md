@@ -631,6 +631,26 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     importa, el handoff se actualiza antes, sin esperar el aviso.** Un respaldo más confiable es
     mostrar el uso de contexto en la statusline de Claude Code, que se configura aparte.
 
+54. 🩸 **UN VALOR QUE SIGNIFICA "BORRAR" NO PUEDE SER EL DEFAULT DE UN CAMPO NUMÉRICO.**
+    (31/08/2026, cazado con el primer archivo real del ERP y antes de que costara nada.) La spec de
+    la lista de precios decía `desde_1 = 0` → borrar todos los escalones. El export del cliente
+    manda **las seis columnas de descuento en CERO**, porque es lo que emite cualquier sistema de
+    gestión en un campo numérico sin dato. Con el envío corriendo **cada hora**, una escala cargada a
+    mano a las 10:05 desaparecía a las 11:00, todos los días, **sin un solo error ni aviso**.
+    **El arreglo no es pedirle al otro que mande vacío**: eso deja la integridad de nuestros datos
+    colgando de que ELLOS configuren bien el export, para siempre, y si se equivocan una vez no se
+    nota. La decisión de borrar pasó a ser **del ARCHIVO y no de la fila**: si ninguna fila trae un
+    descuento de verdad, ninguna borra nada; si alguna lo trae, el archivo sí usa la función y ahí un
+    cero significa "este producto no tiene". Se corrige solo el día que el ERP empiece a usarla.
+    Ver `resolverEscalasDelArchivo` en [`lib/planillaProductos.js`](web/src/lib/planillaProductos.js).
+    🩸 **Y buscando esto apareció uno peor**: la guarda del cero estaba **adentro del bucle de los
+    cinco pares**, así que una fila válida (`6/8900, 12/8500, 0/0.00`) devolvía la escala VACÍA —
+    tiraba los dos tramos buenos al llegar al tercer par en cero. Es exactamente la forma que va a
+    tener el archivo el día que configuren descuentos: tres columnas fijas, dos llenas y una en cero.
+    **El contrato siempre habló del primer par; la implementación lo aplicaba a los cinco.**
+    Corolario: cuando un valor centinela viaja en un formato de intercambio, la pregunta no es "¿es
+    claro?" sino **"¿lo puede emitir una máquina sin querer?"**.
+
 ---
 
 ## 3. Comandos

@@ -317,7 +317,7 @@ export function escalasDeFila(fila) {
   let vinoAlgo = false
   const escalones = []
 
-  for (const [colDesde, colPrecio] of COLUMNAS_ESCALA) {
+  for (const [i, [colDesde, colPrecio]] of COLUMNAS_ESCALA.entries()) {
     const cd = fila?.[colDesde]
     const cp = fila?.[colPrecio]
     const hayD = cd !== undefined && cd !== null && String(cd).trim() !== ''
@@ -331,8 +331,34 @@ export function escalasDeFila(fila) {
       avisos.push(`${colDesde}/${colPrecio}: número ambiguo (${d.ambiguo ? d.crudo : p.crudo}) — usar decimales sin separador de miles`)
       continue
     }
-    // El borrado explícito.
-    if (hayD && d.valor === 0) return { escalas: [], avisos, vino: true, borra: true }
+
+    /* 🔴 EL BORRADO EXPLÍCITO ES SÓLO `desde_1`, NO CUALQUIER TRAMO. (31/08/2026.)
+     *
+     * Acá decía `if (hayD && d.valor === 0) return { escalas: [], borra: true }` **adentro del
+     * bucle, para los cinco pares**. O sea que una fila perfectamente válida como
+     *
+     *     desde_1=6  precio_1=8900   desde_2=12  precio_2=8500   desde_3=0  precio_3=0.00
+     *
+     * llegaba al tercer par, veía el cero, y **devolvía la escala VACÍA — tirando los dos tramos
+     * buenos que ya había leído**. El resultado no era un error ni un aviso: era un producto que
+     * perdía sus descuentos en silencio.
+     *
+     * Y es exactamente la forma que va a tener el archivo del ERP el día que configuren descuentos:
+     * tienen tres pares de columnas FIJOS, van a llenar dos y dejar el tercero en cero. O sea que
+     * esto se habría comido los descuentos de casi todos los productos, el primer día, sin avisar.
+     *
+     * El contrato con el cliente siempre fue sobre el primero (spec §2, regla 5: "para borrar todos
+     * los escalones, `desde_1 = 0`"); la implementación lo aplicaba a los cinco. Se alinea al
+     * contrato: sólo el par 1 borra.
+     */
+    if (i === 0 && hayD && d.valor === 0) return { escalas: [], avisos, vino: true, borra: true }
+
+    // Un `0` en los tramos 2 a 5 es "este tramo no se usa", no un borrado. Se saltea en silencio:
+    // no es un error del que cargó, es una columna vacía escrita como cero. (Sin este `continue`
+    // entraría como `{desde:0}`, `normalizarEscalas` lo descartaría igual, pero dejaría un aviso
+    // de "tramos descartados" que no le sirve a nadie.)
+    if (hayD && d.valor === 0) continue
+
     if (!hayD || !hayP || d.valor == null || p.valor == null) {
       avisos.push(`${colDesde}/${colPrecio}: falta la mitad del par, ese tramo se ignoró`)
       continue

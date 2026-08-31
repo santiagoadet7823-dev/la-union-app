@@ -118,8 +118,83 @@ export function filaAImportar(campo) {
     // acá desmarcaría todos los destacados en cada envío de precios que no traiga la columna.
     destacado: campo.destacado === '' || campo.destacado == null ? null : aBool(campo.destacado),
     escalas: esc.escalas,
+    // 🩸 `escalasBorra` NO se descarta (31/08/2026). Hasta hoy `filaAImportar` se quedaba sólo con
+    // `esc.escalas` y tiraba el resto, así que quien llamaba no podía distinguir "la fila no traía
+    // columnas de escala" de "la fila pidió borrar la escala": las dos llegaban como un valor y
+    // nada más. `resolverEscalasDelArchivo` necesita esa diferencia — ver su encabezado.
+    escalasBorra: esc.borra === true,
     avisos,
   }
+}
+
+/**
+ * 🔴 LA DECISIÓN DE BORRAR UNA ESCALA ES DEL ARCHIVO, NO DE LA FILA. (31/08/2026.)
+ *
+ * EL BUG QUE ESTO EVITA, encontrado con el primer archivo real del ERP y antes de que costara nada.
+ * `ARTIK.csv` trae las tres columnas de descuento **en cero**, no vacías:
+ *
+ *     41;MANAOS 12X600ML COLA;9150.00;0.00;1.00;01;;FDO;;;0;0;0.00;0;0.00;0;0.00;;
+ *                                                          └── desde_1=0, precio_1=0.00 ──┘
+ *
+ * Y `desde_1 = 0` significaba, por contrato, **"borrá todos los escalones de este producto"**. Con
+ * el envío corriendo **cada hora**, una escala cargada a mano a las 10:05 desaparecía a las 11:00,
+ * en silencio, todos los días. El síntoma no habría sido un error: habría sido un vendedor
+ * cotizando sin el descuento con el comerciante enfrente.
+ *
+ * POR QUÉ NO ALCANZABA CON PEDIRLE AL CLIENTE QUE MANDE VACÍO. Un `0` es la salida natural de un
+ * campo numérico en casi cualquier ERP: pedirles vacío es pedirles algo antinatural, y para siempre.
+ * Deja la integridad de NUESTROS datos colgando de que ELLOS configuren bien el export en cada
+ * cambio que hagan, y si se equivocan una vez no hay mensaje ni fila rechazada: sólo faltan
+ * descuentos.
+ *
+ * LA REGLA. Si NINGUNA fila del archivo trae una escala de verdad, el archivo no está usando la
+ * función, y entonces **ninguna fila borra nada**. Si ALGUNA la trae, el archivo sí la usa, y una
+ * fila en ceros pasa a significar "este producto no tiene descuento" — ahí sí se borra.
+ *
+ * Resuelve el ciclo de vida completo sin que nadie tenga que acordarse de prender una bandera:
+ *
+ *   hoy      541 filas en cero            → no se toca ninguna escala
+ *   mañana   30 con valores, 511 en cero  → se cargan 30, las otras quedan sin escala (es la verdad)
+ *   después  el 0011 pasa a ceros         → el 0011 pierde su escala
+ *
+ * 🩸 Y ES DELIBERADO QUE APLIQUE TAMBIÉN A LA PLANILLA MANUAL, no sólo al endpoint. Un mismo archivo
+ * que hace cosas distintas según por dónde entró es una trampa peor que la que estamos arreglando.
+ * Para sacarle la escala a un producto suelto está el switch de su ficha, que es un clic.
+ *
+ * LA ASIMETRÍA QUE ORDENA TODO ESTO: borrar de más es catastrófico e invisible; borrar de menos es
+ * molesto, visible y se arregla con un clic. Cuando los dos errores no cuestan lo mismo, el default
+ * va del lado barato.
+ *
+ * @param {Array} filas  lo que devuelve `filaAImportar`, ya mapeado
+ * @returns {{filas: Array, usaEscalas: boolean, aBorrar: number, neutralizadas: number}}
+ */
+export function resolverEscalasDelArchivo(filas) {
+  const lista = Array.isArray(filas) ? filas : []
+  // "Escala de verdad" es un array con al menos un escalón. Un `[]` es una PETICIÓN de borrado, no
+  // una escala, así que no cuenta para decidir si el archivo usa la función.
+  const usaEscalas = lista.some((f) => Array.isArray(f?.escalas) && f.escalas.length > 0)
+
+  if (usaEscalas) {
+    return {
+      filas: lista,
+      usaEscalas: true,
+      aBorrar: lista.filter((f) => Array.isArray(f?.escalas) && f.escalas.length === 0).length,
+      neutralizadas: 0,
+    }
+  }
+
+  // Nadie en el archivo usa escalas → los `[]` se convierten en `null`, que es "no toques nada".
+  // `null` es el mismo valor que produce una planilla sin columnas de escala, así que aguas abajo
+  // no hay ningún caso nuevo que manejar: la RPC ya hace `coalesce(f.escalas, p.escalas)`.
+  let neutralizadas = 0
+  const filasSeguras = lista.map((f) => {
+    if (Array.isArray(f?.escalas) && f.escalas.length === 0) {
+      neutralizadas++
+      return { ...f, escalas: null }
+    }
+    return f
+  })
+  return { filas: filasSeguras, usaEscalas: false, aBorrar: 0, neutralizadas }
 }
 
 /**
