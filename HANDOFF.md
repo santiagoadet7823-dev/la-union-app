@@ -14,9 +14,10 @@
 > Reparto del parque al 28/08 (`estado_dispositivo`): **7 equipos en 1.21.0** con latido de hoy ·
 > 3 en 1.20.0 sin reportar desde el 22/08 · 5 filas viejas o sin latido. Publicar no es entregar.
 >
-> 🔴 **Si sos una sesión nueva: empezá por las cuatro secciones que están justo abajo de §1**, en
-> este orden — 🔑 tokens y el paquete del cliente · 🟢 release 1.22.0 · 🔵 el hueco de Luis Mendoza ·
-> 🟠 qué entró en 1.22.0. **No queda trabajo sin publicar.**
+> 🔴 **Si sos una sesión nueva: empezá por las secciones que están justo abajo de §1**, en este
+> orden — ⏱️ envío por hora + instalador (31/08, lo más reciente) · 🔑 tokens y paquete del cliente ·
+> 🟢 release 1.22.0 · 🔵 el hueco de Luis Mendoza · 🟠 qué entró en 1.22.0.
+> **No queda trabajo sin publicar en el bundle** (`db/53` está aplicada y no necesita front nuevo).
 >
 > **Lo que está esperando NO es técnico:** el envío automático de precios está listo de punta a punta
 > y el token ya está emitido, pero no puede arrancar hasta que el cliente conteste cuatro preguntas
@@ -43,6 +44,105 @@ cobra por abono P2P — **no hay pasarela de pago en la app**; la palanca es `em
 ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta).
 
 Todo en español: código, comentarios, UI y commits.
+
+---
+
+## ⏱️ ENVÍO DE PRECIOS CADA 1 HORA + INSTALADOR — 31/08/2026
+
+El cliente pidió dos cosas: que el envío pase de tres veces por día a **una vez por hora, mandando
+siempre** aunque el archivo sea idéntico (*"por las dudas que lo envíe igual"*), y que el paquete
+venga **listo para instalar**, porque del lado de ellos lo hace alguien que está aprendiendo a
+programar.
+
+### 🔴 `db/53` — lo que sostiene todo lo demás, y por qué no era opcional
+
+**El cambio de cadencia rompía el centinela que se publicó el 29/08.** `sello_precios()` devolvía
+`max(ts)` de `ingestas_precios`; el teléfono lo consulta y si cambió **recarga el catálogo completo**.
+Con 24 envíos por día se movía 24 veces aunque no cambiara un precio. Medido sobre la base:
+
+| | |
+|---|---|
+| productos | 170 kB · clientes 340 kB → **~510 kB por recarga** |
+| por teléfono/día | **~12 MB** de datos móviles del empleado, para nada |
+| × 9 teléfonos | **~110 MB/día** |
+
+Es la regla 48 otra vez, la misma de los ~430 MB/día del auto-updater del APK.
+
+🩸 **Y la causa raíz no era el sello: `importar_precios` mentía.** `v_actualizados` contaba *"cuántos
+códigos del archivo YA EXISTÍAN"*, medido **antes de escribir**. Reenviar un archivo idéntico
+reportaba **`actualizados: 511`** con cero cambios reales — mentira en el registro que lee el cliente
+y en el sello que lee el teléfono.
+
+**Ahora** el `update` lleva un `is distinct from` entre la fila viva y lo que se va a escribir, y los
+dos conteos salen de `get diagnostics`. Efecto secundario bueno: el registro del cliente pasa a decir
+la verdad, y se escriben muchas menos filas.
+
+⚠️ **`descontinuado_ts` VA DENTRO de la comparación, y es la trampa del cambio.** El `set` lo pone en
+`null` incondicionalmente para que un producto que reaparece se reactive solo (db/49). Fuera del
+`is distinct from`, un producto descontinuado que vuelve tendría todo lo demás igual, la fila no se
+actualizaría y **no se reactivaría nunca**.
+
+**Y quedan dos preguntas distintas con dos consultas distintas, a propósito — que no se unifiquen:**
+
+| Quién | Qué mira | Para qué |
+|---|---|---|
+| `EstadoCatalogo` | `max(ts)` a secas | *"¿sigue llegando la lista?"* → los 24 envíos lo mantienen fresco y el ámbar de 36 h sigue siendo señal real |
+| `sello_precios()` | `max(ts)` **con cambios > 0** | *"¿vale la pena bajar 510 kB?"* |
+
+**Verificado con transacciones separadas** (la primera prueba salió mal por un artefacto: dentro de un
+`do $$` todo comparte `now()`, así que las cuatro filas tenían el mismo `ts` y el sello no podía
+moverse):
+
+| Caso | Resultado |
+|---|---|
+| Alta | `creados 1`, sello se mueve |
+| **Reenvío idéntico** | **`actualizados 0`, `sin_cambio 1`, sello NO se mueve** — y la última ingesta SÍ avanza (14:33:22 vs 14:33:37) |
+| Cambia un precio | `actualizados 1`, sello se mueve |
+| Descontinuado que reaparece | **se reactiva** ✅ |
+
+`proacl` de las dos funciones, idéntico antes y después.
+
+### El instalador — `scripts/cliente/instalar.ps1`
+
+Clic derecho → *Ejecutar con PowerShell* (como administrador) y queda andando. Siete pasos, todos con
+mensajes en castellano:
+
+1. Comprueba el token · 2. **Selector de archivos** (nadie tipea rutas — es el corazón del pedido) ·
+3. Guarda la ruta en `config.txt` · 4. **Envío de prueba** traducido · 5. Tarea cada 1 hora ·
+6. 🔴 **dispara la tarea y verifica que corrió** · 7. Resumen.
+
+- **Corre como `SYSTEM`**: elimina de raíz el modo de falla de la contraseña que vence o cambia, que
+  era el caso C de la guía anterior.
+- **Detecta unidades de red mapeadas y las convierte a ruta UNC**, porque SYSTEM no ve las letras de
+  unidad (se montan al iniciar sesión, y la tarea corre sin sesión).
+- Idempotente: se puede correr de nuevo para cambiar el archivo.
+
+**`revisar.ps1`** es el diagnóstico de una tecla, con veredicto de una línea. Lo importante: separa
+*"el envío se rompió"* de *"el que no genera el archivo es su sistema"* — dos problemas de dos dueños
+distintos que se confunden todo el tiempo.
+
+### Lo verificado en esta máquina (Windows, PowerShell 5.1, igual que el cliente)
+
+| Qué | Resultado |
+|---|---|
+| Sintaxis de los tres scripts | OK |
+| **La repetición horaria** | `PT1H` / `P3650D` — **la trampa de `-RepetitionDuration` en PS 5.1 no mordió** |
+| Detección de archivo idéntico | `"El archivo NO cambio desde el envio anterior. Se manda igual."` y **manda** |
+| El hash **no** se guarda si el envío falló | ✅ — si no, un archivo que nunca llegó figuraría como "sin cambios" para siempre |
+| Token de ejemplo | 🩸 Encontrado probando: se mandaba tal cual y volvía `401 token-invalido`, que manda a pedir un token nuevo cuando el que hay nunca se pegó. Ahora corta con un mensaje claro |
+| `revisar.ps1` sin nada instalado | Diagnostica bien y dice qué hacer |
+
+⚠️ **NO se pudo probar el registro de la tarea**: esta sesión no corre como administrador. Lo que sí
+está probado es la construcción del disparador, que es donde estaba el riesgo real de PS 5.1.
+
+### El paquete
+
+`enviar-precios.sh` **sale del ZIP** (el servidor del cliente es Windows); sigue en `scripts/cliente/`
+por si algún día aparece uno con Linux. El `.bat` **ya no lleva la ruta hardcodeada**: la elige el
+instalador y vive en `config.txt`.
+
+🔑 **El ZIP ahora lleva `token.txt` COMPLETO**, así que del lado del cliente no hay que pegar nada —
+y eso vuelve sensible al ZIP entero: **va por canal privado, nunca a un grupo.**
 
 ---
 
