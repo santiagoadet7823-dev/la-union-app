@@ -92,3 +92,6 @@ scripts/cliente/instalacion.log
 
 # Basura que deja la CLI de Supabase al desplegar
 supabase/.temp/
+
+# 🔴 El catalogo con PRECIOS del cliente. Este repo es PUBLICO.
+catalogo-actual-*.csv
