@@ -51,7 +51,19 @@ Deno.serve(async (req) => {
     )
 
     const url = new URL(req.url)
-    const listaCompleta = url.searchParams.get('lista_completa') === '1'
+    /* 🔴 PRENDIDO POR DEFECTO EN ESTE CANAL (01/09/2026, db/54). El archivo del ERP ES la lista
+     * completa: lo que no está en él no se vende, y el cliente lo pidió explícitamente ("si hay
+     * productos en el catálogo que no vienen en el archivo, deben pasar automáticamente a
+     * deshabilitado"). Se puede apagar con `?lista_completa=0`.
+     *
+     * Va acá y NO en el argumento de la tarea programada del cliente: un solo lugar (regla 36), no
+     * se puede olvidar al reinstalar, y no depende de que nadie edite bien una tarea de Windows.
+     *
+     * ⚠️ Lo que NO cambia: `p_lista_completa` sigue siendo un PARÁMETRO de la RPC. La pantalla de
+     * importación manual usa la misma función, y una persona subiendo una planilla parcial no puede
+     * vaciar el catálogo. Este canal es autoritativo porque se autentica con el token del ERP; una
+     * persona con un .xlsx no lo es. */
+    const listaCompleta = url.searchParams.get('lista_completa') !== '0'
     // Por defecto NO se pisan las descripciones (ver la llamada a la RPC más abajo). Se puede pedir
     // lo contrario con `?pisar_descripcion=1`, para el día que su export mande los nombres completos.
     const pisarDescripcion = url.searchParams.get('pisar_descripcion') === '1'
@@ -110,7 +122,7 @@ Deno.serve(async (req) => {
           primera_linea_recibida: r.primeraLinea?.slice(0, 200),
           separador_detectado: r.separador === '\t' ? 'TAB' : r.separador,
           ejemplo: ['codigo', 'descripcion', 'precio', 'peso', 'unidades', 'categoria', 'marca',
-                    'unidad_venta', 'nivel', 'oferta', 'precio_oferta', 'destacado',
+                    'unidad_venta', 'nivel', 'oferta', 'precio_oferta', 'destacado', 'habilitado',
                     'desde_1', 'precio_1', 'desde_2', 'precio_2', 'desde_3', 'precio_3',
                     'desde_4', 'precio_4', 'desde_5', 'precio_5'].join(r.separador || ';'),
         }, 400)
@@ -169,6 +181,17 @@ Deno.serve(async (req) => {
         // esa distinción, el envío de precios de todos los días —que no manda esta columna— borraría
         // todos los destacados que se marcaron a mano desde la app.
         destacado: f.destacado,
+        /* 🩸 HABILITADO FALTABA ACÁ, Y LA PRUEBA DE PUNTA A PUNTA LO CAZÓ (01/09/2026, db/54).
+         *
+         * Ésta es la CUARTA lista blanca del camino de importación —las otras tres están en
+         * `ImportarProductos.jsx` y en `CatalogContext`— y falla igual que las otras: sin la clave,
+         * el CSV se parsea bien, `filaAImportar` devuelve `habilitado: false` correctamente, la
+         * respuesta dice `creados: 1` y el producto queda VIGENTE. Ni un error, ni un aviso.
+         * Verificado mandando un CSV con `habilitado;no` por el endpoint real: el producto se creó
+         * habilitado.
+         *
+         * `null` = la columna no vino en el encabezado → la RPC no toca a nadie. */
+        habilitado: f.habilitado,
         // Se omite la clave si la planilla no traía columnas de escala. La RPC distingue tres
         // casos y ausente ≠ `[]`: ausente es "no toques", `[]` es "borrá la escala".
         ...(f.escalas === null ? {} : { escalas: f.escalas }),
@@ -215,11 +238,16 @@ Deno.serve(async (req) => {
     // Las escalas se informan SIEMPRE que el archivo hable de ellas, incluso para decir que no se
     // tocó ninguna. Queda en el registro diario que guarda el script del cliente, que es el único
     // lugar donde se puede notar un borrado que no correspondía.
+    /* Cuántas categorías se ignoraron por venir como código de rubro. Queda en el registro diario
+     * que guarda el script del cliente, que es el único lugar donde alguien de su lado lo puede
+     * notar — y es la señal de que todavía no mandan los nombres. */
+    const catsIgnoradas = esc.filas.filter((f) => (f as any).categoriaEsCodigo).length
+    const infoCategorias = catsIgnoradas > 0 ? { categorias_ignoradas: catsIgnoradas } : {}
     const infoEscalas = esc.usaEscalas
       ? { escalas_cargadas: esc.filas.filter((f) => Array.isArray((f as any).escalas) && (f as any).escalas.length > 0).length,
           escalas_borradas: esc.aBorrar }
       : (esc.neutralizadas > 0 ? { escalas_sin_tocar: esc.neutralizadas } : {})
-    return json({ ...data, rechazadas: todas, separador, ...infoEscalas })
+    return json({ ...data, rechazadas: todas, separador, ...infoCategorias, ...infoEscalas })
   } catch (e) {
     return json({ error: 'excepcion', detalle: String((e as Error)?.message || e) }, 500)
   }

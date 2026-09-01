@@ -651,6 +651,78 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     Corolario: cuando un valor centinela viaja en un formato de intercambio, la pregunta no es "¿es
     claro?" sino **"¿lo puede emitir una máquina sin querer?"**.
 
+55. 🩸 **TODO LO QUE SALE HACIA UN TERCERO LLEGA MARCADO COMO "DE INTERNET", Y UN `.ps1`
+    MARCADO NO CORRE.** (31/08/2026, encontrado probando la guia en una PC real.) El instalador que
+    le mandamos al cliente abria una ventana de PowerShell y se cerraba sola en un segundo, sin
+    llegar a pedir permisos. No era el encoding, ni la elevacion, ni las comillas de una ruta con
+    espacios: las tres hipotesis se midieron y las tres eran falsas.
+    Windows le pone **Mark-of-the-Web** a todo archivo extraido de un ZIP que llego por mail o por
+    chat. Con la directiva en `RemoteSigned` —el default de un usuario— PowerShell **se niega a
+    cargar** un `.ps1` marcado y sin firma. **No ejecuta ni una linea**, asi que ninguna guarda de
+    adentro del script puede correr.
+    **La puerta de entrada de un paquete para terceros es un `.bat`**, que no esta sujeto a la
+    directiva de ejecucion, y que invoca con `-NoProfile -ExecutionPolicy Bypass -File`. El patron ya
+    existia bien escrito en `scripts/cliente/enviar-precios.bat` desde el primer dia: por eso el
+    envio automatico y la tarea programada **nunca** estuvieron rotos, y lo unico que fallaba era lo
+    que se abre a mano.
+    🩸 **Y el corolario general, que es lo que hay que recordar: `instalar.ps1` YA TRAIA el
+    `Unblock-File` que arregla esto, en su linea 80 — adentro del archivo que no se podia cargar.**
+    Una guarda que vive dentro del artefacto que protege no es una guarda. Vale para todo:
+    verificaciones de integridad, auto-reparaciones, migraciones que se chequean a si mismas.
+    🩸 **Segunda mitad, y sirve igual aunque la causa hubiera sido otra: un instalador no
+    puede cerrarse sin hablar.** `$ErrorActionPreference = 'Stop'` mas un `Clear-Host` arriba hacian
+    que **cualquier** excepcion terminara el script al instante, sin pasar por ningun `Read-Host`.
+    Todos los fallos se veian identicos —una ventana que parpadea— asi que ninguno se podia
+    diagnosticar. Van tres cosas, y las tres son baratas: un `trap` a nivel de script (atrapa hasta
+    lo que pasa adentro de una funcion, sin reindentar una linea), un **registro en disco** por si
+    alguien cierra con la X, y el **`pause` del `.bat`**, que es lo unico que el codigo de adentro no
+    puede saltearse.
+    Ver [`scripts/cliente/INSTALAR.bat`](scripts/cliente/INSTALAR.bat).
+
+56. 🩸 **UN CAMPO NUEVO DEL CATÁLOGO HAY QUE PONERLO EN CUATRO LISTAS BLANCAS, Y LA CUARTA SE
+    OLVIDA SIEMPRE.** (01/09/2026, al agregar `habilitado` en db/54.) El camino de importación
+    filtra los campos campo por campo en **cuatro** lugares distintos, y todos son listas blancas
+    implícitas: lo que no está, no viaja, **sin un solo error**.
+
+    | # | Dónde | Qué hace |
+    |---|---|---|
+    | 1 | `lib/planillaProductos.js` → `filaAImportar` | Encabezado → campo interno |
+    | 2 | `features/admin/ImportarProductos.jsx` → el `.map()` que arma `rows` | Pantalla de importación |
+    | 3 | `context/CatalogContext.jsx` → `addProducto` / `importProductos` / `updateProducto` / `mapProducto` | El camino local |
+    | 4 | **`supabase/functions/ingest-precios/index.ts` → el `filas.push({...})`** | **El canal del ERP** |
+
+    Las tres primeras ya estaban documentadas —costaron `marca`, `unidad_venta` y `escalas`—. **La
+    cuarta no figuraba en ningún lado**, y es la que muerde distinto: las otras tres las ejercita
+    cualquiera subiendo una planilla, pero la cuarta **sólo corre en el canal automático del
+    cliente**, así que un campo que falte ahí funciona perfecto en todas las pruebas manuales y no
+    hace nada en producción.
+    Medido: se mandó un CSV con `habilitado;no` al endpoint real, `filaAImportar` devolvió `false`
+    correctamente, la respuesta dijo `creados: 1`… y el producto quedó **vigente**. Cero errores,
+    cero avisos. Sólo lo cazó pedirle a la base el estado del producto después.
+    **Corolario**: un campo nuevo del catálogo no está terminado hasta que se lo mandó por el
+    endpoint REAL y se leyó la fila resultante en la base. La respuesta del endpoint no alcanza —
+    dijo que todo salió bien.
+
+57. 🩸 **UN CENTINELA QUE SE REESCRIBE EN CADA CORRIDA ROMPE EL SELLO DE PRECIOS.**
+    (01/09/2026, db/54.) Al marcar un producto como deshabilitado, la forma obvia es
+    `descontinuado_ts = now()`. Con el envío del ERP corriendo **cada hora**, eso hace que cada
+    producto apagado cuente como **modificado en cada corrida** → `actualizados > 0` → se mueve el
+    sello de `sello_precios()` → los nueve teléfonos se bajan el catálogo entero, cada hora, para
+    siempre. Es el mismo bug de `db/53` con otro disfraz.
+    Lo correcto es `coalesce(p.descontinuado_ts, now())`: se sella **la primera vez** y después no
+    se toca. Y la misma expresión tiene que estar en el `is distinct from` — lo que el SET escribe
+    va en la comparación, o la fila no cambia nunca o cambia siempre.
+    **Cómo se verifica, y es una sola prueba**: mandar el MISMO archivo dos veces y exigir
+    `actualizados: 0` en la segunda. Si da distinto de cero, hay un `now()` suelto.
+
+58. 🩸 **UNA VÁLVULA DE PORCENTAJE NECESITA UN PISO ABSOLUTO.** (01/09/2026, db/54.) La guarda de
+    `importar_precios` aborta el envío si daría de baja más del 20 % del catálogo. Probándola sobre
+    un catálogo de 3 productos, apagar **uno** es el 33 % y rechazaba la operación entera. Una
+    guarda que bloquea el uso normal se termina apagando, y ahí deja de proteger de algo.
+    Va `v_bajas > 10 AND v_bajas/v_vigentes > 0.20`. El piso no la debilita donde importa: el modo
+    de falla real —el exportador emite la columna vacía en todas las filas— intenta apagar cientos y
+    supera las dos condiciones sin esfuerzo.
+
 ---
 
 ## 3. Comandos

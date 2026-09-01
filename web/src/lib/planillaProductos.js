@@ -45,6 +45,10 @@ export const ALIAS = {
   // lo va a llamar "destacado", lo va a llamar por lo que es del lado de ellos.
   destacado: 'destacado', destacar: 'destacado', 'baja rotacion': 'destacado',
   liquidar: 'destacado', liquidacion: 'destacado', 'a liquidar': 'destacado', empujar: 'destacado',
+  // HABILITADO (db/54): el ERP apaga un producto sin sacarlo del archivo. Los sinónimos siguen el
+  // mismo criterio que `destacado`: del lado de ellos esto no se llama "habilitado".
+  habilitado: 'habilitado', activo: 'habilitado', disponible: 'habilitado', vigente: 'habilitado',
+  'en venta': 'habilitado', 'se vende': 'habilitado', estado: 'habilitado', alta: 'habilitado',
   // Escalones de precio por cantidad (db/48): 5 pares `desde_N` / `precio_N`.
   //
   // 🩸 SON ENTRADAS FIJAS Y NO UN PARSEO DINÁMICO, a propósito. `mapearEncabezados` descarta la
@@ -101,13 +105,31 @@ export function filaAImportar(campo) {
   const esc = escalasDeFila(campo)
   avisos.push(...esc.avisos)
 
+  /* 🩸 UN NÚMERO NO ES UN NOMBRE DE RUBRO (01/09/2026, y costó el catálogo entero).
+   *
+   * El primer envío automático del ERP mandó en `categoria` el CÓDIGO de rubro (`01`, `06`, `20`,
+   * `97`) en vez del nombre. Los 541 productos vivos quedaron con 31 categorías numéricas y el
+   * vendedor salió a la calle con filtros que decían "6" y "97". No hubo ningún error: el valor era
+   * un texto válido, así que entró.
+   *
+   * Es la regla 54 otra vez, en otra columna: **un valor que una máquina puede emitir sin querer no
+   * puede destruir un dato curado**. Un rubro que es enteramente dígitos se trata como "no vino"
+   * (cadena vacía → la RPC hace `coalesce` y deja el que estaba).
+   *
+   * Sólo lo ENTERAMENTE numérico: `Bebidas 2` o `2 Litros` son nombres legítimos y pasan. */
+  const catCruda = String(campo.categoria ?? '').trim()
+  const categoriaEsCodigo = /^\d+$/.test(catCruda)
+
   return {
     codigo: String(campo.codigo ?? '').trim(),
     descripcion: String(campo.descripcion ?? '').trim(),
     precio_unitario: num(campo.precio_unitario, 'precio'),
     peso_kg: num(campo.peso_kg, 'peso'),
     unidades: num(campo.unidades, 'unidades'),
-    categoria: String(campo.categoria ?? '').trim(),
+    categoria: categoriaEsCodigo ? '' : catCruda,
+    // Se conserva para poder INFORMAR cuántas se ignoraron. Un descarte silencioso es la mitad del
+    // problema original: el catálogo se rompió sin que ninguna respuesta lo dijera.
+    categoriaEsCodigo,
     marca: String(campo.marca ?? '').trim(),
     unidad_venta: String(campo.unidad_venta ?? '').trim().toUpperCase(),
     nivel_rentabilidad: num(campo.nivel_rentabilidad, 'nivel'),
@@ -117,6 +139,21 @@ export function filaAImportar(campo) {
     // lo que hace que el `coalesce` de la RPC NO pise el valor que el producto ya tenía. Un `false`
     // acá desmarcaría todos los destacados en cada envío de precios que no traiga la columna.
     destacado: campo.destacado === '' || campo.destacado == null ? null : aBool(campo.destacado),
+    /* 🔴 HABILITADO SE COMPORTA AL REVÉS QUE SU VECINO `destacado`, y es a propósito (db/54).
+     *
+     * En `destacado`, una celda VACÍA es `null` ("no sé, no toques"). Acá una celda vacía es
+     * `false` ("apagalo"): lo pidió el cliente explícitamente —"todos los que no vengan con sí
+     * pasan a deshabilitado"— y es más simple de explicarle a quien programa el export.
+     *
+     * Lo único que da `null` es que la columna NO ESTÉ EN EL ENCABEZADO (`undefined`). Esa
+     * distinción es toda la guarda contra la regla 54: el día que su exportador deje de emitir la
+     * columna, el archivo deja de hablar de habilitación y NO se apagan los 606 productos de una.
+     * Por eso no se puede simplificar a `aBool(campo.habilitado)`: `aBool(undefined)` es `false`,
+     * y eso apagaría el catálogo entero con cualquier planilla vieja.
+     */
+    habilitado: campo.habilitado === undefined || campo.habilitado === null
+      ? null
+      : aBool(campo.habilitado),
     escalas: esc.escalas,
     // 🩸 `escalasBorra` NO se descarta (31/08/2026). Hasta hoy `filaAImportar` se quedaba sólo con
     // `esc.escalas` y tiraba el resto, así que quien llamaba no podía distinguir "la fila no traía

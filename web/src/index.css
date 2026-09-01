@@ -465,3 +465,15 @@ body {
   tr { break-inside: avoid; page-break-inside: avoid; }
   thead { display: table-header-group; }
 }
+
+/* El número escribible del stepper de cantidad (components/CantidadInput.jsx).
+   En reposo tiene que verse EXACTAMENTE como el número que era antes —si no, la grilla se llena de
+   cajitas— y el borde aparece sólo al enfocar, para que se entienda que se puede tipear.
+   Se le sacan las flechitas del number: acá el input es de texto con teclado numérico, pero algunos
+   WebView las dibujan igual. */
+.lu-cant { transition: border-color .16s cubic-bezier(.23,1,.32,1), background .16s cubic-bezier(.23,1,.32,1); }
+.lu-cant:focus { border-color: var(--primary); background: var(--surface); }
+.lu-cant::-webkit-outer-spin-button,
+.lu-cant::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.lu-cant::-webkit-search-decoration,
+.lu-cant::-webkit-search-cancel-button { -webkit-appearance: none; }

@@ -85,3 +85,10 @@ INVENTARIO_TELEFONOS.md
 # esa carpeta de vuelta aca, que no se suba.
 scripts/cliente/token.txt
 scripts/cliente/registros/
+# Los deja el instalador al correr una prueba en esta maquina: la ruta del archivo
+# de precios del cliente y el registro de la instalacion.
+scripts/cliente/config.txt
+scripts/cliente/instalacion.log
+
+# Basura que deja la CLI de Supabase al desplegar
+supabase/.temp/

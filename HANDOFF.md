@@ -47,6 +47,100 @@ Todo en español: código, comentarios, UI y commits.
 
 ---
 
+## 🟢 `habilitado` + BAJA POR AUSENCIA — desplegado el 01/09/2026 (`db/54`)
+
+**Estado: LIVE en base y Edge Function. El bundle web queda SIN PUBLICAR** (ver el final).
+
+### Lo que pidió el cliente
+
+Tienen stock mal cargado y **deshabilitan productos** en su sistema. Pidieron una columna
+`habilitado` en el archivo, y que **todo lo que no venga —ni marcado ni presente— desaparezca para el
+vendedor**, rehabilitable a mano desde marketing / encargado / admin / superadmin.
+
+### Casi todo ya existía
+
+El estado es `productos.descontinuado_ts` y toda la app ya lo respeta (`productosVigentes`). La
+pantalla para verlos y rehabilitarlos es `CatalogoTab`, y **los cuatro roles pedidos ya llegaban a
+ella** (`gestion.js`, ítem `catalogo`): cero trabajo de permisos. La baja por ausencia ya estaba en
+`importar_precios(p_lista_completa)` — pero **apagada**, detrás de un switch que la tarea programada
+no pasaba.
+
+### Lo único realmente nuevo: `productos.fijado_ts`
+
+El envío corre **cada hora**. Con la baja por ausencia prendida, un producto rehabilitado a mano se
+volvía a apagar solo antes de que terminara la hora: **el botón habría mentido**. Y el corolario
+muerde igual — un producto CREADO a mano tampoco está en el archivo del ERP, así que marketing
+cargaba un producto y lo veía desaparecer.
+
+`fijado_ts` es "esto lo sostiene una persona": el envío no lo apaga **por ausencia**. Un
+`habilitado = no` explícito del ERP sí gana, y limpia la marca.
+
+> 🩸 La columna se agregó **sin default y recién después se le puso el `default now()`**: un
+> `add column ... default now()` RELLENA las filas existentes, y en un solo paso los 606 productos
+> habrían quedado fijados — la migración aplicaba limpia, sin errores, y la función que venía a
+> construir no habría hecho nada nunca. Verificado después: **0 fijados, 606 expuestos**.
+
+### `ingestas_precios.bajas`
+
+QUÉ productos se apagaron y por qué (`ausente` / `habilitado`). Antes había sólo un número, y con un
+número no se revisa nada. Se calcula **antes** de escribir —después ya no se distingue "lo apagó este
+envío" de "ya estaba apagado"— y **alimenta también la válvula**, así que la lista y el conteo no
+pueden discrepar: son el mismo `select`.
+
+### 🔴 Los TRES bugs que cazó la verificación
+
+1. **La CUARTA lista blanca** (`ingest-precios/index.ts`, el `filas.push`). Regla 56. `habilitado`
+   no viajaba: el CSV parseaba bien, la respuesta decía `creados: 1`, y el producto quedaba
+   **vigente**. Cero errores. Sólo se vio consultando la fila en la base.
+2. **El sello de precios** (regla 57). `descontinuado_ts = now()` a secas hacía que cada producto
+   apagado contara como modificado **en cada corrida horaria** → los 9 teléfonos bajando el catálogo
+   entero cada hora. Va `coalesce(p.descontinuado_ts, now())`, y espejado en el `is distinct from`.
+3. **La válvula sin piso** (regla 58). Sobre 3 productos, apagar uno es 33 % y abortaba todo. Va
+   `v_bajas > 10 AND ratio > 0.20`.
+
+### Verificado
+
+Seis escenarios contra la base (empresa de descarte, borrada al terminar) y cuatro por el
+**endpoint real**: apagar por columna · reenvío idéntico con `actualizados: 0` · reactivar ·
+archivo sin la columna sin tocar nada · baja por ausencia · fijado que sobrevive · orden explícita
+que gana al fijado. Base limpia después: **606 productos, 606 vigentes, 0 fijados**.
+
+### ⚠️ LO QUE VA A PASAR SOLO, Y HAY QUE MIRARLO
+
+`lista_completa` ahora es **`true` por defecto en el endpoint** (`?lista_completa=0` para apagarlo).
+La PC de prueba del cliente manda cada hora, así que **en el próximo envío se van a deshabilitar los
+65 productos que están en el catálogo y no vienen en el ARTIK** (606 − 541). Los 65 **tienen foto
+cargada a mano**. 65/606 = 10,7 %: la válvula no los frena, y es lo que el cliente pidió.
+
+**Primera tarea de la próxima sesión:**
+
+```sql
+select ts, descontinuados, jsonb_pretty(bajas)
+  from ingestas_precios where jsonb_array_length(bajas) > 0
+ order by ts desc limit 3;
+```
+
+Pasarle esa lista al cliente: ¿son productos que ya no existen, o son huecos de su export? Si son
+huecos, se rehabilitan desde `CatalogoTab` **y quedan fijados solos**.
+
+### Lo que queda SIN PUBLICAR
+
+El bundle web: el resumen de la pantalla de importación (`ImportarProductos`), `fijado` en
+`CatalogContext`, y que **rehabilitar desde `CatalogoTab` fije el producto**. Sale como **1.23.0**.
+Hasta que salga, rehabilitar a mano un producto ausente dura una hora — las **altas** a mano ya
+están cubiertas por el `default now()` de la columna.
+
+Docs actualizadas: `ESPECIFICACION_LISTA_PRECIOS.md` **v5** (§2-ter), `PARA_EL_CLIENTE` §0,
+la plantilla `.xlsx` (23 columnas) y el ZIP del cliente. `CLAUDE.md` reglas **55 a 58**.
+
+> 🟢 **De paso: la CLI de Supabase ya está instalada Y autenticada.** El deploy de Edge
+> Functions sale del disco (`npx supabase functions deploy ingest-precios --project-ref …
+> --no-verify-jwt`), no hay que transcribir el código nunca más. ⚠️ **El `--no-verify-jwt` no es
+> opcional**: el cliente manda su propio token, no un JWT de Supabase; sin ese flag Supabase le
+> rechaza todos los envíos con 401.
+
+---
+
 ## ⏱️ ENVÍO DE PRECIOS CADA 1 HORA + INSTALADOR — 31/08/2026
 
 El cliente pidió dos cosas: que el envío pase de tres veces por día a **una vez por hora, mandando
@@ -102,9 +196,9 @@ moverse):
 
 `proacl` de las dos funciones, idéntico antes y después.
 
-### El instalador — `scripts/cliente/instalar.ps1`
+### El instalador — `scripts/cliente/INSTALAR.bat`
 
-Clic derecho → *Ejecutar con PowerShell* (como administrador) y queda andando. Siete pasos, todos con
+Doble clic y queda andando (se eleva solo). Siete pasos, todos con
 mensajes en castellano:
 
 1. Comprueba el token · 2. **Selector de archivos** (nadie tipea rutas — es el corazón del pedido) ·
@@ -117,7 +211,7 @@ mensajes en castellano:
   unidad (se montan al iniciar sesión, y la tarea corre sin sesión).
 - Idempotente: se puede correr de nuevo para cambiar el archivo.
 
-**`revisar.ps1`** es el diagnóstico de una tecla, con veredicto de una línea. Lo importante: separa
+**`REVISAR.bat`** es el diagnóstico de una tecla, con veredicto de una línea. Lo importante: separa
 *"el envío se rompió"* de *"el que no genera el archivo es su sistema"* — dos problemas de dos dueños
 distintos que se confunden todo el tiempo.
 
@@ -130,7 +224,7 @@ distintos que se confunden todo el tiempo.
 | Detección de archivo idéntico | `"El archivo NO cambio desde el envio anterior. Se manda igual."` y **manda** |
 | El hash **no** se guarda si el envío falló | ✅ — si no, un archivo que nunca llegó figuraría como "sin cambios" para siempre |
 | Token de ejemplo | 🩸 Encontrado probando: se mandaba tal cual y volvía `401 token-invalido`, que manda a pedir un token nuevo cuando el que hay nunca se pegó. Ahora corta con un mensaje claro |
-| `revisar.ps1` sin nada instalado | Diagnostica bien y dice qué hacer |
+| `REVISAR.bat` sin nada instalado | Diagnostica bien y dice qué hacer |
 
 ⚠️ **NO se pudo probar el registro de la tarea**: esta sesión no corre como administrador. Lo que sí
 está probado es la construcción del disparador, que es donde estaba el riesgo real de PS 5.1.

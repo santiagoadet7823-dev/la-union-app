@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { propsBusqueda } from '../../../components/form'
 import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Check, Editar, Mas, Pin, Search } from '../../../components/icons'
@@ -138,6 +139,7 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
             <input
               value={buscaCli}
               onChange={(e) => setBuscaCli(e.target.value)}
+              {...propsBusqueda}
               placeholder="Buscar comercio o código…"
               aria-label="Buscar entre mis clientes"
               style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}

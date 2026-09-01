@@ -1,10 +1,16 @@
 # Especificación — Lista de precios y catálogo
 
-**Versión 4 — 31/08/2026.** Cambia cómo se interpretan las columnas de descuento vacías o en cero
-(§2, regla 5) — es importante y les simplifica el export. Suma la columna `destacado` (§1) y la
-sección **4-bis: cuándo se envía**. Todo lo demás de la versión 2 sigue igual: las
-columnas anteriores, el separador y el endpoint **no cambiaron**, así que lo que ya esté programado
+**Versión 5 — 01/09/2026.** 🔴 **Dos cambios, y el segundo es importante: hay que leerlo.**
+1. Suma la columna **`habilitado`** (§1 y §2-ter), para que puedan apagar un producto sin sacarlo
+   del archivo — el caso de "hay stock mal cargado y no quiero que se venda".
+2. **El archivo pasa a ser la LISTA COMPLETA**: un producto que estaba en el catálogo y **deja de
+   venir en el archivo se deshabilita solo**. Antes se quedaba como estaba. Ver §2-ter.
+
+Las columnas anteriores, el separador y el endpoint **no cambiaron**: lo que ya esté programado
 sigue funcionando sin tocar una línea.
+
+*(Versión 4 — 31/08/2026: cómo se interpretan las columnas de descuento vacías o en cero (§2, regla
+5), la columna `destacado` (§1) y la sección 4-bis: cuándo se envía.)*
 
 **Para el equipo técnico de la distribuidora**, quien programe la exportación desde el sistema de
 gestión. Va acompañado de la planilla `plantilla-lista-precios.xlsx`, que trae los mismos campos y
@@ -57,7 +63,7 @@ Se puede empezar por A y pasar a B después, sin cambiar una sola columna.
 
 ```
 codigo   descripcion   precio   peso   unidades   categoria   marca   unidad_venta
-nivel   oferta   precio_oferta   destacado
+nivel   oferta   precio_oferta   destacado   habilitado
 desde_1  precio_1   desde_2  precio_2   desde_3  precio_3   desde_4  precio_4   desde_5  precio_5
 ```
 
@@ -75,6 +81,7 @@ desde_1  precio_1   desde_2  precio_2   desde_3  precio_3   desde_4  precio_4   
 | `oferta` | `si`/`no` | Producto en promoción |
 | `precio_oferta` | número | Precio promocional |
 | `destacado` | `si`/`no` | **Nuevo.** Producto que quieren empujar: baja rotación, sobrestock, algo por vencer. El vendedor los tiene juntos en un filtro propio, primero en la pantalla, y desde ahí se los muestra al comerciante en la tablet. **No cambia ningún precio** — ver §2-bis |
+| `habilitado` | `si`/`no` | 🔴 **Nuevo.** `no` saca el producto del catálogo: el vendedor deja de verlo y no se puede vender. `si` lo devuelve. Sirve para el stock mal cargado, sin tener que borrar el producto ni perder su foto — ver §2-ter |
 | `desde_1` … `desde_5` | entero | **Cantidad mínima** a partir de la cual aplica ese escalón |
 | `precio_1` … `precio_5` | número | **Precio de UNA unidad** a partir de esa cantidad |
 
@@ -128,7 +135,7 @@ entere.
 ### Ejemplo
 
 ```
-codigo	descripcion	precio	unidades	unidad_venta	destacado	desde_1	precio_1	desde_2	precio_2	desde_3	precio_3
+codigo	descripcion	precio	unidades	unidad_venta	destacado	habilitado	desde_1	precio_1	desde_2	precio_2	desde_3	precio_3
 0011	MANAOS COLA 3LT	1850	6	UN	no	6	1750	60	1690	300	1620
 0010	MERM DULCOR 500G DURAZNO	1450	12	UN	no	12	1380	48	1290
 0048	CAFE COÑAC TRES PLU 200ML	1990		UN	si
@@ -180,6 +187,48 @@ producto → Destacado*). Los dos caminos escriben lo mismo: usen el que les que
 
 > **Nombres de columna que también se aceptan** para esta misma cosa, por si su sistema ya la llama
 > de otra manera: `destacado`, `destacar`, `baja_rotacion`, `liquidar`, `liquidacion`, `empujar`.
+
+---
+
+## 2-ter. La columna `habilitado` — y el cambio de contrato que trae
+
+`habilitado = no` hace que el producto **desaparezca del catálogo**: el vendedor no lo ve, no lo
+puede agregar a un pedido, y no aparece en la tablet del comerciante. No se borra nada — conserva su
+código, su foto, su historial y sus descuentos — y vuelve en cuanto mande `si`.
+
+### 🔴 Y esto es lo importante: el archivo pasa a ser la lista completa
+
+**Un producto que estaba en el catálogo y deja de venir en el archivo también se deshabilita.**
+
+Antes se quedaba como estaba, y por eso podían mandar listas parciales. Ahora no: **lo que no está en
+el archivo, no se vende.**
+
+| Lo que manda su sistema | Qué le pasa al producto |
+|---|---|
+| Viene con `habilitado = si` | Se vende normalmente |
+| Viene con `habilitado = no` | Se apaga |
+| Viene con la celda **vacía** | **Se apaga.** Vacío cuenta como `no` |
+| **No viene en el archivo** | **Se apaga** |
+| El archivo **no trae la columna** `habilitado` | **No se apaga ninguno.** El archivo no habla del tema |
+
+Esa última fila es la salvaguarda: si un día su exportación deja de emitir la columna, no se apaga el
+catálogo entero — simplemente se ignora el asunto.
+
+### Dos redes de seguridad que conviene que conozcan
+
+- **Si un envío fuera a apagar más del 20 % del catálogo, se rechaza entero y no se escribe nada.**
+  Es la protección contra un export que salió incompleto o mal filtrado. Van a ver un error
+  `demasiadas-bajas` en el registro, con el número exacto.
+- **Un producto que alguien rehabilite a mano desde nuestra app queda "sostenido"** y el envío
+  automático ya no lo apaga por no venir en el archivo. Si ustedes lo mandan explícitamente con
+  `habilitado = no`, esa orden gana igual: la protección es contra el olvido, no contra una
+  instrucción.
+
+> **Nombres de columna que también se aceptan**, por si su sistema ya la llama de otra manera:
+> `habilitado`, `activo`, `disponible`, `vigente`, `en_venta`, `se_vende`, `estado`, `alta`.
+
+> **Qué se acepta como "sí":** `si`, `sí`, `s`, `1`, `true`, `x`. Cualquier otra cosa —incluida la
+> celda vacía— cuenta como `no`.
 
 ---
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
+import CantidadInput from '../../components/CantidadInput'
 import { precioPara } from '../../lib/precios'
 import Overlay from '../../components/Overlay'
 
@@ -170,7 +171,7 @@ export default function CarritoSheet({
               <div style={sx('display:flex;align-items:center;gap:5px;flex:none')}>
                 <button onClick={() => addCart(p.id, -1)} className="lu-press"
                   style={sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);font-size:18px;cursor:pointer;user-select:none')}>−</button>
-                <div style={sx('min-width:26px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600')}>{qty}</div>
+                <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} />
                 <button onClick={() => addCart(p.id, 1)} className="lu-press"
                   style={sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:17px;cursor:pointer;user-select:none')}>+</button>
                 {/* Sacar la línea entera. Con 8 unidades, el − son 8 toques. */}

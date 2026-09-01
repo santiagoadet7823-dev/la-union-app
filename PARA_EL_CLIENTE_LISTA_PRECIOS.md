@@ -8,6 +8,38 @@ y son dos cosas: cuatro respuestas y un orden de puesta en marcha.
 
 ---
 
+## 0. 🆕 Lo que cambió el 01/09/2026: la columna `habilitado`
+
+Nos plantearon que tienen stock mal cargado y que **deshabilitan productos** en su sistema. Ya está
+implementado y andando de nuestro lado. Es **una columna más al final del encabezado**:
+
+```
+… destacado   habilitado   desde_1   precio_1 …
+```
+
+| Lo que manda | Qué le pasa al producto |
+|---|---|
+| `si` | Se vende normalmente |
+| `no` | Se apaga: el vendedor deja de verlo y no se puede vender |
+| celda **vacía** | **Se apaga.** Vacío cuenta como `no` |
+| **no viene en el archivo** | **Se apaga** |
+| el archivo **no trae la columna** | No se apaga ninguno |
+
+**No se borra nada**: el producto conserva código, foto, historial y descuentos, y vuelve en cuanto
+manden `si`.
+
+🔴 **Y el cambio de contrato que trae, que es lo que hay que saber:** de ahora en más **el archivo es
+la lista completa**. Lo que no está en él, no se vende. Antes podían mandar listas parciales sin
+consecuencias; ahora una lista parcial apaga lo que falte.
+
+Dos redes de seguridad, para que estén tranquilos: **si un envío fuera a apagar más del 20 % del
+catálogo se rechaza entero y no se escribe nada**, y lo que alguien rehabilite a mano desde la app
+queda sostenido y el envío automático ya no lo apaga por ausencia.
+
+El detalle completo está en §2-ter de la especificación técnica.
+
+---
+
 ## 1. 🔴 Cuatro respuestas que necesitamos antes de que exporten
 
 Las cuatro condicionan trabajo, y la primera se lleva puestas 355 fotos.
@@ -79,8 +111,8 @@ una hora fija (está explicado en la guía, §5).
 | **`ESPECIFICACION_LISTA_PRECIOS.md`** | Las columnas, los escalones de descuento, el endpoint y los códigos de respuesta. Es el documento para quien programe el export |
 | **`GUIA_ENVIO_AUTOMATICO_PRECIOS.md`** | El paso a paso, que ahora son **tres pasos**: copiar la carpeta, comprobar el token y ejecutar el instalador. Incluye qué hacer con cada error y qué hacer si el servidor se apaga |
 | **`plantilla-lista-precios.xlsx`** | La planilla con las 22 columnas y una hoja INSTRUCTIVO. Sirve para la carga manual y como referencia del formato |
-| **`instalar.ps1`** | 🔴 **El instalador.** Clic derecho → Ejecutar con PowerShell y queda todo andando: elige el archivo con una ventana, hace un envío de prueba, programa el envío por hora y comprueba que funcione |
-| **`revisar.ps1`** | Para saber en cualquier momento si sigue funcionando. No cambia nada: mira e informa, con un veredicto de una línea |
+| **`INSTALAR.bat`** | 🔴 **El instalador.** Doble clic y queda todo andando: elige el archivo con una ventana, hace un envío de prueba, programa el envío por hora y comprueba que funcione |
+| **`REVISAR.bat`** | Para saber en cualquier momento si sigue funcionando. No cambia nada: mira e informa, con un veredicto de una línea |
 | **`enviar-precios.ps1`** + **`.bat`** | Los programitas que hacen el envío, en **PowerShell** (viene con Windows). Los usa el instalador; no hay que tocarlos |
 | **`token.txt`** | 🔑 La llave, **ya cargada**. No hay que completar nada |
 | **`EnviarPrecios.java`** | Opcional: por si prefieren llamarlo desde adentro del sistema de gestión en vez de agendar una tarea aparte |
@@ -107,7 +139,7 @@ endpoint sin que nadie mire — de hecho **nuestro freno de seguridad lo va a re
 | 3 | Lo cargamos a mano desde la app, **sin** tildar "lista completa", y revisamos que los precios y los escalones se vean bien | Nosotros |
 | 4 | Mandan **la lista entera** | Ustedes |
 | 5 | La cargamos a mano, tildando "lista completa vigente" y leyendo el conteo de bajas antes de confirmar | Nosotros |
-| 6 | Ejecutan `instalar.ps1` en el servidor (el token ya viene adentro) | Ustedes |
+| 6 | Doble clic en `INSTALAR.bat` en el servidor (el token ya viene adentro) | Ustedes |
 | 7 | Verificamos al día siguiente que los envíos por hora entraron solos | Los dos |
 
 ---
@@ -138,7 +170,7 @@ el precio nuevo en el comercio siguiente.
 
 ### Cómo saber que sigue funcionando
 
-- **De su lado:** `revisar.ps1` da un veredicto de una línea, y el script deja un registro por día
+- **De su lado:** `REVISAR.bat` da un veredicto de una línea, y el script deja un registro por día
   con la respuesta de cada envío.
 - **Del nuestro:** la pantalla de catálogo muestra *"Precios actualizados hace N horas · N filas"*, y
   se pone en ámbar si pasan más de 36 horas sin recibir nada.

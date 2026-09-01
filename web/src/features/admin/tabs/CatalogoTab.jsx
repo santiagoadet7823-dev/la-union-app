@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { propsBusqueda } from '../../../components/form'
 import { sx } from '../../../lib/sx'
 import { fmtPesos, hoyStr } from '../../../lib/format'
 import { COLUMNAS_ESCALA, escalasAColumnas, escaleraDe } from '../../../lib/precios'
@@ -144,10 +145,15 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
    * los descontinuados porque reimportar esa planilla los resucitaría a todos.
    */
   async function exportarCatalogo() {
-    if (!vigentes.length) { onToast?.('El catálogo está vacío'); return }
+    if (!productosTodos.length) { onToast?.('El catálogo está vacío'); return }
     try {
       const XLSX = await import('xlsx')
-      const filas = vigentes.map((p) => ({
+      /* 🩸 ANTES BAJABA SÓLO LOS VIGENTES, y era lo correcto ENTONCES: sin una columna que dijera
+       * "este está apagado", reimportar la planilla resucitaba a todos los descontinuados.
+       * Desde db/54 existe `habilitado`, así que el ida y vuelta es seguro y la planilla puede ser
+       * el catálogo COMPLETO — que es lo que hace falta para dársela al cliente como modelo: si le
+       * faltan los apagados, no puede ver cuáles considera apagados el sistema. */
+      const filas = productosTodos.map((p) => ({
         codigo: p.codigo || '',
         descripcion: p.name || '',
         precio: p.price || '',
@@ -160,6 +166,8 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
         oferta: p.oferta ? 'si' : 'no',
         precio_oferta: p.precioOferta != null ? p.precioOferta : '',
         destacado: p.destacado ? 'si' : 'no',
+        // db/54. Es lo que hace que bajar la planilla y volver a subirla NO resucite los apagados.
+        habilitado: p.descontinuado ? 'no' : 'si',
         // Los 5 pares `desde_N`/`precio_N`. Salen vacíos —no en 0— cuando el producto no usa ese
         // tramo: un `0` en `desde_1` significa BORRAR la escala al reimportar (lib/precios.js), así
         // que exportar ceros haría que bajar la planilla y volver a subirla borre los descuentos de
@@ -170,7 +178,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
       // Un ancho por columna, en el mismo orden que `filas`. Si se agrega una columna arriba y acá
       // no, todas las siguientes quedan con el ancho de la anterior.
       ws['!cols'] = [
-        { wch: 10 }, { wch: 44 }, { wch: 10 }, { wch: 8 }, { wch: 9 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 },
+        { wch: 10 }, { wch: 44 }, { wch: 10 }, { wch: 8 }, { wch: 9 }, { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 }, { wch: 11 },
         // Los 10 de la escala: `desde_N` angosto, `precio_N` un poco más ancho.
         ...COLUMNAS_ESCALA.flatMap(() => [{ wch: 9 }, { wch: 11 }]),
       ]
@@ -181,10 +189,11 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
       await descargarArchivo({ filename: `catalogo-${hoyStr()}.xlsx`, blob: new Blob([buf], { type: mime }), mime })
       // Un producto sin código no se puede reimportar sobre sí mismo (el upsert es por código):
       // volvería a entrar como producto nuevo. Avisamos para que se los complete antes.
-      const sinCodigo = vigentes.filter((p) => !p.codigo).length
+      const sinCodigo = productosTodos.filter((p) => !p.codigo).length
+      const apagados = productosTodos.filter((p) => p.descontinuado).length
       onToast?.(sinCodigo
         ? `Planilla descargada · ojo: ${sinCodigo} sin código (no se pueden reimportar)`
-        : `Planilla descargada · ${filas.length} productos`)
+        : `Planilla descargada · ${filas.length} productos${apagados ? ` (${apagados} deshabilitados)` : ''}`)
     } catch (e) {
       onToast?.('No se pudo generar la planilla')
     }
@@ -196,14 +205,63 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     onToast?.(`Producto "${p.name}" eliminado`)
   }
 
-  // Vuelta a circulación a mano. Existe porque la reactivación automática solo ocurre cuando el
-  // producto REAPARECE en una lista importada, y a veces la baja fue un error de la planilla.
+  /* Vuelta a circulación a mano. Existe porque la reactivación automática solo ocurre cuando el
+   * producto REAPARECE en una lista importada, y a veces la baja fue un error de la planilla.
+   *
+   * 🔴 Y DESDE db/54 ADEMÁS LO FIJA, sin lo cual el botón mentiría. El ERP manda su lista CADA
+   * HORA y todo lo que no viene en ella se apaga: un producto que el sistema de gestión no manda
+   * volvería a apagarse solo antes de que termine la hora, sin ningún aviso, y la persona que
+   * apretó acá no tendría forma de entender por qué. El fijado protege contra esa ausencia; si el
+   * ERP alguna vez lo manda con `habilitado = no`, esa orden explícita gana igual. */
   async function reactivar(p) {
-    await updateProducto(p.id, { descontinuado_ts: null })
+    await updateProducto(p.id, { descontinuado_ts: null, fijado_ts: new Date().toISOString() })
     onToast?.(`"${p.name}" vuelve al catálogo`)
   }
 
+  /* Apagar a mano. 🩸 ESTO NO EXISTÍA: para sacar un producto de circulación la única acción
+   * disponible era ELIMINAR, que es irreversible y se lleva puesta la foto. Alguien que quería
+   * esconder un producto sin stock tenía que borrarlo.
+   *
+   * NO se fija (`fijado_ts`): apagar es lo que el envío por hora ya haría solo, así que no hay
+   * nada contra qué protegerlo. Y si el ERP algún día lo manda con `habilitado = si`, tiene que
+   * poder volver — la lista manda. Fijar sólo tiene sentido al PRENDER. */
+  async function deshabilitar(p) {
+    await updateProducto(p.id, { descontinuado_ts: new Date().toISOString() })
+    onToast?.(`"${p.name}" queda fuera del catálogo`)
+  }
+
   const btnIcono = sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:9px;cursor:pointer;background:transparent')
+
+  /* El interruptor de habilitado/deshabilitado.
+   *
+   * Va como switch y no como botón con texto a propósito: el estado tiene que leerse SIN tocar
+   * nada, de un vistazo, recorriendo 541 filas. Un botón que dice "Reactivar" obliga a deducir el
+   * estado a partir de la acción ofrecida, que es al revés de como se lee una lista.
+   *
+   * Sin librería: es la convención del repo (§7 de CLAUDE.md). Transición sólo sobre `transform`
+   * y `background`, <300 ms. */
+  function Interruptor({ on, onToggle, titulo }) {
+    return (
+      <button
+        onClick={onToggle}
+        title={titulo}
+        aria-label={titulo}
+        aria-pressed={on}
+        className="lu-press"
+        style={{
+          ...sx('position:relative;width:40px;height:23px;flex:none;border:none;border-radius:99px;cursor:pointer;padding:0'),
+          background: on ? 'var(--primary)' : 'var(--line2)',
+          transition: 'background .18s cubic-bezier(.23,1,.32,1)',
+        }}
+      >
+        <span style={{
+          ...sx('position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.28)'),
+          transform: on ? 'translateX(17px)' : 'translateX(0)',
+          transition: 'transform .18s cubic-bezier(.23,1,.32,1)',
+        }} />
+      </button>
+    )
+  }
 
   function Acciones({ p }) {
     // Sin permiso de escritura no se dibuja ninguna acción: RLS las rechazaría igual, pero el
@@ -213,7 +271,10 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     if (p.descontinuado) {
       return (
         <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
-          <button onClick={() => reactivar(p)} style={sx('height:34px;padding:0 11px;border:1px solid var(--line2);border-radius:9px;background:transparent;color:var(--deep);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap')}>Reactivar</button>
+          <Interruptor on={false} onToggle={() => reactivar(p)} titulo={`Habilitar "${p.name}"`} />
+          <button onClick={() => onEditarProducto?.(p)} title="Editar" style={{ ...btnIcono, color: 'var(--deep)' }}>
+            <Editar size={15} />
+          </button>
         </div>
       )
     }
@@ -227,6 +288,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     }
     return (
       <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
+        <Interruptor on onToggle={() => deshabilitar(p)} titulo={`Deshabilitar "${p.name}" (no se borra, deja de verse)`} />
         <button onClick={() => onEditarProducto?.(p)} title="Editar" style={{ ...btnIcono, color: 'var(--deep)' }}>
           <Editar size={15} />
         </button>
@@ -281,6 +343,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
+                {...propsBusqueda}
                 placeholder="Buscar por descripción, código o categoría…"
                 style={sx('flex:1;min-width:220px;height:36px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box')}
               />

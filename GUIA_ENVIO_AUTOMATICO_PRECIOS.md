@@ -29,7 +29,7 @@ no Descargas, no una carpeta temporal. Si alguien la mueve después, el envío d
 
 ### Paso 2 — Ejecutar el instalador
 
-> Clic **DERECHO** sobre **`instalar.ps1`** → **"Ejecutar con PowerShell"**.
+> **Doble clic** en **`INSTALAR.bat`**.
 
 Eso es todo. **No hay que abrir ninguna terminal ni escribir ningún comando.**
 
@@ -37,8 +37,14 @@ Windows va a mostrar su cartel de siempre preguntando si permitís que la aplica
 el equipo: **decile que sí.** El instalador necesita ese permiso para dejar programado el envío
 automático, y se lo pide solo.
 
-> **Si no ves "Ejecutar con PowerShell" al hacer clic derecho**, probá con *Mostrar más opciones*
-> (en Windows 11 el menú viejo está ahí).
+> **Puede aparecer una advertencia antes**, del tipo *"Windows protegió su PC"* o *"¿Desea ejecutar
+> este archivo?"*. Es normal y sale **una sola vez**: pasa con todo archivo que llegó por mail o por
+> chat. Tocá **Más información → Ejecutar de todas formas**.
+
+> ⚠️ **No hagas clic derecho sobre `instalar.ps1`.** Ése es el motor, no la puerta de entrada:
+> Windows marca como *"vino de internet"* todo lo que sale de un ZIP, y PowerShell se niega a
+> ejecutar un archivo marcado. `INSTALAR.bat` se ocupa de eso solo — es la única forma que funciona
+> en cualquier equipo, esté como esté configurado.
 
 ### Y de ahí en más, lo guía el instalador
 
@@ -80,7 +86,7 @@ tocarlo.**
 
 ## Cómo saber si está funcionando
 
-> Clic derecho sobre **`revisar.ps1`** → **Ejecutar con PowerShell**.
+> **Doble clic** en **`REVISAR.bat`**.
 
 No cambia nada: sólo mira e informa. Te dice, en castellano:
 
@@ -154,7 +160,7 @@ rescatar.
 
 ### La comprobación de un minuto cuando el servidor vuelve
 
-> Clic derecho en **`revisar.ps1`** → **Ejecutar con PowerShell**.
+> **Doble clic** en **`REVISAR.bat`**.
 
 Si dice **"TODO EN ORDEN"**, terminaste. Si no, te dice qué mirar. Los casos posibles son estos tres.
 
@@ -162,7 +168,7 @@ Si dice **"TODO EN ORDEN"**, terminaste. Si no, te dice qué mirar. Los casos po
 
 #### A · La tarea aparece "Deshabilitada"
 
-**Cómo se ve.** `revisar.ps1` avisa que la tarea existe pero está deshabilitada.
+**Cómo se ve.** `REVISAR.bat` avisa que la tarea existe pero está deshabilitada.
 
 **Por qué.** Alguien la deshabilitó, o una restauración del sistema la dejó así.
 
@@ -173,7 +179,7 @@ Si dice **"TODO EN ORDEN"**, terminaste. Si no, te dice qué mirar. Los casos po
 
 #### B · El archivo de precios no está
 
-**Cómo se ve.** `revisar.ps1` dice que el archivo no existe, o que hace más de un día que no se
+**Cómo se ve.** `REVISAR.bat` dice que el archivo no existe, o que hace más de un día que no se
 regenera.
 
 **Por qué.** Casi siempre: **el sistema de gestión no arrancó** después del reinicio, así que nunca
@@ -182,7 +188,7 @@ generó el archivo.
 **Solución.** Levantar el sistema de gestión. El envío se recupera solo en la próxima hora.
 
 > ⚠️ Este caso **no es un problema del envío**. El envío manda lo que encuentra; si el archivo es
-> viejo, manda el viejo y lo anota en el registro. Por eso `revisar.ps1` los separa.
+> viejo, manda el viejo y lo anota en el registro. Por eso `REVISAR.bat` los separa.
 
 ---
 
@@ -217,15 +223,15 @@ estar parado, avísennos y nos ahorramos el llamado.
 
 ## Qué hacer con cada respuesta
 
-`revisar.ps1` y el registro muestran la respuesta de nuestro sistema. Estas son todas las posibles:
+`REVISAR.bat` y el registro muestran la respuesta de nuestro sistema. Estas son todas las posibles:
 
 | Respuesta | Qué significa | Qué hacer |
 |---|---|---|
-| **`HTTP 200`** | Entró bien | Nada. Si aparece `rechazadas`, mirar esas filas: el motivo llega con **el número de fila tal como se ve en Excel** |
+| **`HTTP 200`** | Entró bien | Nada. Si aparece `rechazadas`, mirar esas filas: el motivo llega con **el número de fila tal como se ve en Excel**. Si aparece `bajas`, son los productos que se deshabilitaron y por qué |
 | `HTTP 400 falta-encabezado` | El archivo arranca directo con datos, sin la fila con los nombres de columna | Agregar esa primera fila, **con el mismo separador que los datos**. La propia respuesta trae un ejemplo listo para copiar |
 | `HTTP 400 archivo-vacio` | El export no generó nada | Revisar el sistema de gestión. **No es un problema del envío** |
 | `HTTP 401` | La llave es inválida o fue dada de baja | Pedirnos una nueva. **No reintentar** |
-| `HTTP 409 demasiadas-bajas` | El archivo dejaría fuera más del 20 % del catálogo. **No se escribió nada** | Avisarnos. Es el freno que impide que un export parcial borre el catálogo |
+| `HTTP 409 demasiadas-bajas` | El envío deshabilitaría más de 10 productos **y** más del 20 % del catálogo — sea porque no vienen en el archivo o porque vienen con `habilitado = no`. **No se escribió nada** | Avisarnos. Es el freno que impide que un export parcial o mal filtrado apague el catálogo. Las dos condiciones van juntas a propósito: sin el piso de 10, un catálogo chico no podría apagar ni un producto |
 | `HTTP 413` | Más de 5.000 filas | Partir el envío, o avisarnos |
 | `Error de red` | No se llegó al servidor | Reintenta solo a los 5 y a los 10 minutos. Si aun así falla, la próxima corrida es en una hora |
 
@@ -273,15 +279,32 @@ cosa no reemplaza a la otra, se complementan.
 
 ---
 
+## Cómo apagarlo
+
+> **Doble clic** en **`DESINSTALAR.bat`**.
+
+Quita la tarea programada, y con eso el equipo deja de mandar la lista. Pide confirmación antes, y no
+borra ni el token ni los registros: se vuelve a encender con `INSTALAR.bat` cuando haga falta.
+
+**Hay un caso en el que esto no es opcional:** si el envío se muda a otro servidor, **hay que apagar
+el viejo**. Si quedan los dos mandando, gana el último que llega — y si ése tiene el archivo
+desactualizado, pisa al bueno. Apagar el viejo es parte de la mudanza, no un detalle.
+
+> ⚠️ Un equipo puede estar mandando sin que nadie lo note: la tarea corre como `SYSTEM`, sin ventana
+> y sin que nadie inicie sesión. Si hay dudas de si una máquina está mandando, se contesta con
+> `REVISAR.bat` en esa máquina.
+
+---
+
 ## Checklist
 
 - [ ] Carpeta copiada a `C:\DisTAt\`, con los archivos sueltos adentro
-- [ ] `instalar.ps1` y `token.txt` están en la MISMA carpeta
-- [ ] Clic derecho en `instalar.ps1` → "Ejecutar con PowerShell", y se aceptó el cartel de Windows
+- [ ] `INSTALAR.bat` y `token.txt` están en la MISMA carpeta
+- [ ] Doble clic en `INSTALAR.bat`, y se aceptó el cartel de Windows
 - [ ] El instalador terminó sin errores
 - [ ] El instalador mostró el resumen con la próxima corrida
-- [ ] Al día siguiente: `revisar.ps1` dice **"TODO EN ORDEN"**
-- [ ] Alguien de ustedes sabe que existe `revisar.ps1` y qué hace
+- [ ] Al día siguiente: `REVISAR.bat` dice **"TODO EN ORDEN"**
+- [ ] Alguien de ustedes sabe que existe `REVISAR.bat` y qué hace
 
 ---
 

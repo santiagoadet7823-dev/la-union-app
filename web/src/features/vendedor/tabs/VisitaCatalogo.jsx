@@ -6,6 +6,8 @@ import { ImagenVacia, Search } from '../../../components/icons'
 import { card } from '../ui'
 import CarritoSheet from '../CarritoSheet'
 import FichaProducto from '../FichaProducto'
+import CantidadInput from '../../../components/CantidadInput'
+import { propsBusqueda } from '../../../components/form'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
 import { useAltoMedido } from '../../../hooks/useAltoMedido'
@@ -156,7 +158,7 @@ export default function VisitaCatalogo({ j }) {
             contenedor con .lu-campo (:focus-within). Ver index.css. */}
         <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:44px')}>
           <Search />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
+          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
         </div>
       </div>
 
@@ -356,7 +358,7 @@ export default function VisitaCatalogo({ j }) {
                           tocar el − o el + abriría también la ficha (y con la vidriera viva le
                           mandaría el producto a la tablet cada vez que el vendedor sube una unidad). */}
                       <button onClick={(e) => { e.stopPropagation(); addCart(p.id, -1) }} disabled={qty === 0} style={{ ...sx('width:34px;height:34px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;font-size:18px;user-select:none;background:transparent'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
-                      <div style={{ ...sx('flex:1;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600'), color: qty > 0 ? 'var(--deep)' : 'var(--faint)' }}>{qty}</div>
+                      <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} flex />
                       <button onClick={(e) => { e.stopPropagation(); addCart(p.id, 1) }} style={sx('width:34px;height:34px;flex:none;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
                     </div>
                   </div>

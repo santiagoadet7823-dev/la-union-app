@@ -1,10 +1,11 @@
-# =============================================================================
+﻿# =============================================================================
 #  DisT-At — INSTALADOR del envio automatico de la lista de precios
 #  Windows / PowerShell. Se ejecuta UNA sola vez.
 #
-#  Clic derecho sobre este archivo -> "Ejecutar con PowerShell"
-#  Windows va a pedir permiso de administrador: hay que aceptar. No hace falta
-#  abrir ninguna terminal ni escribir ningun comando.
+#  NO SE EJECUTA ESTE ARCHIVO A MANO: se hace doble clic en INSTALAR.bat, que
+#  es el que se ocupa de los permisos y de la marca de "vino de internet" que
+#  Windows le pone a todo lo que sale de un ZIP (ver el encabezado de ese .bat).
+#  Este .ps1 es el motor.
 #
 #  Que hace, en orden:
 #    1. Comprueba que el token este puesto.
@@ -23,12 +24,64 @@ $base = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $base
 
 $TAREA = 'DisT-At - enviar lista de precios'
+$LOG   = Join-Path $base 'instalacion.log'
 
-function Titulo($t) { Write-Host ''; Write-Host "  $t" -ForegroundColor Cyan; Write-Host '  ' + ('-' * 68) -ForegroundColor DarkGray }
-function Ok($t)     { Write-Host "  [OK]    $t" -ForegroundColor Green }
-function Aviso($t)  { Write-Host "  [AVISO] $t" -ForegroundColor Yellow }
-function Malo($t)   { Write-Host "  [ERROR] $t" -ForegroundColor Red }
-function Info($t)   { Write-Host "          $t" -ForegroundColor Gray }
+# --- El registro en disco ----------------------------------------------------
+# Todo lo que se muestra en pantalla se escribe tambien aca. Aunque alguien
+# cierre la ventana con la X, queda la evidencia de que paso: es lo que se pide
+# por foto cuando algo falla en el servidor del cliente, y no depende de que la
+# persona alcance a leer nada.
+function Registrar($t) {
+  try { Add-Content -LiteralPath $LOG -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $t) -Encoding UTF8 } catch {}
+}
+
+# El '  ' + ('-' * 68) iba sin parentesis: Write-Host recibia tres argumentos
+# sueltos e imprimia un '+' suelto en cada titulo.
+function Titulo($t) { Registrar "== $t =="; Write-Host ''; Write-Host "  $t" -ForegroundColor Cyan; Write-Host ('  ' + ('-' * 68)) -ForegroundColor DarkGray }
+function Ok($t)     { Registrar "[OK]    $t"; Write-Host "  [OK]    $t" -ForegroundColor Green }
+function Aviso($t)  { Registrar "[AVISO] $t"; Write-Host "  [AVISO] $t" -ForegroundColor Yellow }
+function Malo($t)   { Registrar "[ERROR] $t"; Write-Host "  [ERROR] $t" -ForegroundColor Red }
+function Info($t)   { Registrar "        $t"; Write-Host "          $t" -ForegroundColor Gray }
+
+# --- La red de contencion ----------------------------------------------------
+#
+# ANTES, CUALQUIER ERROR CERRABA LA VENTANA EN SILENCIO (31/08/2026).
+# Con $ErrorActionPreference = 'Stop' y un Clear-Host arriba, una excepcion
+# inesperada terminaba el script al instante sin pasar por ningun Read-Host: la
+# ventana parpadeaba y desaparecia. TODOS los fallos se veian IGUAL, asi que no
+# habia forma de diagnosticar ninguno -ni el de la marca de internet que motivo
+# INSTALAR.bat, ni el proximo. Un instalador que se cierra sin hablar convierte
+# cualquier problema de dos minutos en una sesion a ciegas.
+#
+# `trap` a nivel de script atrapa cualquier error terminante, incluso adentro de
+# una funcion, sin tener que indentar una sola linea del cuerpo.
+trap {
+  $msj   = "$($_.Exception.Message)"
+  $linea = "$($_.InvocationInfo.Line)".Trim()
+  $nro   = $_.InvocationInfo.ScriptLineNumber
+
+  Write-Host ''
+  Write-Host '  ===============================================================' -ForegroundColor Red
+  Write-Host '   LA INSTALACION SE DETUVO POR UN ERROR' -ForegroundColor Red
+  Write-Host '  ===============================================================' -ForegroundColor Red
+  Write-Host ''
+  Write-Host '  Esto es lo que dijo Windows:' -ForegroundColor Yellow
+  Write-Host ''
+  Write-Host ("    " + $msj) -ForegroundColor White
+  Write-Host ''
+  Write-Host "          (linea ${nro}:  $linea)" -ForegroundColor DarkGray
+  Write-Host ''
+  Registrar "FALLO en la linea $nro : $msj"
+  Registrar "  -> $linea"
+  Write-Host '  Mandanos una foto de esta pantalla, o este archivo:' -ForegroundColor Gray
+  Write-Host "    $LOG" -ForegroundColor Cyan
+  Write-Host ''
+  Read-Host '  Enter para cerrar'
+  exit 1
+}
+
+Registrar '=================================================================='
+Registrar 'Arranca el instalador'
 
 Clear-Host
 Write-Host ''
@@ -283,7 +336,8 @@ Write-Host '   Registro diario en   :' -NoNewline -ForegroundColor Gray; Write-H
 Write-Host ''
 Write-Host '  ---------------------------------------------------------------' -ForegroundColor DarkGray
 Write-Host '   Para ver si esta funcionando, en cualquier momento:' -ForegroundColor White
-Write-Host '   clic derecho en revisar.ps1 -> Ejecutar con PowerShell' -ForegroundColor Cyan
+Write-Host '   doble clic en REVISAR.bat' -ForegroundColor Cyan
 Write-Host '  ---------------------------------------------------------------' -ForegroundColor DarkGray
 Write-Host ''
+Registrar 'Instalacion terminada sin errores'
 Read-Host '  Enter para cerrar'

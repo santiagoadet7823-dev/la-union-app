@@ -147,6 +147,23 @@ export default function ImportarProductos({ onClose, onToast }) {
     return { pidieron, cargan, borran }
   }, [parsed])
 
+  /**
+   * Qué va a pasar con la habilitación (db/54). Misma regla que las escalas: se dice SIEMPRE que el
+   * archivo hable del tema, incluso para avisar que no va a pasar nada. Apagar un producto lo saca
+   * del celular de nueve vendedores sin que nadie toque un botón — no puede ser silencioso.
+   *
+   * `null` en TODAS las filas significa que la columna no vino, y ahí no hay nada que decir.
+   */
+  const habilitacion = useMemo(() => {
+    if (!parsed) return null
+    const vino = parsed.some((f) => f.habilitado != null)
+    if (!vino) return null
+    return {
+      apagan: parsed.filter((f) => f.habilitado === false).length,
+      prenden: parsed.filter((f) => f.habilitado === true).length,
+    }
+  }, [parsed])
+
   async function importar() {
     if (!parsed) return
     const rows = parsed
@@ -168,6 +185,8 @@ export default function ImportarProductos({ onClose, onToast }) {
         // `filaAImportar` y no acá se pierde **sin un solo error**: la planilla se lee bien, el
         // resumen dice que entró, y el dato no llega. Es lo que pasó con `marca` y `unidad_venta`.
         destacado: f.destacado,
+        // `null` = la columna `habilitado` no vino en el encabezado → no se apaga a nadie (db/54).
+        habilitado: f.habilitado,
         // `null` = la planilla no traía columnas de escala → no se toca la que el producto ya tiene.
         // `[]` = vino `desde_1 = 0` → se borra. Ver `escalasDeFila` en lib/precios.js.
         escalas: f.escalas,
@@ -260,6 +279,7 @@ export default function ImportarProductos({ onClose, onToast }) {
               {resumen.dup > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{resumen.dup} repetidos</span>}
               {resumen['sin-desc'] > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--danger)', background: 'var(--danger-tint)' }}>{resumen['sin-desc']} sin descripción</span>}
               {listaCompleta && bajasSiCompleta > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{bajasSiCompleta} se dan de baja</span>}
+              {habilitacion?.apagan > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{habilitacion.apagan} se deshabilitan</span>}
             </div>
 
             {/* 🔴 QUÉ VA A PASAR CON LOS DESCUENTOS POR CANTIDAD (31/08/2026).
@@ -280,6 +300,25 @@ export default function ImportarProductos({ onClose, onToast }) {
                   <><b style={sx('color:var(--success)')}>{escalas.cargan}</b> producto{escalas.cargan === 1 ? '' : 's'} con descuentos por cantidad. No se borra ninguno.</>
                 ) : (
                   <>Ninguna fila trae descuentos por cantidad, así que <b>no se va a borrar ninguna escala</b>. Las que estén cargadas quedan como están.</>
+                )}
+              </div>
+            )}
+
+            {/* 🔴 QUÉ VA A PASAR CON LA HABILITACIÓN (01/09/2026, db/54). Mismo criterio que el
+                bloque de arriba: un producto apagado desaparece del catálogo del vendedor y de la
+                tablet del comerciante, así que el número va a la vista ANTES de escribir. */}
+            {habilitacion && (
+              <div style={{
+                ...sx('padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.5'),
+                border: `1px solid ${habilitacion.apagan > 0 ? 'var(--warning)' : 'var(--line)'}`,
+                background: habilitacion.apagan > 0 ? 'var(--warning-tint)' : 'var(--surface)',
+                color: 'var(--muted)',
+              }}>
+                {habilitacion.apagan > 0 ? (
+                  <>⚠️ <b style={sx('color:var(--warning)')}>{habilitacion.apagan}</b> producto{habilitacion.apagan === 1 ? '' : 's'} se {habilitacion.apagan === 1 ? 'deshabilita' : 'deshabilitan'} y {habilitacion.apagan === 1 ? 'deja' : 'dejan'} de verse en el catálogo
+                    {habilitacion.prenden > 0 && <> · <b>{habilitacion.prenden}</b> {habilitacion.prenden === 1 ? 'queda habilitado' : 'quedan habilitados'}</>}.</>
+                ) : (
+                  <><b style={sx('color:var(--success)')}>{habilitacion.prenden}</b> producto{habilitacion.prenden === 1 ? '' : 's'} habilitado{habilitacion.prenden === 1 ? '' : 's'}. No se deshabilita ninguno.</>
                 )}
               </div>
             )}

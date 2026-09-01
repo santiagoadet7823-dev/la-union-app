@@ -1,6 +1,6 @@
-# =============================================================================
+﻿# =============================================================================
 #  DisT-At — REVISAR si el envio automatico esta funcionando
-#  Clic derecho -> "Ejecutar con PowerShell". No cambia nada: solo mira e informa.
+#  Doble clic en REVISAR.bat. No cambia nada: solo mira e informa.
 #
 #  Se puede correr cuantas veces se quiera, y es lo primero que hay que hacer
 #  cuando surge la duda de "esto sigue andando?".
@@ -16,6 +16,20 @@ function Ok($t)     { Write-Host "  [OK]    $t" -ForegroundColor Green }
 function Aviso($t)  { Write-Host "  [AVISO] $t" -ForegroundColor Yellow }
 function Malo($t)   { Write-Host "  [ERROR] $t" -ForegroundColor Red }
 function Info($t)   { Write-Host "          $t" -ForegroundColor Gray }
+
+# La misma red de contencion que instalar.ps1: una revision que se cierra sola
+# sin decir nada es peor que no tenerla, porque parece que no hay problema.
+trap {
+  Write-Host ''
+  Malo 'La revision se detuvo por un error.'
+  Write-Host ''
+  Write-Host ("    " + "$($_.Exception.Message)") -ForegroundColor White
+  Write-Host ''
+  Write-Host "          (linea $($_.InvocationInfo.ScriptLineNumber))" -ForegroundColor DarkGray
+  Write-Host ''
+  Read-Host '  Enter para cerrar'
+  exit 1
+}
 
 Clear-Host
 Write-Host ''
@@ -125,5 +139,6 @@ if ($problemas.Count -eq 0) {
 Write-Host '  ===============================================================' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '   Para forzar un envio ahora mismo: doble clic en enviar-precios.bat' -ForegroundColor Gray
+Write-Host '   Para reinstalar o cambiar el archivo: doble clic en INSTALAR.bat' -ForegroundColor Gray
 Write-Host ''
 Read-Host '  Enter para cerrar'

@@ -72,6 +72,9 @@ function mapProducto(p) {
     escalas: normalizarEscalas(p.escalas),
     // NULL = vigente, igual que `clientes.archivado_ts` (ver `descontinuado_ts` en db/38).
     descontinuado: !!p.descontinuado_ts,
+    // Lo sostiene una PERSONA (alta a mano o rehabilitado desde el catálogo): la importación no lo
+    // da de baja por estar ausente del archivo del ERP. Ver db/54.
+    fijado: !!p.fijado_ts,
   }
 }
 
@@ -265,6 +268,12 @@ export function CatalogProvider({ children }) {
       marca: p.marca ?? null,
       unidad_venta: p.unidad_venta ?? null,
       escalas: normalizarEscalas(p.escalas),
+      // 🩸 UN ALTA A MANO NACE FIJADA (db/54). El envío del ERP corre CADA HORA con la baja por
+      // ausencia prendida, y un producto cargado acá no está en su archivo: sin esto, marketing
+      // carga un producto y lo ve desaparecer antes de que termine la hora, sin ninguna
+      // explicación. La columna ya tiene `default now()`, pero se manda explícito para que la fila
+      // optimista que se pinta en pantalla diga lo mismo que la que va a quedar en la base.
+      fijado_ts: new Date().toISOString(),
     }
     setProductos((prev) => [...prev, mapProducto(row)].sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'insert', payload: row })
@@ -294,6 +303,7 @@ export function CatalogProvider({ children }) {
     if ('unidad_venta' in patch) vista.unidadVenta = patch.unidad_venta || null
     if ('escalas' in patch) vista.escalas = normalizarEscalas(patch.escalas)
     if ('descontinuado_ts' in patch) vista.descontinuado = !!patch.descontinuado_ts
+    if ('fijado_ts' in patch) vista.fijado = !!patch.fijado_ts
     setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, ...vista } : p)).sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id, payload: patch })
     flushMutaciones()
@@ -620,8 +630,21 @@ export function CatalogProvider({ children }) {
         // Es la misma semántica de "celda vacía no toca" del resto, pero necesita el `null` porque
         // acá el valor vacío legítimo —la escala borrada— también es un array vacío.
         if (r.escalas != null) patch.escalas = normalizarEscalas(r.escalas)
-        // Volvió a la lista: se reactiva solo, con su foto y su historial intactos.
-        if (existente.descontinuado) patch.descontinuado_ts = null
+        /* HABILITACIÓN (db/54). Tres casos, y el orden importa:
+         *   - `false` → apagar, pero SÓLO si estaba vigente: reescribir el `descontinuado_ts` de
+         *     algo ya apagado lo haría contar como modificado en cada envío por hora.
+         *   - `true` o `null` sobre algo apagado → vuelve a la lista, con su foto y su historial.
+         *   - cualquier otra combinación → no se toca, y así el patch queda vacío y no se encola
+         *     una escritura por nada.
+         * `null` es "la columna no vino en el encabezado", que preserva el comportamiento viejo. */
+        if (r.habilitado === false) {
+          if (!existente.descontinuado) patch.descontinuado_ts = new Date().toISOString()
+        } else if (existente.descontinuado) {
+          patch.descontinuado_ts = null
+        }
+        // El archivo habla de este producto, así que la protección contra la baja por ausencia
+        // deja de tener sentido: de acá en más lo gobierna la lista.
+        if (existente.fijado) patch.fijado_ts = null
         if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
         continue
       }
@@ -642,7 +665,12 @@ export function CatalogProvider({ children }) {
         destacado: !!r.destacado,
         escalas: normalizarEscalas(r.escalas),
         imagen_url: null,
-        descontinuado_ts: null,
+        // Puede nacer apagado: viene por primera vez y ya con `habilitado = no`.
+        descontinuado_ts: r.habilitado === false ? new Date().toISOString() : null,
+        // 🩸 EXPLÍCITO contra el `default now()` de la columna. El default está para el alta a mano;
+        // un producto que llega por la lista lo gobierna la lista, y si naciera fijado quedaría
+        // inmune a la baja por ausencia para siempre.
+        fijado_ts: null,
       })
     }
 
@@ -651,12 +679,16 @@ export function CatalogProvider({ children }) {
     let descontinuados = 0
     if (listaCompleta) {
       const ahora = new Date().toISOString()
+      let fijadosSalvados = 0
       for (const p of productos) {
         const k = codigoKey(p.codigo)
         if (!k || vistos.has(k) || p.descontinuado) continue
+        // Lo que sostiene una persona no se apaga solo: es toda la razón de ser de `fijado_ts`.
+        if (p.fijado) { fijadosSalvados++; continue }
         updates.push({ id: p.id, patch: { descontinuado_ts: ahora } })
         descontinuados++
       }
+      if (fijadosSalvados) avisos.push(`${fijadosSalvados} producto(s) sostenidos a mano: NO se dan de baja aunque falten en la lista`)
       const sinCodigo = productos.filter((p) => !codigoKey(p.codigo)).length
       if (sinCodigo) avisos.push(`${sinCodigo} producto(s) sin código: quedan vigentes (no se pueden cruzar con la lista)`)
     }

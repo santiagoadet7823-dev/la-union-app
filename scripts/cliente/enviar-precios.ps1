@@ -1,4 +1,4 @@
-# enviar-precios.ps1 — envía la lista de precios a DisT-At. Windows (PowerShell 5.1 o superior).
+﻿# enviar-precios.ps1 — envía la lista de precios a DisT-At. Windows (PowerShell 5.1 o superior).
 #
 # QUÉ HACE
 #   1. Toma el archivo que exportó el sistema de gestión.

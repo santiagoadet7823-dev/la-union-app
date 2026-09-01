@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { propsBusqueda } from '../../../components/form'
 import { sx } from '../../../lib/sx'
 import { useDevice } from '../../../context/DeviceContext'
 import { useCatalog } from '../../../context/CatalogContext'
@@ -168,6 +169,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
           <input
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
+            {...propsBusqueda}
             placeholder="Buscar por nombre, código o localidad…"
             style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}
           />

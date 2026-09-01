@@ -1,6 +1,7 @@
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import { escaleraDe, precioPara } from '../../lib/precios'
+import CantidadInput from '../../components/CantidadInput'
 import { ImagenVacia } from '../../components/icons'
 import Overlay from '../../components/Overlay'
 
@@ -65,7 +66,7 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
           <div style={sx('display:flex;align-items:center;gap:9px')}>
             <div style={sx('display:flex;align-items:center;gap:6px;flex:none')}>
               <button onClick={() => addCart(producto.id, -1)} disabled={qty === 0} style={{ ...sx('width:42px;height:46px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:20px;user-select:none;background:transparent'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
-              <div style={{ ...sx('min-width:34px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600'), color: qty > 0 ? 'var(--deep)' : 'var(--faint)' }}>{qty}</div>
+              <CantidadInput qty={qty} onCambiar={(n) => addCart(producto.id, n - qty)} alto={46} fuente={16} minAncho={34} />
               <button onClick={() => addCart(producto.id, 1)} style={sx('width:42px;height:46px;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:12px;cursor:pointer;color:var(--deep);font-size:19px;user-select:none')}>+</button>
             </div>
             <button
