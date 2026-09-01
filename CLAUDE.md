@@ -723,6 +723,24 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     de falla real —el exportador emite la columna vacía en todas las filas— intenta apagar cientos y
     supera las dos condiciones sin esfuerzo.
 
+59. 🩸 **LA REGLA 54, OTRA VEZ, EN OTRA COLUMNA — Y ESTA VEZ SÍ COSTÓ EL CATÁLOGO.**
+    (01/09/2026.) El primer envío automático del ERP mandó en `categoria` el **código de rubro**
+    (`01`, `06`, `20`, `97`) en vez del nombre. Los 541 productos vivos quedaron con **31 categorías
+    numéricas** y el vendedor salió a la calle con filtros que decían "6" y "97". **No hubo un solo
+    error**: `06` es un texto válido, así que entró y pisó lo que había.
+    La forma es idéntica a la de las escalas: un valor que **una máquina puede emitir sin querer**
+    destruyendo un dato curado. Lo que cambia es que acá no se detectó antes de que pasara.
+    **La guarda**: una `categoria` **enteramente** numérica se trata como "no vino" (`filaAImportar`).
+    Sólo lo entero — `Bebidas 2` y `2 Litros` son nombres legítimos y pasan. Y el endpoint devuelve
+    `categorias_ignoradas`, porque un descarte silencioso es la mitad del problema original.
+    🩸 **Y la lección de recuperación, que es la parte reutilizable**: las categorías se
+    restauraron desde **el catálogo impreso del propio cliente** (la carga del PDF de julio), no
+    inventándolas — 248 de 541 recuperaron su rubro real (`Yerbas`, `Mermeladas`, `Fideos`). El
+    resto quedó en **NULL a propósito**: `mapProducto` hace `p.categoria || inferCategoria(...)`, así
+    que la app las deduce con la función real. Escribir en SQL el nombre deducido habría sido la
+    regla 36 —la misma regla en dos runtimes— por comodidad de una migración de una sola corrida.
+    **Cuando haya que reparar datos en masa, buscar primero un origen que ya exista.**
+
 ---
 
 ## 3. Comandos
@@ -911,10 +929,10 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | `1.21.0` ✅ publicado (23/08) → el trabajo del 27-28/08 sale como **1.22.0** | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.23.0`** ✅ publicado (01/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.21.0` ✅ publicado | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `37` ✅ publicado → el próximo es **38** | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | **`1.21.0`** ✅ (verificado contra la base viva el 28/08; `updated_at` 23/08 00:10 UTC) | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | **`1.23.0`** ✅ (verificado contra la base viva el 01/09) | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | **`1.21.0`** ✅ (ya subido) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

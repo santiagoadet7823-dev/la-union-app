@@ -47,6 +47,68 @@ Todo en español: código, comentarios, UI y commits.
 
 ---
 
+## 🔴 1.23.0 — el ERP rompió las categorías (01/09/2026) · **PUBLICADO**
+
+**Estado: OTA + PWA + Edge Function + base, todo arriba.** `app_config` en `1.23.0`,
+`min_version` sigue en `1.21.0` (no se tocó nada nativo).
+
+### Lo que pasó
+
+El envío automático de las **00:51** mandó en `categoria` el **código de rubro** en vez del nombre.
+541 productos con **31 categorías numéricas**; el vendedor veía filtros que decían `6`, `20`, `97`.
+Cero errores: el valor era texto válido. Es la **regla 54 en otra columna** (ahora regla 59).
+
+**La prueba del diagnóstico**: las únicas categorías que conservaban nombre eran las de los 65
+productos apagados por ausencia — al no venir en el archivo, no se actualizaron.
+
+### 🩸 Lo que NO pasó — no inventar daño
+
+| Sospecha | Veredicto |
+|---|---|
+| Borró los pesos (541 en `0.00`) | **Falso.** Los 65 intactos también están en 0: **nunca hubo pesos** |
+| Pisó las descripciones con las de 20 caracteres | **Falso.** El endpoint manda `pisar_descripcion=false` |
+| Se perdieron fotos | **Falso.** Apagar no borra nada |
+
+Y el archivo hasta **aportó**: `unidades` pasó de 17 a 541 productos.
+
+### Lo que se hizo
+
+1. **Restauración** desde el catálogo impreso del cliente (`Downloads/catalogo-2026-07-24.xlsx`, la
+   carga del PDF): **248 de 541** recuperaron su rubro real. El resto quedó en `NULL` **a propósito**
+   — `mapProducto` deduce con `inferCategoria`, que sigue siendo la única fuente.
+2. **Blindaje**: categoría enteramente numérica = "no vino". Verificado por el endpoint real:
+   `categorias_ignoradas: 1` y `actualizados: 0` (no mueve el sello).
+3. **Interruptor** para habilitar/deshabilitar en `CatalogoTab`. Antes la única forma de sacar algo
+   de circulación era ELIMINAR. Probado en el navegador: 541→540 y De baja 65→66, ida y vuelta.
+4. **Cantidad escribible** (`components/CantidadInput.jsx`), compartida por las TRES pantallas que
+   tenían el stepper copiado. Lo delicado no es el input: es poder vaciar el campo mientras se tipea.
+5. **`propsBusqueda`** en `components/form.jsx` → el teclado se cierra al buscar, en los 5 buscadores.
+6. **El export incluye los deshabilitados** con su columna `habilitado`: el ida y vuelta dejó de
+   resucitarlos, que era la razón por la que se excluían.
+
+### ⚠️ PENDIENTE INMEDIATO — el CSV para el cliente
+
+Falta generar `catalogo-actual-DisT-At.csv` (los 606 productos en formato spec v5) para mandarle al
+cliente junto a la plantilla. **La forma barata es el propio botón**: *Catálogo → Descargar planilla*
+ya baja los 606 con la columna `habilitado`; se convierte a CSV y va al ZIP como
+`5 - catalogo actual (modelo con datos reales).csv`.
+🔴 **No bajarlo fila por fila desde la base**: se intentó y son ~50 KB de ida y otros tantos de
+vuelta. El botón lo resuelve en un clic. La descarga falla **sólo** dentro del panel del navegador de
+Claude (bloquea `<a download>`), no en la app del usuario.
+
+### Lo que sigue abierto del lado del cliente
+
+- **Los rubros**: mandan códigos. O mandan los nombres, o nos pasan la tabla `01 = Almacén`. Hasta
+  entonces el sistema ignora esa columna. El CSV modelo puede hacer innecesaria la pregunta.
+- **251 de 541 con `unidad_venta = FDO`**: el export sigue a nivel FARDO. Es la pregunta §1.1, la de
+  las 355 fotos.
+- **Los 65 apagados** siguen apagados, por decisión explícita. Están en `ingestas_precios.bajas`.
+- **`destacado` y `nivel` están en 0 de 606**: el chip ◆ Destacados **existe y funciona desde
+  1.22.0**, pero no aparece porque no hay ninguno marcado (`hayDestacados`). Lo mismo el marco de
+  color de rentabilidad. Se marcan a mano desde Catálogo o por columna del archivo.
+
+---
+
 ## 🟢 `habilitado` + BAJA POR AUSENCIA — desplegado el 01/09/2026 (`db/54`)
 
 **Estado: LIVE en base y Edge Function. El bundle web queda SIN PUBLICAR** (ver el final).
