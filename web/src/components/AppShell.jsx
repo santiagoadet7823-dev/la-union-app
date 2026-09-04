@@ -7,7 +7,7 @@ import { Check, Mapa } from './icons'
 import MiCuenta from '../features/perfil/MiCuenta'
 import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
 import MisPedidosSheet from '../features/pedidos/MisPedidosSheet'
-import MetasSheet from '../features/metas/MetasSheet'
+import TableroSheet from '../features/metas/TableroSheet'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -175,8 +175,8 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
               >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.4" /></svg>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mis metas</div>
-                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Cómo vas hoy, este mes y este año</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mi tablero</div>
+                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Metas, qué vendés y a quién dejaste de ver</div>
                 </div>
               </div>
             )}
@@ -191,7 +191,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       )}
 
       {rol === 'vendedor' && (
-        <MetasSheet open={misMetas} onCerrar={() => setMisMetas(false)} onToast={showToast} />
+        <TableroSheet open={misMetas} onCerrar={() => setMisMetas(false)} onToast={showToast} />
       )}
 
       {toast && (

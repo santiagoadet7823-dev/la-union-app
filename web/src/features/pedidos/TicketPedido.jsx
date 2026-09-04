@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
+import { useTenant } from '../../context/TenantContext'
 import { compartirPdfNodo, imprimirNodo, montarImpresion } from '../../services/report/imprimir'
 
 /**
@@ -31,6 +32,14 @@ import { compartirPdfNodo, imprimirNodo, montarImpresion } from '../../services/
  * props: { pedido, comercio, vendedor, lineas, onCerrar }
  */
 export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], onCerrar }) {
+  // 🩸 QUIÉN EMITE ESTE PAPEL (04/09/2026). El ticket arrancaba con el nombre del COMERCIO, así que
+  // el comprobante que el vendedor le manda por WhatsApp parecía emitido por el propio comercio: no
+  // decía de qué distribuidora era ni quién lo hizo. Mientras el ticket sólo se veía en pantalla
+  // daba igual —el vendedor sabe dónde trabaja—; desde que se comparte, el emisor es lo primero que
+  // tiene que leerse.
+  // Sale de `empresas.nombre` y NUNCA de una constante: el producto se está despersonalizando y un
+  // nombre hardcodeado volvería a atarlo a un cliente.
+  const { nombreEmpresa } = useTenant()
   // Engancha `beforeprint` mientras el ticket está en pantalla: cubre el Ctrl+P además del botón.
   useEffect(() => montarImpresion('lu-ticket'), [])
 
@@ -85,8 +94,18 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
           </div>
         )}
 
-        <div style={sx('display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--line)')}>
+        {/* EL EMISOR, arriba de todo. Si el nombre no cargó (sin red, sesión vencida) el renglón no
+            se dibuja: un encabezado vacío es mejor que uno que dice "null". */}
+        {nombreEmpresa && (
+          <div style={sx('padding-bottom:8px;border-bottom:2px solid var(--line2)')}>
+            <div style={sx('font-family:var(--font-display);font-weight:700;font-size:17px;line-height:1.2')}>{nombreEmpresa}</div>
+            <div style={sx('font-size:10.5px;color:var(--faint);letter-spacing:.06em;margin-top:2px')}>COMPROBANTE DE PEDIDO</div>
+          </div>
+        )}
+
+        <div style={sx('display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)')}>
           <div>
+            <div style={sx('font-size:10px;color:var(--faint);letter-spacing:.06em')}>CLIENTE</div>
             <div style={sx('font-family:var(--font-display);font-weight:700;font-size:15px')}>{comercio?.name || 'Comercio'}</div>
             <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
               {[comercio?.codigo, comercio?.loc].filter(Boolean).join(' · ')}
@@ -98,8 +117,10 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
           </div>
         </div>
 
+        {/* "Atendió" era ambiguo del lado del comerciante —se lee como quién lo atendió A ÉL en el
+            mostrador—. El papel tiene que decir quién se hace cargo del pedido. */}
         <div style={sx('padding:9px 0;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted)')}>
-          Atendió: <b style={sx('color:var(--text)')}>{vendedor?.nombre || '—'}</b>
+          Vendedor responsable: <b style={sx('color:var(--text);font-size:12.5px')}>{vendedor?.nombre || '—'}</b>
           {pedido?.origen === 'vidriera' ? ' · pedido tomado con la tablet' : ''}
         </div>
 
@@ -157,7 +178,11 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
           )}
         </div>
 
-        <div className="lu-no-print" style={sx('margin-top:12px;font-size:10.5px;color:var(--faint);line-height:1.5')}>
+        {/* 🩸 ESTE RENGLÓN LLEVABA `lu-no-print` Y POR LO TANTO **NO SALÍA EN EL PDF** (04/09/2026).
+            Cuando el ticket sólo se miraba en pantalla daba igual. Ahora se le manda al comerciante,
+            y la aclaración de que no es una factura es justamente la que tiene que viajar con el
+            archivo — es la única línea del comprobante dirigida a quien lo recibe. */}
+        <div style={sx('margin-top:12px;font-size:10.5px;color:var(--faint);line-height:1.5')}>
           Este comprobante no es una factura.
         </div>
       </div>

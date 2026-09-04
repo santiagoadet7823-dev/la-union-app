@@ -910,6 +910,21 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 > 🩸 Si se instala por USB va **`adb install -r -i com.launion.app`**: sin el `-i` el equipo no queda
 > como su propio instalador y la actualización siguiente vuelve a necesitar el cable.
 
+> 🩸 **1.25.0 (04/09/2026) — OTA + PWA, sin APK. Es la corrección de 1.24.0 al probarla.**
+> Cuatro cosas, y la primera es la que importa: **la pantalla de editar un pedido usaba un buscador
+> propio** en vez del catálogo. Con eso el vendedor perdía la cantidad tipeable y —peor— las
+> **escalas de precio por volumen**, que son lo que hace vender más. Se extrajo la grilla a
+> **`components/GrillaCatalogo.jsx`** y ahora las dos pantallas son la MISMA (regla 31); de paso se
+> unificó una copia de la regla del precio que imprimía `p.price` crudo (regla 52).
+> Además: la corrección **se ofrece en el check-in** (`ElegirTicketSheet`) y el pill "Visitado"
+> volvió a ser tocable —era un `div` inerte, así que un comercio ya visitado quedaba inalcanzable
+> toda la jornada—; el **ticket dice quién lo emite** (empresa + vendedor responsable, y la leyenda
+> "no es una factura" dejó de llevar `lu-no-print`, o sea que ahora SÍ sale en el PDF); y "Mis metas"
+> pasó a ser **Mi tablero** con productos, oportunidades y clientes dormidos (db/57).
+>
+> ⚠️ **Todo esto va a verse casi vacío**: al 04/09 hay 6 pedidos en toda la base. No es un bug, y
+> cada bloque lo dice con palabras en vez de dibujar un cero.
+
 Hay varios números que conviven. **1.21.0 sale por los TRES canales: APK + OTA + PWA.** No porque haya cambiado nada nativo — no se tocó un solo `.java`, ni el manifest, ni `capacitor.config.ts` — sino porque tres de sus arreglos viven en `VidrieraTablet.jsx`, y **esa pantalla sólo corre en la tablet de vidriera, que no puede recibir una OTA nunca** (ver el bloque 🔴 de abajo). El APK es el único vehículo que la alcanza, y se instala **por USB**.
 
 > ⚠️ **`min_version` SÍ se sube a 1.21.0, por decisión explícita del dueño (22/08/2026).**
@@ -959,10 +974,10 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.24.0`** ✅ publicado por OTA (03/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ✅ publicado (03/09) — el parque se reinstala solo | Versión visible del APK |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.25.0`** ✅ publicado por OTA (04/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ✅ publicado (03/09). **1.25.0 NO lleva APK**: es todo JS | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `39` ✅ publicado → el próximo es **40** | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | **`1.24.0`** ✅ (verificado contra la base viva el 03/09) | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | **`1.25.0`** ✅ (verificado contra la base viva el 04/09) | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | **`1.24.0`** ✅ (subido el 03/09, con la reinstalación automática andando) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**

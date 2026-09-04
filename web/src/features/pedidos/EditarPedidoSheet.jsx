@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
+import GrillaCatalogo from '../../components/GrillaCatalogo'
+import CantidadInput from '../../components/CantidadInput'
 import { useCatalog } from '../../context/CatalogContext'
 import { useGps } from '../../context/GpsContext'
-import { precioPara } from '../../lib/precios'
+import FichaProducto from '../vendedor/FichaProducto'
 import { anularPedido } from './anularPedido'
 import { fmtFecha } from './DetallePedido'
 import { editarPedido, nuevaLinea, totalesDeLineas } from './editarPedido'
@@ -12,70 +14,58 @@ import { editarPedido, nuevaLinea, totalesDeLineas } from './editarPedido'
 /**
  * CORREGIR UN PEDIDO PENDIENTE.
  *
- * 🩸 POR QUÉ (03/09/2026). Lo pidieron el dueño y un vendedor en la reunión del 02/09: hoy, una vez
- * confirmado, el ticket no se puede tocar y el error se arregla anulando y rehaciendo todo.
+ * 🩸 POR QUÉ (03/09/2026). Lo pidieron el dueño y un vendedor: hasta entonces, una vez confirmado el
+ * ticket no se podía tocar y el error se arreglaba anulando y rehaciendo todo.
  *
- * 🔑 LAS DOS ZONAS DE ESTA PANTALLA SON DOS REGLAS DISTINTAS, y por eso se ven distinto:
+ * 🩸 Y POR QUÉ ESTA PANTALLA SE REHIZO AL DÍA SIGUIENTE (04/09/2026). La primera versión tenía un
+ * buscador propio con una lista de resultados y un `+`. Funcionaba, y estaba mal: le sacaba al
+ * vendedor **la forma en que carga un pedido todos los días**. Sin `CantidadInput` no podía tipear
+ * 24 —eran 24 toques—, y sobre todo no veía las **escalas de precio por volumen**, que es la función
+ * que se agregó el 27/08 y la que hace que el comerciante se lleve más. El reporte fue textual: "no
+ * puedo agregar la cantidad exacta y no puedo visualizar las funciones que tiene el catálogo".
+ * Ahora abre el **mismo catálogo** (`components/GrillaCatalogo`), con la misma ficha de producto y
+ * el mismo stepper.
  *
- *  · **Lo que ya estaba** se puede RESTAR o QUITAR, nunca sumar, y muestra el precio con el que se
- *    pactó — con la fecha al lado. Si entre medio entró una lista nueva del ERP (entran varias por
- *    día), ese número no se mueve: `pedido_items.precio_unitario` está copiado en la fila y la
- *    edición manda sólo `cantidad`.
- *  · **Lo que se agrega hoy** va al precio de HOY, con su escalón por volumen si la cantidad lo
- *    alcanza — resuelto por `precioPara`, que es el único lugar de la app que sabe cuánto sale algo
- *    (regla 52).
+ * 🔑 LAS DOS ZONAS SON DOS REGLAS DISTINTAS, y por eso se ven distinto:
  *
- * ⚠️ **Sumar de lo que ya estaba se hace agregándolo como línea nueva**, no subiendo el stepper de
- * la línea vieja. No es una limitación técnica: es la regla del cliente. Subir la vieja cobraría
- * unidades de hoy al precio de antes, que es exactamente lo que se quiso evitar. Si el comerciante
- * pide dos cajones más del mismo producto, entran como renglón aparte al precio de hoy — y el ticket
- * lo muestra en dos líneas, que es la verdad de lo que pasó.
+ *  · **Lo que ya estaba** (arriba) sólo se puede RESTAR o QUITAR, y muestra el precio con el que se
+ *    pactó, con la fecha. Si entre medio entró una lista nueva del ERP —entran varias por día— ese
+ *    número no se mueve: `precio_unitario` está copiado en la fila y la edición manda sólo
+ *    `cantidad`.
+ *  · **El catálogo** (abajo) agrega al precio de HOY, con su escalón por volumen.
+ *
+ * 🔴 EL CARRITO DE LA GRILLA REFLEJA SÓLO LO NUEVO, NUNCA VIEJO+NUEVO SUMADO. Es la decisión más
+ * importante de este archivo. Si la grilla mostrara el total combinado, el vendedor bajaría el
+ * stepper creyendo que le resta al pedido y en realidad estaría restando de lo que agregó recién —
+ * o peor, creería que desde ahí puede tocar el precio congelado. Sumar unidades de un producto que
+ * ya estaba genera un **renglón aparte a precio de hoy** (decisión del dueño, 04/09), y el ticket lo
+ * muestra en dos líneas: es la verdad de lo que pasó y el comerciante ve por qué paga dos precios.
  *
  * props: { pedido, lineas, onCerrar, onGuardado, onToast, userId }
  */
-
-/** El stepper de una línea vieja: sólo baja. El "+" no existe acá a propósito (ver arriba). */
-function StepperBaja({ valor, onCambio }) {
-  const puedeBajar = valor > 0
-  return (
-    <div style={sx('display:flex;align-items:center;gap:2px;flex:none')}>
-      <button
-        onClick={() => onCambio(Math.max(0, valor - 1))}
-        disabled={!puedeBajar}
-        className="lu-press"
-        aria-label="Quitar una unidad"
-        style={{
-          ...sx('width:32px;height:32px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);font-size:17px;line-height:1'),
-          color: puedeBajar ? 'var(--text)' : 'var(--faint)',
-          cursor: puedeBajar ? 'pointer' : 'default',
-        }}
-      >−</button>
-      <div style={sx('min-width:34px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700')}>
-        {valor}
-      </div>
-    </div>
-  )
-}
-
 export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGuardado, onToast, userId }) {
   const { productos } = useCatalog()
   const { pos } = useGps()
   const [abierto, setAbierto] = useState(true)
   const [cantidades, setCantidades] = useState({})
   const [nuevas, setNuevas] = useState([])
-  const [busca, setBusca] = useState('')
+  // Los filtros son locales: en `useJornada` viven arriba sólo para sobrevivir al cambio de
+  // pestaña, y acá no hay pestañas que cambien.
+  const [search, setSearch] = useState('')
+  const [catFilter, setCatFilter] = useState('Todos')
+  const [fichaId, setFichaId] = useState(null)
   const [motivo, setMotivo] = useState('')
   const [trabajando, setTrabajando] = useState(false)
 
   // Al cambiar de pedido se limpia todo. Sin esto, lo tipeado para uno quedaría cargado al abrir el
   // siguiente — el mismo cuidado que ya tiene `DetallePedido` con el motivo de anulación.
-  useEffect(() => { setCantidades({}); setNuevas([]); setBusca(''); setMotivo('') }, [pedido?.id])
+  useEffect(() => {
+    setCantidades({}); setNuevas([]); setSearch(''); setCatFilter('Todos'); setFichaId(null); setMotivo('')
+  }, [pedido?.id])
 
   const cantidadDe = (l) => Math.max(0, Math.round(Number(cantidades[l.id] ?? l.cantidad) || 0))
-  const finales = useMemo(
-    () => [...lineas.map((l) => ({ ...l, cantidad: cantidadDe(l) })).filter((l) => l.cantidad > 0), ...nuevas],
-    [lineas, cantidades, nuevas],
-  )
+  const viejasVivas = lineas.map((l) => ({ ...l, cantidad: cantidadDe(l) })).filter((l) => l.cantidad > 0)
+  const finales = [...viejasVivas, ...nuevas]
   const { total } = totalesDeLineas(finales)
   const hayCambios =
     nuevas.length > 0 || lineas.some((l) => cantidadDe(l) !== Math.round(Number(l.cantidad) || 0))
@@ -83,44 +73,35 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   // anulado dirían lo mismo, pero el vacío no dice quién ni por qué.
   const quedaVacio = finales.length === 0
 
-  // Los productos para agregar. Se busca sobre el catálogo VIGENTE (`productos` ya excluye los
-  // descontinuados): ofrecer algo que salió de circulación sería cargarlo para que después no se
-  // pueda entregar.
-  const sugeridos = useMemo(() => {
-    const q = busca.trim().toLowerCase()
-    if (q.length < 2) return []
-    return productos
-      .filter((p) => (p.name || '').toLowerCase().includes(q) || (p.codigo || '').toLowerCase().includes(q))
-      .slice(0, 20)
-  }, [productos, busca])
+  /**
+   * EL ADAPTADOR. La grilla habla `{ idProducto: cantidad }` + `addCart(id, delta)`; esta pantalla
+   * guarda las líneas nuevas como filas listas para la base (con su precio ya congelado). Son dos
+   * formas del mismo dato y la traducción vive acá, en un solo lugar.
+   */
+  const cart = useMemo(
+    () => Object.fromEntries(nuevas.map((n) => [n.id_producto, n.cantidad])),
+    [nuevas],
+  )
 
-  function agregar(producto) {
+  function addCart(idProducto, delta) {
+    const producto = productos.find((p) => p.id === idProducto)
+    if (!producto) return
     setNuevas((arr) => {
-      // Si ya se agregó en esta misma edición, se le suma una unidad al renglón nuevo y se
-      // RECALCULA su precio: sigue siendo mercadería de hoy, así que si con la unidad de más entra
-      // en un escalón por volumen, le corresponde ese precio.
-      const i = arr.findIndex((n) => n.id_producto === producto.id)
-      if (i === -1) return [...arr, nuevaLinea(producto, 1, pedido.id)]
+      const i = arr.findIndex((n) => n.id_producto === idProducto)
+      const previa = i === -1 ? 0 : arr[i].cantidad
+      const cantidad = Math.max(0, previa + delta)
+      if (cantidad === 0) return arr.filter((n) => n.id_producto !== idProducto)
+      // 🔑 La línea se REARMA con `nuevaLinea`, así el precio se recalcula contra la cantidad: si
+      // con la unidad de más entra en un escalón por volumen, le corresponde ese precio. Se conserva
+      // el `id` para que un reintento de la cola no duplique el renglón.
+      if (i === -1) return [...arr, nuevaLinea(producto, cantidad, pedido.id)]
       const copia = [...arr]
-      const cant = copia[i].cantidad + 1
-      copia[i] = { ...copia[i], ...nuevaLinea(producto, cant, pedido.id), id: copia[i].id }
+      copia[i] = { ...nuevaLinea(producto, cantidad, pedido.id), id: copia[i].id }
       return copia
     })
   }
 
-  function cambiarNueva(id, cantidad) {
-    setNuevas((arr) => {
-      if (cantidad <= 0) return arr.filter((n) => n.id !== id)
-      return arr.map((n) => {
-        if (n.id !== id) return n
-        const producto = productos.find((p) => p.id === n.id_producto)
-        // Sin el producto en el catálogo no se puede repreciar: se deja la cantidad y el precio que
-        // ya tenía en vez de inventar uno.
-        if (!producto) return { ...n, cantidad }
-        return { ...n, ...nuevaLinea(producto, cantidad, pedido.id), id: n.id }
-      })
-    })
-  }
+  const ficha = fichaId ? productos.find((p) => p.id === fichaId) : null
 
   function cerrar() { setAbierto(false) }
 
@@ -145,172 +126,179 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   }
 
   const puedeGuardar = hayCambios && !trabajando && (!quedaVacio || motivo.trim().length > 0)
+  const unidadesNuevas = nuevas.reduce((a, n) => a + n.cantidad, 0)
 
   return (
-    <Overlay
-      open={abierto}
-      onClose={onCerrar}
-      variant="sheet"
-      alto="medio"
-      title={`Corregir ${pedido?.numero ? '#' + pedido.numero : 'el pedido'}`}
-      subtitle={pedido?.comercio?.name || 'Comercio'}
-      footer={
-        <div style={sx('display:flex;flex-direction:column;gap:9px;width:100%')}>
-          <div style={sx('display:flex;align-items:baseline;justify-content:space-between')}>
-            <span style={sx('font-size:12px;color:var(--muted)')}>Total</span>
-            <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:700')}>
-              {fmtPesos(total)}
-            </span>
+    <>
+      <Overlay
+        open={abierto}
+        onClose={onCerrar}
+        variant="sheet"
+        alto="medio"
+        title={`Corregir ${pedido?.numero ? '#' + pedido.numero : 'el pedido'}`}
+        subtitle={pedido?.comercio?.name || 'Comercio'}
+        footer={
+          <div style={sx('display:flex;flex-direction:column;gap:9px;width:100%')}>
+            <div style={sx('display:flex;align-items:baseline;justify-content:space-between')}>
+              <span style={sx('font-size:12px;color:var(--muted)')}>
+                Total{unidadesNuevas > 0 ? ` · +${unidadesNuevas} u nuevas` : ''}
+              </span>
+              <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:700')}>
+                {fmtPesos(total)}
+              </span>
+            </div>
+
+            {quedaVacio && (
+              <>
+                <div style={sx('font-size:11.5px;color:var(--warning);line-height:1.5')}>
+                  Sacaste todo. Un pedido no puede quedar en cero: se <b>anula</b>, y para eso hace
+                  falta decir por qué.
+                </div>
+                <input
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  placeholder="Por qué se anula (obligatorio)"
+                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
+                />
+              </>
+            )}
+
+            <button
+              onClick={guardar}
+              disabled={!puedeGuardar}
+              className="lu-press"
+              style={{
+                ...sx('width:100%;min-height:48px;display:grid;place-items:center;border:none;border-radius:12px;font-size:14px;font-weight:700'),
+                background: puedeGuardar ? (quedaVacio ? 'var(--danger)' : 'var(--primary)') : 'var(--surface2)',
+                color: puedeGuardar ? '#fff' : 'var(--faint)',
+                cursor: puedeGuardar ? 'pointer' : 'default',
+              }}
+            >
+              {quedaVacio ? 'Anular el pedido' : trabajando ? 'Guardando…' : 'Guardar los cambios'}
+            </button>
+          </div>
+        }
+      >
+        {/* ── Lo que ya estaba ───────────────────────────────────────────────────────────────
+            Va arriba y separado del catálogo: son unidades con precio ya pactado, y la única
+            acción posible sobre ellas es restar. */}
+        <div style={sx('padding:0 0 4px')}>
+          <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:4px')}>
+            Ya estaba en el pedido
+          </div>
+          <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:8px')}>
+            Estos precios quedaron fijados el {fmtFecha(pedido?.created_at)}, cuando se tomó el pedido.
+            Acá sólo se resta o se quita. Para sumar unidades, buscalas en el catálogo de abajo — van
+            al precio de hoy.
           </div>
 
-          {quedaVacio && (
-            <>
-              <div style={sx('font-size:11.5px;color:var(--warning);line-height:1.5')}>
-                Sacaste todo. Un pedido no puede quedar en cero: se <b>anula</b>, y para eso hace
-                falta decir por qué.
+          {lineas.map((l) => {
+            const c = cantidadDe(l)
+            const quitada = c === 0
+            const tope = Math.round(Number(l.cantidad) || 0)
+            return (
+              <div
+                key={l.id}
+                style={{
+                  ...sx('display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line)'),
+                  opacity: quitada ? 0.45 : 1,
+                }}
+              >
+                <div style={sx('flex:1;min-width:0')}>
+                  <div style={{ ...sx('font-size:12.5px;line-height:1.35'), textDecoration: quitada ? 'line-through' : 'none' }}>
+                    {l.descripcion}
+                  </div>
+                  <div style={sx('font-size:10.5px;color:var(--faint);margin-top:2px;font-family:var(--font-mono)')}>
+                    {fmtPesos(l.precio_unitario)} c/u · precio fijado
+                  </div>
+                </div>
+                {/* Sólo baja: el `+` no existe acá a propósito (sumar unidades de hoy al precio de
+                    ayer es lo que la regla prohíbe). Pero el número SÍ es `CantidadInput`, para que
+                    bajar de 24 a 6 sea un número tipeado y no 18 toques — acotado al tope original,
+                    que es lo que lo mantiene en "sólo restar". */}
+                <div style={sx('display:flex;align-items:center;gap:2px;flex:none')}>
+                  <button
+                    onClick={() => setCantidades((m) => ({ ...m, [l.id]: Math.max(0, c - 1) }))}
+                    disabled={c === 0}
+                    className="lu-press"
+                    aria-label="Quitar una unidad"
+                    style={{
+                      ...sx('width:34px;height:34px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--line2);background:transparent;font-size:18px;line-height:1'),
+                      color: c === 0 ? 'var(--faint)' : 'var(--muted)',
+                      cursor: c === 0 ? 'default' : 'pointer',
+                      opacity: c === 0 ? 0.5 : 1,
+                    }}
+                  >−</button>
+                  <CantidadInput
+                    qty={c}
+                    onCambiar={(n) => setCantidades((m) => ({ ...m, [l.id]: Math.min(Math.max(0, n), tope) }))}
+                  />
+                </div>
+                <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;min-width:70px;text-align:right')}>
+                  {fmtPesos(c * l.precio_unitario)}
+                </div>
               </div>
-              <input
-                value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
-                placeholder="Por qué se anula (obligatorio)"
-                style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
-              />
-            </>
+            )
+          })}
+
+          {!lineas.length && (
+            <div style={sx('padding:10px 0;color:var(--faint);font-size:12px')}>
+              Este pedido no tiene líneas guardadas.
+            </div>
           )}
 
-          <button
-            onClick={guardar}
-            disabled={!puedeGuardar}
-            className="lu-press"
-            style={{
-              ...sx('width:100%;min-height:48px;display:grid;place-items:center;border:none;border-radius:12px;font-size:14px;font-weight:700'),
-              background: puedeGuardar ? (quedaVacio ? 'var(--danger)' : 'var(--primary)') : 'var(--surface2)',
-              color: puedeGuardar ? '#fff' : 'var(--faint)',
-              cursor: puedeGuardar ? 'pointer' : 'default',
-            }}
-          >
-            {quedaVacio ? 'Anular el pedido' : trabajando ? 'Guardando…' : 'Guardar los cambios'}
-          </button>
+          {/* Lo agregado en ESTA corrección, resumido. La grilla de abajo ya lo muestra con su
+              contador, pero desde arriba no se ve sin scrollear hasta el producto. */}
+          {nuevas.length > 0 && (
+            <div style={sx('margin-top:12px;padding:9px 11px;border:1px solid var(--primary);border-radius:11px;background:var(--primary-tint)')}>
+              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--deep);margin-bottom:5px')}>
+                Agregado ahora · precio de hoy
+              </div>
+              {nuevas.map((n) => (
+                <div key={n.id} style={sx('display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11.5px;padding:2px 0')}>
+                  <span style={sx('flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{n.descripcion}</span>
+                  <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600')}>
+                    {n.cantidad} × {fmtPesos(n.precio_unitario)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      }
-    >
-      {/* ── Lo que ya estaba ───────────────────────────────────────────────────────────────── */}
-      <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:4px')}>
-        Ya estaba en el pedido
-      </div>
-      <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:8px')}>
-        Estos precios quedaron fijados el {fmtFecha(pedido?.created_at)}, cuando se tomó el pedido.
-        Se puede restar o quitar; para sumar unidades, agregalas abajo — van al precio de hoy.
-      </div>
 
-      {lineas.map((l) => {
-        const c = cantidadDe(l)
-        const quitada = c === 0
-        return (
-          <div
-            key={l.id}
-            style={{
-              ...sx('display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)'),
-              opacity: quitada ? 0.45 : 1,
-            }}
-          >
-            <div style={sx('flex:1;min-width:0')}>
-              <div style={{ ...sx('font-size:12.5px;line-height:1.35'), textDecoration: quitada ? 'line-through' : 'none' }}>
-                {l.descripcion}
-              </div>
-              <div style={sx('font-size:10.5px;color:var(--faint);margin-top:2px;font-family:var(--font-mono)')}>
-                {fmtPesos(l.precio_unitario)} c/u · precio fijado
-              </div>
-            </div>
-            <StepperBaja valor={c} onCambio={(v) => setCantidades((m) => ({ ...m, [l.id]: v }))} />
-            <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;min-width:74px;text-align:right')}>
-              {fmtPesos(c * l.precio_unitario)}
-            </div>
+        {/* ── El catálogo de verdad ──────────────────────────────────────────────────────────
+            El MISMO componente que usa la toma de pedido: cantidad tipeable, escalas de precio,
+            marco de rentabilidad y chips de categoría. Sin vidriera: corregir un pedido es algo que
+            el vendedor hace para arreglar un error, no una conversación frente a la tablet. */}
+        <div style={sx('margin-top:16px;padding-top:12px;border-top:1px solid var(--line2)')}>
+          <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')}>
+            Agregar al pedido · precio de hoy
           </div>
-        )
-      })}
-
-      {!lineas.length && (
-        <div style={sx('padding:10px 0;color:var(--faint);font-size:12px')}>
-          Este pedido no tiene líneas guardadas.
         </div>
+        <GrillaCatalogo
+          productos={productos}
+          cart={cart}
+          addCart={addCart}
+          search={search} setSearch={setSearch}
+          catFilter={catFilter} setCatFilter={setCatFilter}
+          onAbrirFicha={(p) => setFichaId(p.id)}
+          // Adentro de un sheet no hay barra flotante que tapar: el `180px` de la visita dejaría un
+          // hueco enorme al final de la lista.
+          paddingInferior={12}
+        />
+      </Overlay>
+
+      {/* La ficha grande, con la escalera en filas legibles y el empujón "2 más y pagás $X". Es el
+          MISMO componente de la visita, y por eso funciona con `cart`/`addCart` sin adaptación. */}
+      {ficha && (
+        <FichaProducto
+          producto={ficha}
+          cart={cart}
+          addCart={addCart}
+          puedeMostrar={false}
+          onCerrar={() => setFichaId(null)}
+        />
       )}
-
-      {/* ── Lo que se agrega hoy ───────────────────────────────────────────────────────────── */}
-      <div style={sx('margin-top:18px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px')}>
-        Agregar al pedido
-      </div>
-
-      {nuevas.map((n) => {
-        const producto = productos.find((p) => p.id === n.id_producto)
-        const r = producto ? precioPara(producto, n.cantidad) : null
-        return (
-          <div key={n.id} style={sx('display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)')}>
-            <div style={sx('flex:1;min-width:0')}>
-              <div style={sx('font-size:12.5px;line-height:1.35')}>{n.descripcion}</div>
-              <div style={sx('font-size:10.5px;color:var(--primary);margin-top:2px;font-family:var(--font-mono)')}>
-                {fmtPesos(n.precio_unitario)} c/u · precio de hoy
-                {r?.motivo === 'escala' ? ` · desde ${r.desde}` : ''}
-                {r?.motivo === 'oferta' ? ' · oferta' : ''}
-              </div>
-            </div>
-            <div style={sx('display:flex;align-items:center;gap:2px;flex:none')}>
-              <button
-                onClick={() => cambiarNueva(n.id, n.cantidad - 1)}
-                className="lu-press"
-                aria-label="Quitar una unidad"
-                style={sx('width:32px;height:32px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);color:var(--text);font-size:17px;line-height:1;cursor:pointer')}
-              >−</button>
-              <div style={sx('min-width:34px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700')}>
-                {n.cantidad}
-              </div>
-              <button
-                onClick={() => cambiarNueva(n.id, n.cantidad + 1)}
-                className="lu-press"
-                aria-label="Agregar una unidad"
-                style={sx('width:32px;height:32px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);color:var(--text);font-size:17px;line-height:1;cursor:pointer')}
-              >+</button>
-            </div>
-            <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;min-width:74px;text-align:right')}>
-              {fmtPesos(n.cantidad * n.precio_unitario)}
-            </div>
-          </div>
-        )
-      })}
-
-      <input
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar un producto para agregar…"
-        style={sx('width:100%;margin-top:10px;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
-      />
-
-      {sugeridos.map((p) => {
-        const r = precioPara(p, 1)
-        return (
-          <div
-            key={p.id}
-            onClick={() => agregar(p)}
-            role="button"
-            className="lu-press"
-            style={sx('display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);cursor:pointer')}
-          >
-            <div style={sx('flex:1;min-width:0')}>
-              <div style={sx('font-size:12.5px;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{p.name}</div>
-              <div style={sx('font-size:10.5px;color:var(--faint);margin-top:2px;font-family:var(--font-mono)')}>
-                {p.codigo || '—'} · {fmtPesos(r.precio)}
-              </div>
-            </div>
-            <div style={sx('flex:none;font-size:12px;color:var(--primary);font-weight:600')}>Agregar</div>
-          </div>
-        )
-      })}
-
-      {busca.trim().length >= 2 && !sugeridos.length && (
-        <div style={sx('padding:12px 0;color:var(--faint);font-size:12px')}>
-          Ningún producto del catálogo coincide con “{busca.trim()}”.
-        </div>
-      )}
-    </Overlay>
+    </>
   )
 }

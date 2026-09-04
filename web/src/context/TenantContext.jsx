@@ -43,11 +43,29 @@ export function TenantProvider({ children }) {
   const { idEmpresa, rol, user } = useAuth()
   const [empresas, setEmpresas] = useState([])
   const [activa, setActiva] = useState(null)
+  // 🩸 EL NOMBRE DE LA EMPRESA PROPIA, PARA CUALQUIER ROL (04/09/2026). Hasta hoy `empresas` se
+  // consultaba SOLO si el usuario era superadmin, así que para un vendedor `nombreActiva` resolvía
+  // a `null` — el dato nunca estuvo en el teléfono. Se descubrió porque el PDF del ticket que el
+  // vendedor le manda al comerciante **no decía de qué distribuidora era**: arrancaba con el nombre
+  // del comercio, o sea que parecía un comprobante del propio comercio.
+  // No hace falta migración: la policy `empresas_sel` ya permite `id = mi_empresa()` (verificado en
+  // la base viva). Es UNA fila y un campo.
+  const [nombrePropia, setNombrePropia] = useState(null)
 
   // Solo el superadmin puede mirar otra empresa. No es una preferencia de UI: es el único rol al
   // que RLS le devuelve filas de otros tenants, así que para cualquier otro el selector mostraría
   // opciones que no producen datos.
   const esSuper = rol === 'superadmin'
+
+  useEffect(() => {
+    if (!hasSupabase || !idEmpresa) { setNombrePropia(null); return }
+    let vivo = true
+    supabase.from('empresas').select('nombre').eq('id', idEmpresa).maybeSingle()
+      // Si falla (sin red, o una sesión vencida que sale como `anon` y no ve nada) queda en null y
+      // el ticket omite el renglón. Un encabezado sin nombre es feo; uno que dice "null" es un bug.
+      .then(({ data }) => { if (vivo) setNombrePropia(data?.nombre || null) })
+    return () => { vivo = false }
+  }, [idEmpresa])
 
   useEffect(() => {
     if (!hasSupabase || !esSuper) { setEmpresas([]); return }
@@ -103,8 +121,12 @@ export function TenantProvider({ children }) {
     esTodas: activa === TODAS,
     nombreActiva: activa === TODAS
       ? 'Todas las empresas'
-      : (empresas.find((e) => e.id === activa)?.nombre || null),
-  }), [activa, empresas, esSuper, idEmpresa, setEmpresaActiva])
+      : (empresas.find((e) => e.id === activa)?.nombre || nombrePropia || null),
+    // 🔑 SIEMPRE la empresa de IDENTIDAD, nunca el scope mirado. Lo consume el comprobante que el
+    // vendedor le manda al comerciante: ahí el emisor es la empresa a la que pertenece la persona,
+    // no la que un superadmin esté mirando de paso (regla 32 — el scope es sólo de lectura).
+    nombreEmpresa: nombrePropia,
+  }), [activa, empresas, esSuper, idEmpresa, nombrePropia, setEmpresaActiva])
 
   return <TenantContext.Provider value={valor}>{children}</TenantContext.Provider>
 }

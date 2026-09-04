@@ -64,6 +64,9 @@ export function useSugeridos(idCliente) {
  * la base, y de las dos copias la que se olvide de actualizarse gana.
  *
  * No rompe nada si falla: sin red devuelve null y el botón no aparece.
+ *
+ * Lo consumen DOS pantallas: el botón "repetir el último pedido" de la visita, y la hoja del
+ * check-in que ofrece corregir el pedido que ya se hizo en ese comercio (`ElegirTicketSheet`).
  */
 export function useUltimoPedido(idCliente) {
   const [ultimo, setUltimo] = useState(null)
@@ -75,7 +78,10 @@ export function useUltimoPedido(idCliente) {
       try {
         const { data, error } = await supabase
           .from('pedidos')
-          .select('id, numero, created_at, monto_total, pedido_items ( id_producto, cantidad )')
+          // 🔴 `estado` NO es decorativo: es lo que decide si el pedido se puede EDITAR. La ventana
+          // de edición es `Pendiente` (db/55); ofrecerla sobre uno "En camino" sería un botón que
+          // RLS rechaza en silencio —cero filas, sin error—, o sea la peor forma de fallar.
+          .select('id, numero, estado, created_at, monto_total, pedido_items ( id_producto, cantidad )')
           .eq('id_cliente', idCliente)
           // Un pedido anulado no es "lo que suele llevar": es un error que alguien corrigió.
           // Repetirlo sería resucitar exactamente lo que se decidió que no iba.

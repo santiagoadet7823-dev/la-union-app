@@ -29,12 +29,15 @@ const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day
 const POR_TANDA = 50
 
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
-export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
+export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
   const { perfil, permisos } = useAuth()
   const puedeCatalogo = !!onAbrirCatalogo && (permisos || []).includes('catalogo')
   const nombre = perfil?.nombre || 'Vendedor'
   const { clients, done, conPedido, montoHoy, meta, efect, nextId, startVisit, catLoading } = j
+  // `onCheckIn` lo pone `VendedorView`, que es quien sabe si ese comercio ya tiene un pedido abierto
+  // (necesita una consulta). El fallback deja esta pantalla funcionando sola, como antes.
+  const alTocar = (c) => (onCheckIn ? onCheckIn(c) : startVisit(c.id))
   // 🩸 La lista que se DIBUJA sale filtrada de `useJornada`, pero los contadores de arriba
   // (Paradas, barra de progreso) siguen saliendo de `clients` ENTERO: el avance de la jornada es
   // sobre la cartera real, no sobre lo que el vendedor esté buscando en este momento.
@@ -233,13 +236,27 @@ export default function InicioTab({ j, onNuevoCliente, onEditarCliente, onAbrirC
                     Sin texto visible, el nombre accesible tiene que vivir en `title` y `aria-label`
                     o el botón queda mudo para un lector de pantalla. */}
                 {c.status === 'pendiente' ? (
-                  <button onClick={() => startVisit(c.id)} title="Check-in" aria-label={`Check-in en ${c.name}`} style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;cursor:pointer;border:none')}>
+                  <button onClick={() => alTocar(c)} title="Check-in" aria-label={`Check-in en ${c.name}`} style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;cursor:pointer;border:none')}>
                     <Check size={20} />
                   </button>
                 ) : (
-                  <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
+                  /* 🩸 EL PILL VUELVE A SER TOCABLE (04/09/2026). Era un `div` inerte: una vez
+                     visitado el comercio, no había forma de volver a entrar en toda la jornada — y
+                     ése es justo el caso que reportó el vendedor, "cerré el ticket y el comerciante
+                     me agregó dos cajones". Ahora abre la misma hoja que el check-in, que ofrece
+                     corregir el pedido o abrir uno nuevo.
+                     NO vuelve a hacer check-in: la presencia ya quedó registrada, y una segunda
+                     visita a los diez minutos ensuciaría los reportes con una parada que no existió.
+                     Se mantiene el área táctil de 44 px de alto, igual que el botón que reemplaza. */
+                  <button
+                    onClick={() => alTocar(c)}
+                    title={`Volver a ${c.name}`}
+                    aria-label={`Abrir de nuevo ${c.name}`}
+                    className="lu-press"
+                    style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;min-height:44px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600;border:none;cursor:pointer'), background: pill[2], color: pill[1] }}
+                  >
                     <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
-                  </div>
+                  </button>
                 )}
               </div>
             </div>
