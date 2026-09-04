@@ -880,6 +880,23 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 
 ## 6. Versionado y release
 
+> 🩸 **1.24.0 (03/09/2026) SALE POR OTA + PWA, y una parte SE QUEDA AFUERA A PROPÓSITO.**
+> Lleva lo pedido en la reunión del 02/09 con el dueño y un vendedor: **corregir un pedido
+> Pendiente** sin perder el precio pactado (db/55, con auditoría de coordenadas y hora), **Mis
+> pedidos** con rango Hoy/7/30 y total, **Mis metas** (db/56: tabla `metas` + RPC `metricas_venta`,
+> siete métricas de VENTA — km y horas quedan afuera a propósito) y **repetir el último pedido** a
+> precios de hoy. Todo eso es JS y ya está en los teléfonos.
+>
+> 🔴 **Lo que NO llegó por esta vía es "Compartir el PDF" del ticket**, que es código NATIVO
+> (`ImpresionPlugin.compartirPdf` + `android/print/PdfDelWebView.java`). Viaja SÓLO en un APK nuevo.
+> El JS ya publicado lo contempla: en un teléfono con el APK viejo, el botón **cae a "Imprimir o
+> guardar como PDF"**, que es exactamente lo que hacía antes — no rompe, sólo no mejora. Cuando se
+> compile el APK 1.24.0 (versionCode 39) el botón empieza a compartir de una.
+>
+> ⚠️ **`min_version` NO se subió**, y es deliberado: subirlo obliga a los 9 teléfonos a bajar ~22 MB
+> con datos del empleado, y la única razón sería el botón de compartir. Es una decisión del dueño,
+> igual que en 1.21.0 — no se toma sola.
+
 Hay varios números que conviven. **1.21.0 sale por los TRES canales: APK + OTA + PWA.** No porque haya cambiado nada nativo — no se tocó un solo `.java`, ni el manifest, ni `capacitor.config.ts` — sino porque tres de sus arreglos viven en `VidrieraTablet.jsx`, y **esa pantalla sólo corre en la tablet de vidriera, que no puede recibir una OTA nunca** (ver el bloque 🔴 de abajo). El APK es el único vehículo que la alcanza, y se instala **por USB**.
 
 > ⚠️ **`min_version` SÍ se sube a 1.21.0, por decisión explícita del dueño (22/08/2026).**
@@ -929,11 +946,11 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.23.0`** ✅ publicado (01/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.21.0` ✅ publicado | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `37` ✅ publicado → el próximo es **38** | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | **`1.23.0`** ✅ (verificado contra la base viva el 01/09) | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | **`1.21.0`** ✅ (ya subido) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.24.0`** ✅ publicado por OTA (03/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ⏳ **SIN COMPILAR NI INSTALAR** (la tabla decía 1.21.0 y la real era 1.22.0) | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `39` ⏳ sin compilar → el próximo es **40** | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | **`1.24.0`** ✅ (verificado contra la base viva el 03/09) | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | **`1.21.0`** ✅ (SIN tocar en 1.24.0 — ver abajo) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la

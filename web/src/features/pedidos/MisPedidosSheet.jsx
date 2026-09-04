@@ -6,6 +6,7 @@ import { useCatalog } from '../../context/CatalogContext'
 import Overlay from '../../components/Overlay'
 import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
+import EditarPedidoSheet from './EditarPedidoSheet'
 import { usePedidos, itemsDePedido } from './usePedidos'
 import { pendientesDe } from '../../services/sync/writeQueue'
 
@@ -30,7 +31,20 @@ import { pendientesDe } from '../../services/sync/writeQueue'
  * props: { open, onCerrar, onToast }
  */
 
-const DIAS = 7
+/**
+ * Los rangos que se ofrecen. Eran 7 días fijos; el dueño pidió poder mirar más atrás.
+ *
+ * ⚠️ EL TECHO DE 30 NO ES CAPRICHO Y TAMPOCO ES LA RETENCIÓN DE `posiciones` (45 días): los pedidos
+ * NO se purgan, están todos. El límite es de lectura — `usePedidos` pagina de a 1.000 y trae el
+ * comercio y la persona embebidos, así que abrir "todo" sería bajar la historia entera a un teléfono
+ * para dibujar una lista que nadie va a scrollear hasta el fondo. Si algún día hace falta más, el
+ * lugar correcto es un buscador por número o por comercio, no un rango más grande.
+ */
+const RANGOS = [
+  { dias: 1, etiqueta: 'Hoy' },
+  { dias: 7, etiqueta: '7 días' },
+  { dias: 30, etiqueta: '30 días' },
+]
 
 function rangoUltimosDias(dias) {
   const h = new Date()
@@ -44,9 +58,11 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
   const { clientes } = useCatalog()
   const [detalle, setDetalle] = useState(null)
   const [ticket, setTicket] = useState(null)
+  const [editando, setEditando] = useState(null)
   const [enCola, setEnCola] = useState([])
+  const [dias, setDias] = useState(7)
 
-  const { desde, hasta } = useMemo(() => rangoUltimosDias(DIAS), [])
+  const { desde, hasta } = useMemo(() => rangoUltimosDias(dias), [dias])
   const userId = user?.id || null
   const { pedidos, cargando, error, recargar } = usePedidos({ desde, hasta, idVendedor: userId })
 
@@ -76,6 +92,20 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
 
   const lista = [...pendientes, ...pedidos]
 
+  // El resumen del período. Incluye lo que todavía está en la cola: para el vendedor ese pedido ya
+  // se hizo —el comerciante se llevó la mercadería— y no verlo sumado se lee como que se perdió.
+  const resumen = useMemo(() => {
+    let total = 0
+    let n = 0
+    let anulados = 0
+    for (const p of lista) {
+      if (p.estado === 'Anulado') { anulados++; continue }
+      n++
+      total += Number(p.monto_total) || 0
+    }
+    return { total, n, anulados }
+  }, [lista])
+
   async function abrir(pedido) {
     try {
       // Un pedido que todavía está en la cola no tiene líneas en la base: se leen de la cola.
@@ -98,8 +128,42 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
         variant="sheet"
         alto="medio"
         title="Mis pedidos"
-        subtitle={`Últimos ${DIAS} días`}
+        subtitle={dias === 1 ? 'Hoy' : `Últimos ${dias} días`}
       >
+        {/* ── Rango + total ─────────────────────────────────────────────────────────────────
+            El total va acá arriba y no al pie: es el número que el vendedor viene a buscar, y al
+            pie quedaría abajo de una lista que puede tener treinta renglones.
+            🔴 NO suma los anulados. Un pedido anulado no se factura, así que contarlo sería
+            decirle que vendió algo que no vendió — el mismo criterio que usan los reportes. */}
+        <div style={sx('display:flex;align-items:center;gap:6px;margin-bottom:10px')}>
+          {RANGOS.map((r) => {
+            const activo = r.dias === dias
+            return (
+              <button
+                key={r.dias}
+                onClick={() => setDias(r.dias)}
+                className="lu-press"
+                style={{
+                  ...sx('flex:1;min-height:34px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
+                  border: `1px solid ${activo ? 'var(--primary)' : 'var(--line2)'}`,
+                  background: activo ? 'var(--primary-tint)' : 'transparent',
+                  color: activo ? 'var(--primary)' : 'var(--muted)',
+                }}
+              >{r.etiqueta}</button>
+            )
+          })}
+        </div>
+
+        <div style={sx('display:flex;align-items:baseline;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid var(--line)')}>
+          <span style={sx('font-size:12px;color:var(--muted)')}>
+            {resumen.n} {resumen.n === 1 ? 'pedido' : 'pedidos'}
+            {resumen.anulados ? ` · ${resumen.anulados} anulado${resumen.anulados === 1 ? '' : 's'}` : ''}
+          </span>
+          <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:17px;font-weight:700')}>
+            {fmtPesos(resumen.total)}
+          </span>
+        </div>
+
         {error && (
           <div style={sx('padding:12px;border:1px solid var(--danger);border-radius:11px;color:var(--danger);font-size:12px')}>
             No se pudieron leer: {error}
@@ -165,7 +229,22 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
         onToast={onToast}
         onRecargar={alRecargar}
         onTicket={(d) => { setDetalle(null); setTicket(d) }}
+        onEditar={(d) => { setDetalle(null); setEditando(d) }}
       />
+
+      {/* El sheet vive acá y no adentro del detalle porque el detalle se cierra al abrirlo: un hijo
+          de algo desmontado desaparecería en el mismo frame en que se crea (el mismo motivo por el
+          que `useJornada` sube el ticket a `VendedorView`). */}
+      {editando && (
+        <EditarPedidoSheet
+          pedido={editando.pedido}
+          lineas={editando.lineas}
+          userId={userId}
+          onCerrar={() => setEditando(null)}
+          onGuardado={alRecargar}
+          onToast={onToast}
+        />
+      )}
 
       {ticket && (
         <TicketPedido

@@ -97,3 +97,48 @@ export async function imprimirNodo(id, titulo) {
     restaurar()
   }
 }
+
+/**
+ * COMPARTIR EL NODO COMO PDF (mandárselo a alguien, no imprimirlo).
+ *
+ * 🩸 POR QUÉ NO ALCANZABA CON `imprimirNodo` (03/09/2026, pedido del cliente). El diálogo de Android
+ * ofrece "Guardar como PDF", así que técnicamente ya se podía. Pero el caso de uso no es guardar: el
+ * vendedor tiene al comerciante enfrente pidiéndole el comprobante, y por ese camino son cinco pasos
+ * y dos aplicaciones. El método nativo `compartirPdf` escribe el PDF y abre la hoja de compartir de
+ * una.
+ *
+ * 🔴 FLOTA MIXTA, Y ACÁ IMPORTA MÁS QUE NUNCA. `compartirPdf` es código NATIVO: viaja sólo en un APK
+ * nuevo, nunca por OTA. Los teléfonos que reciban este JS con el APK viejo tienen el plugin
+ * `Impresion` pero NO este método, y Capacitor rechaza la llamada. La caída no es un cartel de
+ * error: es `imprimirNodo`, que en esos equipos sigue haciendo exactamente lo que hacía. Peor UX,
+ * pero el vendedor igual saca su PDF — que es lo que vino a hacer.
+ *
+ * En WEB no hay a dónde compartir un blob que el navegador no generó: `window.print()` con destino
+ * "Guardar como PDF" es el camino, y es el que ya usa el informe.
+ *
+ * @param {string} id      el id del nodo imprimible
+ * @param {string} titulo  título del documento (Android lo usa de asunto)
+ * @param {string} archivo nombre sugerido, sin extensión
+ */
+export async function compartirPdfNodo(id, titulo, archivo) {
+  if (!isNative()) {
+    await imprimirNodo(id, titulo)
+    return
+  }
+  // Igual que en `imprimirNodo`: `PrintManager` renderiza con media `print` pero NO dispara
+  // `beforeprint`, así que el nodo se mueve a mano o el PDF sale en blanco.
+  const restaurar = moverABody(id)
+  try {
+    const { registerPlugin } = await import('@capacitor/core')
+    const Impresion = registerPlugin('Impresion')
+    await Impresion.compartirPdf({ titulo, archivo: archivo || titulo })
+  } catch (e) {
+    console.warn('[imprimir] sin compartirPdf nativo, se cae a imprimir', e)
+    // Se reintenta con el nodo TODAVÍA colgado de `<body>`, y está bien: el `moverABody` de
+    // `imprimirNodo` ve que ya es hijo de body y devuelve un no-op, así que la marca de posición
+    // sigue siendo la nuestra y el `finally` de acá abajo lo devuelve a su lugar una sola vez.
+    await imprimirNodo(id, titulo)
+  } finally {
+    restaurar()
+  }
+}

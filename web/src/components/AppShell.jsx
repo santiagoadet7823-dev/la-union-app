@@ -7,6 +7,7 @@ import { Check, Mapa } from './icons'
 import MiCuenta from '../features/perfil/MiCuenta'
 import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
 import MisPedidosSheet from '../features/pedidos/MisPedidosSheet'
+import MetasSheet from '../features/metas/MetasSheet'
 
 const ROLE_META = {
   superadmin: { label: 'Superadmin', color: 'var(--info)' },
@@ -38,6 +39,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   // frame. Es el mismo gotcha del §7 sobre `Overlay`: lo que anima su salida tiene que seguir
   // montado.
   const [misPedidos, setMisPedidos] = useState(false)
+  const [misMetas, setMisMetas] = useState(false)
   const [toast, setToast] = useState(null)
   const toastRef = useRef(null)
   const showToast = (m) => {
@@ -155,7 +157,26 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5h6M9 5a2 2 0 1 0 4 0M5 7h14v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" /><path d="M9 12h6M9 16h4" /></svg>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mis pedidos</div>
-                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Revisar y anular los de esta semana</div>
+                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Revisar, corregir y anular</div>
+                </div>
+              </div>
+            )}
+            {/* MIS METAS (03/09/2026). Mismo lugar y mismo motivo que los dos de arriba: el bottom
+                nav del vendedor tiene tres pestañas y `PerfilTab` no lo monta nadie, así que el menú
+                de cuenta es la única superficie propia que tiene — y llega desde cualquier pantalla.
+                Sólo `vendedor`: el repartidor no vende, y una meta de venta en su menú sería una
+                pantalla que nunca va a tener un número adentro. */}
+            {rol === 'vendedor' && (
+              <div
+                onClick={() => { setAcctOpen(false); setMisMetas(true) }}
+                className="lu-press"
+                role="button"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: 'var(--shadow)', padding: '13px 15px', marginBottom: 10, cursor: 'pointer' }}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.4" /></svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mis metas</div>
+                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Cómo vas hoy, este mes y este año</div>
                 </div>
               </div>
             )}
@@ -167,6 +188,10 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
       {/* Montada SIEMPRE (con `open`), afuera del menú de cuenta: ver el comentario del estado. */}
       {rol === 'vendedor' && (
         <MisPedidosSheet open={misPedidos} onCerrar={() => setMisPedidos(false)} onToast={showToast} />
+      )}
+
+      {rol === 'vendedor' && (
+        <MetasSheet open={misMetas} onCerrar={() => setMisMetas(false)} onToast={showToast} />
       )}
 
       {toast && (

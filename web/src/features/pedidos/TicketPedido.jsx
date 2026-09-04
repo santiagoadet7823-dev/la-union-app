@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
-import { imprimirNodo, montarImpresion } from '../../services/report/imprimir'
+import { compartirPdfNodo, imprimirNodo, montarImpresion } from '../../services/report/imprimir'
 
 /**
  * EL COMPROBANTE DEL PEDIDO.
@@ -40,6 +40,10 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
   const unidades = lineas.reduce((a, l) => a + l.cantidad, 0)
 
   const fecha = pedido?.created_at ? new Date(pedido.created_at) : null
+  // El título viaja a Android como asunto del envío y como nombre de archivo. Lleva el comercio
+  // porque lo que le llega al comerciante no puede llamarse "Pedido" a secas: en su galería, seis
+  // comprobantes con el mismo nombre son seis archivos que no se distinguen.
+  const titulo = `Pedido ${pedido?.numero ? '#' + pedido.numero : ''}${comercio?.name ? ' · ' + comercio.name : ''}`.trim()
   const dl = (v) => (v == null ? null : Number(v).toFixed(5))
 
   return (
@@ -51,13 +55,25 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
       title={`Pedido ${pedido?.numero ? '#' + pedido.numero : ''}`}
       subtitle={comercio?.name || ''}
       footer={
-        <button
-          onClick={() => imprimirNodo('lu-ticket', `Pedido ${pedido?.numero || ''}`)}
-          className="lu-press lu-no-print"
-          style={sx('width:100%;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14.5px;cursor:pointer;border:none')}
-        >
-          Imprimir o guardar como PDF
-        </button>
+        <div style={sx('display:flex;flex-direction:column;gap:8px;width:100%')}>
+          {/* COMPARTIR va primero y es el botón lleno: desde la reunión del 02/09 es la acción
+              principal del ticket. El vendedor no imprime —no tiene impresora en la calle—, le
+              manda el comprobante al comerciante por WhatsApp. Imprimir queda de segunda. */}
+          <button
+            onClick={() => compartirPdfNodo('lu-ticket', titulo, `pedido-${pedido?.numero || 's-n'}`)}
+            className="lu-press lu-no-print"
+            style={sx('width:100%;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14.5px;cursor:pointer;border:none')}
+          >
+            Compartir el PDF
+          </button>
+          <button
+            onClick={() => imprimirNodo('lu-ticket', titulo)}
+            className="lu-press lu-no-print"
+            style={sx('width:100%;min-height:44px;display:grid;place-items:center;background:transparent;color:var(--text);border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer')}
+          >
+            Imprimir o guardar como PDF
+          </button>
+        </div>
       }
     >
       {/* `lu-imprimible` es lo que la hoja @media print deja visible; el resto de la página se

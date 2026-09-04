@@ -11,7 +11,7 @@ import { propsBusqueda } from '../../../components/form'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
 import { useAltoMedido } from '../../../hooks/useAltoMedido'
-import { useSugeridos } from '../useSugeridos'
+import { useSugeridos, useUltimoPedido } from '../useSugeridos'
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
 // vendedor: ve el color, NUNCA el número. Sin nivel → borde neutro. Ver index.css (--rent-*).
@@ -41,6 +41,8 @@ export default function VisitaCatalogo({ j }) {
   // de este mismo scope. Puesto por encima caería en la zona muerta temporal y reventaría en cada
   // render con un ReferenceError que el build NO detecta.
   const sugeridosIds = useSugeridos(visitC?.id)
+  // 🔴 Debajo del destructuring de `j`, por el mismo motivo que la línea de arriba (regla 51).
+  const ultimoPedido = useUltimoPedido(visitC?.id)
 
   // 🩸 EL ALTO DE LA BARRA DEL PEDIDO SE MIDE (20/08/2026). El renglón de "sin pedir" se apoyaba
   // sobre un `186px` escrito a mano que era el alto estimado de esta barra; la barra cambia de alto
@@ -161,6 +163,51 @@ export default function VisitaCatalogo({ j }) {
           <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
         </div>
       </div>
+
+      {/* 🩸 REPETIR EL ÚLTIMO PEDIDO (03/09/2026, reunión del 02/09). Va ARRIBA de "lo que más
+          lleva" porque resuelve más de una vez: los chips ahorran acordarse de un producto, esto
+          ahorra cargar veinte renglones. En una distribuidora el pedido de un almacén se parece
+          muchísimo al anterior — el vendedor repite y ajusta dos líneas.
+
+          🔑 REPITE QUÉ Y CUÁNTO, NUNCA A CUÁNTO. El precio del pedido viejo está congelado en la
+          línea (es el que se pactó ese día); acá se agregan al carrito como productos, así que el
+          precio lo resuelve `precioPara` contra el catálogo de HOY, con su escalón por volumen. Es
+          la misma regla que rige la edición de un ticket (db/55).
+
+          ⚠️ SUMA sobre lo que ya haya en el carrito en vez de reemplazarlo: si el vendedor ya cargó
+          algo y después toca esto, borrarle lo suyo sería destruir trabajo sin preguntar. Los
+          productos que ya no están en el catálogo se saltean y se dicen — quedarse callado haría
+          que el total no cierre con lo que el comerciante recuerda haber pedido. */}
+      {!!ultimoPedido && (
+        <div style={sx('flex:none;padding:0 14px 10px')}>
+          <button
+            onClick={() => {
+              let sumados = 0
+              let faltantes = 0
+              for (const l of ultimoPedido.lineas) {
+                if (!PRODUCTS.some((p) => p.id === l.id_producto)) { faltantes++; continue }
+                addCart(l.id_producto, l.cantidad)
+                sumados++
+              }
+              showToast(
+                faltantes
+                  ? `${sumados} productos agregados · ${faltantes} ya no están en el catálogo`
+                  : `${sumados} productos del pedido anterior, a precios de hoy`
+              )
+            }}
+            className="lu-press"
+            style={sx('width:100%;display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px dashed var(--primary);border-radius:12px;background:transparent;color:var(--text);cursor:pointer;text-align:left')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>
+            <span style={sx('flex:1;min-width:0')}>
+              <span style={sx('display:block;font-size:12.5px;font-weight:600')}>Repetir el último pedido</span>
+              <span style={sx('display:block;font-size:11px;color:var(--faint);margin-top:1px')}>
+                {ultimoPedido.lineas.length} {ultimoPedido.lineas.length === 1 ? 'producto' : 'productos'} · {fmtPesos(ultimoPedido.monto_total)} · a precios de hoy
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* 🩸 LO QUE MÁS LLEVA ESTE COMERCIO (19/08/2026). El vendedor entra y tiene 529 productos en
           una grilla; lo que ese comercio compra siempre estaba en algún lugar de esa lista y había

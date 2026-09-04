@@ -18,7 +18,7 @@ import { anularPedido, borrarPedido } from './anularPedido'
  * y lo decide la base. Acá no hay una sola condición de permiso que no sea para **no ofrecer** un
  * botón que RLS va a rechazar.
  *
- * props: { detalle: {pedido, lineas} | null, rol, userId, onCerrar, onToast, onRecargar, onTicket }
+ * props: { detalle: {pedido, lineas} | null, rol, userId, onCerrar, onToast, onRecargar, onTicket, onEditar }
  */
 
 /** Fecha + hora corta, en hora local. Compartida por las dos pantallas de pedidos. */
@@ -27,7 +27,7 @@ export function fmtFecha(ts) {
   return `${d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
-export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast, onRecargar, onTicket }) {
+export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast, onRecargar, onTicket, onEditar }) {
   const [motivo, setMotivo] = useState('')
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
   const [trabajando, setTrabajando] = useState(false)
@@ -48,6 +48,12 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
   // un botón que la base va a rechazar en silencio — un DELETE que RLS bloquea afecta cero filas y
   // vuelve con éxito, así que sin esto la pantalla diría "borrado" sobre algo que sigue ahí.
   const puedeBorrar = rol === 'superadmin' && anulado && !sinSubir
+  // 🔑 LA VENTANA DE EDICIÓN (03/09/2026): sólo mientras el pedido sigue Pendiente. Cuando el
+  // repartidor lo pasa a "En camino" se cierra — nadie corrige lo que ya salió a la calle. Acá se
+  // repite la condición de `items_upd`/`items_del` (db/55) SOLO para no ofrecer un botón que la base
+  // va a rechazar en silencio; el cerrojo de verdad está allá.
+  // Un pedido sin subir tampoco: sus líneas todavía no existen en la base para editarlas.
+  const puedeEditar = !!onEditar && !anulado && !sinSubir && pedido?.estado === 'Pendiente'
 
   // Al cambiar de pedido se limpia el formulario. Sin esto, el motivo tipeado para uno quedaría
   // cargado al abrir el siguiente y se anularía el equivocado con el texto del anterior.
@@ -110,6 +116,14 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
       footer={
         pedido && (
           <div style={sx('display:flex;flex-direction:column;gap:9px;width:100%')}>
+            {puedeEditar && (
+              <button
+                onClick={() => onEditar(detalle)}
+                className="lu-press"
+                style={sx('width:100%;min-height:46px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:12px;background:transparent;color:var(--primary);font-size:13.5px;font-weight:600;cursor:pointer')}
+              >Corregir el pedido</button>
+            )}
+
             <button
               onClick={() => onTicket?.(detalle)}
               className="lu-press"

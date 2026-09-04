@@ -4,6 +4,7 @@ import { fmtPesos } from '../../lib/format'
 import { useAuth } from '../../context/AuthContext'
 import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
+import EditarPedidoSheet from './EditarPedidoSheet'
 import { usePedidos, itemsDePedido, vendedoresDe } from './usePedidos'
 import { exportarPedidosTsv } from './exportarPedidos'
 import { Bajar } from '../../components/icons'
@@ -52,6 +53,7 @@ export default function PedidosView({ onToast }) {
   const [verAnulados, setVerAnulados] = useState(true)
   const [detalle, setDetalle] = useState(null)   // { pedido, lineas } — el pedido abierto
   const [ticket, setTicket] = useState(null)     // { pedido, lineas } — el comprobante
+  const [editando, setEditando] = useState(null)  // { pedido, lineas } — el que se está corrigiendo
   const [cargandoDetalle, setCargandoDetalle] = useState(false)
   const [exportando, setExportando] = useState(false)
 
@@ -248,7 +250,22 @@ export default function PedidosView({ onToast }) {
         onToast={onToast}
         onRecargar={recargar}
         onTicket={(d) => { setDetalle(null); setTicket(d) }}
+        onEditar={(d) => { setDetalle(null); setEditando(d) }}
       />
+
+      {/* La MISMA corrección que hace el vendedor. Quién puede lo decide la base: `items_upd` y
+          `items_del` (db/55) van por `ids_a_mi_cargo()`, así que el encargado corrige los pedidos de
+          su gente y el admin los de su empresa, sin una condición de rol escrita acá. */}
+      {editando && (
+        <EditarPedidoSheet
+          pedido={editando.pedido}
+          lineas={editando.lineas}
+          userId={user?.id || null}
+          onCerrar={() => setEditando(null)}
+          onGuardado={recargar}
+          onToast={onToast}
+        />
+      )}
 
       {/* El comprobante, con el MISMO componente que imprime el vendedor al confirmar. Un segundo
           ticket "para gestión" serían dos papeles que dicen cosas distintas del mismo pedido. */}
