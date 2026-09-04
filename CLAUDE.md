@@ -894,12 +894,21 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 > El APK **está compilado, firmado (SHA-256 `b1242f76…`), subido y con `apk_url` apuntando a él**:
 > `releases/download/apk-1.24.0/app-release.apk` (22.502.564 bytes, descarga verificada con 200).
 >
-> ⚠️ **`min_version` sigue en 1.21.0 A PROPÓSITO, y por eso el parque TODAVÍA NO se lo baja.**
-> Subirlo es lo que dispara la reinstalación automática, y cuesta ~22 MB × 9 teléfonos de datos del
-> empleado. Se deja para después de revisar el APK en un equipo. Cuando se decida:
-> `update public.app_config set min_version='1.24.0', updated_at=now();`
-> 🩸 Y al instalarlo por USB va **`adb install -r -i com.launion.app`**: sin el `-i` el equipo no
-> queda como su propio instalador y la actualización siguiente vuelve a necesitar el cable.
+> ✅ **`min_version` SE SUBIÓ a 1.24.0** (decisión explícita del dueño, 03/09). Con eso la
+> reinstalación del APK se dispara sola en los 9 equipos: ~22 MB por teléfono, en datos del empleado.
+> Se planteó el costo y se decidió hacerlo igual, igual que en 1.21.0.
+>
+> 🩸 **Ahora el release se cierra MIRANDO `estado_dispositivo`, no la respuesta del push** — es el
+> precedente de 1.19.0. Los tres números a vigilar por equipo: `app_version` (el bundle que corre),
+> `bundle_aplicado` / `bundle_encolado` (encolado = bajó bien y falta cerrar y abrir la app) y
+> `apk_version`. Baseline del 03/09 antes de publicar: 5 equipos en 1.23.0, 2 en 1.21.0, 3 en 1.20.0
+> y Alejandro mercado clavado en 1.15.1 desde el 18/08 — ése ya venía sin actualizar y no lo causa
+> este release.
+> ⚠️ **La instalación puede quedar esperando el diálogo de Android** en los equipos que no son su
+> propio instalador de registro. `updateNotify.js` no vuelve a bajar el `.apk` antes de 6 h
+> (`APK_REINTENTO_MS`), así que un equipo trabado no quema datos — pero tampoco avanza solo.
+> 🩸 Si se instala por USB va **`adb install -r -i com.launion.app`**: sin el `-i` el equipo no queda
+> como su propio instalador y la actualización siguiente vuelve a necesitar el cable.
 
 Hay varios números que conviven. **1.21.0 sale por los TRES canales: APK + OTA + PWA.** No porque haya cambiado nada nativo — no se tocó un solo `.java`, ni el manifest, ni `capacitor.config.ts` — sino porque tres de sus arreglos viven en `VidrieraTablet.jsx`, y **esa pantalla sólo corre en la tablet de vidriera, que no puede recibir una OTA nunca** (ver el bloque 🔴 de abajo). El APK es el único vehículo que la alcanza, y se instala **por USB**.
 
@@ -951,10 +960,10 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
 | `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.24.0`** ✅ publicado por OTA (03/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ✅ compilado, firmado y subido (03/09) — **falta INSTALARLO** | Versión visible del APK |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ✅ publicado (03/09) — el parque se reinstala solo | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `39` ✅ publicado → el próximo es **40** | Entero incremental de Android |
 | `app_config.bundle_version` + `latest_version` | Supabase | **`1.24.0`** ✅ (verificado contra la base viva el 03/09) | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | **`1.21.0`** ✅ (SIN tocar en 1.24.0 — ver abajo) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `app_config.min_version` + `apk_url` | Supabase | **`1.24.0`** ✅ (subido el 03/09, con la reinstalación automática andando) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la
