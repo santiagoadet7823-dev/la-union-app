@@ -887,15 +887,19 @@ WebView de Android colgaba `getSession()` para siempre ("Cargando…" eterno). N
 > siete métricas de VENTA — km y horas quedan afuera a propósito) y **repetir el último pedido** a
 > precios de hoy. Todo eso es JS y ya está en los teléfonos.
 >
-> 🔴 **Lo que NO llegó por esta vía es "Compartir el PDF" del ticket**, que es código NATIVO
-> (`ImpresionPlugin.compartirPdf` + `android/print/PdfDelWebView.java`). Viaja SÓLO en un APK nuevo.
-> El JS ya publicado lo contempla: en un teléfono con el APK viejo, el botón **cae a "Imprimir o
-> guardar como PDF"**, que es exactamente lo que hacía antes — no rompe, sólo no mejora. Cuando se
-> compile el APK 1.24.0 (versionCode 39) el botón empieza a compartir de una.
+> 🔴 **"Compartir el PDF" del ticket es código NATIVO** (`ImpresionPlugin.compartirPdf` +
+> `android/print/PdfDelWebView.java`) y viaja SÓLO en el APK. El JS ya publicado lo contempla: en un
+> teléfono con el APK viejo el botón **cae a "Imprimir o guardar como PDF"**, que es lo que hacía
+> antes — no rompe, sólo no mejora.
+> El APK **está compilado, firmado (SHA-256 `b1242f76…`), subido y con `apk_url` apuntando a él**:
+> `releases/download/apk-1.24.0/app-release.apk` (22.502.564 bytes, descarga verificada con 200).
 >
-> ⚠️ **`min_version` NO se subió**, y es deliberado: subirlo obliga a los 9 teléfonos a bajar ~22 MB
-> con datos del empleado, y la única razón sería el botón de compartir. Es una decisión del dueño,
-> igual que en 1.21.0 — no se toma sola.
+> ⚠️ **`min_version` sigue en 1.21.0 A PROPÓSITO, y por eso el parque TODAVÍA NO se lo baja.**
+> Subirlo es lo que dispara la reinstalación automática, y cuesta ~22 MB × 9 teléfonos de datos del
+> empleado. Se deja para después de revisar el APK en un equipo. Cuando se decida:
+> `update public.app_config set min_version='1.24.0', updated_at=now();`
+> 🩸 Y al instalarlo por USB va **`adb install -r -i com.launion.app`**: sin el `-i` el equipo no
+> queda como su propio instalador y la actualización siguiente vuelve a necesitar el cable.
 
 Hay varios números que conviven. **1.21.0 sale por los TRES canales: APK + OTA + PWA.** No porque haya cambiado nada nativo — no se tocó un solo `.java`, ni el manifest, ni `capacitor.config.ts` — sino porque tres de sus arreglos viven en `VidrieraTablet.jsx`, y **esa pantalla sólo corre en la tablet de vidriera, que no puede recibir una OTA nunca** (ver el bloque 🔴 de abajo). El APK es el único vehículo que la alcanza, y se instala **por USB**.
 
@@ -947,8 +951,8 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
 | `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.24.0`** ✅ publicado por OTA (03/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ⏳ **SIN COMPILAR NI INSTALAR** (la tabla decía 1.21.0 y la real era 1.22.0) | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `39` ⏳ sin compilar → el próximo es **40** | Entero incremental de Android |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ✅ compilado, firmado y subido (03/09) — **falta INSTALARLO** | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `39` ✅ publicado → el próximo es **40** | Entero incremental de Android |
 | `app_config.bundle_version` + `latest_version` | Supabase | **`1.24.0`** ✅ (verificado contra la base viva el 03/09) | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | **`1.21.0`** ✅ (SIN tocar en 1.24.0 — ver abajo) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
