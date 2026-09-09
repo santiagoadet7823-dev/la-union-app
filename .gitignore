@@ -95,3 +95,8 @@ supabase/.temp/
 
 # 🔴 El catalogo con PRECIOS del cliente. Este repo es PUBLICO.
 catalogo-actual-*.csv
+
+# Playwright MCP: es una herramienta de VERIFICACION de quien programa (abrir la app y
+# mirarla), no una dependencia del proyecto. Se ignora para no imponerle un servidor MCP
+# al que clone. Si el equipo lo quiere compartido, sacar esta linea y commitear .mcp.json.
+.mcp.json
