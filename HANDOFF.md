@@ -1,38 +1,47 @@
 # HANDOFF — DisT-At
 
-> **Actualizado el 29/08/2026 · `APP_VERSION 1.22.0` · APK **1.21.0** (sin cambios nativos) ·
-> `app_config`: bundle+latest en `1.22.0`, `min_version` en `1.21.0`. Publicado el 29/08.** Escrito para retomar el proyecto **en otra
-> máquina y en una sesión nueva, sin memoria previa.** Si estás leyendo esto en la PC nueva:
-> empezá por §2.
+> **Actualizado el 09/09/2026 · `APP_VERSION 1.25.0` · APK **1.24.0** (versionCode 39) ·
+> `app_config`: bundle+latest en `1.25.0`, `min_version` en `1.24.0`.** Escrito para retomar el
+> proyecto **en otra máquina y en una sesión nueva, sin memoria previa.**
 >
-> ✅ **1.22.0 PUBLICADO el 29/08** (OTA + PWA + `app_config` + Edge Function; **sin APK**, no hubo
-> cambios nativos). Se llevó todo lo que estaba pendiente: el arreglo de la cola de escritura, las
-> escalas de precio, Destacados, el envío multi-horario y el refresco del catálogo.
-> ⏳ **Falta sólo el push de aviso**, que lleva la `service_role` key y tiene que correrlo una
-> persona. La OTA se aplica sola igual (regla 48): el push acelera, no habilita.
+> 🟩 **LA MUDANZA DE MÁQUINA YA SE HIZO.** El código vive ahora en **`C:\dev\DisT-At\la-union-app`**,
+> con el entorno completo, el emulador andando y **la firma del APK verificada**. **§2 y §3 quedaron
+> como registro histórico, NO son tareas pendientes.** Si sos una sesión nueva: **empezá por §2-bis**,
+> que cuenta qué se verificó en la máquina nueva y qué falta.
 >
-> Reparto del parque al 28/08 (`estado_dispositivo`): **7 equipos en 1.21.0** con latido de hoy ·
-> 3 en 1.20.0 sin reportar desde el 22/08 · 5 filas viejas o sin latido. Publicar no es entregar.
+> Último release publicado: `b6d500c` (1.25.0). Encima hay **un commit local sin pushear** —
+> éste mismo, que pone el documento al día y versiona `db/58`.
 >
-> 🔴 **Si sos una sesión nueva: empezá por las secciones que están justo abajo de §1**, en este
-> orden — ⏱️ envío por hora + instalador (31/08, lo más reciente) · 🔑 tokens y paquete del cliente ·
-> 🟢 release 1.22.0 · 🔵 el hueco de Luis Mendoza · 🟠 qué entró en 1.22.0.
-> **No queda trabajo sin publicar en el bundle** (`db/53` está aplicada y no necesita front nuevo).
+> ✅ **El keystore apareció y está a salvo** (`web/android/app/launion.keystore`, más
+> `web/android/keystore.properties` con las cuatro claves). Estaba sólo en la copia física de la PC
+> llamada **Gaston**, que es donde se compiló todo hasta 1.25.0 — no viajaba por git ni por OneDrive.
+> Eso cierra el pendiente #1 de §4, que era el único punto de falla irrecuperable del proyecto.
 >
-> **Lo que está esperando NO es técnico:** el envío automático de precios está listo de punta a punta
-> y el token ya está emitido, pero no puede arrancar hasta que el cliente conteste cuatro preguntas
-> (§ 🔑, al final). La primera se lleva puestas 355 fotos.
+> **Cuatro archivos quedaron sin commitear, cada uno esperando una decisión tuya:**
+> `DOCUMENTACION_FUNCIONAL.md` (regenerado sobre 1.25.0) · `MAPA_FUNCIONAL.html` (nuevo, el mapa
+> funcional navegable) · y **`capacitor.settings.gradle` + `capacitor.build.gradle`**, que `cap sync`
+> reescribió porque el repo los tiene commiteados con rutas de **Deno** — ver §2-bis, es el que puede
+> morder.
+>
+> 🔴 **Lo que una sesión nueva NO puede deducir del repo, en orden de importancia:**
+> 1. **`canal-pedidos/` existe y no está en ningún git** — es el trabajo más reciente (04-05/09) y
+>    vive sólo como archivos sueltos en la raíz del workspace. Ver §2-quater.
+> 2. **`db/58_contacto_cliente.sql` no está aplicada a la base viva.** Es la migración que sostiene
+>    ese canal.
+> 3. El parque quedó repartido: **6 de 12 equipos por debajo de `min_version`** a 5 días de haberla
+>    subido. Publicar no es entregar. Ver §2-quinquies.
 >
 > Complementarios: [CLAUDE.md](CLAUDE.md) (reglas operativas — leerlo entero antes de tocar código) ·
 > [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) (arquitectura y deuda técnica) ·
-> [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) (qué es cada archivo de la carpeta).
+> [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) (qué es cada archivo de la carpeta) ·
+> [DOCUMENTACION_FUNCIONAL.md](DOCUMENTACION_FUNCIONAL.md) (qué hace la app, al día sobre 1.25.0).
 
 > 🟣 **17/08/2026 — SE FRENAN LAS FEATURES.** De acá en adelante: deuda técnica y sacarle la marca
 > del cliente al producto. **Empezá por la sección del 17/08**, que está abajo de §1 — el cuerpo de
 > este documento todavía habla como si el repo fuera de un solo cliente y viviera en la raíz.
 >
-> ⚠️ **El SDK de Flutter quedó instalado en `C:\src\flutter`** (3.47.0 stable) de la evaluación que
-> se descartó el mismo día. **No lo usa nada**: se puede borrar y recuperar ~3 GB.
+> ⚠️ El SDK de Flutter de la evaluación descartada estaba en `C:\src\flutter` **en la PC vieja**. En
+> la máquina nueva no se instaló: no hay nada que borrar.
 
 ---
 
@@ -44,6 +53,254 @@ cobra por abono P2P — **no hay pasarela de pago en la app**; la palanca es `em
 ojo, **no gatea nada**: se escribe y se muestra, pero ninguna policy la consulta).
 
 Todo en español: código, comentarios, UI y commits.
+
+---
+
+## 🟩 2-bis. LA MUDANZA DE MÁQUINA — ejecutada el 08-09/09/2026
+
+**Empezá acá si sos una sesión nueva.** §2 y §3 describen esta mudanza *en futuro*; esto es lo que
+realmente pasó. La PC vieja se llamaba **Gaston** y es donde se compiló todo hasta 1.25.0.
+
+### Dónde está el código ahora
+
+`C:\dev\DisT-At\la-union-app` — **fuera de OneDrive, a propósito**. La raíz del workspace
+(`C:\dev\DisT-At\`) espeja la vieja `propuesta LA UNION/`: el repo git existe **sólo** dentro de
+`la-union-app/`, todo lo de afuera viaja por copia física.
+
+⚠️ La carpeta vieja sigue existiendo en `C:\Users\santi\OneDrive\Desktop\DisT-At`. **No trabajar
+ahí.**
+
+### Lo que se verificó, y lo que costó
+
+| | Estado |
+|---|---|
+| Repo clonado, `main` = `b6d500c`, árbol limpio | ✅ |
+| git · node 24 · npm · gh · python | ✅ |
+| `npm install` — 553 paquetes, `patch-package` aplicó `@capacitor-community/background-geolocation@1.2.26 ✔` | ✅ |
+| `ANDROID_HOME` / `ANDROID_SDK_ROOT` / `JAVA_HOME` + PATH, persistidos a nivel usuario | ✅ |
+| Licencias del SDK aceptadas · 5 paquetes instalados · AVD `launion` (pixel_5, 1080×2340) | ✅ |
+| **Firma con el keystore recuperado** (`assembleRelease` con `CAP_BUILD=1`) | ✅ **verificada el 09/09** — ver abajo |
+| `gh auth login` | ⏳ lo tiene que hacer una persona |
+| `docker run hello-world` | ⏳ desbloqueado (WSL2 instalado), sin correr |
+
+**🩸 El emulador: el mensaje de error mentía.** Fallaba con *"Android Emulator hypervisor driver is
+not installed"*, que empuja a instalar **AEHD** — y AEHD **pelea con WSL2 y Docker**, así que habría
+roto el resto del entorno. La causa real era otra: `HypervisorPresent = False`, porque
+`bcdedit`/`hypervisorlaunchtype` nunca se había seteado. Se arregla con una línea **elevada**:
+
+```powershell
+bcdedit /set hypervisorlaunchtype auto
+wsl.exe --install --no-distribution     # habilita la plataforma del hipervisor
+# y reiniciar
+```
+
+Después del reboot: `WHPX(10.0.26200) is installed and usable`, WSL 2.7.13. **El AVD bootea en 95 s
+— la PC vieja nunca lo pudo levantar.** Si el emulador vuelve a fallar, mirar
+`HypervisorPresent` **antes** de creerle al mensaje.
+
+⚠️ Ojo con `-accel whpx`: no existe. Los valores válidos son `on` / `off` / `auto`.
+
+### La APK 1.24.0 corriendo, y la OTA verificándose sola
+
+Se bajó `apk-1.24.0/app-release.apk` (22.502.564 bytes, **coincide exacto** con lo anotado en
+CLAUDE.md §6), se instaló y se abrió: **versionName 1.24.0, versionCode 39, sin pantalla blanca.**
+
+Y de yapa se verificó en vivo algo que nunca se había podido observar: al minuto apareció el cartel
+**"Actualización lista — Ya está descargada. Se aplica sola al cerrar y volver a abrir la app"** con
+el botón "Aplicar ahora". O sea que la 1.24.0 consultó `app_config`, encontró la 1.25.0, **se la
+bajó sola** y la ofreció. **La cadena de la regla 48 + el `UpdatePrompt` de 1.20.0 funcionan de
+punta a punta contra el backend real** — que es justamente lo que en 1.19.0 se publicó y no recibió
+nadie.
+
+El canal `actualizaciones` está declarado con `mImportance=3` (regla 44). En el emulador la app
+figura con `importance=NONE` porque falta conceder `POST_NOTIFICATIONS`: normal en un equipo virgen
+con Android 13+.
+
+### 🩸 El repo tiene commiteadas rutas de **Deno**, y en npm no existen
+
+`npx cap sync android` dejó modificados dos archivos **versionados**:
+`web/android/capacitor.settings.gradle` y `web/android/app/capacitor.build.gradle`. No es ruido de
+CRLF — el contenido commiteado dice:
+
+```gradle
+project(':capacitor-android').projectDir =
+  new File('../node_modules/.deno/@capacitor+android@6.2.1/node_modules/@capacitor/android/capacitor')
+```
+
+Ese layout `node_modules/.deno/<pkg>@<version>/node_modules/…` lo genera **Deno**, no npm. O sea que
+en la PC Gaston los paquetes se instalaban con Deno, y **esas rutas quedaron congeladas en el repo**.
+Con un `npm install` normal **esas carpetas no existen**, así que Gradle no encuentra ningún plugin
+hasta que alguien corra `cap sync` y las reescriba a `../node_modules/@capacitor/android/capacitor`.
+
+Los dos archivos dicen en la primera línea *"DO NOT EDIT THIS FILE! IT IS GENERATED"*, y aun así
+están versionados con el layout de una sola máquina.
+
+**Decisión pendiente** (se dejó **sin commitear** a propósito, para que la tome una persona):
+commitear la versión npm, o sacar los dos archivos del control de versiones y que `cap sync` los
+genere siempre. **Mientras no se resuelva, todo clon nuevo necesita un `cap sync` antes del primer
+build** — y el síntoma es un error de Gradle que no menciona npm ni Deno por ningún lado.
+
+### 🔑 El keystore: dónde estaba y qué falta
+
+Estaba **sólo** en la copia física de la PC Gaston, en un zip. No está en git (`.gitignore:56-57`)
+ni había llegado por OneDrive. Ya está en su lugar en `C:\dev`, verificado por md5.
+
+**Y la máquina nueva firma** — que es el paso 3 de §2.1, el que da la mudanza por terminada.
+`assembleRelease` con `CAP_BUILD=1`: **BUILD SUCCESSFUL**, 416 tareas, 7m 2s. El APK sale con
+
+```
+package: com.launion.app  versionCode=39  versionName=1.24.0  compileSdk=34
+Signer #1 SHA-256: b1242f7692c8454de109194f9aed7bc852d08c7d8e02a1b1a7778b123641d602
+```
+
+**El SHA-256 coincide con el `b1242f76…` que quedó anotado en el commit `d65f3b7`** cuando se
+publicó la 1.24.0 desde la PC vieja. O sea: es la misma llave, y cualquier APK compilado acá se
+instala como actualización sobre las que están hoy en la calle. Esa era la pregunta que importaba.
+
+**Todavía falta lo que §2.1 pide y no depende de una sesión:** pasar las tres credenciales de
+`web/android/keystore.properties` a un **gestor de contraseñas**, y dejar el `.keystore` en un
+segundo lugar privado. Hoy sigue habiendo **una sola copia operativa**.
+
+### ⚠️ Un token expuesto
+
+`scripts/cliente/token.txt` (36 bytes, texto plano) viajó dentro del zip y estuvo en un Escritorio
+sincronizado con OneDrive personal. **No se copió a `C:\dev` a propósito.** Si sigue vigente,
+rotarlo.
+
+---
+
+## 🟦 2-ter. RELEASES 1.24.0 y 1.25.0 — lo que este documento se perdió
+
+Estas dos versiones se publicaron **después** de la última actualización del handoff (`f3c4fd7`,
+01/09). Reconstruido desde los cuerpos de los commits `95e1a17..b6d500c`.
+
+### 1.24.0 — publicada el 03/09 (`d805ab8`, `d65f3b7`, `e9cad0f`)
+
+Lo pedido por el dueño y un vendedor en la reunión del 02/09. **Es la primera APK nueva desde la
+1.21.0** (versionCode 39): compartir el ticket en PDF es nativo y no viaja por OTA.
+
+- **Editar un pedido pendiente** (`db/55` + `features/pedidos/editarPedido.js`). El precio de lo que
+  ya estaba no se puede mover, y no por una condición que alguien pueda olvidarse de escribir:
+  `precio_unitario` ya está copiado en la línea desde que se tomó el pedido, y la edición manda
+  **sólo `cantidad`**. Cada corrección deja lat/lng, hora y firma en `pedido_ediciones`.
+- **Compartir el ticket en PDF** — `compartirPdf` escribe el archivo y abre la hoja de compartir. Lo
+  renderiza **el mismo WebView**, así que no hay una segunda maquetación que pueda divergir (el
+  motivo por el que se descartó jsPDF). ⚠️ `PdfDelWebView.java` está en el paquete `android.print` y
+  **no se puede mover**: los callbacks del `PrintDocumentAdapter` tienen constructor
+  package-private.
+- **Mis Metas** (`db/56`) y **repetir el pedido anterior**.
+
+**🩸 Los dos casi-bugs, que valen más que la lista de arriba:**
+
+1. **La policy obvia rompía la entrega parcial.** *"Editar líneas sólo si el pedido está
+   Pendiente"* prohíbe justo el estado en el que `guardarEntregado` escribe `cantidad_entregada`. Y
+   acá está el filo: **un UPDATE que RLS rechaza NO da error** — afecta cero filas y vuelve con
+   éxito. El repartidor habría cerrado entregas delante del cliente que no guardaban nada.
+   `items_upd` terminó con tres ramas: edición (Pendiente), entrega (repartidor asignado) y gestión.
+2. **Acotar también quita.** La primera versión le sacaba al admin/encargado la corrección de un
+   pedido ya entregado, que la policy vieja sí permitía. Repuesto.
+
+**`min_version` a 1.24.0** (`e9cad0f`) fue **decisión explícita del dueño** tras ver el costo:
+~22 MB × 9 teléfonos en datos del empleado. Con eso el parque se reinstala solo.
+
+### 1.25.0 — publicada el 04/09 (`b6d500c`)
+
+Cuatro correcciones sobre 1.24.0, encontradas al probarla.
+
+- **El catálogo de verdad en la edición** (el grueso). La pantalla de editar un pedido tenía un
+  buscador propio: funcionaba, y estaba mal, porque le sacaba al vendedor la forma en que carga un
+  pedido todos los días. Sin `CantidadInput` no podía tipear 24 (eran 24 toques) y sobre todo **no
+  veía las escalas de precio por volumen** — la función que hace que el comerciante se lleve más. La
+  grilla vivía entera dentro de `VisitaCatalogo` sin un solo subcomponente; por eso la pantalla
+  nueva nació con una copia pobre. Se extrajo a `components/GrillaCatalogo` y ahora las dos son **la
+  misma** (regla 31). De paso, la tarjeta imprimía `p.price` crudo: con escalones mostraba el precio
+  de lista mientras el carrito cobraba el del escalón (**regla 52**).
+- **La corrección se ofrece donde está la persona.** El único camino eran cuatro toques (menú →
+  Mis pedidos → abrir → Corregir), justo parado frente al comerciante. Ahora el check-in ofrece
+  "ticket nuevo" o "corregir el #N", y sólo cuando hay algo que decidir.
+  🩸 **Y el pill "Visitado" de `InicioTab` era un `div` inerte**: una vez visitado, no había forma
+  de volver a entrar al comercio **en toda la jornada**. Volvió a ser botón.
+- **El ticket dice quién lo emite.** `TenantContext` consultaba `empresas` **sólo si el usuario era
+  superadmin**, así que para un vendedor `nombreActiva` era `null` — el dato nunca estuvo en el
+  teléfono. La policy `empresas_sel` ya permitía `id = mi_empresa()`, sin migración.
+  🩸 Y la leyenda "no es una factura" llevaba `lu-no-print`: **no salía en el PDF**. Daba igual
+  cuando el ticket sólo se miraba en pantalla; ahora se le manda al comerciante y es la única línea
+  dirigida a quien lo recibe.
+- **Mi Tablero** (`db/57`). Las tres RPC verifican `ids_a_mi_cargo()` adentro y **rechazan con
+  excepción** —no devuelven filas vacías— si se les pide otra persona.
+
+⚠️ **Todo el tablero se ve vacío**: hay 12 pedidos en toda la base. Cada bloque dice por qué, nunca
+un cero pelado.
+
+---
+
+## 🟧 2-quater. `canal-pedidos/` — LA LÍNEA DE TRABAJO QUE NO ESTÁ EN NINGÚN GIT
+
+**Éste es el hueco más grave de este documento**, y por eso está arriba. Hasta hoy tenía **cero
+menciones** en 3.200 líneas, aunque es el trabajo **más reciente** (04-05/09/2026).
+
+`C:\dev\DisT-At\canal-pedidos\` — un canal para que el comerciante haga pedidos **por WhatsApp**.
+Contiene `docker-compose.chatwoot.yml`, `docker-compose.sandbox.yml`, `nginx/`, `supabase/`,
+`scripts/`, `SETUP.md` y `.env.chatwoot`.
+
+🔴 **No tiene `.git`. No es un submódulo. No está ignorado por nadie: simplemente no está
+versionado.** Existe como archivos sueltos en un solo disco — exactamente el mismo modo de falla que
+casi cuesta el keystore. **Decidir si se versiona es un pendiente real, no una prolijidad.**
+
+Lo acompañan, en la raíz del workspace: `PROPUESTA_Canal_Pedidos_WhatsApp.pdf` y
+`propuesta-canal-pedidos.html` (04/09).
+
+### Su migración está escrita y sin aplicar
+
+**`db/58_contacto_cliente.sql`** (141 líneas, fechada 04/09) agrega `telefono` a `clientes` con una
+columna canónica `telefono_wa_norm`, espejando el `codigo_norm` de `db/48` — el número normalizado
+es la única forma de atar un WhatsApp entrante a un cliente.
+
+**Estado: no está aplicada a la base viva, y hasta hoy no estaba en ningún commit.** Se rescató de
+la copia física. Sin ella el canal no tiene de dónde agarrarse.
+
+---
+
+## 🟨 2-quinquies. AUDITORÍA DEL 08/09 — medido contra el código y la base viva
+
+### 🔴 Una pantalla que no puede funcionar
+
+**`FaltanteTab.jsx:18`** — `const [faltVacio] = useState(true)`, **sin setter**. La pantalla está
+colgada del menú de gestión y es alcanzable, pero la bandera nunca puede cambiar: **no puede mostrar
+contenido nunca.** No es código muerto (se llega), es una pantalla viva que miente.
+
+### Código muerto: ~850 líneas
+
+`AdminView` (150) · `ReplayJornada` (226) · `MapaOperativo` (145) · `RecorridosView` (140) ·
+`RuteoTab` (112) · `PerfilTab` (77). Cruza con el pendiente #12 de §4, que ya proponía rescatar
+`ReplayJornada` y borrar el resto.
+
+### El parque — publicar no es entregar
+
+**6 de 12 equipos por debajo de `min_version`** a 5 días de haberla subido a 1.24.0. **Nelson y
+Gustavo** sin reportar desde el 21-22/08. **Luis Mendoza** con un `bundle_encolado` 1.22.0 huérfano
+y la 1.23.0 ya aplicada.
+
+### Lo que mejoró y el documento no registraba
+
+- **Cartera destrabada: 662 clientes ubicados / 38 con vendedor** — el cuerpo viejo dice 18 / 3.
+- **Cero categorías numéricas**: la guarda de la regla 59 está aguantando. 316 productos sin
+  categoría, por diseño.
+- **La retención real es de 45 días** (`db/42`), no 7 como dice el cuerpo viejo.
+
+### La base al 08/09
+
+24 tablas, **todas con RLS**. `posiciones` 511.194 (131.456 en 7 días) · `clientes` 2.016 ·
+`productos` 617 (547 vigentes) · `pedidos` 12 · `alertas_equipo` 799 (8 abiertas).
+
+### ⚠️ Dos riesgos de dependencias
+
+1. **`@capacitor-community/background-geolocation` está declarado `^1.2.0`**, pero el patch escrito
+   a mano apunta a **1.2.26**. El caret deja entrar una minor que el patch no cubre, y `patch-package`
+   falla o aplica torcido **en una instalación limpia** — que es precisamente el escenario de una
+   máquina nueva. Fijar la versión exacta.
+2. El proyecto está en **Capacitor 6 + React 19** mientras la colección oficial de plugins ya va por
+   Capacitor 7.
 
 ---
 
@@ -1930,7 +2187,18 @@ web + celular; resuelve el caso del dueño entrando por PWA desde su iPhone).
 
 ---
 
-## 2. 🔴 ANTES de mudar la carpeta
+## 2. ~~🔴 ANTES de mudar la carpeta~~ — REGISTRO HISTÓRICO
+
+> 🟩 **La mudanza se ejecutó el 08-09/09/2026. Esta sección ya NO es una lista de tareas** — se
+> conserva porque explica *por qué* cada archivo importa, y ese razonamiento sigue valiendo para la
+> próxima máquina. **Lo que efectivamente pasó está en §2-bis.**
+>
+> ⚠️ Las rutas de acá abajo son **pre-monorepo**: donde dice `la-union-app/android/…` hoy hay que
+> leer `la-union-app/web/android/…` (el cliente React se movió bajo `web/` el 17/08/2026).
+>
+> Saldo: el keystore **apareció** (estaba sólo en la copia física de la PC Gaston) y la máquina
+> nueva **firma**. Lo único que quedó abierto de §2.1 es el punto 1 —las contraseñas a un gestor— y
+> el punto 2 —una segunda copia—, que los tiene que hacer una persona.
 
 ### 2.1 El keystore — hacer esto primero, hoy
 
@@ -1977,8 +2245,26 @@ todo `db/`, todo `supabase/functions/`, todo `web/src/` y los `.md` de documenta
 Comando para chequear antes de copiar:
 
 ```bash
-ls -la la-union-app/.env.local la-union-app/android/keystore.properties la-union-app/android/app/launion.keystore
+# Rutas de HOY (post-monorepo). Los dos últimos son los irrecuperables.
+ls -la la-union-app/web/.env.local \
+       la-union-app/web/android/keystore.properties \
+       la-union-app/web/android/app/launion.keystore
 ```
+
+> 🩸 **Lección del 09/09, que este método no habría atrapado.** El chequeo de arriba mira **la copia
+> destino**, y por eso no sirvió: la carpeta de OneDrive que se usó para mudar **nunca tuvo el
+> keystore** — quedó sólo en la copia física de la PC Gaston, que llegó cinco días después en un zip.
+> El proyecto estuvo ese tiempo a una falla de disco de perder el parque entero.
+>
+> **La forma que sí funciona es comparar, no copiar**, y hacerlo ignorando finales de línea:
+>
+> ```bash
+> diff -rq --strip-trailing-cr -x node_modules -x .git -x dist -x build "$ORIGEN" "$DESTINO"
+> ```
+>
+> Sin `--strip-trailing-cr`, el diff entre dos copias del **mismo commit** marcó **259 archivos
+> distintos**; con la bandera quedó **1**. Esos 258 fantasmas son CRLF contra LF y esconden lo que de
+> verdad falta.
 
 ### 2.3 Lo que NO hace falta copiar (~645 MB)
 
@@ -1989,6 +2275,31 @@ ls -la la-union-app/.env.local la-union-app/android/keystore.properties la-union
 ---
 
 ## 3. Entorno de trabajo — qué instalar en la PC nueva
+
+> 🟩 **Ejecutado el 08-09/09/2026** — ver §2-bis para lo que quedó instalado y verificado.
+>
+> 🩸 **EL JBR DE ANDROID STUDIO YA NO SIRVE PARA COMPILAR. Leer esto antes de tocar Gradle.**
+> La tabla de abajo dice que Android Studio "trae el JBR" y que con eso alcanza. **Dejó de ser
+> cierto**: el Android Studio actual trae **JDK 25**, y el wrapper del proyecto es **Gradle 8.2.1**,
+> que soporta hasta Java 19. `assembleRelease` muere con un mensaje que no menciona Java por ningún
+> lado:
+>
+> ```
+> BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_'
+> Unsupported class file major version 69          ← 69 = Java 25
+> ```
+>
+> **Solución adoptada (09/09): instalar un JDK 17 al lado y apuntarle `JAVA_HOME` sólo para
+> compilar.** Se eligió eso antes que subir el wrapper de Gradle porque tocar la toolchain de build
+> es un cambio con riesgo propio y no era el problema que había que resolver ese día.
+>
+> ```powershell
+> winget install --id EclipseAdoptium.Temurin.17.JDK --scope machine
+> ```
+>
+> ⚠️ `JAVA_HOME` a nivel usuario sigue apuntando al JBR de Android Studio (lo necesita el IDE). Para
+> compilar, exportar el 17 en la sesión. **Alternativa a evaluar cuando haya aire:** subir el wrapper
+> a un Gradle que soporte JDK 25 y sacarse el JDK doble de encima.
 
 ### 3.1 Toolchain (versiones medidas en la máquina actual)
 
@@ -2285,12 +2596,12 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 | **N6** | 🟡 **Emitir el token de precios y hacer la primera carga a mano** | El pasaje a unidad **reemplaza el catálogo entero**: es demasiado grande para un endpoint sin nadie mirando, y el freno del 20 % lo va a rechazar a propósito | Primero un archivo de prueba de 20 filas **sin** tildar "lista completa", revisar en la app, y recién después la lista entera desde la pantalla leyendo el conteo de bajas |
 | **0** | ⏳ **MEDIR 1.13.0 — lo primero de la sesión del martes 11/08** | El arreglo del **ancla** es nativo y **no se pudo probar**: el emulador no tiene GPS real ni Doze. Un arreglo sin medir no está confirmado. ⚠️ **La jornada del 10/08 no sirve: el APK se compiló ese día 13:08 y llegó a la tarde, así que es PRE-fix** | El **% de km falso** (trinquete parado: hops ≥ 9 m con neto < 40 m en ±6 puntos) tiene que bajar en los 5 con `apk_version=1.13.0` y quedarse igual en **Gabriel tevez**, que es el control porque no lo recibió. Tabla de línea de base y la advertencia sobre el criterio viejo, en §1. **Si no baja en ninguno, volver sobre `UploaderGpsService.java`** |
 | **0-bis** | ⏳ **Mandar el push de aviso de 1.13.0** | Los tres canales están publicados pero **nadie avisó a los teléfonos**. Sin el push, los que no se actualizan solos no se enteran | El `net.http_post` a `push-actualizacion` de `CLAUDE.md §3`, con `timeout_milliseconds := 60000`. Lo tiene que correr una persona: lleva la `service_role` key |
-| **0-ter** | 🔴 **Terminar de actualizar 2 teléfonos** | **Eduardo ruiz** nunca se conectó (parece que no le entregaron el equipo) y **Gabriel tevez** no tiene adb remoto | Eduardo: `adb install -r -i com.launion.app` por Tailscale cuando aparezca. Gabriel: por cable cuando venga — y aprovechar para dejarle `adb tcpip 5555`, así deja de depender de una visita. ⚠️ **El `-i` no es opcional**: sin él el equipo no queda como su propio instalador y la próxima tampoco es silenciosa |
+| **0-ter** | 🔴 **Terminar de actualizar 2 teléfonos** | **Eduardo ruiz** nunca se conectó (parece que no le entregaron el equipo) y **Gabriel tevez** no tiene adb remoto | Eduardo: `adb install -r -i com.launion.app` por Tailscale cuando aparezca. Gabriel: por cable cuando venga — y aprovechar para dejarle `adb tcpip 5555`, así deja de depender de una visita. ⚠️ **El `-i` no es opcional**: sin él el equipo no queda como su propio instalador y la próxima tampoco es silenciosa. 🩸 **Y no alcanza con ponerlo una vez — corregido el 09/09**: ver la nota justo debajo de esta tabla |
 | **0-cuatro** | 🟠 **Alejandro mercado y Zura: APK puesto, app sin abrir** | Tienen 1.13.0 instalado pero el latido sigue viejo. **`estado_dispositivo` lo escribe el JS**, que solo corre con la app abierta — el dashboard los muestra en 1.11.0 aunque el nativo esté actualizado | Abrirles la app por Tailscale (`adb shell monkey -p com.launion.app -c android.intent.category.LAUNCHER 1`) o esperar a que la abran ellos |
 | **A1** | 🔴 **Cuatro teléfonos con el GNSS muerto — es hardware, no código** ([AUDITORIA_GPS_2026-08.md](AUDITORIA_GPS_2026-08.md) §3 H2) | **Zura, Alejandro mercado y Gabriel tevez no produjeron UN SOLO fix de ≤ 5 m** en los 8 días de retención: miles de puntos, cero. Y **Nelson rojas se degradó**: el 07/08 tenía 82,7 % de fixes sub-5 m y mejor fix de 1,4 m; el 11 y 12/08 tiene **0,0 % y su mejor fix del día entero es 16 m**. Mismo aparato, mismo software. El control que cierra el argumento es **Luis Mendoza, que se recuperó solo** (1,1 % el 10/08 → 55,6 % el 12/08) sin que nadie tocara nada. 🩸 **El discriminador es el MEJOR fix del día, no la mediana**: un techo de precisión filtra los fixes malos pero no puede empeorar el mínimo, así que es inmune al cambio de `ACCURACY_CAPTURA_MAX_M`. Mientras esto siga, **ningún umbral arregla nada**: es lo que dispara el borrado del snap y lo que llena el trazo de ruido | Los cuatro equipos en la mano: ubicación en "alta precisión" (`location_mode=3`), prueba a cielo abierto y `dumpsys location` para ver si el GNSS entrega. Si no engancha, **cambiar el equipo** |
 | **A2** | 🔴 **El latido lo escribe el JS, y por eso el que necesita el arreglo no lo puede bajar** (§3 H4) | `estado_dispositivo` sale del WebView y las posiciones del servicio nativo: son dos caminos independientes. **Nelson figura sin latido desde el 11/08 00:51 y subió 1.619 posiciones el 12/08.** El panel dice que no reporta cuando sí reporta, y los avisos al supervisor heredan la mentira. 🩸 **Y el corolario es peor: el auto-updater de OTA también es JS**, así que un WebView congelado tampoco se actualiza — por eso Nelson quedó en 1.13.0 y Alejandro en 1.13.1 mientras el resto llegó a 1.13.8. *Los equipos que más necesitan el arreglo son estructuralmente los que no lo pueden recibir* | **OTA**: que "reportando" salga de la posición más nueva y no del latido — `ingest-posiciones` ya recibe `tel{}` y estampa `telemetria_ts`. **APK**: que el watchdog nativo dispare la descarga de la OTA, sin depender del WebView |
 | **A3** | 🟠 **La telemetría de descartes cuenta dos veces** (§3 H5) | En `UploaderGpsService.java:749` el fix retenido suma `cDescMovimiento++`, y en `:759-762` **ese mismo fix** vuelve a sumar `cGuardados++` al encolarse. La suma de destinos supera `fix_total` en **todos** los equipos (Agustin +592, Javier +138, Orlando +103). O sea que **`fix_desc_movimiento` no significa "descartados" sino "diferidos"**, y todo porcentaje de descarte por movimiento citado en esta bitácora está inflado. Mientras siga así, la invariante "cada fix tiene destino conocido" **no puede cerrar por definición** | **APK**: no sumar `cDescMovimiento` al retener, o descontarlo al encolar. Recién después se puede verificar `fix_total = guardados + descartes` |
-| 1 | **Respaldar el keystore** (§2.1) | Punto único de falla, y se está por mudar de disco | Contraseñas a un gestor + `.keystore` en 2 lugares |
+| 1 | 🟡 **Respaldar el keystore** (§2.1) — **a medias el 09/09** | El archivo **apareció** en la copia física de la PC Gaston y ya está en `C:\dev` (md5 verificado, y la máquina nueva **firma**: ver §2-bis). Pero sigue habiendo **una sola copia operativa** | Falta lo que no puedo hacer yo: las tres credenciales de `web/android/keystore.properties` a un **gestor de contraseñas**, y el `.keystore` en un **segundo** lugar privado |
 | 2 | **Cerrar el circuito de recuperación de contraseña** | Está **roto en producción**: el botón manda el mail y no hay pantalla donde poner la nueva. Ver §5 | Vista nueva + handler de `PASSWORD_RECOVERY` |
 | 3 | ✅ **HECHO el 27/08 (`db/48`)** — `ingesta_tokens` versionada, con `proposito` (`gps` / `precios`) y único `(id_usuario, proposito)`. `mi_token_ingesta` pasó a tomar un parámetro con default, así el `rpc('mi_token_ingesta')` sin argumentos del uploader nativo sigue andando sin APK nuevo | | |
 | 4 | **Unificar la ventana de rastreo**, hoy implementada 3 veces | `dentroDeHorario()` (JS), `VentanaRastreo.dentro()` (Java) y `en_ventana` (SQL). Tocar una sin las otras hace que **los avisos al supervisor mientan en silencio** | Una sola fuente — el SQL es el candidato: se verifica con un `select` |
@@ -2303,6 +2614,24 @@ secciones está en `~/.claude/plans/1-el-rol-de-smooth-trinket.md`.
 | 6-bis | 🔴 **Laboratorio de Headwind ANTES de gastar un peso** | Se eligió Headwind sin haber visto el panel funcionando. Tres cosas están **sin verificar** y una de ellas (¿bloquea el force-stop?) es la única capacidad que justifica todo el aparato de Device Owner | WSL2 + Ubuntu 22.04 contra un teléfono viejo. **Nunca contra un A07.** Ver §7.9, Fase 0 |
 | 7 | **Registrar marca/modelo/API level en `estado_dispositivo`** | Es la precondición de toda decisión por dispositivo. Hoy se mide el **síntoma** del OEM agresivo (`fgs_bloqueado`, `bateria_exenta`, `gps_silencio_max_ms`) y **nunca la identidad**: no se puede contestar con un `select` qué teléfonos hay, ni cruzar los síntomas contra un modelo | Parseo del user-agent en `useEstadoDispositivo.js` + una migración nueva (⚠️ `db/31` y `db/32` YA están usadas — la próxima es `db/33`). **Sale por OTA, sin APK.** Ver §7.10 #1 |
 | 8 | **Actualización silenciosa: `PackageInstaller` + `UPDATE_PACKAGES_WITHOUT_USER_ACTION`** | Hoy actualizar cuesta 3-4 toques del vendedor (6-7 la primera vez). **Decidido**, va en el próximo APK — pero ⚠️ **si Headwind pasa la Fase 0, esto queda redundante para los A07**: decidir #6-bis primero para no escribirlo al pedo | Reemplazar `lanzarInstalador` en `ApkUpdaterPlugin.java:121-130`. Ver §7.4 |
+
+> 🩸 **CORRECCIÓN DEL 09/09 — el `-i` no prende en la primera instalación.** Medido en el emulador,
+> el mismo comando corrido dos veces seguidas:
+>
+> | | Comando | `installerPackageName` resultante |
+> |---|---|---|
+> | Instalación **inicial** | `adb install -r -i com.launion.app` | **`null`** |
+> | **Re**instalación | el mismo comando | `com.launion.app` |
+>
+> Android no puede atribuirle la instalación a un paquete que **todavía no existe** en el equipo, así
+> que descarta el `-i` en silencio. Este documento y CLAUDE.md §6 describían bien el síntoma
+> (*"después de `adb install -r`, `pm dump` seguía diciendo null"*) pero concluían que alcanzaba con
+> agregar la bandera. **No alcanza.**
+>
+> **Consecuencia para el parque nuevo (Samsung A07):** en un teléfono que recibe la APK **por primera
+> vez** por USB hay que correr el comando **dos veces**. Si no, el equipo no queda como su propio
+> instalador y la actualización siguiente vuelve a necesitar el cable — justo lo que el `-i` venía a
+> evitar. Vale igual para Eduardo ruiz (#0-ter) y para cualquier equipo recién desprecintado.
 
 ### 🟠 Próximo sprint
 
@@ -3189,9 +3518,20 @@ No son tareas: son decisiones pendientes.
 
 ## 9. Si sos una sesión nueva en la máquina nueva
 
-0. **Antes que nada: la sección 🔵 del 27-28/08**, justo debajo de §1. Hay trabajo implementado y
-   verificado **sin publicar**, y una cola de escritura que estuvo taponada dos días en producción.
-   Los pendientes concretos son **N1 a N6** al principio de §4.
+> 🟩 **Actualizado el 09/09/2026.** La máquina nueva ya está armada: el orden de abajo es el que
+> corresponde hoy, no el de la mudanza.
+
+0. **Antes que nada: §2-bis** (la mudanza, qué se verificó y qué falta), y enseguida **§2-quater**
+   (`canal-pedidos/`, que **no está en ningún git**). Son las dos cosas que **no podés deducir
+   leyendo el repo**. Después, §2-ter (qué entró en 1.24.0 y 1.25.0) y §2-quinquies (la auditoría).
+0-bis. **Trabajá en `C:\dev\DisT-At\la-union-app`.** La carpeta vieja
+   `C:\Users\santi\OneDrive\Desktop\DisT-At` todavía existe: **no es la buena.**
+0-ter. **Para compilar el APK: `JAVA_HOME` al JDK 17, no al JBR de Android Studio** (que es JDK 25 y
+   Gradle 8.2.1 no lo soporta). Ver el recuadro al principio de §3. Y **`CAP_BUILD=1` siempre**, o el
+   APK arranca en blanco.
+0-cuatro. La sección 🔵 del 27-28/08 y los pendientes **N1 a N6** de §4 **ya no son el frente de
+   trabajo**: N1 se publicó en 1.22.0 y lo de entonces quedó superado por 1.24.0/1.25.0. Leerlos como
+   contexto, no como cola de tareas.
 1. Leé **[CLAUDE.md](CLAUDE.md) entero** — son 52 reglas y **cada una costó un bug de producción**.
    Las dos más nuevas: la **52** (un precio se pregunta en un solo lugar) y el refuerzo de la **19/20**
    (una cola FIFO no puede cortar ante un error permanente — le pasó a la de posiciones en julio y a
@@ -3205,3 +3545,8 @@ No son tareas: son decisiones pendientes.
    refactorizás el código que explican, migrá el comentario.
 6. La memoria de Claude de la máquina vieja **no viaja**. Todo lo que hacía falta recordar está en estos
    cuatro documentos; si descubrís algo que no está, escribilo acá.
+7. 🩸 **Y este documento tampoco se actualiza solo.** Entre el 01/09 y el 09/09 se publicaron dos
+   versiones, se mudó la máquina y nació una línea de trabajo entera (`canal-pedidos/`), y el
+   encabezado siguió diciendo "1.22.0" — la sesión que lo leyera habría arrancado con tres supuestos
+   falsos. **Si publicás una versión o empezás algo nuevo, escribilo acá en el mismo momento**, no
+   cuando haya aire.
