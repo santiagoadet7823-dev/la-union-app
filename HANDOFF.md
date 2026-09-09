@@ -47,7 +47,15 @@
 
 ## 🟩 0. SESIÓN DEL 09/09 (tarde) — cuatro pedidos, y dos máquinas mandando precios
 
-Publicado por OTA + PWA como **1.26.0**. Nada nativo: no hizo falta APK nueva.
+⚠️ **NO PUBLICADO — y no por decisión, por falta de credenciales.** El código está commiteado
+(`2a5656a`), `APP_VERSION` ya dice **1.26.0** y **`web/bundle.zip` está compilado y listo** (1,35 MB,
+118 archivos, `index.html` en la raíz). Lo que falta lo tiene que correr una persona: ver
+**⏳ Cómo terminar de publicar** al final de esta sección.
+
+🟢 **No hace falta APK nueva**: no se tocó nada nativo, es todo JS puro.
+
+🔴 **`app_config` NO se tocó, a propósito.** Apuntarla a 1.26.0 con el bundle sin subir dejaría a
+los 12 equipos pidiendo una URL que no existe. El SQL va **después** del release, nunca antes.
 
 ### 1 · Modo inmersivo en el catálogo del vendedor ✅
 
@@ -176,6 +184,42 @@ creía que su envío no daba de baja, y sí da de baja.
    ⚠️ El `--no-verify-jwt` **no es opcional**: el endpoint se autentica con su propio token.
 3. **Mandarle la revisión al cliente** y conseguir el log de la máquina que falla
    (`C:\DisTAt\registros\`), que es donde está el motivo exacto del 400.
+
+### ⏳ Cómo terminar de publicar
+
+Todo lo de abajo se frena en lo mismo: **esta máquina no tiene credenciales de GitHub**. `gh auth
+status` dice que no hay sesión, no hay `GH_TOKEN`/`GITHUB_TOKEN`, y `git push` **se cuelga** — el
+Credential Manager de Windows intenta abrir un diálogo que en una sesión no interactiva no aparece
+(medido: `git credential fill` también cuelga). Es el mismo pendiente que §2-bis ya marcaba como
+*"lo tiene que hacer una persona"*, y ahora bloquea un release.
+
+```bash
+gh auth login                 # una sola vez; también destraba el git push
+
+cd C:/dev/DisT-At/la-union-app
+git push origin main          # van TRES commits: b989eef, 2a5656a y este mismo
+
+# El bundle YA esta compilado en web/bundle.zip. Si preferis rehacerlo de cero:
+bash scripts/ota-release.sh 1.26.0
+```
+
+Recién **cuando el release exista**, el SQL de `app_config` (paso 2 de
+[GUIA_ACTUALIZACION_OTA.md](GUIA_ACTUALIZACION_OTA.md)):
+
+```sql
+update public.app_config
+   set bundle_version = '1.26.0',
+       latest_version = '1.26.0',
+       bundle_url = 'https://github.com/santiagoadet7823-dev/la-union-app/releases/download/ota-1.26.0/bundle.zip',
+       updated_at = now();
+```
+
+⚠️ **`min_version` NO se toca** (queda en 1.24.0): esto sale por OTA y no hay nada nativo que
+obligue a reinstalar.
+
+🔴 Y **cerrar el release mirando `estado_dispositivo.bundle_aplicado`, no la respuesta del push**
+— es el precedente de 1.19.0, que se publicó y no recibió nadie.
+
 
 ---
 
