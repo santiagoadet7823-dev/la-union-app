@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import GestionHost from '../../components/GestionHost'
 import { Home, Pin, Box, Check } from '../../components/icons'
@@ -19,6 +19,8 @@ import EditarPedidoSheet from '../pedidos/EditarPedidoSheet'
 import { useUltimoPedido } from './useSugeridos'
 import { itemsDePedido } from '../pedidos/usePedidos'
 import { useAuth } from '../../context/AuthContext'
+import { useChrome } from '../../components/AppShell'
+import { apilarAtras } from '../../services/atras'
 
 // Pantallas de catálogo: lazy, igual que en las supervisiones. Un vendedor sin el permiso nunca
 // las descarga — no tiene sentido meterle el bundle del catálogo en el arranque de la jornada.
@@ -39,6 +41,38 @@ export default function VendedorView() {
   // gestión (CatalogoTab): no hay una versión "de vendedor" que después haya que mantener aparte.
   const [catalogoOpen, setCatalogoOpen] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
+
+  /* ── MODO INMERSIVO DEL CATÁLOGO (09/09/2026) ────────────────────────────────────────────────
+   *
+   * Un botón que esconde todo el chrome y deja el catálogo a pantalla completa: el header global,
+   * la botonera de abajo, y (en `VisitaCatalogo`) el panel de la visita en curso y los dos bloques
+   * de sugeridos. Quedan el buscador, los chips y la grilla — más la barra del pedido, que NO se
+   * esconde: sin el total y el botón de confirmar el modo no serviría para tomar el pedido, que es
+   * justamente para lo que se mira el catálogo.
+   *
+   * El estado vive acá porque acá vive la botonera. El header es ancestro y se alcanza por
+   * `useChrome()` (ver AppShell). Se apaga al salir del catálogo: quedar en pantalla completa en
+   * "Inicio", donde no hay nada que expandir, es perder la botonera sin ganar nada.
+   */
+  const [inmersivo, setInmersivo] = useState(false)
+  const { setChromeOculto } = useChrome()
+
+  useEffect(() => {
+    const activo = inmersivo && j.tab === 'catalogo'
+    setChromeOculto(activo)
+    // Al desmontar la vista hay que devolver el header, o el shell queda sin topbar para el próximo
+    // que lo use.
+    return () => setChromeOculto(false)
+  }, [inmersivo, j.tab, setChromeOculto])
+
+  useEffect(() => { if (j.tab !== 'catalogo') setInmersivo(false) }, [j.tab])
+
+  // El ATRÁS de Android sale del modo en vez de minimizar la app (regla 27: con la pila vacía,
+  // `services/atras.js` minimiza). Mismo patrón que `SupervisionMovil`.
+  useEffect(() => {
+    if (!inmersivo) return
+    return apilarAtras(() => setInmersivo(false))
+  }, [inmersivo])
 
   /* ── CORREGIR EL PEDIDO DEL COMERCIO EN EL QUE ESTOY (04/09/2026) ────────────────────────────
    *
@@ -99,10 +133,16 @@ export default function VendedorView() {
   const navItem = (t) => (j.tab === t ? 'var(--primary)' : 'var(--faint)')
 
   return (
-    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600, '--nav-h': navAlto ? `${navAlto}px` : undefined }}>
+    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600,
+      /* 🩸 EN INMERSIVO `--nav-h` VA A 0 A MANO (09/09/2026). La botonera se esconde con
+         `transform`, o sea que sigue MONTADA para poder animar la vuelta — y mientras esté montada
+         `useAltoMedido` sigue midiendo sus ~80 px. Si no se pisa acá, la barra del pedido se apoya
+         sobre un alto que ya no ocupa nada y queda flotando con un hueco vacío debajo. El hook solo
+         devuelve 0 cuando el nodo se desmonta, que es justo lo que no queremos hacer. */
+      '--nav-h': inmersivo ? '0px' : (navAlto ? `${navAlto}px` : undefined) }}>
 
       {j.tab === 'inicio' && <InicioTab j={j} onCheckIn={alTocarCliente} onNuevoCliente={() => setModalCliente(true)} onEditarCliente={setEditCliId} onAbrirCatalogo={() => setCatalogoOpen(true)} />}
-      {j.tab === 'catalogo' && <VisitaCatalogo j={j} />}
+      {j.tab === 'catalogo' && <VisitaCatalogo j={j} inmersivo={inmersivo} onToggleInmersivo={() => setInmersivo((v) => !v)} />}
       {j.tab === 'ruta' && <RutaTab j={j} />}
 
       {j.sheet && <SinPedidoSheet j={j} />}
@@ -188,7 +228,20 @@ export default function VendedorView() {
 
       {/* ===== BOTTOM NAV (glass + safe-area). En mobile va FIXED al fondo real de
               la pantalla; en escritorio, absolute dentro del marco de teléfono. ===== */}
-      <div ref={navRef} style={{ ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr)'), zIndex: 'var(--z-chrome)', position: isMobile ? 'fixed' : 'absolute', ...glassSurface(), padding: '6px 8px calc(10px + env(safe-area-inset-bottom))' }}>
+      <div
+        ref={navRef}
+        aria-hidden={inmersivo}
+        style={{
+          ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr)'),
+          zIndex: 'var(--z-chrome)', position: isMobile ? 'fixed' : 'absolute', ...glassSurface(),
+          padding: '6px 8px calc(10px + env(safe-area-inset-bottom))',
+          // Se desliza hacia abajo sin desmontarse (ver la nota de `--nav-h` arriba). `visibility`
+          // la saca del recorrido por teclado mientras está escondida.
+          transform: inmersivo ? 'translateY(100%)' : 'translateY(0)',
+          visibility: inmersivo ? 'hidden' : 'visible',
+          transition: 'transform .2s cubic-bezier(.23,1,.32,1), visibility .2s',
+        }}
+      >
         {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box]].map(([t, label, Icon]) => (
           <div key={t} onClick={() => j.setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
             <Icon />

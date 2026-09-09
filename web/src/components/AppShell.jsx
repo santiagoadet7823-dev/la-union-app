@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { createContext, useContext, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
 import { isNative } from '../services/platform'
@@ -15,6 +15,21 @@ const ROLE_META = {
   encargado: { label: 'Encargado', color: 'var(--primary)' },
   vendedor: { label: 'Vendedor', color: 'var(--success)' },
   repartidor: { label: 'Repartidor', color: 'var(--warning)' },
+}
+
+/**
+ * Esconder el chrome del shell desde una pantalla de adentro.
+ *
+ * Existe porque el `<header>` es ANCESTRO de las vistas: el modo inmersivo del catálogo se prende
+ * desde `VendedorView`, cuatro niveles más abajo (RoleRouter → PhoneFrame → GpsGate → VendedorView),
+ * y sin esto habría que bajar la prop por los cuatro. El contexto vive acá y no en `context/` porque
+ * el único dato que lleva es del propio AppShell: quien no esté envuelto por él recibe un no-op y
+ * sigue andando.
+ */
+const ChromeContext = createContext({ chromeOculto: false, setChromeOculto: () => {} })
+
+export function useChrome() {
+  return useContext(ChromeContext)
 }
 
 /**
@@ -40,6 +55,10 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   // montado.
   const [misPedidos, setMisPedidos] = useState(false)
   const [misMetas, setMisMetas] = useState(false)
+  // Lo prende el modo inmersivo del catálogo del vendedor (ver `useChrome` arriba).
+  const [chromeOculto, setChromeOculto] = useState(false)
+  const chrome = useMemo(() => ({ chromeOculto, setChromeOculto }), [chromeOculto])
+
   const [toast, setToast] = useState(null)
   const toastRef = useRef(null)
   const showToast = (m) => {
@@ -49,12 +68,24 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   }
 
   return (
+    <ChromeContext.Provider value={chrome}>
     <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
+      {/* Al esconderse no se desmonta: se colapsa el alto y se desliza hacia arriba, para que la
+          animación de vuelta tenga desde dónde entrar. `overflow:hidden` es lo que evita que el
+          contenido asome mientras el alto va a 0, y `visibility` lo saca del foco por teclado —
+          un header invisible pero tabulable es una trampa para quien navega a ciegas. */}
       <header
+        aria-hidden={chromeOculto}
         style={{
-          flex: 'none', minHeight: 52, display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16,
-          padding: isMobile ? '6px 10px' : '0 18px', flexWrap: 'wrap',
-          background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)',
+          flex: 'none', minHeight: chromeOculto ? 0 : 52, height: chromeOculto ? 0 : undefined,
+          overflow: 'hidden', visibility: chromeOculto ? 'hidden' : 'visible',
+          transform: chromeOculto ? 'translateY(-100%)' : 'translateY(0)',
+          transition: 'transform .18s cubic-bezier(.23,1,.32,1), min-height .18s cubic-bezier(.23,1,.32,1), height .18s cubic-bezier(.23,1,.32,1)',
+          display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16,
+          // El padding vertical se colapsa junto con el alto: con `height:0` y `content-box`, los
+          // 6+6 px seguirían dejando una franja de la topbar a la vista.
+          padding: chromeOculto ? '0 10px' : (isMobile ? '6px 10px' : '0 18px'), flexWrap: 'wrap',
+          background: 'var(--surface)', borderBottom: chromeOculto ? 'none' : '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 'none' }}>
@@ -201,6 +232,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
         </div>
       )}
     </div>
+    </ChromeContext.Provider>
   )
 }
 

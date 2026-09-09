@@ -30,6 +30,8 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   const [dias, setDias] = useState({})
   const [frecuencia, setFrecuencia] = useState('Semanal')
   const [horario, setHorario] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [contacto, setContacto] = useState('')
   const [geofence, setGeofence] = useState(75)
   const [punto, setPunto] = useState(center || null) // {lat,lng}
   const [locBusy, setLocBusy] = useState(false)
@@ -72,6 +74,8 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
       dias_visita: diasStr || null,
       frecuencia,
       horario: horario.trim() || null,
+      telefono: telefono.trim() || null,
+      contacto: contacto.trim() || null,
       geofence_radio: geofence,
     })
     const { ok, error } = res
@@ -143,6 +147,11 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
       <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
         <Field label="Código (opcional)"><input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="CLI-005" style={inputStyle} className="lu-input" /></Field>
         <Field label="Localidad"><input value={localidad} onChange={(e) => setLocalidad(e.target.value)} style={inputStyle} className="lu-input" /></Field>
+      </div>
+
+      <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
+        <Field label="Teléfono"><input value={telefono} onChange={(e) => setTelefono(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="3877 123456" style={inputStyle} className="lu-input" /></Field>
+        <Field label="Contacto"><input value={contacto} onChange={(e) => setContacto(e.target.value)} placeholder="Con quién se habla" style={inputStyle} className="lu-input" /></Field>
       </div>
 
       <Field label="Ubicación *">

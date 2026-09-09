@@ -45,6 +45,142 @@
 
 ---
 
+## 🟩 0. SESIÓN DEL 09/09 (tarde) — cuatro pedidos, y dos máquinas mandando precios
+
+Publicado por OTA + PWA como **1.26.0**. Nada nativo: no hizo falta APK nueva.
+
+### 1 · Modo inmersivo en el catálogo del vendedor ✅
+
+Un botón al lado del buscador esconde el header global, la botonera de abajo, el panel de la visita
+en curso y los dos bloques de sugeridos. Quedan buscador, chips, grilla y **la barra del pedido**
+(sin el total y el botón de confirmar el modo no serviría para lo único que se hace mirando el
+catálogo).
+
+- Se **reusó `components/BtnInmersivo.jsx`**, que ya existía para las dos supervisiones y el panel de
+  dirección. Solo se le generalizó el label con `queExpande` (default `'el mapa'`, así los tres
+  consumidores viejos no se tocan). Es el **primero de los cuatro que lleva animación**.
+- El header es **ancestro** de `VendedorView`, así que `AppShell` ahora expone un `ChromeContext`
+  mínimo con `useChrome()`. Vive en el propio `AppShell.jsx`: el único dato que lleva es suyo, y
+  bajarlo por props costaba cuatro niveles.
+- `GrillaCatalogo` recibió un slot opcional `accionBuscador`. El botón va al lado del buscador y no
+  flotando en una esquina porque **el buscador es lo único que nunca se esconde**: así el botón queda
+  en el mismo lugar entrando y saliendo. `EditarPedidoSheet`, el otro consumidor, no pasa la prop y
+  no cambia.
+
+🩸 **El gotcha, que era real:** la botonera se esconde con `transform` para poder animar la vuelta, o
+sea que sigue **montada** — y `useAltoMedido` la sigue midiendo en ~80 px. Sin pisar `--nav-h` a
+`0px` a mano en `VendedorView`, la barra del pedido quedaba flotando sobre un hueco vacío.
+`useAltoMedido` solo devuelve 0 al desmontar, que es justo lo que no se puede hacer acá. Y de yapa:
+los dos flotantes llevan `transition: bottom`, porque `--nav-h` cambia de golpe y saltaban 80 px
+mientras la nav todavía se estaba yendo.
+
+El ATRÁS de Android sale del modo (`apilarAtras`, igual que `SupervisionMovil`), y el modo se apaga
+solo al cambiar de pestaña.
+
+### 2 · 🩸 Las fotos de marketing: las dos mitades del pareo se normalizaban distinto ✅
+
+`ImportarFotos.jsx` pasaba el **nombre del archivo** por `codigoKey()` (que saca los ceros de
+adelante) y el **código del producto** por `.trim().toLowerCase()` (que los conserva). El producto
+`0161` entraba al mapa como `"0161"` y ninguno de los dos nombres posibles lo encontraba: tanto
+`0161.png` como `161.png` dan la clave `"161"`. Los archivos caían en `sin-producto` y **no se subían
+nunca**.
+
+- **199 de 617 productos** afectados: todos los que empiezan con `0`. Los otros 418 matcheaban bien,
+  y por eso el bug sobrevivió a 529 fotos cargadas.
+- El arreglo es **una línea** (`codigoKey(p.codigo)`); `codigoKey` ya estaba importado. Era el único
+  consumidor del catálogo que quedó sin migrar cuando se introdujo, el 12/08.
+- 🔑 **Lo que hay que aprender de esto**: el docstring del archivo, el cartel que ve marketing y
+  `GUIA_MARKETING_CATALOGO.md` decían los tres, desde el principio, que *"los ceros de adelante no
+  importan"*. La documentación describía la intención, no el código. Nadie la contrastó.
+- También se corrigió el mensaje de error, que mostraba la clave **normalizada**
+  (*"sin código 161"* para un archivo llamado `0161.png`) y mandaba a buscar el problema al archivo.
+
+### 3 · Teléfono y contacto del cliente ✅
+
+**`db/59_telefono_cliente.sql`, aplicada y verificada contra la base viva.** Solo `telefono` y
+`contacto`, **no** db/58 entera: el resto de esa migración (opt-in, `telefono_wa`, silencio del bot)
+pertenece al canal de WhatsApp, que no está versionado ni decidido. db/58 sigue siendo idempotente.
+
+⚠️ **El `unique (id_empresa, telefono_wa)` de db/58 se dejó afuera a propósito.** Da por sentado que
+un número es de un solo comercio, y en la calle el del local y el del dueño son el mismo en dos
+fichas. Con el unique puesto, el segundo vendedor que anota ese número recibe un rechazo que —al ser
+offline-first— aparece tarde, fuera de contexto y en cuarentena con un `console.warn` que nadie mira.
+
+🟢 **La RLS ya alcanzaba, verificado contra la base**: `clientes_upd` acepta al rol `vendedor` sobre
+**cualquier** cliente de su empresa, no solo los que tiene asignados. Importa porque ~1.980 de 2.016
+clientes no tienen `id_vendedor`: con la policy vieja el vendedor no habría podido escribir casi
+ninguno. **El docstring de `EditarClienteVendedor.jsx` decía lo contrario y quedó corregido.**
+
+Listas blancas tocadas: `mapCliente` · `addCliente` · `updateCliente` · `importClientes` (todas en
+`CatalogContext`), `ImportarClientes.jsx` (alias, parseo, plantilla y la ayuda) y **`usePedidos.js`**,
+que el plan no había previsto: nombra las columnas del comercio una por una en su `SELECT`. Pantallas:
+`EditarClienteVendedor` (la que se pidió), `NuevoCliente`, `FichaCliente` y `DetallePedido` (con
+`tel:`). Sin validación de formato, a propósito: cualquier regex argentino rebota números legítimos y
+el costo de rebotar es que no se anote nada.
+
+### 4 · 🔴 El envío de precios: hay DOS máquinas, y una falla cada hora
+
+**No es un servidor Java** — es el paquete PowerShell + Tarea Programada, el `.java` era la opción
+alternativa y no se usó (lo dice el `User-Agent` de todos los envíos).
+
+Está andando: 139 ingestas desde el 31/08, cada hora al minuto :00, y la del 08/09 23:00 fue una
+carga real (11 creados, 76 actualizados, 20 bajas, 541 → 547).
+
+**Pero hay dos emisores con el MISMO token** `5d4a8068-…`:
+
+| | Origen | Cuerpo | Resultado |
+|---|---|---|---|
+| **A** | Starlink / AMX · PowerShell 5.1.26100 | 41.808 → **49.492 bytes** | **200**, cada hora |
+| **B** | **Las Lajitas, Salta** · Telecom Personal | **1.563 bytes** fijos (~20 filas) | **400**, cada hora |
+
+El primer 400 salió el 08/09 20:41 **desde la IP de A**, y desde las 23:18 viene de Salta: el paquete
+se probó en una máquina y se copió a otra, que quedó agendada contra el archivo de prueba de 20
+filas. Es el escenario que advierte `GUIA_ENVIO_AUTOMATICO_PRECIOS.md:288-295` — **gana el último que
+llega**. Hoy no rompe porque B se rechaza; el día que alguien "arregle" el archivo de B sin apagar A,
+se pisan.
+
+🩸 **Y por eso `ingestas_precios.error` daba 0 en las 139 filas**: los rechazos se devolvían **antes**
+de la RPC, que es la que escribe la bitácora. Los 6 fallos por hora solo existían en los logs de la
+CDN, que caducan. *"Cero errores" era una respuesta falsamente tranquilizadora.* Corregido en
+`index.ts` con un `registrarRechazo` que cubre los cinco caminos de 400 más el error de la RPC.
+
+🟢 **El pendiente N4 de §4 ya estaba cerrado y nadie lo había anotado.** Se comparó lo desplegado
+contra el repo: tiene `falta-encabezado`, `p_pisar_descripcion`, `lista_completa` y `habilitado`. Los
+redeploys de db/54 lo pusieron al día; el aviso de `ingest-precios/LEER.md` es del 28/08 y quedó
+viejo.
+
+**Dónde no coincide la estructura** (medido sobre 617 productos): `peso` vacío en **617 de 617** ·
+**263 `FDO` + 50 sin unidad**, o sea que el export sigue a nivel fardo (pregunta N5(a), abierta hace
+12 días, de la que dependen 355 fotos) · **316 sin categoría** (faltan los nombres de rubro) · **112
+descripciones cortadas a 20**, que ⚠️ **no se arreglan solas** porque el endpoint manda
+`pisar_descripcion=false` y quedan clavadas · escalas en **1 de 617**.
+
+Todo eso, con lo que hay que pedirle al cliente, quedó en
+[REVISION_ENVIO_PRECIOS_2026-09-09.md](REVISION_ENVIO_PRECIOS_2026-09-09.md).
+
+Y dos correcciones a `ESPECIFICACION_LISTA_PRECIOS.md` que podían hacer daño: decía que el envío iba
+a las **06:00, 11:00 y 16:00** (es cada hora desde el 31/08) y que **sin `?lista_completa=1` no se da
+de baja nada** — 🔴 **es al revés desde db/54**: está prendido por defecto. Quien leyera esa sección
+creía que su envío no daba de baja, y sí da de baja.
+
+### ⏳ Lo que falta de esta tanda
+
+1. **Probar el modo inmersivo en pantalla.** Se verificó que compila (build de producción y transform
+   en dev de los 11 módulos tocados) pero **no se vio andando**: esta sesión no tenía con qué mirar
+   una pantalla. Confirmar el hueco de `--nav-h` bajo la barra del pedido, las dos direcciones de la
+   animación, el ATRÁS de Android, y el desktop (donde la nav es `absolute` dentro de `PhoneFrame`).
+2. **Desplegar `ingest-precios`.** En esta máquina no hay Deno, ni Supabase CLI, ni
+   `SUPABASE_ACCESS_TOKEN`; reescribir los 63 KB de los cuatro archivos por MCP para desplegar era más
+   frágil que esperar. Lo tiene que correr una persona:
+   `npx supabase functions deploy ingest-precios --project-ref lqhtxivednffpiicnbog --no-verify-jwt`
+   ⚠️ El `--no-verify-jwt` **no es opcional**: el endpoint se autentica con su propio token.
+3. **Mandarle la revisión al cliente** y conseguir el log de la máquina que falla
+   (`C:\DisTAt\registros\`), que es donde está el motivo exacto del 400.
+
+---
+
+---
+
 ## 1. Dónde está parado el proyecto
 
 **DisT-At** (`com.launion.app`) es un SaaS logístico multi-tenant de seguimiento GPS de equipos en

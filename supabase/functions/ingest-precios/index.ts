@@ -94,12 +94,36 @@ Deno.serve(async (req) => {
     // una de ellas vive dentro de nueve teléfonos que andan por la calle.
     if (tk.proposito !== 'precios') return json({ error: 'token-sin-permiso-de-precios' }, 401)
 
+    /* 🩸 UN ENVÍO RECHAZADO TAMBIÉN DEJA FILA (09/09/2026).
+     *
+     * Hasta hoy los 400 se devolvían acá arriba, ANTES de la RPC — y la RPC es la que escribe
+     * `ingestas_precios`. O sea que un emisor que falla siempre no dejaba una sola marca en la base:
+     * `select count(*) where error is not null` daba 0 con 139 ingestas, y eso se leía como "está
+     * todo bien". No estaba todo bien. El 08/09 había DOS máquinas mandando con el mismo token y una
+     * era rechazada cada hora, en punto; se descubrió mirando los logs de la CDN, que caducan.
+     *
+     * Ahora cada rechazo escribe su fila con `error`. Va con `service_role` (no hay policy de INSERT
+     * en esa tabla, a propósito) y en `catch` propio: si la bitácora falla, el que manda tiene que
+     * recibir igual su código de error, no un 500 nuevo.
+     */
+    const registrarRechazo = async (motivo: string, extra: Record<string, unknown>, status: number) => {
+      try {
+        await admin.from('ingestas_precios').insert({
+          id_empresa: tk.id_empresa,
+          id_usuario: tk.id_usuario,
+          origen: 'endpoint',
+          error: motivo,
+        })
+      } catch (_) { /* la bitácora nunca puede tapar la respuesta */ }
+      return json({ error: motivo, ...extra }, status)
+    }
+
     // 2) El archivo → filas crudas `{encabezado: valor}`.
     let crudas: Record<string, unknown>[]
     let separador: string | null = null
     if (esJson) {
       const arr = Array.isArray(cuerpoJson) ? cuerpoJson : (cuerpoJson?.filas ?? cuerpoJson?.productos)
-      if (!Array.isArray(arr)) return json({ error: 'sin-filas', detalle: 'Se esperaba un array en `filas`.' }, 400)
+      if (!Array.isArray(arr)) return await registrarRechazo('sin-filas', { detalle: 'Se esperaba un array en `filas`.' }, 400)
       crudas = arr as Record<string, unknown>[]
     } else {
       const r = parsearTexto(crudo)
@@ -116,8 +140,7 @@ Deno.serve(async (req) => {
        * Mejor un no rotundo que diga exactamente qué falta.
        */
       if (!r.hayEncabezado) {
-        return json({
-          error: 'falta-encabezado',
+        return await registrarRechazo('falta-encabezado', {
           detalle: 'La primera línea del archivo tiene que ser la fila de nombres de columna, con el mismo separador que los datos.',
           primera_linea_recibida: r.primeraLinea?.slice(0, 200),
           separador_detectado: r.separador === '\t' ? 'TAB' : r.separador,
@@ -130,8 +153,8 @@ Deno.serve(async (req) => {
       crudas = r.filas
       separador = r.separador
     }
-    if (!crudas.length) return json({ error: 'archivo-vacio' }, 400)
-    if (crudas.length > MAX_FILAS) return json({ error: 'demasiadas-filas', max: MAX_FILAS, recibidas: crudas.length }, 413)
+    if (!crudas.length) return await registrarRechazo('archivo-vacio', {}, 400)
+    if (crudas.length > MAX_FILAS) return await registrarRechazo('demasiadas-filas', { max: MAX_FILAS, recibidas: crudas.length }, 413)
 
     // 3) Filas crudas → filas importables, con el MISMO código que la pantalla de importación.
     const rechazadas: { fila: number; codigo: string; motivo: string }[] = []
@@ -199,7 +222,7 @@ Deno.serve(async (req) => {
     })
 
     if (!filas.length) {
-      return json({ error: 'sin-filas-validas', recibidas: crudas.length, rechazadas }, 400)
+      return await registrarRechazo('sin-filas-validas', { recibidas: crudas.length, rechazadas }, 400)
     }
 
     // 4) La RPC decide. Trae adentro el freno del 20 % de bajas y escribe la bitácora.
@@ -224,7 +247,7 @@ Deno.serve(async (req) => {
        */
       p_pisar_descripcion: pisarDescripcion,
     })
-    if (error) return json({ error: 'importar', detalle: error.message }, 500)
+    if (error) return await registrarRechazo('importar', { detalle: error.message }, 500)
 
     // 🔴 El freno devuelve 409 y NO es un fallo del cliente: es "esto es demasiado grande para
     // hacerlo sin que nadie mire". El cuerpo trae el número exacto para que se pueda decidir.

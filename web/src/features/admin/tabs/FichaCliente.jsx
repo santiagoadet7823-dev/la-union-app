@@ -42,6 +42,8 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [codigoEdit, setCodigoEdit] = useState(fc.codigo || '')
   const [locEdit, setLocEdit] = useState(fc.loc || '')
   const [horarioEdit, setHorarioEdit] = useState(fc.horario || '')
+  const [telefonoEdit, setTelefonoEdit] = useState(fc.telefono || '')
+  const [contactoEdit, setContactoEdit] = useState(fc.contacto || '')
   const [zonaEdit, setZonaEdit] = useState(fc.idZona || null)
   const [diasSel, setDiasSel] = useState(() => {
     const ds = {}
@@ -75,6 +77,8 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
       patch.codigo = codigoEdit.trim() || null
       patch.localidad = locEdit.trim() || null
       patch.horario = horarioEdit.trim() || null
+      patch.telefono = telefonoEdit.trim() || null
+      patch.contacto = contactoEdit.trim() || null
       // Si cambió la zona, heredar el vendedor dueño ("la zona lleva el vendedor").
       if ((zonaEdit || null) !== (fc.idZona || null)) {
         patch.id_zona = zonaEdit || null
@@ -120,6 +124,16 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
             <div>
               <div style={fieldLabel}>Localidad</div>
               <input value={locEdit} onChange={(e) => setLocEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
+            </div>
+          </div>
+          <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>
+            <div>
+              <div style={fieldLabel}>Teléfono</div>
+              <input value={telefonoEdit} onChange={(e) => setTelefonoEdit(e.target.value)} type="tel" inputMode="tel" placeholder="—" className="lu-input" style={inp} />
+            </div>
+            <div>
+              <div style={fieldLabel}>Contacto</div>
+              <input value={contactoEdit} onChange={(e) => setContactoEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
             </div>
           </div>
           <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>

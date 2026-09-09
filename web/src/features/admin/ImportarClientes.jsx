@@ -30,6 +30,8 @@ const ALIAS = {
   dias: 'dias', 'dias visita': 'dias',
   frecuencia: 'frecuencia', freq: 'frecuencia',
   horario: 'horario',
+  telefono: 'telefono', tel: 'telefono', celular: 'telefono', cel: 'telefono', whatsapp: 'telefono', wa: 'telefono',
+  contacto: 'contacto', 'nombre contacto': 'contacto', encargado: 'contacto',
 }
 // `norm` vive ahora en lib/texto.js (estaba duplicado letra por letra acá y en ImportarProductos).
 const norm = normalizar
@@ -60,8 +62,8 @@ export default function ImportarClientes({ onClose, onToast }) {
     try {
       const XLSX = await import('xlsx')
       const ejemplo = [
-        { codigo: 'CLI-001', nombre: 'Kiosco Central', localidad: 'Las Lajitas', zona: 1, dias: 'LU · JU', frecuencia: 'Semanal', horario: '' },
-        { codigo: 'CLI-002', nombre: 'Almacén Doña Rosa', localidad: 'Las Lajitas', zona: 2, dias: 'MA', frecuencia: 'Quincenal', horario: '' },
+        { codigo: 'CLI-001', nombre: 'Kiosco Central', localidad: 'Las Lajitas', zona: 1, dias: 'LU · JU', frecuencia: 'Semanal', horario: '', telefono: '3877 123456', contacto: 'Marta' },
+        { codigo: 'CLI-002', nombre: 'Almacén Doña Rosa', localidad: 'Las Lajitas', zona: 2, dias: 'MA', frecuencia: 'Quincenal', horario: '', telefono: '', contacto: '' },
       ]
       const ws = XLSX.utils.json_to_sheet(ejemplo)
       const wb = XLSX.utils.book_new()
@@ -123,6 +125,8 @@ export default function ImportarClientes({ onClose, onToast }) {
           dias: String(campo.dias ?? '').trim(),
           frecuencia: String(campo.frecuencia ?? '').trim(),
           horario: String(campo.horario ?? '').trim(),
+          telefono: String(campo.telefono ?? '').trim(),
+          contacto: String(campo.contacto ?? '').trim(),
           zonaNum, zona, estado,
         }
       })
@@ -160,6 +164,8 @@ export default function ImportarClientes({ onClose, onToast }) {
         dias_visita: f.dias || null,
         frecuencia: f.frecuencia || null,
         horario: f.horario || null,
+        telefono: f.telefono || null,
+        contacto: f.contacto || null,
         id_zona: f.zona?.id || null,
         id_vendedor: f.zona?.id_vendedor || null,
       }))
@@ -219,7 +225,7 @@ export default function ImportarClientes({ onClose, onToast }) {
         </div>
 
         <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.5')}>
-          Columnas: <b>codigo</b>, <b>nombre</b>, <b>localidad</b>, <b>zona</b> (número, ej. 1), y opcionales <b>dias</b>, <b>frecuencia</b>, <b>horario</b>.
+          Columnas: <b>codigo</b>, <b>nombre</b>, <b>localidad</b>, <b>zona</b> (número, ej. 1), y opcionales <b>dias</b>, <b>frecuencia</b>, <b>horario</b>, <b>telefono</b>, <b>contacto</b>.
           Creá primero las zonas (con su número y vendedor) en la pestaña Zonas.
           <br />Si el <b>código ya existe</b>, el cliente se <b>actualiza</b> solo con los datos que traiga la planilla (las celdas vacías no borran lo que ya tenía). Si no existe, se <b>crea</b>.
         </div>

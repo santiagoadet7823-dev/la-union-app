@@ -5,6 +5,7 @@ import { precioDe } from '../../../lib/precios'
 import CarritoSheet from '../CarritoSheet'
 import FichaProducto from '../FichaProducto'
 import GrillaCatalogo from '../../../components/GrillaCatalogo'
+import BtnInmersivo from '../../../components/BtnInmersivo'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
 import { useAltoMedido } from '../../../hooks/useAltoMedido'
@@ -14,8 +15,12 @@ import { useSugeridos, useUltimoPedido } from '../useSugeridos'
  * Pestaña "Catálogo/Visita": header de la visita en curso (timer + acciones), buscador,
  * chips de categoría y **cuadrícula de 2 productos por fila** (foto, descripción a 2
  * renglones, precio, unidades y marco de color por rentabilidad), y la barra de carrito.
+ *
+ * En modo `inmersivo` (el botón vive al lado del buscador) se colapsan el header de la visita y los
+ * dos bloques de sugeridos, y `VendedorView` esconde el chrome. La barra del pedido se queda: es el
+ * total y el botón de confirmar, o sea aquello para lo que se está mirando el catálogo.
  */
-export default function VisitaCatalogo({ j }) {
+export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo }) {
   // 🩸 EL DESTRUCTURING DE `j` VA ANTES QUE LOS HOOKS (18/08/2026). En 1.17.0 quedó tres líneas
   // ABAJO de la llamada a `useVidriera`, que lo usa: `PRODUCTS` es un `const` del mismo scope, así
   // que caía en la zona muerta temporal y la pestaña reventaba con "Cannot access 'PRODUCTS' before
@@ -77,6 +82,20 @@ export default function VisitaCatalogo({ j }) {
 
   return (
     <div style={{ ...sx('flex:1;display:flex;flex-direction:column;overflow:hidden'), '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px' }}>
+      {/* Cabecera colapsable. Se anima con `maxHeight` y no con `grid-template-rows:0fr`, que es más
+          prolijo pero pide Chrome 107+: el parque tiene WebViews viejos y ahí no animaría nada. El
+          240 es un techo holgado — el header de visita mide ~100 px y el banner de consulta ~44. */}
+      <div
+        aria-hidden={inmersivo}
+        style={{
+          flex: 'none', overflow: 'hidden',
+          maxHeight: inmersivo ? 0 : 240,
+          opacity: inmersivo ? 0 : 1,
+          transform: inmersivo ? 'translateY(-8px)' : 'translateY(0)',
+          visibility: inmersivo ? 'hidden' : 'visible',
+          transition: 'max-height .2s cubic-bezier(.23,1,.32,1), opacity .16s cubic-bezier(.23,1,.32,1), transform .2s cubic-bezier(.23,1,.32,1), visibility .2s',
+        }}
+      >
       {visitC ? (
         <div style={sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);padding:12px 14px')}>
           <div style={sx('display:flex;justify-content:space-between;align-items:center')}>
@@ -122,6 +141,7 @@ export default function VisitaCatalogo({ j }) {
           Modo consulta — hacé check-in en un cliente para tomar un pedido.
         </div>
       )}
+      </div>
 
       {/* 🩸 EL CATÁLOGO ES UN COMPONENTE COMPARTIDO DESDE EL 04/09/2026. El buscador, los chips y
           la grilla vivían acá adentro, y por eso la pantalla de EDICIÓN de un pedido nació con un
@@ -140,6 +160,9 @@ export default function VisitaCatalogo({ j }) {
         onAbrirFicha={abrirFicha}
         vidActiva={vid.activa}
         onMostrar={(p) => { vid.destacar(p); showToast(`Se lo mostramos: ${p.name}`) }}
+        accionBuscador={onToggleInmersivo && (
+          <BtnInmersivo activo={inmersivo} onToggle={onToggleInmersivo} queExpande="el catálogo" style={{ boxShadow: 'none' }} />
+        )}
       >
         {/* 🩸 REPETIR EL ÚLTIMO PEDIDO (03/09/2026, reunión del 02/09). Va ARRIBA de "lo que más
             lleva" porque resuelve más de una vez: los chips ahorran acordarse de un producto, esto
@@ -155,7 +178,10 @@ export default function VisitaCatalogo({ j }) {
             algo y después toca esto, borrarle lo suyo sería destruir trabajo sin preguntar. Los
             productos que ya no están en el catálogo se saltean y se dicen — quedarse callado haría
             que el total no cierre con lo que el comerciante recuerda haber pedido. */}
-        {!!ultimoPedido && (
+        {/* Los dos bloques de sugeridos se desmontan en inmersivo en vez de colapsarse: son
+            `children` de la grilla, entre el buscador y los chips, y animarles el alto ahí empuja
+            los chips y la grilla entera en cada frame. Lo que se gana es espacio, que es el punto. */}
+        {!inmersivo && !!ultimoPedido && (
           <div style={sx('flex:none;padding:0 14px 10px')}>
             <button
               onClick={() => {
@@ -195,7 +221,7 @@ export default function VisitaCatalogo({ j }) {
             mínimo por producto. Con una sola compra no hay preferencia — y una recomendación
             equivocada quema la confianza en la función más rápido que su ausencia. Como los pedidos
             recién se empiezan a guardar hoy, esta fila va a estar vacía varias semanas. */}
-        {sugerencias.length > 0 && (
+        {!inmersivo && sugerencias.length > 0 && (
           <div style={sx('flex:none;padding:0 14px 10px')}>
             <div style={sx('display:flex;align-items:center;gap:6px;margin-bottom:7px')}>
               <span style={sx('width:6px;height:6px;flex:none;border-radius:99px;background:var(--primary)')} />
@@ -312,6 +338,9 @@ export default function VisitaCatalogo({ j }) {
             // `env()` tampoco es de más: sin él, un navegador que no la conozca deja la propiedad
             // inválida y el flotante se va al fondo.
             bottom: 'calc(var(--nav-h, calc(80px + env(safe-area-inset-bottom,0px))) + var(--pedido-h, 0px) + 20px)',
+            // Acompaña a la botonera cuando entra o sale el modo inmersivo: `--nav-h` pasa a 0 de
+            // golpe, y sin esto el flotante saltaba 80 px mientras la nav todavía se estaba yendo.
+            transition: 'bottom .2s cubic-bezier(.23,1,.32,1)',
           }}
         >
           <span style={sx('width:7px;height:7px;flex:none;border-radius:99px;background:var(--success)')} />
@@ -358,6 +387,9 @@ export default function VisitaCatalogo({ j }) {
             // duro, así que esto lo atenúa, no lo apaga. Apagarlo del todo pide una botonera opaca
             // o menos blur, y eso es una decisión de diseño, no un arreglo.
             bottom: 'calc(var(--nav-h, calc(80px + env(safe-area-inset-bottom,0px))) + 20px)',
+            // Acompaña a la botonera cuando entra o sale el modo inmersivo: `--nav-h` pasa a 0 de
+            // golpe, y sin esto el flotante saltaba 80 px mientras la nav todavía se estaba yendo.
+            transition: 'bottom .2s cubic-bezier(.23,1,.32,1)',
           }}
         >
           {/* 🩸 La barra ABRE el pedido (19/08/2026). Antes solo informaba: para cambiar una

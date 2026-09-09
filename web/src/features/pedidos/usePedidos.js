@@ -42,14 +42,17 @@ const MAX_VUELTAS = 50 // 50.000 pedidos: techo de seguridad, nunca un bucle inf
 const SELECT = `
   id, numero, id_vendedor, id_cliente, id_repartidor, id_visita, estado, monto_total, peso_total,
   created_at, lat, lng, accuracy, distancia_m, origen, motivo_anulacion, anulado_por, anulado_ts,
-  cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng ),
+  cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng, telefono, contacto ),
   vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre )
 `
 
 /** Fila de `clientes` → la forma que ya consumen `TicketPedido` y el resto de las vistas. */
 export function mapComercio(c) {
   if (!c) return null
-  return { id: c.id, codigo: c.codigo, name: c.nombre_comercio, loc: c.localidad || '', lat: c.lat, lng: c.lng }
+  return {
+    id: c.id, codigo: c.codigo, name: c.nombre_comercio, loc: c.localidad || '', lat: c.lat, lng: c.lng,
+    telefono: c.telefono || '', contacto: c.contacto || '',
+  }
 }
 
 /** Un pedido de la base → la forma de la pantalla, con el comercio ya mapeado. */

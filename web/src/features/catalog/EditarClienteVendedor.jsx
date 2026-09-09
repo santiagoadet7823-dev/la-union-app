@@ -10,12 +10,16 @@ import ErrorBoundary from '../../components/ErrorBoundary'
 import Overlay from '../../components/Overlay'
 import { Crosshair } from '../../components/icons'
 import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
+import { inputStyle } from '../../components/form'
 
 /**
- * Edición ACOTADA de un cliente por el VENDEDOR: solo ubicación (mapa) y días de visita.
- * No toca razón social/código/zona/etc. (eso es gestión). La RLS `clientes_upd` ya permite al
- * vendedor actualizar SUS clientes (id_vendedor = auth.uid()); el llamador solo ofrece este
- * editor en los clientes propios, para no mostrar un "guardado" que el servidor no persiste.
+ * Edición ACOTADA de un cliente por el VENDEDOR: ubicación (mapa), días de visita y contacto.
+ * No toca razón social/código/zona/etc. (eso es gestión).
+ *
+ * Sobre la RLS: `clientes_upd` acepta al rol `vendedor` sobre CUALQUIER cliente de su empresa, no
+ * solo los que tiene asignados. Verificado contra la base viva el 09/09/2026 — y es lo que hace
+ * que esta pantalla sirva de algo, porque ~1.980 de los 2.016 clientes no tienen `id_vendedor`.
+ * (Este comentario decía lo contrario: la policy se amplió y quedó viejo.)
  *
  * props: { clienteId, onClose, onToast }
  */
@@ -33,6 +37,8 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
     ;(c?.dias || '').split('·').map((s) => s.trim()).filter(Boolean).forEach((d) => { ds[d] = true })
     return ds
   })
+  const [telefono, setTelefono] = useState(c?.telefono || '')
+  const [contacto, setContacto] = useState(c?.contacto || '')
   const [locBusy, setLocBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   // El padre monta este componente con `{editCliId && <EditarClienteVendedor …/>}`,
@@ -60,7 +66,14 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   async function guardar() {
     setSaving(true)
     const diasStr = DIAS.filter((d) => dias[d]).join(' · ')
-    const patch = { dias_visita: diasStr || null }
+    const patch = {
+      dias_visita: diasStr || null,
+      // Sin validar el formato a propósito: el "15" intercalado, los códigos de área de 2 a 4
+      // dígitos y los locales sin área hacen que cualquier regex rebote números legítimos, y el
+      // costo de rebotar es que el vendedor no anote nada. Se guarda como lo tipeó.
+      telefono: telefono.trim() || null,
+      contacto: contacto.trim() || null,
+    }
     if (punto) { patch.lat = punto.lat; patch.lng = punto.lng }
     const { ok, error } = await updateCliente(c.id, patch)
     setSaving(false)
@@ -87,6 +100,30 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
         </>
       }
     >
+      {/* El contacto va PRIMERO: es lo que el vendedor anota parado frente al mostrador, y dejarlo
+          abajo del mapa obligaba a pasar 230 px de Leaflet para llegar. `type="tel"` para que en el
+          celular salga el teclado numérico. */}
+      <div style={label}>Teléfono</div>
+      <input
+        value={telefono}
+        onChange={(e) => setTelefono(e.target.value)}
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        placeholder="Ej: 3877 123456"
+        className="lu-input"
+        style={{ ...inputStyle, marginBottom: 'var(--sp-3)' }}
+      />
+
+      <div style={label}>Contacto</div>
+      <input
+        value={contacto}
+        onChange={(e) => setContacto(e.target.value)}
+        placeholder="Con quién se habla en el comercio"
+        className="lu-input"
+        style={{ ...inputStyle, marginBottom: 'var(--sp-4)' }}
+      />
+
       <div style={label}>Ubicación</div>
       <button type="button" onClick={usarMiUbicacion} disabled={locBusy} className="lu-press" style={{ ...sx('width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--primary);border-radius:var(--r-md);background:var(--primary-tint);color:var(--deep);font-size:var(--fs-sm);font-weight:600;margin-bottom:8px'), ...(locBusy ? apagado : { cursor: 'pointer' }) }}>
         <Crosshair />

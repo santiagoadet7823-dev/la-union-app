@@ -209,6 +209,17 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
           <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.7;margin-bottom:10px')}>
             <div><b style={sx('color:var(--text)')}>{pedido.nombreVendedor || '—'}</b> · {fmtFecha(pedido.created_at)}</div>
             <div>{[pedido.comercio?.codigo, pedido.comercio?.loc].filter(Boolean).join(' · ') || 'Sin datos del comercio'}</div>
+            {/* El teléfono se muestra solo si está cargado, y como enlace: quien mira este detalle
+                suele ser el que tiene que llamar al comercio (faltante, dirección, horario). Mismo
+                patrón que el soporte en `PendienteView`. */}
+            {pedido.comercio?.telefono && (
+              <div>
+                <a href={`tel:${pedido.comercio.telefono.replace(/\s/g, '')}`} style={sx('color:var(--primary);text-decoration:none;font-weight:600')}>
+                  {pedido.comercio.telefono}
+                </a>
+                {pedido.comercio.contacto && <span> · {pedido.comercio.contacto}</span>}
+              </div>
+            )}
             <div>
               {pedido.origen === 'vidriera' ? 'Tomado con la tablet' : 'Tomado en el celular'}
               {/* La distancia informa; no acusa. El GPS de estos equipos miente hasta 30 m, y el

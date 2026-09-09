@@ -369,7 +369,7 @@ instalación.
 | **Cada** | **1 hora**, las 24 horas, todos los días |
 | **Manda** | **Siempre**, aunque el archivo no haya cambiado desde el envío anterior |
 | **Reintentos** | A los 5 y a los 10 minutos ante error de red o `5xx`. Si igual falla, la próxima corrida es en una hora: no hay nada que rescatar |
-| **`?lista_completa=1`** | 🔴 **Nunca en el envío automático.** Sin ese parámetro el envío **no da de baja nada**, que es lo que se quiere de algo que corre solo. Las bajas se hacen a mano desde la app |
+| **Bajas automáticas** | 🔴 **El envío automático SÍ da de baja.** Desde el 01/09/2026 el endpoint trata el archivo como la lista completa **por defecto**: lo que no viene en él pasa a deshabilitado. Es lo que se pidió ("si hay productos en el catálogo que no vienen en el archivo, deben pasar automáticamente a deshabilitado"), y por eso el archivo tiene que ser **el catálogo entero**, no un parcial. Se puede apagar agregando `?lista_completa=0` a la URL. El freno del 20 % (§3) sigue protegiendo: un archivo que daría de baja más que eso se rechaza entero |
 | **Si el export se atrasa** | Mejor todavía: llamar al envío **al terminar** el proceso que genera el archivo, en vez de esperar a la hora (§5 de la guía) |
 
 **Por qué cada hora y no tres veces por día.** Ustedes corrigen precios a media mañana y a la tarde, y
@@ -473,4 +473,6 @@ El detalle completo, con el prompt para generar imágenes y la lista de errores 
       completa vigente" (§3)
 - [ ] 2. Revisar en la app que los precios y los escalones se vean bien
 - [ ] 3. La lista entera, a mano, tildando "lista completa vigente" y leyendo el conteo de bajas
-- [ ] 4. Recién ahí, el envío automático (§4 y §4-bis), agendado a las **06:00, 11:00 y 16:00**
+- [ ] 4. Recién ahí, el envío automático (§4 y §4-bis), que corre **una vez por hora, las 24 horas**
+- [ ] 5. Verificar que quede **UNA sola máquina** enviando. Dos instalaciones con el mismo token se
+      pisan entre sí, y gana la última que llega (§4 de la guía)

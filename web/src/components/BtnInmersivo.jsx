@@ -11,16 +11,20 @@ import { glassBlur } from '../lib/glass'
  * `SupervisionMovil` y `SupervisionDesktop` no comparten una línea de código (divergencia
  * documentada en dwells.js:4-8: lo que las dos tienen que mostrar IGUAL va afuera).
  *
- * props: { activo, onToggle, style }
+ * `queExpande` nombra lo que se agranda ("el mapa", "el catálogo"). Tiene default para no tocar a
+ * los tres consumidores que ya existían, todos de mapa.
+ *
+ * props: { activo, onToggle, style, queExpande }
  */
-export default function BtnInmersivo({ activo, onToggle, style }) {
+export default function BtnInmersivo({ activo, onToggle, style, queExpande = 'el mapa' }) {
+  const etiqueta = activo ? 'Salir de pantalla completa' : `Ver ${queExpande} en pantalla completa`
   return (
     <button
       onClick={onToggle}
       className="lu-press"
       aria-pressed={activo}
-      aria-label={activo ? 'Salir de pantalla completa' : 'Ver el mapa en pantalla completa'}
-      title={activo ? 'Salir de pantalla completa' : 'Ver el mapa en pantalla completa'}
+      aria-label={etiqueta}
+      title={etiqueta}
       style={{
         width: 44,
         height: 44,

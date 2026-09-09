@@ -31,6 +31,8 @@ function mapCliente(c) {
     frecuencia: c.frecuencia || '',
     geofence: c.geofence_radio || 75,
     horario: c.horario || '',
+    telefono: c.telefono || '',
+    contacto: c.contacto || '',
     // `activo` = CONFIRMADO (lo cargó un móvil y falta que gestión lo valide).
     // `archivado` = sacado de circulación. Son dos ejes independientes, no dos valores del mismo.
     activo: c.activo,
@@ -226,6 +228,8 @@ export function CatalogProvider({ children }) {
       frecuencia: c.frecuencia || null,
       geofence_radio: c.geofence_radio || 75,
       horario: c.horario || null,
+      telefono: c.telefono || null,
+      contacto: c.contacto || null,
       id_vendedor: esMovil ? (user?.id || null) : (c.id_vendedor || null),
       id_zona: c.id_zona || null,
       activo: !esMovil,
@@ -352,6 +356,8 @@ export function CatalogProvider({ children }) {
     if ('dias_visita' in patch) vista.dias = patch.dias_visita || ''
     if ('frecuencia' in patch) vista.frecuencia = patch.frecuencia || ''
     if ('geofence_radio' in patch) vista.geofence = patch.geofence_radio || 75
+    if ('telefono' in patch) vista.telefono = patch.telefono || ''
+    if ('contacto' in patch) vista.contacto = patch.contacto || ''
     // Ubicar un cliente importado sin coordenadas: reflejar lat/lng en la vista al toque.
     if ('lat' in patch) vista.lat = patch.lat ?? null
     if ('lng' in patch) vista.lng = patch.lng ?? null
@@ -420,7 +426,7 @@ export function CatalogProvider({ children }) {
    * cargado a mano (en particular NO toca lat/lng salvo que vengan). Los duplicados DENTRO del
    * mismo lote sí se saltan (no tiene sentido aplicar dos veces la misma fila). Offline-first.
    *
-   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, id_zona?, id_vendedor?, lat?, lng?}>} rows
+   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?}>} rows
    * @returns {{insertados:number, actualizados:number, saltados:number, avisos:string[]}}
    */
   const importClientes = useCallback(async (rows) => {
@@ -449,6 +455,8 @@ export function CatalogProvider({ children }) {
         if (r.dias_visita) patch.dias_visita = r.dias_visita
         if (r.frecuencia) patch.frecuencia = r.frecuencia
         if (r.horario) patch.horario = r.horario
+        if (r.telefono) patch.telefono = r.telefono
+        if (r.contacto) patch.contacto = r.contacto
         if (r.id_zona) patch.id_zona = r.id_zona
         if (r.id_vendedor) patch.id_vendedor = r.id_vendedor
         if (r.lat != null) patch.lat = r.lat
@@ -468,6 +476,8 @@ export function CatalogProvider({ children }) {
         frecuencia: r.frecuencia || null,
         geofence_radio: 75,
         horario: r.horario || null,
+        telefono: r.telefono || null,
+        contacto: r.contacto || null,
         id_vendedor: r.id_vendedor || null,
         id_zona: r.id_zona || null,
         activo: true, // importación de admin → confirmados

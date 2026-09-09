@@ -51,10 +51,17 @@ export default function ImportarFotos({ onClose, onToast }) {
   const [progreso, setProgreso] = useState(0) // archivos procesados en la corrida actual
   const [hecho, setHecho] = useState(null)     // { ok, fallidos } al terminar
 
+  // 🩸 LAS DOS MITADES DEL PAREO SE NORMALIZAN IGUAL (09/09/2026). Acá se usaba
+  // `.trim().toLowerCase()`, que CONSERVA los ceros de adelante, mientras el nombre del archivo
+  // pasaba por `codigoKey`, que los SACA. O sea que el producto `0161` entraba al mapa como
+  // "0161" y ninguno de los dos nombres posibles lo encontraba: tanto `0161.png` como `161.png`
+  // dan la clave "161". Los archivos caían en 'sin-producto' y NUNCA se subían — 199 de 617
+  // productos del catálogo, todos los que empiezan con 0. El docstring de arriba y el cartel que
+  // ve marketing prometían justo lo contrario desde el principio.
   const porCodigo = useMemo(() => {
     const m = new Map()
     productos.forEach((p) => {
-      const k = (p.codigo || '').trim().toLowerCase()
+      const k = codigoKey(p.codigo)
       if (k) m.set(k, p)
     })
     return m
@@ -238,7 +245,10 @@ export default function ImportarFotos({ onClose, onToast }) {
                   <div key={i} style={{ ...grid, alignItems: 'center', ...sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)') }}>
                     <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{it.nombre}</span>
                     <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
-                      {it.producto ? it.producto.name : <span style={sx('color:var(--faint)')}>— sin código {it.codigo} en el catálogo</span>}
+                      {/* El código que se muestra es el NORMALIZADO, y decirlo acá hacía parecer
+                          que el archivo estaba mal nombrado ("sin código 161" para un archivo
+                          llamado 0161.png). El nombre real ya está en la columna de al lado. */}
+                      {it.producto ? it.producto.name : <span style={sx('color:var(--faint)')}>— no hay un producto con ese código</span>}
                     </span>
                     <span style={{ minWidth: 0 }}>{pill(it.estado, it.error)}</span>
                   </div>

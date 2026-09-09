@@ -32,7 +32,7 @@ import CantidadInput from './CantidadInput'
  * último pedido" y "lo que más lleva", que son de la visita y no del catálogo.
  *
  * props: { productos, cart, addCart, search, setSearch, catFilter, setCatFilter, onAbrirFicha,
- *          vidActiva, onMostrar, paddingInferior, children }
+ *          vidActiva, onMostrar, paddingInferior, accionBuscador, children }
  */
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
@@ -53,6 +53,7 @@ export default function GrillaCatalogo({
   paddingInferior = 180,
   vacioTitulo = 'El catálogo está vacío',
   vacioTexto = 'El administrador todavía no cargó los productos. En cuanto los cargue, vas a poder armar pedidos.',
+  accionBuscador = null,
   children,
 }) {
   const CATS = [...new Set(productos.map((p) => p.cat))]
@@ -89,13 +90,18 @@ export default function GrillaCatalogo({
 
   return (
     <>
-      <div style={sx('flex:none;padding:12px 14px 8px')}>
+      {/* `accionBuscador` es un slot opcional a la derecha del buscador (hoy: el botón de pantalla
+          completa del vendedor). Va acá y no flotando en una esquina porque el buscador es lo único
+          que NO se esconde en modo inmersivo: el botón queda siempre en el mismo lugar, entrando y
+          saliendo, que es la condición para que se aprenda. Sin la prop, el layout es el de antes. */}
+      <div style={sx('flex:none;padding:12px 14px 8px;display:flex;align-items:center;gap:8px')}>
         {/* El input va sin borde ni outline a propósito: el foco lo marca este
             contenedor con .lu-campo (:focus-within). Ver index.css. */}
-        <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:44px')}>
+        <div className="lu-campo" style={sx('flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:44px')}>
           <Search />
-          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
+          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
         </div>
+        {accionBuscador}
       </div>
 
       {children}
