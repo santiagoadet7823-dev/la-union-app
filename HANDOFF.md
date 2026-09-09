@@ -47,15 +47,23 @@
 
 ## 🟩 0. SESIÓN DEL 09/09 (tarde) — cuatro pedidos, y dos máquinas mandando precios
 
-⚠️ **NO PUBLICADO — y no por decisión, por falta de credenciales.** El código está commiteado
-(`2a5656a`), `APP_VERSION` ya dice **1.26.0** y **`web/bundle.zip` está compilado y listo** (1,35 MB,
-118 archivos, `index.html` en la raíz). Lo que falta lo tiene que correr una persona: ver
-**⏳ Cómo terminar de publicar** al final de esta sección.
+✅ **PUBLICADO el 09/09** — OTA + PWA en **1.26.0**. `app_config`: `bundle_version` y
+`latest_version` en 1.26.0, `bundle_url` apuntando al release `ota-1.26.0`.
 
-🟢 **No hace falta APK nueva**: no se tocó nada nativo, es todo JS puro.
+🟢 **No hizo falta APK**: no se tocó nada nativo, es todo JS puro. **`min_version` sigue en
+1.24.0**, sin tocar.
 
-🔴 **`app_config` NO se tocó, a propósito.** Apuntarla a 1.26.0 con el bundle sin subir dejaría a
-los 12 equipos pidiendo una URL que no existe. El SQL va **después** del release, nunca antes.
+Lo que se verificó antes de mover `app_config` — y en ese orden, que es el que importa: el bundle
+se descargó **desde la URL pública** (HTTP 200, 1.350.428 bytes, idéntico al local), se abrió el zip
+(118 archivos, `index.html` en la raíz, entrypoint `index-DWB0Ci3F.js`) y recién después se apuntó
+`app_config`. Al revés, los 12 equipos habrían quedado pidiendo una URL que no existía.
+
+La PWA la desplegó el workflow de Pages con el push (56 s) y sirve 1.26.0. ⚠️ Su entrypoint es
+`index-Bx8_nWdN.js` y **no coincide con el del bundle**: es lo esperado, Pages compila sin
+`CAP_BUILD=1` (base `/la-union-app/` en vez de `./`), así que son dos builds distintos a propósito.
+No usar el hash para comparar los dos canales.
+
+⏳ **Falta solo el deploy de `ingest-precios`** — ver el final de esta sección.
 
 ### 1 · Modo inmersivo en el catálogo del vendedor ✅
 
@@ -185,41 +193,28 @@ creía que su envío no daba de baja, y sí da de baja.
 3. **Mandarle la revisión al cliente** y conseguir el log de la máquina que falla
    (`C:\DisTAt\registros\`), que es donde está el motivo exacto del 400.
 
-### ⏳ Cómo terminar de publicar
+### ⏳ Lo único que quedó sin publicar: la Edge Function
 
-Todo lo de abajo se frena en lo mismo: **esta máquina no tiene credenciales de GitHub**. `gh auth
-status` dice que no hay sesión, no hay `GH_TOKEN`/`GITHUB_TOKEN`, y `git push` **se cuelga** — el
-Credential Manager de Windows intenta abrir un diálogo que en una sesión no interactiva no aparece
-(medido: `git credential fill` también cuelga). Es el mismo pendiente que §2-bis ya marcaba como
-*"lo tiene que hacer una persona"*, y ahora bloquea un release.
+El push, el release OTA y la PWA salieron. **`ingest-precios` no**, y por la misma clase de motivo
+que frenó todo al principio: no hay `SUPABASE_ACCESS_TOKEN` ni `supabase login` en esta máquina
+(la CLI responde `LegacyPlatformAuthRequiredError`). No hay workflow que la despliegue: `deploy.yml`
+es solo de Pages.
 
 ```bash
-gh auth login                 # una sola vez; también destraba el git push
-
+# token en https://supabase.com/dashboard/account/tokens
+export SUPABASE_ACCESS_TOKEN=sbp_...
 cd C:/dev/DisT-At/la-union-app
-git push origin main          # van TRES commits: b989eef, 2a5656a y este mismo
-
-# El bundle YA esta compilado en web/bundle.zip. Si preferis rehacerlo de cero:
-bash scripts/ota-release.sh 1.26.0
+npx supabase functions deploy ingest-precios --project-ref lqhtxivednffpiicnbog --no-verify-jwt
 ```
 
-Recién **cuando el release exista**, el SQL de `app_config` (paso 2 de
-[GUIA_ACTUALIZACION_OTA.md](GUIA_ACTUALIZACION_OTA.md)):
+⚠️ El `--no-verify-jwt` **no es opcional**: el endpoint se autentica con su propio token de
+ingesta, no con un JWT de Supabase. Sin esa bandera queda rechazando al ERP.
 
-```sql
-update public.app_config
-   set bundle_version = '1.26.0',
-       latest_version = '1.26.0',
-       bundle_url = 'https://github.com/santiagoadet7823-dev/la-union-app/releases/download/ota-1.26.0/bundle.zip',
-       updated_at = now();
-```
-
-⚠️ **`min_version` NO se toca** (queda en 1.24.0): esto sale por OTA y no hay nada nativo que
-obligue a reinstalar.
+🟢 **Mientras no se despliegue no se rompe nada** — lo que hay arriba sigue funcionando, con la
+única pérdida de que los rechazos siguen sin dejar fila en `ingestas_precios`.
 
 🔴 Y **cerrar el release mirando `estado_dispositivo.bundle_aplicado`, no la respuesta del push**
 — es el precedente de 1.19.0, que se publicó y no recibió nadie.
-
 
 ---
 
