@@ -26,7 +26,8 @@
 // ⚠️ Los tres archivos de `lib/` se COPIAN desde `web/src/lib/` al desplegar
 // (`scripts/deploy-ingest-precios.sh`). No editarlos acá: la fuente es la del bundle.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { filaAImportar, mapearEncabezados, parsearTexto, resolverEscalasDelArchivo } from './lib/planillaProductos.js'
+import { ALIAS, filaAImportar, mapearEncabezados, parsearTexto, resolverEscalasDelArchivo } from './lib/planillaProductos.js'
+import { normalizar } from './lib/texto.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -70,6 +71,17 @@ Deno.serve(async (req) => {
     const crudo = await req.text()
     const tipo = (req.headers.get('content-type') || '').toLowerCase()
     const esJson = tipo.includes('application/json')
+
+    /* QUIEN MANDA (db/60). Sale de los headers de la CDN y NO del payload: así el emisor no se
+     * puede renombrar a sí mismo, y dos máquinas con el mismo token se distinguen. */
+    const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || null
+    const agente = req.headers.get('user-agent') || null
+    // Se llenan al parsear; se declaran acá porque `registrarEmisor` corre en todos los caminos,
+    // incluidos los que se van antes de parsear.
+    let encabezadoCrudo: string | null = null
+    let separadorDetectado: string | null = null
+    let columnasOk: string[] = []
+    let columnasIgnoradas: string[] = []
 
     // El token va en el header, que es lo que se le documentó al cliente. Se acepta también dentro
     // del cuerpo JSON por comodidad de quien lo pruebe con un `curl` a mano.
@@ -115,7 +127,31 @@ Deno.serve(async (req) => {
           error: motivo,
         })
       } catch (_) { /* la bitácora nunca puede tapar la respuesta */ }
+      await registrarEmisor(motivo)
       return json({ error: motivo, ...extra }, status)
+    }
+
+    /* QUIEN MANDÓ Y CON QUÉ ENCABEZADO (db/60). Va en su propia tabla y no en `ingestas_precios`
+     * porque esa fila la escribe la RPC, que no devuelve su id — y con dos emisores disparando al
+     * mismo minuto :00, "la fila más reciente" puede ser la del otro.
+     *
+     * Corre en TODOS los caminos, también en los rechazados: el emisor que falla es justamente el
+     * que menos huella deja, que es al revés de lo que conviene. */
+    const registrarEmisor = async (resultado: string) => {
+      try {
+        await admin.from('ingestas_emisor').insert({
+          id_empresa: tk.id_empresa,
+          id_usuario: tk.id_usuario,
+          ip,
+          agente,
+          bytes: crudo.length,
+          separador: separadorDetectado,
+          encabezado: encabezadoCrudo,
+          columnas_ok: columnasOk,
+          columnas_ignoradas: columnasIgnoradas,
+          resultado,
+        })
+      } catch (_) { /* un diagnóstico que rompe el envío es peor que no tenerlo */ }
     }
 
     // 2) El archivo → filas crudas `{encabezado: valor}`.
@@ -125,8 +161,28 @@ Deno.serve(async (req) => {
       const arr = Array.isArray(cuerpoJson) ? cuerpoJson : (cuerpoJson?.filas ?? cuerpoJson?.productos)
       if (!Array.isArray(arr)) return await registrarRechazo('sin-filas', { detalle: 'Se esperaba un array en `filas`.' }, 400)
       crudas = arr as Record<string, unknown>[]
+      // Mismo diagnóstico que en el camino de texto, pero las "columnas" son las claves del objeto.
+      const claves = Object.keys(crudas[0] || {})
+      encabezadoCrudo = claves.join(', ').slice(0, 500)
+      separadorDetectado = 'json'
+      for (const c of claves) {
+        if (ALIAS[normalizar(c)]) columnasOk.push(c)
+        else columnasIgnoradas.push(c)
+      }
     } else {
       const r = parsearTexto(crudo)
+      // Diagnóstico del emisor (db/60). Se recorta a 500: el encabezado alcanza para saber qué
+      // manda el ERP, y guardar el cuerpo serían 24 copias del catálogo por día.
+      encabezadoCrudo = (r.primeraLinea || '').slice(0, 500)
+      separadorDetectado = r.separador === '\t' ? 'TAB' : r.separador
+      // Sólo tiene sentido clasificar si la primera línea ES un encabezado: si no, `columnas` son
+      // datos y todo caería en "ignoradas", que se leería como un problema de columnas y no lo es.
+      if (r.hayEncabezado) {
+        for (const c of (r.columnas || [])) {
+          if (ALIAS[normalizar(c)]) columnasOk.push(c)
+          else columnasIgnoradas.push(c)
+        }
+      }
       /* 🩸 SIN ENCABEZADO NO SE ADIVINA (28/08/2026, con `ARTIK.csv`, el primer archivo real).
        *
        * Llegó sin fila de encabezados —arranca directo en `41;MANAOS 12X600ML COLA;9150.00;…`— y sin
@@ -252,6 +308,7 @@ Deno.serve(async (req) => {
     // 🔴 El freno devuelve 409 y NO es un fallo del cliente: es "esto es demasiado grande para
     // hacerlo sin que nadie mire". El cuerpo trae el número exacto para que se pueda decidir.
     if (data?.error === 'demasiadas-bajas') {
+      await registrarEmisor('demasiadas-bajas')
       return json({ ...data, rechazadas, separador }, 409)
     }
 
@@ -270,6 +327,7 @@ Deno.serve(async (req) => {
       ? { escalas_cargadas: esc.filas.filter((f) => Array.isArray((f as any).escalas) && (f as any).escalas.length > 0).length,
           escalas_borradas: esc.aBorrar }
       : (esc.neutralizadas > 0 ? { escalas_sin_tocar: esc.neutralizadas } : {})
+    await registrarEmisor('ok')
     return json({ ...data, rechazadas: todas, separador, ...infoCategorias, ...infoEscalas })
   } catch (e) {
     return json({ error: 'excepcion', detalle: String((e as Error)?.message || e) }, 500)
