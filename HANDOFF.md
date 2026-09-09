@@ -63,7 +63,7 @@ La PWA la desplegó el workflow de Pages con el push (56 s) y sirve 1.26.0. ⚠�
 `CAP_BUILD=1` (base `/la-union-app/` en vez de `./`), así que son dos builds distintos a propósito.
 No usar el hash para comparar los dos canales.
 
-⏳ **Falta solo el deploy de `ingest-precios`** — ver el final de esta sección.
+✅ **Y `ingest-precios` también quedó desplegada y probada** — ver el final de esta sección.
 
 ### 1 · Modo inmersivo en el catálogo del vendedor ✅
 
@@ -193,28 +193,34 @@ creía que su envío no daba de baja, y sí da de baja.
 3. **Mandarle la revisión al cliente** y conseguir el log de la máquina que falla
    (`C:\DisTAt\registros\`), que es donde está el motivo exacto del 400.
 
-### ⏳ Lo único que quedó sin publicar: la Edge Function
+### ✅ `ingest-precios` desplegada y probada contra producción
 
-El push, el release OTA y la PWA salieron. **`ingest-precios` no**, y por la misma clase de motivo
-que frenó todo al principio: no hay `SUPABASE_ACCESS_TOKEN` ni `supabase login` en esta máquina
-(la CLI responde `LegacyPlatformAuthRequiredError`). No hay workflow que la despliegue: `deploy.yml`
-es solo de Pages.
+Desplegada el 09/09 con `npx supabase functions deploy … --no-verify-jwt`. La CLI sube los cuatro
+archivos **desde el disco**, así que lo desplegado es literalmente el repo — sin el riesgo de
+transcribir 63 KB a mano, que era el motivo por el que se había frenado.
 
-```bash
-# token en https://supabase.com/dashboard/account/tokens
-export SUPABASE_ACCESS_TOKEN=sbp_...
-cd C:/dev/DisT-At/la-union-app
-npx supabase functions deploy ingest-precios --project-ref lqhtxivednffpiicnbog --no-verify-jwt
+Probada contra el endpoint real, en este orden:
+
+| Prueba | Esperado | Resultó |
+|---|---|---|
+| Token inventado | `401 token-invalido` | ✅ la función carga y ejecuta |
+| CSV **sin encabezado**, con el token de producción | `400 falta-encabezado` | ✅ con `primera_linea_recibida`, separador y ejemplo |
+| …y que **ese rechazo deje fila** | una fila con `error` | ✅ **`09/09 09:57:53 · falta-encabezado`** |
+
+⚠️ **Esa fila de las 09:57:53 es la prueba, no un fallo del ERP.** Se dejó a propósito — borrarla
+sería falsear la bitácora — pero al contar rechazos del cliente hay que descontarla. Es la única
+con esa marca de tiempo; las de la máquina de Las Lajitas caen al minuto **:00**.
+
+🟢 **Y desde ahora los 400 de esa segunda máquina sí van a quedar registrados.** La consulta que
+antes mentiía con un cero ahora sirve:
+
+```sql
+select to_char(ts at time zone 'America/Argentina/Buenos_Aires','DD/MM HH24:MI') cuando,
+       error, recibidas, creados, actualizados, descontinuados
+  from ingestas_precios
+ where error is not null
+ order by ts desc limit 20;
 ```
-
-⚠️ El `--no-verify-jwt` **no es opcional**: el endpoint se autentica con su propio token de
-ingesta, no con un JWT de Supabase. Sin esa bandera queda rechazando al ERP.
-
-🟢 **Mientras no se despliegue no se rompe nada** — lo que hay arriba sigue funcionando, con la
-única pérdida de que los rechazos siguen sin dejar fila en `ingestas_precios`.
-
-🔴 Y **cerrar el release mirando `estado_dispositivo.bundle_aplicado`, no la respuesta del push**
-— es el precedente de 1.19.0, que se publicó y no recibió nadie.
 
 ---
 
