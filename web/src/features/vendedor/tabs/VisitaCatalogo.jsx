@@ -3,7 +3,6 @@ import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { precioDe } from '../../../lib/precios'
 import CarritoSheet from '../CarritoSheet'
-import FichaProducto from '../FichaProducto'
 import GrillaCatalogo from '../../../components/GrillaCatalogo'
 import BtnInmersivo from '../../../components/BtnInmersivo'
 import EspejoTablet from '../../vidriera/EspejoTablet'
@@ -50,10 +49,6 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
 
   const [verQr, setVerQr] = useState(false)
   const [verCarrito, setVerCarrito] = useState(false)
-  // El producto abierto en grande. Se guarda el ID y no el objeto: el catálogo se reemplaza entero
-  // en cada mutación (una foto nueva, un precio corregido) y un objeto capturado acá se quedaría
-  // mostrando el precio viejo con el comerciante mirando la pantalla.
-  const [fichaId, setFichaId] = useState(null)
 
   // Los ids sugeridos se resuelven contra el catálogo cargado: si un producto se dio de baja
   // después del pedido, simplemente no aparece.
@@ -62,7 +57,6 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   // El filtrado, los chips y la grilla se mudaron a `components/GrillaCatalogo.jsx` (04/09/2026):
   // eran ~160 líneas que no sabían nada de la visita y que la pantalla de EDICIÓN de un pedido
   // necesita idénticas. Acá queda sólo lo que sí es de la visita.
-  const ficha = fichaId ? PRODUCTS.find((p) => p.id === fichaId) : null
 
   /**
    * 🩸 EL TOQUE HACE LAS DOS COSAS A LA VEZ, no una o la otra (28/08/2026).
@@ -73,10 +67,13 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
    * `alTocar` abre la ficha y avisa al mismo tiempo, porque las dos mitades son de la MISMA
    * conversación (ver el 🩸 de `VidrieraTablet`).
    *
-   * Sin tablet no se pierde nada: queda la ficha del celular, que se le da vuelta al comerciante.
+   * 🔑 DE LAS DOS MITADES, ACÁ QUEDA SÓLO LA DE LA TABLET (09/09/2026). Abrir el zoom pasó a ser
+   * responsabilidad de la grilla —que es la que sabe qué tarjeta se tocó y la única que lo tenía
+   * que saber—; esto es lo que se ENGANCHA a ese gesto y es propio de la visita. La grilla abre el
+   * zoom llame o no llame a esto, así que la pantalla de edición de un pedido, que no espeja nada,
+   * tiene el mismo zoom sin tener que enterarse de que existe la vidriera.
    */
-  const abrirFicha = (p) => {
-    setFichaId(p.id)
+  const alAbrirProducto = (p) => {
     if (vid.activa) { vid.destacar(p); showToast(`Se lo mostramos: ${p.name}`) }
   }
 
@@ -157,7 +154,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
         addCart={addCart}
         search={search} setSearch={setSearch}
         catFilter={catFilter} setCatFilter={setCatFilter}
-        onAbrirFicha={abrirFicha}
+        onProductoAbierto={alAbrirProducto}
         vidActiva={vid.activa}
         onMostrar={(p) => { vid.destacar(p); showToast(`Se lo mostramos: ${p.name}`) }}
         accionBuscador={onToggleInmersivo && (
@@ -272,20 +269,11 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
         />
       )}
 
-      {/* La ficha grande. Va ANTES del aviso de la vidriera a propósito: `AvisoVidriera` usa
-          `--z-aviso` (550) contra los `--z-sheet` (300) de esta hoja, así que el cartel de "el
-          cliente está mirando X" se sigue viendo por encima — que es justo lo que se quiere cuando
-          el comerciante toca otra cosa mientras el vendedor tiene una ficha abierta. */}
-      {ficha && (
-        <FichaProducto
-          producto={ficha}
-          cart={cart}
-          addCart={addCart}
-          puedeMostrar={vid.activa}
-          onMostrar={() => { vid.destacar(ficha); showToast(`Se lo mostramos: ${ficha.name}`) }}
-          onCerrar={() => setFichaId(null)}
-        />
-      )}
+      {/* La ficha grande (el zoom) la monta ahora `GrillaCatalogo`. El orden de z-index que
+          documentaba este bloque se sigue cumpliendo solo: `AvisoVidriera` usa `--z-aviso` (550)
+          contra el `--z-modal` (500) del zoom, así que el cartel de "el cliente está mirando X"
+          se ve por encima — que es justo lo que se quiere cuando el comerciante toca otra cosa
+          mientras el vendedor tiene un producto abierto. */}
 
       {/* El cartel de lo que el cliente mira: va SIEMPRE que haya sesión, esté abierta o no la
           ventana del QR. Ése es el punto de haber mudado la sesión un nivel arriba. */}

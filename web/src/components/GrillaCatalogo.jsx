@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { sx } from '../lib/sx'
 import { fmtPesos } from '../lib/format'
 import { escaleraDe, precioPara } from '../lib/precios'
 import { ImagenVacia, Search } from './icons'
 import { propsBusqueda } from './form'
 import CantidadInput from './CantidadInput'
+import FichaProducto from '../features/vendedor/FichaProducto'
 
 /**
  * EL CATÁLOGO DEL VENDEDOR: buscador + chips de categoría + grilla de 2 columnas.
@@ -31,7 +33,13 @@ import CantidadInput from './CantidadInput'
  * `children` se dibuja ENTRE el buscador y los chips: es donde `VisitaCatalogo` mete "repetir el
  * último pedido" y "lo que más lleva", que son de la visita y no del catálogo.
  *
- * props: { productos, cart, addCart, search, setSearch, catFilter, setCatFilter, onAbrirFicha,
+ * 🩸 EL ZOOM DEL PRODUCTO VIVE ACÁ DESDE EL 09/09/2026, no en el llamador. Lo montábamos en
+ * `VisitaCatalogo`, así que la pantalla de EDICIÓN de un pedido —el otro consumidor de esta
+ * grilla— se quedó sin él sin que nadie lo notara: exactamente la divergencia que este componente
+ * vino a terminar hace cinco días. El estado del zoom no sabe nada de la visita (es un id de
+ * producto), así que no había ninguna razón para tenerlo afuera.
+ *
+ * props: { productos, cart, addCart, search, setSearch, catFilter, setCatFilter, onProductoAbierto,
  *          vidActiva, onMostrar, paddingInferior, accionBuscador, children }
  */
 
@@ -47,7 +55,7 @@ export default function GrillaCatalogo({
   setSearch,
   catFilter = 'Todos',
   setCatFilter,
-  onAbrirFicha,
+  onProductoAbierto,
   vidActiva = false,
   onMostrar,
   paddingInferior = 180,
@@ -84,9 +92,32 @@ export default function GrillaCatalogo({
   })
 
   const enDestacados = catFilter === 'Destacados'
-  // La tarjeta entera es un botón sólo cuando hay a dónde ir. Antes esto dependía del chip activo;
-  // ahora depende de que el llamador ofrezca la ficha, que es la condición real.
-  const tarjetaClickeable = enDestacados && !!onAbrirFicha
+
+  // El producto abierto en grande. Se guarda el ID y no el objeto: el catálogo se reemplaza entero
+  // en cada mutación (una foto nueva, un precio corregido) y un objeto capturado acá se quedaría
+  // mostrando el precio viejo con el comerciante mirando la pantalla.
+  const [zoomId, setZoomId] = useState(null)
+  const zoom = zoomId ? productos.find((x) => x.id === zoomId) : null
+
+  /**
+   * 🩸 TOCAR LA TARJETA ABRE EL ZOOM, EN TODOS LOS FILTROS (09/09/2026, reunión con La Unión).
+   *
+   * Acá decía `enDestacados && !!onAbrirFicha`: el gesto existía sólo dentro del chip "Destacados",
+   * que es donde nació el 28/08. En los otros filtros —o sea, en el 95% del tiempo que el vendedor
+   * pasa en esta pantalla— tocar un producto no hacía nada, y el pedido del cliente fue justamente
+   * que **cada** recuadro respondiera al toque. Un gesto que funciona en un filtro y en el de al
+   * lado no, es peor que no tenerlo: enseña que la pantalla no responde.
+   *
+   * ⚠️ Lo que esto vuelve OBLIGATORIO es el `stopPropagation` del stepper y del `CantidadInput`.
+   * Antes eran una precaución de un solo filtro; ahora, sin ellos, tocar el + o el número abriría
+   * el zoom encima en CUALQUIER pantalla del catálogo.
+   */
+  const abrirZoom = (p) => {
+    setZoomId(p.id)
+    // El llamador se entera para hacer lo suyo (hoy: espejarlo en la tablet del comerciante).
+    // Ya no es él quien abre — si no hay nadie escuchando, el zoom se abre igual.
+    onProductoAbierto?.(p)
+  }
 
   return (
     <>
@@ -134,12 +165,12 @@ export default function GrillaCatalogo({
       )}
 
       <div style={{ ...sx('flex:1;overflow-y:auto;padding:0 14px'), paddingBottom: paddingInferior }}>
-        {/* Una línea de instrucción, sólo en Destacados. El gesto (tocar la tarjeta para abrirla
-            grande / mandarla a la tablet) es nuevo y no se descubre solo: en el resto de la grilla
-            tocar una tarjeta no hace nada desde siempre. */}
-        {tarjetaClickeable && items.length > 0 && (
+        {/* Una línea de instrucción. Ahora que el gesto vale en toda la grilla se muestra siempre:
+            tocar una tarjeta no hizo nada durante meses, así que el vendedor ya aprendió que no se
+            tocan. Esconderla justo cuando el gesto se generalizó sería esconder lo nuevo. */}
+        {items.length > 0 && (
           <div style={sx('margin:8px 0 2px;font-size:11.5px;color:var(--muted);line-height:1.45')}>
-            Tocá un producto para {vidActiva ? 'mostrárselo grande en la tablet' : 'verlo grande y mostrárselo'}.
+            Tocá un producto para {vidActiva ? 'verlo grande y mostrárselo en la tablet' : 'verlo grande'}.
           </div>
         )}
         {productos.length === 0 ? (
@@ -167,16 +198,14 @@ export default function GrillaCatalogo({
               return (
                 <div
                   key={p.id}
-                  // En Destacados la tarjeta ENTERA abre la ficha: el gesto que se pidió es "tocar el
-                  // producto", no "encontrar un botón". En el resto de los filtros la grilla sigue
-                  // funcionando como siempre — es la pantalla de toma de pedido y ahí el toque útil
-                  // es el stepper, que ya está en la calle.
-                  onClick={tarjetaClickeable ? () => onAbrirFicha(p) : undefined}
-                  className={tarjetaClickeable ? 'lu-press' : undefined}
-                  role={tarjetaClickeable ? 'button' : undefined}
+                  // La tarjeta ENTERA abre el zoom: el gesto que se pidió es "tocar el producto", no
+                  // "encontrar un botón". Ver `abrirZoom` arriba para por qué ya no depende del filtro.
+                  onClick={() => abrirZoom(p)}
+                  className="lu-press"
+                  role="button"
                   style={{
                     ...sx('display:flex;flex-direction:column;background:var(--surface);border-radius:14px;overflow:hidden'),
-                    cursor: tarjetaClickeable ? 'pointer' : 'default',
+                    cursor: 'pointer',
                     // El marco SIEMPRE es el nivel de rentabilidad; el estado "en carrito"
                     // se marca con un anillo (box-shadow) para no pisar ese código de color.
                     border: `2px solid ${rentColor(p.nivel)}`,
@@ -265,9 +294,12 @@ export default function GrillaCatalogo({
 
                     {/* Stepper compacto (es la pantalla de toma de pedido). */}
                     <div style={sx('margin-top:9px;display:flex;align-items:center;justify-content:space-between;gap:6px')}>
-                      {/* `stopPropagation` porque en Destacados la tarjeta es un botón: sin esto,
-                          tocar el − o el + abriría también la ficha (y con la vidriera viva le
-                          mandaría el producto a la tablet cada vez que el vendedor sube una unidad). */}
+                      {/* `stopPropagation` porque la tarjeta ENTERA es un botón: sin esto, tocar el
+                          − o el + abriría también el zoom encima (y con la vidriera viva le mandaría
+                          el producto a la tablet cada vez que el vendedor sube una unidad).
+                          🔴 Desde el 09/09/2026 esto ya no es la precaución de un solo filtro: la
+                          tarjeta es tocable en toda la grilla, así que sin estas tres líneas el
+                          stepper queda inservible en la pantalla entera, no en un rincón. */}
                       <button onClick={(e) => { e.stopPropagation(); addCart(p.id, -1) }} disabled={qty === 0} style={{ ...sx('width:34px;height:34px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;font-size:18px;user-select:none;background:transparent'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
                       <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} flex />
                       <button onClick={(e) => { e.stopPropagation(); addCart(p.id, 1) }} style={sx('width:34px;height:34px;flex:none;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
@@ -279,6 +311,18 @@ export default function GrillaCatalogo({
           </div>
         )}
       </div>
+
+      {/* EL ZOOM. Se monta SIEMPRE (con `producto` en null cuando está cerrado) para que `Overlay`
+          pueda animar su propia salida — ver el 🚨 de su encabezado. Cierra con un toque en el
+          fondo, con la ✕ y con el ATRÁS de Android, todo heredado de `Overlay`. */}
+      <FichaProducto
+        producto={zoom}
+        cart={cart}
+        addCart={addCart}
+        puedeMostrar={vidActiva && !!onMostrar}
+        onMostrar={() => zoom && onMostrar?.(zoom)}
+        onCerrar={() => setZoomId(null)}
+      />
     </>
   )
 }

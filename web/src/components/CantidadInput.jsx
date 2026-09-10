@@ -28,8 +28,15 @@ export default function CantidadInput({ qty, onCambiar, alto = 34, fuente = 14, 
   const comprometer = () => {
     if (txt === null) return
     // Sólo dígitos: en el celular el teclado numérico igual deja meter comas, signos y espacios.
-    const n = Math.max(0, Math.floor(Number(String(txt).replace(/[^\d]/g, '')) || 0))
+    const limpio = String(txt).replace(/[^\d]/g, '')
     setTxt(null)
+    // 🩸 CAMPO VACÍO = CANCELAR, NO CERO (09/09/2026). Va de la mano con el onFocus de abajo: desde
+    // que enfocar VACÍA el campo en vez de seleccionarlo, tocarlo sin querer y salir pasaba a
+    // borrar la cantidad cargada. Es la falla silenciosa peor de todas — el renglón desaparece del
+    // pedido y nadie lo ve hasta que el total no cierra, con el comerciante enfrente.
+    // Para poner cero quedan el − y escribir un 0 explicito, que son gestos deliberados.
+    if (limpio === '') return
+    const n = Math.max(0, Math.floor(Number(limpio) || 0))
     if (n !== qty) onCambiar(n)
   }
 
@@ -37,7 +44,15 @@ export default function CantidadInput({ qty, onCambiar, alto = 34, fuente = 14, 
     <input
       value={txt !== null ? txt : String(qty)}
       onChange={(e) => setTxt(e.target.value)}
-      onFocus={(e) => { setTxt(String(qty)); e.target.select() }}
+      // 🔴 ACÁ SE VACIA, NO SE SELECCIONA — y esa ÚNICA línea es el menú "Traducir / Copiar /
+      // Cortar" que reportaron el 09/09/2026. Acá decía `setTxt(String(qty)); e.target.select()`:
+      // el select() deja el texto SELECCIONADO, y ante una selección el WebView de Android levanta
+      // su barra flotante de sistema, que en un teléfono tapa media grilla justo cuando el vendedor
+      // va a tipear. No era configuración del teléfono ni del teclado, como se sospechaba: era
+      // nuestra. Vaciar el campo da el MISMO efecto de tipeo (escribis y reemplazas) sin crear
+      // ninguna selección, asi que la barra no tiene de dónde salir.
+      // El número anterior no se pierde de vista: sigue ahí, en gris, por el `placeholder`.
+      onFocus={() => setTxt('')}
       onBlur={comprometer}
       onKeyDown={(e) => {
         // Enter confirma y CIERRA EL TECLADO. Sin el blur, en el celular el teclado se queda tapando
@@ -50,6 +65,7 @@ export default function CantidadInput({ qty, onCambiar, alto = 34, fuente = 14, 
       // en el llamador a propósito: olvidarlo del otro lado es un bug que se ve recién con la
       // vidriera encendida y un cliente mirando.
       onClick={(e) => e.stopPropagation()}
+      placeholder={String(qty)}
       inputMode="numeric"
       enterKeyHint="done"
       aria-label="Cantidad"

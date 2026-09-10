@@ -43,6 +43,15 @@ import { apilarAtras } from '../services/atras'
  *   - open        bool        si está abierto (controlado por el padre)
  *   - onClose     () => void  se llama DESPUÉS de la animación de salida
  *   - variant     'modal' | 'sheet'
+ *   - animacion   'normal' | 'zoom'   solo modales. 'zoom' entra desde `scale(0.72)` en vez del
+ *                             `0.96` de siempre (`.lu-zoom-in`, index.css).
+ *                             🩸 Por que existe (09/09/2026): el catalogo del vendedor ahora abre el
+ *                             producto en grande al tocar la tarjeta, y el pedido textual fue "que
+ *                             al tocarlo se haga un zoom". Con el 0.96 del modal comun la
+ *                             ampliacion no se percibe — la ficha aparece, no crece — y el gesto
+ *                             pierde justo la mitad que lo explica. La SALIDA no cambia: sigue
+ *                             siendo `lu-modal-out`, porque al cerrar el usuario ya decidio y una
+ *                             animacion larga solo estorba.
  *   - title       string      título; si va, se dibuja el header con el cerrar
  *   - footer      ReactNode   acciones fijas abajo (no scrollean)
  *   - subtitle    string      línea secundaria bajo el título
@@ -94,6 +103,7 @@ export default function Overlay({
   open,
   onClose,
   variant = 'modal',
+  animacion = 'normal',
   title,
   subtitle,
   aside,
@@ -257,7 +267,7 @@ export default function Overlay({
   const arrastrandoAhora = arrastreY > 0
   const claseCard = esSheet
     ? (saliendo ? 'lu-sheet-down' : (arrastrandoAhora ? '' : 'lu-sheet-up'))
-    : (saliendo ? 'lu-modal-out' : 'lu-modal-card')
+    : (saliendo ? 'lu-modal-out' : (animacion === 'zoom' ? 'lu-zoom-in' : 'lu-modal-card'))
 
   // Handlers del arrastre-para-cerrar. Van SOLO en el chrome superior de los sheets
   // (agarradera + header), con `touch-action:none` para que el WebView no se robe el

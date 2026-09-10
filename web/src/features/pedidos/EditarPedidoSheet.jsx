@@ -6,7 +6,6 @@ import GrillaCatalogo from '../../components/GrillaCatalogo'
 import CantidadInput from '../../components/CantidadInput'
 import { useCatalog } from '../../context/CatalogContext'
 import { useGps } from '../../context/GpsContext'
-import FichaProducto from '../vendedor/FichaProducto'
 import { anularPedido } from './anularPedido'
 import { fmtFecha } from './DetallePedido'
 import { editarPedido, nuevaLinea, totalesDeLineas } from './editarPedido'
@@ -53,7 +52,6 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   // pestaña, y acá no hay pestañas que cambien.
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('Todos')
-  const [fichaId, setFichaId] = useState(null)
   const [motivo, setMotivo] = useState('')
   const [trabajando, setTrabajando] = useState(false)
 
@@ -100,8 +98,6 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
       return copia
     })
   }
-
-  const ficha = fichaId ? productos.find((p) => p.id === fichaId) : null
 
   function cerrar() { setAbierto(false) }
 
@@ -281,24 +277,18 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
           addCart={addCart}
           search={search} setSearch={setSearch}
           catFilter={catFilter} setCatFilter={setCatFilter}
-          onAbrirFicha={(p) => setFichaId(p.id)}
           // Adentro de un sheet no hay barra flotante que tapar: el `180px` de la visita dejaría un
           // hueco enorme al final de la lista.
           paddingInferior={12}
         />
       </Overlay>
 
-      {/* La ficha grande, con la escalera en filas legibles y el empujón "2 más y pagás $X". Es el
-          MISMO componente de la visita, y por eso funciona con `cart`/`addCart` sin adaptación. */}
-      {ficha && (
-        <FichaProducto
-          producto={ficha}
-          cart={cart}
-          addCart={addCart}
-          puedeMostrar={false}
-          onCerrar={() => setFichaId(null)}
-        />
-      )}
+      {/* 🩸 EL ZOOM DEL PRODUCTO YA NO SE MONTA ACÁ (09/09/2026). Lo montaba esta pantalla Y lo
+          montaba la visita, con dos estados `fichaId` idénticos en paralelo — y cuando el zoom pasó
+          a abrirse desde la grilla misma, esa copia habría dibujado DOS fichas encimadas al tocar un
+          producto. Ahora vive adentro de `GrillaCatalogo`, que es la única que sabe qué tarjeta se
+          tocó, y esta pantalla lo hereda sin pedirlo (regla 31). Sigue sin vidriera: la grilla no
+          recibe `onMostrar`, así que el botón "mostrárselo en la tablet" no se dibuja. */}
     </>
   )
 }
