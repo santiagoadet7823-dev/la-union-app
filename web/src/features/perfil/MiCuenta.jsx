@@ -8,6 +8,8 @@ import MiPerfilModal from './MiPerfilModal'
 import CompartirUbicacion from '../../components/CompartirUbicacion'
 import ThemeToggle from '../../components/ThemeToggle'
 import { ChevronRight, LogOut, Monitor, Profile, Smartphone } from '../../components/icons'
+import { App as CapApp } from '@capacitor/app'
+import { isNative } from '../../services/platform'
 
 /**
  * Sección "Mi cuenta" reutilizable: las MISMAS acciones que el menú de cuenta del admin
@@ -34,6 +36,20 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
   // bajado en cada teléfono, y desde la app no había forma de verlo ni de aplicarlo.
   const [ota, setOta] = useState(null)
   useEffect(() => { let vivo = true; estadoOta().then((e) => { if (vivo) setOta(e) }).catch(() => {}); return () => { vivo = false } }, [])
+
+  // 🩸 LAS DOS VERSIONES, SEPARADAS (10/09/2026). Acá se leía sólo "App v1.27.0" y eso
+  // confundió: son DOS números distintos y no tienen por qué coincidir. `APP_VERSION` viaja dentro
+  // del bundle (sube con cada OTA); el APK es el `versionName` nativo y sólo cambia cuando se
+  // reinstala. Con un solo número en pantalla no hay forma de contestar "¿me llegó la
+  // actualización?" — que fue exactamente lo que se preguntó.
+  // Sólo en el APK: en la PWA no existe versión nativa y el renglón quedaría a medias.
+  const [apkVer, setApkVer] = useState(null)
+  useEffect(() => {
+    if (!isNative()) return
+    let vivo = true
+    CapApp.getInfo().then((i) => { if (vivo && i?.version) setApkVer(i.version) }).catch(() => {})
+    return () => { vivo = false }
+  }, [])
   const nombre = perfil?.nombre || user?.email || 'Usuario'
 
   return (
@@ -44,7 +60,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{nombre}</div>
           <div style={sx('font-size:11px;color:var(--muted);font-family:var(--font-mono)')}>{ROLE_LABEL[rol] || rol || '—'} · {user?.email || ''}</div>
           <div style={sx('font-size:10px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>
-            App v{APP_VERSION}
+            App v{APP_VERSION}{apkVer ? ` · APK ${apkVer}` : ''}
             {ota?.encolado && <span style={sx('color:var(--primary)')}> · v{ota.encolado} lista (se aplica al reabrir)</span>}
             {ota?.error && !ota?.encolado && <span style={sx('color:var(--warning)')}> · no se pudo actualizar</span>}
           </div>
