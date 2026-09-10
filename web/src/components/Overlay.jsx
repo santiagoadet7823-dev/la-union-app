@@ -70,6 +70,14 @@ import { apilarAtras } from '../services/atras'
  *                             El valor sale de `--sheet-medio` (index.css), que elige entre `vh` y
  *                             `dvh` según lo que el navegador soporte.
  *   - dismissible bool        permite cerrar con scrim/Escape (default true)
+ *   - botonCerrar bool        dibuja la ✕ del header (default true). Esconde SÓLO el adorno: el
+ *                             scrim, el Escape y el ATRÁS de Android siguen cerrando igual.
+ *                             🩸 Por qué no alcanzaba `dismissible={false}` (10/09/2026): el zoom
+ *                             del producto tenía que mover su cerrar al pie ("Volver"), y bajar
+ *                             `dismissible` para sacar la ✕ habría apagado también el registro en
+ *                             `services/atras.js` — o sea que el botón ATRÁS del teléfono cerraría
+ *                             la APP en vez del zoom (reglas 26 y 27). Son dos cosas distintas:
+ *                             una es si el overlay se puede cerrar, la otra es si dibuja el botón.
  *   - glass       bool        superficie esmerilada en vez de sólida. Lo usa el
  *                             dashboard de SupervisionMovil, que flota sobre el
  *                             mapa y necesita dejarlo entrever.
@@ -111,6 +119,7 @@ export default function Overlay({
   maxWidth = 460,
   alto = 'auto',
   dismissible = true,
+  botonCerrar = true,
   glass = false,
   contained = false,
   children,
@@ -371,7 +380,7 @@ export default function Overlay({
               )}
             </div>
             {aside}
-            {dismissible && (
+            {dismissible && botonCerrar && (
               <button
                 type="button"
                 onClick={pedirCierre}

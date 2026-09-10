@@ -1,4 +1,5 @@
 import { sx } from '../lib/sx'
+import { fmtPesos } from '../lib/format'
 import Overlay from './Overlay'
 
 /**
@@ -25,12 +26,20 @@ import Overlay from './Overlay'
  * el lado conservador: dejar lo que ya se cargó y no sumar nada más. Es la única salida segura —
  * cerrar un cartel de confirmación no puede terminar agregando mercadería a un pedido.
  *
- * props: { abierto, unidades, toques, onSolo, onTodas }
- *   unidades = el `desde` del escalón (lo que carga UN toque)
- *   toques   = cuántas veces tocó, contando el primero (que YA está en el carrito)
+ * 🩸 HABLA EN TOTALES DEL PEDIDO, NO EN "N × TOQUES" (10/09/2026). La primera versión decía
+ * "6 u. × 2 = 12 u.", y con la escalada de tramos de `FichaProducto` esa multiplicación dejó de ser
+ * cierta: cuatro toques sobre "+6" no dan 24, dan 48, porque en el camino el carrito cruza al tramo
+ * de 12 y después al de 24. Mostrar la cuenta vieja sería mostrar un número que no es el que se va
+ * a cargar. Y de paso es lo que el vendedor necesita para decidir: cuánto queda en el pedido.
+ *
+ * props: { abierto, unidades, toques, actual, propuesta, cruce, onSolo, onTodas }
+ *   unidades  = el `desde` del escalón (lo que cargó el PRIMER toque)
+ *   toques    = cuántas veces tocó, contando el primero (que YA está en el carrito)
+ *   actual    = lo que hay cargado ahora (o sea, el resultado del toque 1)
+ *   propuesta = a cuánto quedaría el pedido si los toques valen — lo calcula `simularTanda`
+ *   cruce     = { desde, precio, precioAntes } si la propuesta salta a un tramo mejor, si no null
  */
-export default function ConfirmarDobleToque({ abierto, unidades = 0, toques = 2, onSolo, onTodas }) {
-  const total = unidades * toques
+export default function ConfirmarDobleToque({ abierto, unidades = 0, toques = 2, actual = 0, propuesta = 0, cruce = null, onSolo, onTodas }) {
 
   return (
     <Overlay
@@ -50,28 +59,55 @@ export default function ConfirmarDobleToque({ abierto, unidades = 0, toques = 2,
             onClick={onSolo}
             style={sx('flex:1;min-height:48px;display:grid;place-items:center;border:1px solid var(--line2);background:transparent;color:var(--text);border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer')}
           >
-            Solo {unidades} u.
+            Solo {actual} u.
           </button>
           <button
             className="lu-press"
             onClick={onTodas}
             style={sx('flex:1;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer')}
           >
-            Sí, {total} u.
+            Sí, {propuesta} u.
           </button>
         </div>
       }
     >
       <div style={sx('font-size:13.5px;line-height:1.55;color:var(--text)')}>
-        La oferta carga <b>{unidades} u.</b> por toque. Con {toques} toques van <b>{total} u.</b> al
-        pedido.
+        El botón carga tandas de <b>{unidades} u.</b> Con {toques} toques el pedido queda
+        en <b>{propuesta} u.</b>
       </div>
-      <div style={sx('margin-top:12px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px')}>
-        <span style={sx('color:var(--muted)')}>{unidades} u. × {toques}</span>
-        <span style={sx('font-weight:700;color:var(--text)')}>{total} u.</span>
+
+      {/* Los dos totales, uno debajo del otro: es la comparación que el vendedor tiene que hacer,
+          y ponerla en la misma columna es lo que la hace legible de un vistazo. */}
+      <div style={sx('margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px')}>
+        <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;background:var(--surface2)')}>
+          <span style={sx('color:var(--muted)')}>Ahora</span>
+          <span style={sx('font-weight:600;color:var(--text)')}>{actual} u.</span>
+        </div>
+        <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border-top:1px solid var(--line)')}>
+          <span style={sx('color:var(--muted)')}>Con {toques} toques</span>
+          <span style={sx('font-weight:700;color:var(--text)')}>{propuesta} u.</span>
+        </div>
       </div>
+
+      {/* 🩸 EL AVISO DE CRUCE DE TRAMO (10/09/2026). Sale sólo cuando la tanda salta de verdad a
+          un escalón mejor, y no es un adorno: convierte una confirmación en un argumento de venta
+          —"llevá doce y cada uno te sale ciento cincuenta menos"— que el vendedor puede decir en
+          voz alta con el número a la vista. Va acá adentro y no en un cartel aparte a propósito:
+          el vendedor ya está mirando esta pantalla, y una interrupción más en la misma decisión se
+          aprende a descartar sin leer. */}
+      {cruce && (
+        <div style={sx('margin-top:10px;padding:11px 13px;border:1px solid var(--success);border-radius:12px;background:var(--success-tint)')}>
+          <div style={sx('font-size:12.5px;font-weight:700;color:var(--success);line-height:1.45')}>
+            Pasás al tramo de {cruce.desde} u.
+          </div>
+          <div style={sx('margin-top:3px;font-size:12px;color:var(--text);line-height:1.5;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+            cada uno sale {fmtPesos(cruce.precio)} en vez de {fmtPesos(cruce.precioAntes)}
+          </div>
+        </div>
+      )}
+
       <div style={sx('margin-top:10px;font-size:12px;color:var(--faint);line-height:1.5')}>
-        Si se te fue el dedo, tocá <b>Solo {unidades} u.</b> — el pedido queda con la primera tanda.
+        Si se te fue el dedo, tocá <b>Solo {actual} u.</b> — el pedido queda como está.
       </div>
     </Overlay>
   )

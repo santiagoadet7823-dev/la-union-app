@@ -97,6 +97,12 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
   const pr = precioPara(p, Math.max(1, qty))
   const escalones = escaleraDe(p)
 
+  // 🩸 EL TRAMO EN EL QUE ESTÁ PARADO EL CARRITO (10/09/2026). Se resuelve contra `qty` CRUDO y
+  // no contra el `Math.max(1, qty)` de arriba: con el carrito vacío no hay tramo, y usar el 1 de
+  // relleno apagaría botones antes de que el vendedor cargue nada. Es `null` mientras no se alcanza
+  // el primer escalón.
+  const tramoActual = precioPara(p, qty).desde
+
   /**
    * 🩸 EL PROTOCOLO DE CARGA POR TANDA (09/09/2026, pedido textual de la reunión).
    *
@@ -107,11 +113,44 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
    *            metidas en un pedido de veinte renglones. La respuesta del vendedor decide: "Solo 6"
    *            deja lo cargado, "Sí, 12" suma la diferencia.
    *
-   * La ventana se REINICIA en cada toque, así tres toques rápidos proponen 18 y no 12 — "se cargan
-   * las cantidades que vaya apretando el vendedor", que fue como se pidió.
+   * La ventana se REINICIA en cada toque — "se cargan las cantidades que vaya apretando el
+   * vendedor", que fue como se pidió. Cuánto suma cada toque de más lo decide `simularTanda`, que
+   * es donde vive la escalada de tramos; acá sólo se cuentan los toques.
    *
    * ⚠️ `addCart` es un DELTA, no la cantidad final (`useJornada.js`). Todo lo de acá suma deltas.
    */
+  /**
+   * 🩸 LA TANDA CRECE AL CRUZAR DE TRAMO (10/09/2026, segunda vuelta con el cliente).
+   *
+   * Con escalera 6 / 12 / 24, tocar cuatro veces "+6" no da 24: da **48**. Porque al segundo toque
+   * el carrito ya está en 12, o sea en OTRO tramo, con otro precio; seguir cargando de a 6 sería
+   * "seguir con las unidades anteriores", que es justo lo que se pidió no hacer. Cada toque suma la
+   * tanda del tramo VIGENTE en ese punto:
+   *
+   *     toque 1  +6   →  6     (tramo 6)
+   *     toque 2  +6   → 12     (cruza al tramo 12)
+   *     toque 3  +12  → 24     (cruza al tramo 24)
+   *     toque 4  +24  → 48
+   *
+   * Con una oferta de un solo tramo (120) nunca hay cruce, así que queda lineal: 120, 240, 360.
+   *
+   * 🔴 EL TOQUE 1 SIEMPRE SUMA LO QUE DICE EL BOTÓN, y por eso el bucle arranca en `i = 1`. Si
+   * "+6 u." cargara 24 porque el carrito venía de otro tramo, el botón estaría mintiendo sobre lo
+   * que hace — y es un botón que mueve bultos, no unidades.
+   *
+   * ⚠️ SE RECALCULA ENTERA EN CADA TOQUE, desde `qty`, en vez de ir acumulando en el ref. Un
+   * acumulador que se equivoca una vez arrastra el error hasta que el vendedor suelta el botón, y
+   * el número equivocado es el que termina en el cartel de confirmación.
+   */
+  function simularTanda(desde, toques) {
+    let q = qty                     // el toque 1 ya está en el carrito
+    for (let i = 1; i < toques; i++) {
+      const tramo = precioPara(p, q).desde
+      q += tramo > 0 ? tramo : desde   // sin tramo alcanzado todavía, manda lo que dice el botón
+    }
+    return q
+  }
+
   function tocarEscalon(esc) {
     const t = tanda.current
     if (!t || t.desde !== esc.desde) {
@@ -120,7 +159,7 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
       tanda.current = { desde: esc.desde, toques: 1 }
     } else {
       t.toques += 1
-      setConfirmar({ desde: t.desde, toques: t.toques })
+      setConfirmar({ desde: t.desde, toques: t.toques, propuesta: simularTanda(esc.desde, t.toques) })
     }
     clearTimeout(timer.current)
     timer.current = setTimeout(() => { tanda.current = null; timer.current = null }, VENTANA_TOQUES)
@@ -136,10 +175,28 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
   }
 
   function todasLasTandas() {
-    // Sólo el faltante: la primera tanda ya entró al carrito en el toque 1.
-    if (confirmar) addCart(p.id, confirmar.desde * (confirmar.toques - 1))
+    // Sólo el faltante: la primera tanda ya entró al carrito en el toque 1. Sale de la resta y no
+    // de una multiplicación porque con la escalada de tramos las tandas ya no son todas iguales.
+    if (confirmar) addCart(p.id, Math.max(0, confirmar.propuesta - qty))
     soloLaPrimera()
   }
+
+  /**
+   * ¿La tanda propuesta cruza a un tramo mejor? Es lo que el cartel tiene que avisar antes de que
+   * el vendedor decida: no es lo mismo "vas a llevar 12" que "vas a llevar 12 y cada uno te sale
+   * $150 menos" — lo segundo es un argumento para decírselo al comerciante.
+   *
+   * ⚠️ Los dos precios salen de `precioPara` (regla 52) y NO de una cuenta acá: este cartel se lee
+   * con el comerciante al lado, y un número que no coincida con el del renglón de la escalera se
+   * descubre con la persona enfrente.
+   */
+  const cruce = (() => {
+    if (!confirmar) return null
+    const antes = precioPara(p, qty)
+    const despues = precioPara(p, confirmar.propuesta)
+    if (!(despues.desde > (antes.desde || 0))) return null
+    return { desde: despues.desde, precio: despues.precio, precioAntes: antes.precio }
+  })()
 
   return (
     <>
@@ -149,6 +206,9 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
         variant="modal"
         animacion="zoom"
         maxWidth={340}
+        // La ✕ del header se muda al pie como "Volver" (10/09/2026). Esto esconde SOLO el botón:
+        // el scrim, el Escape y el ATRÁS de Android siguen cerrando — ver el 🩸 de `Overlay`.
+        botonCerrar={false}
         title={p.name}
         subtitle={[p.marca, p.codigo].filter(Boolean).join(' · ') || undefined}
         footer={
@@ -168,12 +228,20 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
                 <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} alto={46} fuente={16} minAncho={34} />
                 <button onClick={() => addCart(p.id, 1)} style={sx('width:42px;height:46px;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:12px;cursor:pointer;color:var(--deep);font-size:19px;user-select:none')}>+</button>
               </div>
+              {/* 🩸 ACÁ HABÍA UN "SUMAR UNO MÁS" Y SOBRABA (10/09/2026). El `+` del stepper está
+                  pegado a la izquierda haciendo exactamente lo mismo, y encima el nombre confundía:
+                  para el cliente "sumar uno" nunca quiso decir una unidad, quiso decir **una tanda
+                  más de la oferta** (120 → 240 → 360). Eso ya lo resuelve el cartel del doble toque,
+                  así que el botón no aportaba nada y ocupaba el lugar que hacía falta para el cerrar.
+                  Va BORDEADO y no primario: sacada la acción de sumar, pintar de color el botón de
+                  cerrar mandaría la atención al lugar equivocado. El ancla del pie es el stepper. */}
               <button
                 className="lu-press"
-                onClick={() => { addCart(p.id, 1); onCerrar() }}
-                style={sx('flex:1;min-height:46px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer')}
+                onClick={onCerrar}
+                style={sx('flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;gap:7px;background:transparent;color:var(--text);border:1px solid var(--line2);border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer')}
               >
-                {qty > 0 ? 'Sumar uno más' : 'Sumar al pedido'}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+                Volver
               </button>
             </div>
           </div>
@@ -234,6 +302,16 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
             <div style={sx('display:flex;flex-direction:column;gap:5px')}>
               {escalones.map((e) => {
                 const activo = qty >= e.desde
+                // 🩸 EL BOTÓN SE APAGA CUANDO SU TRAMO YA QUEDÓ ATRÁS (10/09/2026). Con el carrito
+                // en el tramo de 12, "+6 u." no tiene nada que ofrecer: el precio de 6 ya lo está
+                // pagando. El pedido fue literal — "que se deshabiliten para no poder tocarlos
+                // porque ya pasamos esa cantidad".
+                //
+                // 🔴 ES `<` Y NO `<=`, Y ES LA LÍNEA DELICADA DE TODO ESTO. El botón del tramo en el
+                // que estás parado tiene que seguir vivo, porque es el que deja sumar OTRA tanda:
+                // con `<=`, una oferta de un solo tramo (120) se apagaría sola al primer toque y el
+                // 120 → 240 → 360 que pidió el cliente quedaría imposible de tocar.
+                const superado = tramoActual != null && e.desde < tramoActual
                 return (
                   <div
                     key={e.desde}
@@ -250,10 +328,20 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
                         en ningún lado porque el error de puntería en este botón cuesta un bulto
                         entero. El texto sale del escalón, nunca de una constante. */}
                     <button
-                      className="lu-press"
+                      className={superado ? undefined : 'lu-press'}
                       onClick={() => tocarEscalon(e)}
-                      aria-label={`Agregar ${e.desde} unidades al pedido`}
-                      style={sx('flex:none;min-width:66px;height:44px;padding:0 12px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;cursor:pointer;user-select:none')}
+                      disabled={superado}
+                      aria-label={superado ? `Ya superaste las ${e.desde} unidades` : `Agregar ${e.desde} unidades al pedido`}
+                      style={{
+                        ...sx('flex:none;min-width:66px;height:44px;padding:0 12px;display:grid;place-items:center;border-radius:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;user-select:none'),
+                        // El renglón conserva su verde de "tramo alcanzado"; el que se apaga es sólo
+                        // el botón. Los dos juntos se leen como "esto ya lo tenés".
+                        background: superado ? 'var(--surface)' : 'var(--primary)',
+                        color: superado ? 'var(--faint)' : 'var(--on-primary)',
+                        border: superado ? '1px solid var(--line2)' : 'none',
+                        cursor: superado ? 'default' : 'pointer',
+                        opacity: superado ? 0.6 : 1,
+                      }}
                     >
                       +{e.desde} u.
                     </button>
@@ -287,6 +375,9 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
         abierto={!!confirmar}
         unidades={confirmar?.desde || 0}
         toques={confirmar?.toques || 2}
+        actual={qty}
+        propuesta={confirmar?.propuesta || qty}
+        cruce={cruce}
         onSolo={soloLaPrimera}
         onTodas={todasLasTandas}
       />
