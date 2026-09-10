@@ -8,6 +8,7 @@
  * localStorage si SQLite no inicializa, para no romper la app nunca.
  */
 import { isNative } from '../platform'
+import { conTimeout } from '../../lib/conTimeout'
 
 const webStore = {
   async get(key, fallback = null) {
@@ -39,8 +40,6 @@ let sqlite = null
 let nativeReady = null
 // Si un paso de SQLite se CUELGA (no tira error), el await nunca vuelve y la cola GPS queda
 // trabada para siempre (no encola ni sube). El timeout fuerza el fallback a localStorage.
-const conTimeout = (p, ms, etiqueta) =>
-  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout ${etiqueta}`)), ms))])
 function initNative() {
   if (nativeReady) return nativeReady
   nativeReady = (async () => {

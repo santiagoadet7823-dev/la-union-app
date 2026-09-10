@@ -69,10 +69,25 @@ export function useSugeridos(idCliente) {
  * check-in que ofrece corregir el pedido que ya se hizo en ese comercio (`ElegirTicketSheet`).
  */
 export function useUltimoPedido(idCliente) {
-  const [ultimo, setUltimo] = useState(null)
+  /**
+   * 🩸 TRES ESTADOS, NO DOS (10/09/2026): `undefined` = todavía estoy buscando · `null` = ya busqué
+   * y no hay · un objeto = esto es.
+   *
+   * Arrancaba en `null`, o sea que "buscando" y "no hay" eran el MISMO valor, y `VendedorView`
+   * montaba la hoja de elegir ticket con `{elegir && ultimoDelElegido && …}`. Resultado: en un
+   * comercio ya visitado y sin pedido previo —el que cerró la visita con "Sin pedido"— tocar el
+   * pill VISITADO no hacía absolutamente nada, por el resto de la jornada, sin ningún aviso. Y
+   * sin señal pasaba con TODOS los comercios, porque esta consulta es de red.
+   *
+   * Con el tercer estado el llamador puede distinguir "esperá" de "no hay nada que preguntar" y
+   * abrir el ticket nuevo directo. El otro consumidor (`VisitaCatalogo`, "Repetir el último
+   * pedido") usa `!!ultimoPedido`, que es falso para los dos: no se entera del cambio.
+   */
+  const [ultimo, setUltimo] = useState(undefined)
 
   useEffect(() => {
     if (!idCliente) { setUltimo(null); return }
+    setUltimo(undefined)   // comercio nuevo: vuelve a "buscando" hasta que esta consulta conteste
     let vivo = true
     ;(async () => {
       try {

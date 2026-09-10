@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import { CapacitorUpdater } from '@capgo/capacitor-updater'
 import { getAppConfig } from './data/appConfig'
 import { persistence } from './persistence'
+import { cmpVer } from '../lib/version'
 
 /**
  * Actualización OTA del contenido web (sin reinstalar el APK), con capgo.
@@ -44,7 +45,12 @@ export async function estadoOta() {
   const guardado = (await persistence.get(K_OTA, null)) || {}
   // Si lo encolado ya es lo aplicado, el reinicio ocurrió y la marca sobra: dejarla puesta haría
   // que el panel siguiera diciendo "pendiente" sobre algo que ya pasó.
-  const encolado = guardado.encolado && guardado.encolado !== aplicado ? guardado.encolado : null
+  // 🩸 LA MARCA VIEJA SE LIMPIA POR VERSIÓN, NO POR IGUALDAD (10/09/2026). Acá decía
+  // `guardado.encolado !== aplicado`, o sea que sólo se borraba si coincidía EXACTO. Una marca de
+  // un bundle que nunca se aplicó —porque después vino otro más nuevo y lo pisó— quedaba para
+  // siempre: hoy hay dos equipos corriendo 1.28.0 que reportan "1.23.0 encolado", cinco versiones
+  // atrás. No rompe nada, pero es telemetría que MIENTE, y se mira justo cuando algo anda mal.
+  const encolado = guardado.encolado && cmpVer(guardado.encolado, aplicado) > 0 ? guardado.encolado : null
   return { aplicado, encolado, error: guardado.error || null }
 }
 

@@ -57,8 +57,20 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
 
   // Al cambiar de pedido se limpia todo. Sin esto, lo tipeado para uno quedaría cargado al abrir el
   // siguiente — el mismo cuidado que ya tiene `DetallePedido` con el motivo de anulación.
+  //
+  // 🩸 ACÁ HABÍA UN `setFichaId(null)` Y TUVO A TODA LA FLOTA SIN PODER CORREGIR TICKETS (10/09/2026).
+  // El 09/09 el zoom del producto se mudó a `GrillaCatalogo` y esta pantalla dejó de tener su propio
+  // `fichaId`; se borró la declaración y la llamada quedó viva. Como este efecto corre SIEMPRE al
+  // montar, la pantalla moría con `ReferenceError` en el frame en que se abría, para los tres roles
+  // y desde los tres accesos. Nadie lo vio venir porque:
+  //   · el build da verde — Vite no resuelve identificadores libres, los deja para el navegador;
+  //   · `npm run lint` era `eslint . || true` SIN eslint instalado, o sea que nunca falló nada
+  //     (arreglado en este mismo release: `no-undef` ahora rompe el build);
+  //   · y el `ErrorBoundary` lo tapaba con "Si estás sin conexión…", así que se reportó como
+  //     "perdimos permisos" y como "dice que no hay internet". Tres síntomas, un identificador.
+  // La lección para el próximo: al sacar un estado, buscar el SETTER además del nombre.
   useEffect(() => {
-    setCantidades({}); setNuevas([]); setSearch(''); setCatFilter('Todos'); setFichaId(null); setMotivo('')
+    setCantidades({}); setNuevas([]); setSearch(''); setCatFilter('Todos'); setMotivo('')
   }, [pedido?.id])
 
   const cantidadDe = (l) => Math.max(0, Math.round(Number(cantidades[l.id] ?? l.cantidad) || 0))

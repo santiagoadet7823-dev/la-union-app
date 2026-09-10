@@ -198,11 +198,29 @@ export async function pendientesDe(table, op = 'insert') {
   return q.filter((m) => m.table === table && m.op === op).map((m) => m.payload)
 }
 
-/** Arranca el auto-flush (una sola vez): al recuperar red y cada 30 s. */
+/**
+ * Arranca el auto-flush (una sola vez): al volver a primer plano, al recuperar red y cada 30 s.
+ *
+ * 🩸 FALTABA `visibilitychange`, Y ES EL DISPARADOR QUE MÁS IMPORTA (10/09/2026). La cola de GPS
+ * (`queue.js:230-236`) lo tiene desde siempre y su propio comentario lo llama "el disparador
+ * clave"; `INFORME_AUDITORIA.md` dice "las dos colas" — pero ésta se había quedado con la mitad.
+ *
+ * Por qué es el que importa: en segundo plano el WebView de Android CONGELA los timers y no
+ * entrega el evento `online`. O sea que los otros dos disparadores no corren justo durante lo que
+ * pasa de verdad en la calle — el teléfono en el bolsillo, entrando y saliendo de cobertura. El
+ * momento en que hay red Y la app puede ejecutar código es exactamente cuando el vendedor la
+ * vuelve a mirar, y ese momento es este evento.
+ *
+ * Sin esto, un pedido tomado sin señal esperaba al primer `setInterval` que el sistema dejara
+ * correr, que podía ser mucho después de que hubiera red.
+ */
 export function startWriteQueue() {
   if (started || typeof window === 'undefined') return
   started = true
   flushMutaciones()
   window.addEventListener('online', () => flushMutaciones())
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') flushMutaciones()
+  })
   setInterval(() => flushMutaciones(), 30000)
 }

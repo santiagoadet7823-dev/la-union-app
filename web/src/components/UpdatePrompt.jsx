@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { registerSW } from 'virtual:pwa-register'
 import { sx } from '../lib/sx'
 import { isNative } from '../services/platform'
-import { otaReady, otaCheck, otaDownload, otaReload } from '../services/ota'
+import { otaReady, otaCheck, otaDownload, otaReload, estadoOta } from '../services/ota'
 import { apkCheck, apkStartUpdate } from '../services/apkUpdate'
 
 /**
@@ -26,6 +26,10 @@ export default function UpdatePrompt() {
   const updateRef = useRef(null) // web: updateSW
   const otaRef = useRef(null)    // nativo OTA: {version, url}
   const apkRef = useRef(null)    // nativo APK: {version, url}
+  const instalandoRef = useRef(null) // timer de rescate del estado 'instalando' (ver onCta)
+
+  // El timer no puede sobrevivir al desmontaje: dispararía sobre un componente muerto.
+  useEffect(() => () => clearTimeout(instalandoRef.current), [])
 
   // Web/PWA: nuevo service worker disponible.
   useEffect(() => {
@@ -55,11 +59,33 @@ export default function UpdatePrompt() {
     if (!nativo) return
     let cancel = false
     otaReady()
-    apkCheck().then((apk) => {
+    apkCheck().then(async (apk) => {
       if (cancel) return
       // El APK sí necesita a la persona (salvo instalación silenciosa, que decide Android): se
       // ofrece como antes.
       if (apk) { apkRef.current = apk; setModo('apk'); setShow(true); return }
+
+      // 🩸 SI YA HAY UN BUNDLE BAJADO ESPERANDO, OFRECER APLICARLO (10/09/2026).
+      //
+      // `otaDownload` deja el bundle encolado con `next()`, que se aplica SÓLO EN UN ARRANQUE EN
+      // FRÍO. Y en Android cerrar la app desde recientes no siempre lo es: el proceso queda vivo y
+      // al volver se reanuda. Reiniciar el TELÉFONO sí garantiza el arranque en frío — y por eso
+      // el reporte del cliente fue, textual, "las actualizaciones se cuelgan y hay que reiniciar
+      // el celu para poder instalarlas". No estaban colgadas: estaban esperando un arranque que
+      // no llegaba nunca.
+      //
+      // El atajo ("Aplicar ahora" → `otaReload`) existía pero era inalcanzable: sólo vivía en el
+      // cartel recién descargado, así que ocultarlo con la ✕ o simplemente reabrir la app lo
+      // borraba y dejaba el bundle enterrado. Ahora se recupera en cada arranque mientras siga
+      // habiendo algo esperando.
+      //
+      // Va ANTES de `otaCheck` a propósito: `CapacitorUpdater.current()` sigue devolviendo el
+      // bundle viejo mientras el nuevo está encolado, así que `otaCheck` diría "hay uno nuevo" y
+      // lo volvería a bajar entero — megabytes por datos móviles de algo que ya está en el disco.
+      const yaBajado = await estadoOta()
+      if (cancel) return
+      if (yaBajado?.encolado) { setModo('ota'); setFase('listo'); setShow(true); return }
+
       otaCheck().then(async (u) => {
         if (cancel || !u) return
         otaRef.current = u
@@ -110,6 +136,19 @@ export default function UpdatePrompt() {
           // El instalador del sistema ya está en pantalla; la app pasa a segundo plano.
           setFase('instalando')
           setMsg('Seguí los pasos del instalador para completar la actualización.')
+          // 🩸 SALIDA DEL "INSTALANDO…" (10/09/2026). Si la instalación arranca de verdad, Android
+          // MATA este proceso y este timer deja de existir — o sea que si llega a dispararse es
+          // porque el diálogo del sistema nunca apareció. Y pasa: la instalación silenciosa de
+          // Android 12+ se concede sólo si la app es su propio instalador de registro, y los
+          // equipos del parque se instalaron por `adb`, así que el sistema delega en un diálogo
+          // que un BroadcastReceiver tiene que abrir desde el fondo — cosa que Android puede
+          // bloquear sin avisar (ver InstalacionReceiver).
+          // Sin esto el cartel quedaba clavado, con el botón deshabilitado y sin ✕.
+          clearTimeout(instalandoRef.current)
+          instalandoRef.current = setTimeout(() => {
+            setFase('idle')
+            setMsg('No se abrió el instalador. Probá de nuevo.')
+          }, 90000)
         }
       } catch (e) {
         setFase('error')
@@ -167,13 +206,17 @@ export default function UpdatePrompt() {
         <button onClick={onCta} disabled={ctaDisabled} style={{ ...sx('flex:none;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:12.5px;font-weight:600;padding:8px 14px;cursor:pointer'), opacity: ctaDisabled ? 0.6 : 1 }}>
           {cta}
         </button>
-        {/* Descartar. Solo cuando ya está descargada: ahí el cartel es informativo y no debe
-            quedarse clavado sobre la pantalla de trabajo — la actualización se aplica igual al
-            cerrar la app. En los otros estados (error, permiso, instalador) hay algo que hacer y
-            no se ofrece esconderlo. */}
-        {fase === 'listo' && (
+        {/* 🩸 LA ✕ VA SIEMPRE (10/09/2026). Antes existía sólo con `fase === 'listo'`, con el
+            argumento de que en los otros estados "hay algo que hacer y no se ofrece esconderlo".
+            El razonamiento falla en el caso real: un cartel del que no se puede salir no consigue
+            que la persona actúe, consigue que reinicie el teléfono — que es exactamente lo que
+            terminaron haciendo los vendedores, con el botón deshabilitado en "Instalando…" y sin
+            forma de volver a la pantalla de trabajo.
+            Esconderlo no cancela nada: el bundle sigue encolado y el cartel se vuelve a ofrecer en
+            el próximo arranque (ver el 🩸 del efecto de arriba). */}
+        {(
           <button
-            onClick={() => setShow(false)}
+            onClick={() => { clearTimeout(instalandoRef.current); setShow(false) }}
             aria-label="Ocultar el aviso"
             style={sx('flex:none;display:grid;place-items:center;width:28px;height:28px;border:none;border-radius:8px;background:transparent;color:var(--faint);cursor:pointer')}
           >

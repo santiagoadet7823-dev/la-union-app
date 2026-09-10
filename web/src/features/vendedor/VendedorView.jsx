@@ -105,6 +105,29 @@ export default function VendedorView() {
     setElegir(c)
   }
 
+  /**
+   * 🩸 SI NO HAY NADA QUE ELEGIR, NO SE PREGUNTA: SE ABRE EL TICKET (10/09/2026).
+   *
+   * La hoja de elegir se monta con `{elegir && ultimoDelElegido && …}`, así que cuando el comercio
+   * no tiene pedido previo NO aparece nada. Para un comercio `pendiente` da igual —`alTocarCliente`
+   * ya hizo el check-in— pero para uno YA VISITADO era un callejón sin salida: el pill VISITADO se
+   * tocaba y no pasaba nada, toda la jornada. Es el caso del comercio que se cerró con "Sin pedido"
+   * y después el comerciante pidió algo.
+   *
+   * 🔴 Y SIN SEÑAL PASABA CON TODOS, porque `useUltimoPedido` es una consulta de red: fallaba a
+   * `null` y ningún comercio se podía volver a abrir. Por eso esto va de la mano del timeout de
+   * `services/supabase.js` — sin él, `ultimoDelElegido` se quedaba en `undefined` dos minutos y
+   * este efecto esperaría igual.
+   *
+   * ⚠️ `startVisit` vuelve a registrar el check-in. No es una decisión nueva: es exactamente lo que
+   * ya hace `onNuevo` acá abajo para un comercio no-`pendiente`.
+   */
+  useEffect(() => {
+    if (!elegir || ultimoDelElegido !== null) return   // undefined = la consulta sigue en vuelo
+    if (elegir.status !== 'pendiente') j.startVisit(elegir.id)
+    setElegir(null)
+  }, [elegir, ultimoDelElegido])   // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Abre la corrección: las líneas se leen de la base, que es donde están los precios congelados. */
   async function abrirCorreccion() {
     const p = ultimoDelElegido

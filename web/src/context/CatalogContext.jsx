@@ -106,9 +106,13 @@ export function CatalogProvider({ children }) {
   // Marca si ya se aplicó un snapshot de RED, para que la hidratación de caché (que
   // resuelve async, más lenta en el APK por el init de SQLite) no pise datos frescos.
   const netAppliedRef = useRef(false)
+  // ¿Ya hay algo en pantalla (de caché o de red)? Es lo que decide si `recargar` muestra el
+  // spinner o revalida en silencio. Va en ref y no en estado: sólo se lee dentro de callbacks.
+  const hayDatosRef = useRef(false)
 
   // Aplica un snapshot CRUDO de DB al estado de vista.
   const aplicar = useCallback((raw) => {
+    hayDatosRef.current = true
     setProductos((raw?.productos || []).map(mapProducto))
     setClientes((raw?.clientes || []).map(mapCliente))
     setZonas(raw?.zonas || [])
@@ -121,7 +125,20 @@ export function CatalogProvider({ children }) {
   const ultimoSelloChequeoRef = useRef(0)
 
   const recargar = useCallback(async () => {
-    setLoading(true)
+    // 🩸 EL SPINNER SÓLO SI NO HAY NADA QUE MOSTRAR (10/09/2026). Acá había un `setLoading(true)`
+    // incondicional, y es lo que hacía desaparecer la lista de clientes en la calle.
+    //
+    // La secuencia era: la caché hidrata y pinta los 2.016 clientes → este `recargar` se dispara y
+    // pone `loading` en true → `InicioTab` cambia la lista entera por "Cargando clientes…" → y con
+    // señal mala `fetchCatalogo` no volvía por dos minutos. O sea: el vendedor con TODOS los datos
+    // guardados en el teléfono mirando un cartel de carga. Peor todavía, no era sólo al arrancar:
+    // el refresco por sello de precios llama a `recargar()` a mitad de jornada, así que la lista
+    // podía volver a "Cargando…" en cualquier momento.
+    //
+    // `loading` significa "no tengo nada que mostrarte", no "estoy revalidando". Revalidar con
+    // datos en pantalla es justo lo que hace bien un offline-first: se hace callado y, si falla,
+    // el guard de abajo conserva lo que había.
+    if (!hayDatosRef.current) setLoading(true)
     const { productos: prod, clientes: cli, zonas: zon, categorias: cat, error: err } = await fetchCatalogo(idEmpresa)
     // Offline / falla sin datos: NO pisar con vacío — se conserva lo hidratado de
     // caché (mejor mostrar los últimos datos conocidos que una lista vacía).
@@ -147,6 +164,9 @@ export function CatalogProvider({ children }) {
   useEffect(() => {
     let alive = true
     netAppliedRef.current = false // nueva empresa / mount: permitir hidratar de caché
+    // Empresa nueva = no hay nada de ella en pantalla, así que el spinner SÍ corresponde. Sin
+    // esto, cambiar de empresa mostraría el catálogo de la anterior mientras carga el nuevo.
+    hayDatosRef.current = false
     leerCacheCatalogo(idEmpresa).then((cached) => {
       if (alive && cached && !netAppliedRef.current) { aplicar(cached); setLoading(false) }
     })
