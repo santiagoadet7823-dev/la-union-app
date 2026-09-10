@@ -109,6 +109,16 @@ export function CatalogProvider({ children }) {
   // ¿Ya hay algo en pantalla (de caché o de red)? Es lo que decide si `recargar` muestra el
   // spinner o revalida en silencio. Va en ref y no en estado: sólo se lee dentro de callbacks.
   const hayDatosRef = useRef(false)
+  /**
+   * CON QUE CATALOGO se esta trabajando: `{ bajadoTs, sello }`.
+   *   · `bajadoTs` — cuando ESTE telefono bajo el catalogo (epoch ms).
+   *   · `sello`    — cuando el ERP cambio la lista de precios (ISO, o null).
+   * Sale de la cache al arrancar y se refresca en cada `recargar()` con red. Se estampa en cada
+   * pedido (useJornada) y se imprime en el ticket, para poder detectar al vendedor que estuvo
+   * offline con precios viejos. El ref es para leerlo desde callbacks sin re-suscribirse.
+   */
+  const [catalogoMeta, setCatalogoMeta] = useState({ bajadoTs: null, sello: null })
+  const metaRef = useRef(catalogoMeta)
 
   // Aplica un snapshot CRUDO de DB al estado de vista.
   const aplicar = useCallback((raw) => {
@@ -154,7 +164,20 @@ export function CatalogProvider({ children }) {
     // Solo persistir un snapshot COMPLETO (sin error). Un fallo PARCIAL (una tabla
     // vacía por error de red/RLS mientras otra sí trajo datos) no debe pisar la caché
     // buena de la tabla que falló.
-    if (!err) escribirCacheCatalogo(idEmpresa, raw)
+    if (!err) {
+      // 🩸 EL SELLO SE PIDE ACÁ Y SE GUARDA CON EL SNAPSHOT (10/09/2026). Es un escalar (una RPC
+      // que devuelve un timestamp) al lado de las cuatro consultas paginadas que acaban de correr:
+      // el costo es despreciable y a cambio el teléfono queda sabiendo, OFFLINE, con qué lista de
+      // precios está trabajando y desde cuándo. Antes el sello vivía sólo en un `useRef` que se
+      // perdía en cada recarga del WebView, y la primera vuelta encima lo descartaba.
+      // Si la RPC falla, `selloDePrecios` devuelve null y se guarda igual: el `bajadoTs` —que es
+      // el dato que de verdad delata al que trabajó offline— no depende de ella.
+      const sello = await selloDePrecios(idEmpresa)
+      const meta = { bajadoTs: Date.now(), sello }
+      metaRef.current = meta
+      setCatalogoMeta(meta)
+      escribirCacheCatalogo(idEmpresa, raw, meta)
+    }
     setLoading(false)
   }, [idEmpresa, aplicar])
 
@@ -168,7 +191,15 @@ export function CatalogProvider({ children }) {
     // esto, cambiar de empresa mostraría el catálogo de la anterior mientras carga el nuevo.
     hayDatosRef.current = false
     leerCacheCatalogo(idEmpresa).then((cached) => {
-      if (alive && cached && !netAppliedRef.current) { aplicar(cached); setLoading(false) }
+      if (alive && cached && !netAppliedRef.current) {
+        aplicar(cached)
+        // `bajadoTs`/`sello` pueden no estar: es la cache escrita antes del 10/09/2026. Se hidrata
+        // igual con null y el ticket no dibuja el bloque — nunca descartar la cache por eso.
+        const meta = { bajadoTs: cached.bajadoTs ?? null, sello: cached.sello ?? null }
+        metaRef.current = meta
+        setCatalogoMeta(meta)
+        setLoading(false)
+      }
     })
     return () => { alive = false }
   }, [idEmpresa, aplicar])
@@ -783,7 +814,7 @@ export function CatalogProvider({ children }) {
   const productosVigentes = useMemo(() => productos.filter((p) => !p.descontinuado), [productos])
 
   return (
-    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
+    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, catalogoMeta, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
       {children}
     </CatalogContext.Provider>
   )

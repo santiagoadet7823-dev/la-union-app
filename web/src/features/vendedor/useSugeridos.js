@@ -79,15 +79,30 @@ export function useUltimoPedido(idCliente) {
    * pill VISITADO no hacía absolutamente nada, por el resto de la jornada, sin ningún aviso. Y
    * sin señal pasaba con TODOS los comercios, porque esta consulta es de red.
    *
-   * Con el tercer estado el llamador puede distinguir "esperá" de "no hay nada que preguntar" y
-   * abrir el ticket nuevo directo. El otro consumidor (`VisitaCatalogo`, "Repetir el último
-   * pedido") usa `!!ultimoPedido`, que es falso para los dos: no se entera del cambio.
+   * 🔴 EL RESULTADO SE GUARDA JUNTO CON EL CLIENTE AL QUE PERTENECE, y esa es la parte que en el
+   * primer intento me faltó — dejó a la flota SIN el cartel de elegir ticket durante unas horas.
+   *
+   * El bug fue de ORDEN DE EFECTOS, y es fácil de repetir: `VendedorView` toca un comercio y hace
+   * `setElegir(c)`. En ese render `idCliente` ya es el nuevo, pero el valor devuelto todavía era el
+   * viejo (`null`, de cuando no había comercio elegido). Después corren los efectos: éste hacía
+   * `setUltimo(undefined)`, que AGENDA un render nuevo pero no cambia el valor que el efecto del
+   * llamador ya capturó en su closure. Así que el llamador leía `null` —"ya busqué y no hay"—
+   * cuando la consulta ni siquiera había salido, y abría un ticket nuevo en vez del cartel.
+   *
+   * Guardando `{ id, pedido }` y comparando EN EL RENDER, el valor nunca puede ser de otro cliente:
+   * mientras lo guardado no corresponda al `idCliente` de ahora, la respuesta honesta es "no sé".
+   * Se resuelve durante el render y no en un efecto justamente porque un efecto llega tarde.
+   *
+   * De paso tapa un bug latente: tocar el comercio A y enseguida el B mostraba, por un frame, el
+   * nombre de B con el pedido de A.
+   *
+   * ⚠️ El otro consumidor (`VisitaCatalogo`, "Repetir el último pedido") usa `!!ultimoPedido`, que
+   * es falso tanto para `undefined` como para `null`: no se entera de nada de esto.
    */
-  const [ultimo, setUltimo] = useState(undefined)
+  const [res, setRes] = useState({ id: null, pedido: null })
 
   useEffect(() => {
-    if (!idCliente) { setUltimo(null); return }
-    setUltimo(undefined)   // comercio nuevo: vuelve a "buscando" hasta que esta consulta conteste
+    if (!idCliente) { setRes({ id: null, pedido: null }); return }
     let vivo = true
     ;(async () => {
       try {
@@ -108,9 +123,11 @@ export function useUltimoPedido(idCliente) {
         // Un pedido sin líneas (o con todas quitadas en una edición) no se puede repetir: el botón
         // existiría y no haría nada, que es peor que no estar.
         const lineas = (p?.pedido_items || []).filter((l) => l.id_producto && l.cantidad > 0)
-        setUltimo(p && lineas.length ? { ...p, lineas } : null)
+        setRes({ id: idCliente, pedido: p && lineas.length ? { ...p, lineas } : null })
       } catch (_) {
-        if (vivo) setUltimo(null)
+        // Sin red la respuesta es "no hay", no "esperá para siempre": si esto quedara en
+        // `undefined`, el llamador se bloquearía. Va con el `id` puesto a propósito.
+        if (vivo) setRes({ id: idCliente, pedido: null })
       }
     })()
     // Igual que en `useSugeridos`: se limpia al cambiar de comercio. Ofrecerle repetir el pedido del
@@ -118,5 +135,6 @@ export function useUltimoPedido(idCliente) {
     return () => { vivo = false }
   }, [idCliente])
 
-  return ultimo
+  // Si lo guardado no es de ESTE cliente, la consulta todavía no salió o es de otro: `undefined`.
+  return res.id === idCliente ? res.pedido : undefined
 }

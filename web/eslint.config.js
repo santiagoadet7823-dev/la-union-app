@@ -55,6 +55,23 @@ export default [
       'react-hooks/rules-of-hooks': 'off',
       'react-hooks/exhaustive-deps': 'off',
       'no-undef': 'error',
+      // ⚠️ `no-use-before-define` SE EVALUÓ Y QUEDÓ AFUERA (10/09/2026), no es un olvido.
+      //
+      // Atraparía la zona muerta temporal, que en este repo ya rompió una versión (ver el
+      // encabezado de `VisitaCatalogo.jsx`: leer un `const` del scope antes de su declaración
+      // revienta en cada render y el build da verde). O sea que en teoría es justo la que hace
+      // falta.
+      //
+      // En la práctica tira 72 errores y casi todos son FALSOS POSITIVOS del mismo patrón: una
+      // constante de estilo declarada al final del módulo y usada en el JSX de un componente que
+      // está más arriba. Eso es seguro — el cuerpo del componente corre después de que el módulo
+      // terminó de evaluarse — y ESLint no distingue ese caso del peligroso (usar antes de definir
+      // DENTRO de la misma función).
+      //
+      // Prenderla obligaría a mover 72 bloques, o a convivir con 72 errores hasta que alguien
+      // agregue el `|| true` otra vez. Si algún día se ordenan esas constantes, esta línea se
+      // descomenta y se gana la red que falta:
+      // 'no-use-before-define': ['error', { variables: true, functions: false, classes: false }],
       // Los args sin usar son comunes y legítimos en los handlers (`(_, i) => …`), y este repo usa
       // `catch (_)` en todos lados a propósito (best-effort mudo). Sin `caughtErrors:'none'` eso
       // solo son 140 avisos que tapan los 3 que importan — y un lint ruidoso se apaga entero, que

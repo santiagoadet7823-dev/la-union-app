@@ -119,12 +119,39 @@ export async function selloDePrecios(idEmpresa) {
   return data || null
 }
 
-/** Lee la caché local del catálogo de una empresa. Devuelve {productos,clientes,zonas} | null. */
+/**
+ * Lee la caché local del catálogo de una empresa.
+ * Devuelve `{productos, clientes, zonas, categorias, bajadoTs, sello}` | null.
+ *
+ * ⚠️ `bajadoTs` y `sello` pueden faltar: es la caché que ya está escrita en los teléfonos desde
+ * antes del 10/09/2026. Un snapshot viejo tiene que hidratar igual, con las fechas en `null` — el
+ * ticket simplemente no dibuja el bloque. Nunca descartar la caché por falta de metadata: eso
+ * dejaría al vendedor sin catálogo en el primer arranque sin red después de actualizar.
+ */
 export async function leerCacheCatalogo(idEmpresa) {
   return await persistence.get(cacheKey(idEmpresa))
 }
 
-/** Persiste el último snapshot (crudo) del catálogo de una empresa. */
-export async function escribirCacheCatalogo(idEmpresa, data) {
-  await persistence.set(cacheKey(idEmpresa), data)
+/**
+ * Persiste el último snapshot (crudo) del catálogo de una empresa, con CUÁNDO se bajó.
+ *
+ * 🩸 EL `bajadoTs` ES EL DATO QUE FALTABA (10/09/2026). Hasta hoy acá se guardaban sólo las cuatro
+ * tablas crudas, así que el teléfono no sabía —ni podía decir— hace cuánto tenía ese catálogo. El
+ * pedido del cliente fue justamente poder identificar al vendedor que trabajó offline con precios
+ * viejos, y sin este instante esa pregunta no se puede contestar desde ningún lado: `productos` no
+ * tiene `updated_at` (decisión tomada, ver el comentario de `selloDePrecios` abajo) y el sello del
+ * servidor dice cuándo cambió la lista, no cuándo la bajó ESTE equipo.
+ *
+ * El patrón ya existía en el repo: `lu-jornada-abierta` guarda su `fecha` (useJornada).
+ *
+ * `sello` viaja al lado a propósito: es el par que hace legible al otro. Guardarlo acá y no en un
+ * `useRef` (que era donde vivía) es lo que lo hace sobrevivir a una recarga del WebView — que con
+ * la OTA aplicándose sola es rutina, no excepción.
+ */
+export async function escribirCacheCatalogo(idEmpresa, data, meta = {}) {
+  await persistence.set(cacheKey(idEmpresa), {
+    ...data,
+    bajadoTs: meta.bajadoTs ?? Date.now(),
+    sello: meta.sello ?? null,
+  })
 }

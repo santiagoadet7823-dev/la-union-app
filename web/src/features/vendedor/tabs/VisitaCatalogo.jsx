@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../../lib/sx'
-import { fmtPesos } from '../../../lib/format'
+import { fmtPesos, hace } from '../../../lib/format'
 import { precioDe } from '../../../lib/precios'
 import CarritoSheet from '../CarritoSheet'
 import GrillaCatalogo from '../../../components/GrillaCatalogo'
@@ -8,6 +8,7 @@ import BtnInmersivo from '../../../components/BtnInmersivo'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
 import { useAltoMedido } from '../../../hooks/useAltoMedido'
+import { useCatalog } from '../../../context/CatalogContext'
 import { useSugeridos, useUltimoPedido } from '../useSugeridos'
 
 /**
@@ -46,6 +47,25 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   // con el largo del texto y con la fuente del sistema. Mismo motivo que `--nav-h` en
   // `VendedorView`: una constante que hoy acierta vuelve a fallar en el próximo teléfono.
   const [pedidoRef, pedidoAlto] = useAltoMedido()
+
+  const { catalogoMeta } = useCatalog()
+
+  /**
+   * Hace cuanto que este telefono no baja el catalogo. Devuelve el texto del aviso, o `null` si
+   * esta fresco (o si la cache es vieja y no guarda la fecha: los equipos que todavia no aplicaron
+   * esta version no tienen `bajadoTs`, y ahi no se avisa nada en vez de mentir).
+   * El umbral son 6 h; el ERP manda una vez por hora.
+   *
+   * 🔴 VA DEBAJO DE `useCatalog()`, NO ARRIBA (regla 51). Esto es una IIFE: corre EN EL RENDER,
+   * no en un efecto, asi que leer `catalogoMeta` antes de su `const` cae en la zona muerta temporal
+   * y revienta con "Cannot access before initialization" en cada render — el mismo error que el
+   * encabezado de este archivo documenta de 1.17.0, y que el build NO detecta.
+   */
+  const catalogoDesactualizado = (() => {
+    const ts = catalogoMeta?.bajadoTs
+    if (!ts) return null
+    return Date.now() - ts >= 6 * 3600 * 1000 ? hace(ts) : null
+  })()
 
   const [verQr, setVerQr] = useState(false)
   const [verCarrito, setVerCarrito] = useState(false)
@@ -139,6 +159,24 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
         </div>
       )}
       </div>
+
+      {/* 🩸 EL CATÁLOGO ESTÁ VIEJO (10/09/2026). Va acá, ANTES de tomar el pedido, y no sólo
+          impreso en el ticket: enterarse en el comprobante es enterarse tarde — el precio ya se lo
+          dijiste al comerciante. El ticket lo deja registrado para el control posterior; esto es
+          para que el vendedor lo sepa a tiempo y busque señal.
+
+          ⚠️ NO se muestra en modo inmersivo ni cuando el catálogo está fresco: un cartel que
+          aparece siempre se deja de leer a los dos días, y entonces no sirve el día que importa.
+          El umbral son 6 h — el ERP manda cada hora, así que seis corridas perdidas ya es una
+          mañana entera sin actualizar. */}
+      {!inmersivo && catalogoDesactualizado && (
+        <div style={sx('flex:none;margin:10px 14px 0;padding:9px 12px;border:1px solid var(--warning);border-radius:12px;background:var(--warning-tint);color:var(--text);font-size:11.5px;line-height:1.45;display:flex;gap:8px;align-items:center')}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2.2" strokeLinecap="round" style={{ flex: 'none' }}><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+          <span>
+            Catálogo de <b>{catalogoDesactualizado}</b> — puede tener precios viejos.
+          </span>
+        </div>
+      )}
 
       {/* 🩸 EL CATÁLOGO ES UN COMPONENTE COMPARTIDO DESDE EL 04/09/2026. El buscador, los chips y
           la grilla vivían acá adentro, y por eso la pantalla de EDICIÓN de un pedido nació con un

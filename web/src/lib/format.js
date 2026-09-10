@@ -53,3 +53,27 @@ export function hoyStr(d = new Date()) {
     String(d.getMonth() + 1).padStart(2, '0') + '-' +
     String(d.getDate()).padStart(2, '0')
 }
+
+/**
+ * Hace cuánto, en palabras cortas: `'hace 12 min'` · `'hace 5 h'` · `'hace 3 días'`.
+ * `null` si no hay fecha o si es futura (reloj del teléfono adelantado).
+ *
+ * 🩸 VIVE ACÁ DESDE EL 10/09/2026 porque ya había DOS copias con la misma cuenta y distintos
+ * umbrales: `hace()` en `features/catalog/EstadoCatalogo.jsx` (no exportada) y `humano()` en
+ * `components/HaceSegundos.jsx`. Cuando el ticket necesitó la tercera, escribirla de nuevo habría
+ * sido la cuarta redacción de la misma idea (regla 31). `HaceSegundos` mantiene la suya: cuenta
+ * SEGUNDOS y se redibuja sola con un intervalo, que es otro problema.
+ *
+ * Los umbrales son los de `EstadoCatalogo`, que es el uso más parecido: minutos hasta la hora,
+ * horas hasta dos días, y de ahí días. Nadie necesita "hace 73 horas".
+ */
+export function hace(ts) {
+  if (!ts) return null
+  const ms = Date.now() - new Date(ts).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return null
+  const min = Math.floor(ms / 60000)
+  if (min < 60) return `hace ${Math.max(1, min)} min`
+  const h = Math.floor(min / 60)
+  if (h < 48) return `hace ${h} h`
+  return `hace ${Math.floor(h / 24)} días`
+}

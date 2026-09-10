@@ -3,6 +3,7 @@ import { sx } from '../../lib/sx'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { cuarentenaMutaciones } from '../../services/sync/writeQueue'
+import { hace } from '../../lib/format'
 
 /**
  * DOS NÚMEROS QUE HASTA HOY NO EXISTÍAN EN NINGUNA PANTALLA.
@@ -31,18 +32,6 @@ import { cuarentenaMutaciones } from '../../services/sync/writeQueue'
  * pantallas que editan catálogo (marketing, las dos supervisiones y dirección). Regla 31: lo que
  * comparten dos pantallas va en un módulo, no copiado.
  */
-
-/** Hace cuánto, en palabras cortas. `null` si no hay fecha. */
-function hace(ts) {
-  if (!ts) return null
-  const ms = Date.now() - new Date(ts).getTime()
-  if (!Number.isFinite(ms) || ms < 0) return null
-  const min = Math.floor(ms / 60000)
-  if (min < 60) return `hace ${Math.max(1, min)} min`
-  const h = Math.floor(min / 60)
-  if (h < 48) return `hace ${h} h`
-  return `hace ${Math.floor(h / 24)} días`
-}
 
 // A partir de acá la última ingesta se marca en ámbar. El envío automático es diario, así que 36 h
 // significa que se salteó al menos una corrida — con margen para un fin de semana largo del lado de

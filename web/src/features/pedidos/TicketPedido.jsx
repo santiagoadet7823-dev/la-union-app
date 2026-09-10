@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtPesos, hace } from '../../lib/format'
 import Overlay from '../../components/Overlay'
 import { useTenant } from '../../context/TenantContext'
 import { compartirPdfNodo, imprimirNodo, montarImpresion } from '../../services/report/imprimir'
+import { fmtFecha } from './DetallePedido'
 
 /**
  * EL COMPROBANTE DEL PEDIDO.
@@ -55,6 +56,20 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
   const titulo = `Pedido ${pedido?.numero ? '#' + pedido.numero : ''}${comercio?.name ? ' · ' + comercio.name : ''}`.trim()
   const dl = (v) => (v == null ? null : Number(v).toFixed(5))
 
+  /**
+   * Cuánto hacía que este teléfono no bajaba el catálogo cuando se tomó el pedido — medido
+   * contra la FECHA DEL PEDIDO, no contra ahora. Un ticket de hace un mes diria "hace 30 dias"
+   * aunque en su momento el catálogo estuviera fresco, y eso sería acusar a un vendedor que hizo
+   * todo bien.
+   * Por debajo de 6 h no se dice nada: es el funcionamiento normal.
+   */
+  const catalogoViejo = (() => {
+    if (!pedido?.catalogo_ts || !pedido?.created_at) return null
+    const ms = new Date(pedido.created_at).getTime() - new Date(pedido.catalogo_ts).getTime()
+    if (!Number.isFinite(ms) || ms < 6 * 3600 * 1000) return null
+    return hace(new Date(Date.now() - ms).toISOString())
+  })()
+
   return (
     <Overlay
       open
@@ -82,9 +97,45 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
           >
             Imprimir o guardar como PDF
           </button>
+          {/* 🩸 "LISTO" FALTABA Y COSTÓ UN RECLAMO (10/09/2026). El pie tenía exactamente dos
+              botones —compartir e imprimir—, o sea que las dos únicas acciones ofrecidas eran
+              "sacar un papel", y la única salida era la ✕ chiquita del header, que se lee como
+              DESCARTAR. El vendedor reportó, textual, que "falta la opción de guardar y finalizar
+              pedido, para que se guarde en la base de datos".
+              El pedido ya estaba guardado —este componente sólo se monta `if (guardado)`, después
+              de que las dos mutaciones se encolaron— pero nada se lo decía. Un comprobante sin
+              forma evidente de decir "listo" se lee como un trámite a medias. */}
+          <button
+            onClick={onCerrar}
+            className="lu-press lu-no-print"
+            style={sx('width:100%;min-height:44px;display:grid;place-items:center;background:var(--surface2);color:var(--muted);border:1px solid var(--line);border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer')}
+          >
+            Listo
+          </button>
         </div>
       }
     >
+      {/* 🩸 QUE DIGA QUE ESTÁ GUARDADO (10/09/2026). Va FUERA de `#lu-ticket` y con `lu-no-print`
+          por partida doble: es chrome de la app, no parte del comprobante — al comerciante no le
+          importa el estado de nuestra cola de sincronización.
+          Y no se inventa el número: `pedidos.numero` lo asigna un trigger BEFORE INSERT en la base
+          (db/43), así que recién confirmado NO existe todavía y el ticket muestra `#—`. Eso, sumado
+          a un pie con sólo "compartir" e "imprimir", era lo que hacía creer que el pedido no se
+          había guardado. Se dice lo que es cierto en cada caso. */}
+      {!anulado && (
+        <div className="lu-no-print" style={sx('display:flex;align-items:center;gap:9px;margin-bottom:12px;padding:9px 11px;border:1px solid var(--success);background:var(--success-tint);border-radius:11px')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M20 6L9 17l-5-5" /></svg>
+          <div style={sx('flex:1;min-width:0;line-height:1.4')}>
+            <div style={sx('font-size:12.5px;font-weight:700;color:var(--success)')}>Pedido guardado</div>
+            <div style={sx('font-size:11px;color:var(--muted)')}>
+              {pedido?.numero
+                ? <>Quedó registrado como <b style={sx('font-family:var(--font-mono);color:var(--text)')}>Nº {pedido.numero}</b>.</>
+                : 'El número se asigna cuando se sube. Si estás sin señal, se manda solo.'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* `lu-imprimible` es lo que la hoja @media print deja visible; el resto de la página se
           oculta. El id lo usa `imprimir.js` para colgarlo de <body> mientras dura la impresión. */}
       <div id="lu-ticket" className="lu-imprimible" style={sx('font-size:12.5px;line-height:1.55;color:var(--text)')}>
@@ -177,6 +228,39 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
             </div>
           )}
         </div>
+
+        {/* 🩸 CON QUÉ PRECIOS SE TOMÓ (10/09/2026, pedido del cliente). Va DENTRO del comprobante —
+            sale impreso, que es como se pidió.
+
+            Son dos fechas y hacen falta las dos: "Precios" es cuándo el ERP cambió la lista, y
+            "Catálogo" cuándo ESTE teléfono la bajó. Con una sola no se puede contestar la pregunta
+            que motivó esto: si el vendedor estuvo sin señal, las dos se separan, y esa distancia
+            es la señal. Salen CONGELADAS de la fila del pedido (db/61), nunca de una consulta
+            actual: un ticket reimpreso la semana que viene tiene que decir lo que valía el día que
+            se emitió, igual que los precios de cada línea.
+
+            El relativo sólo se agrega pasadas ~6 h. Debajo de eso es el funcionamiento normal y
+            escribir "hace 20 min" en cada comprobante es ruido que enseña a no leer el renglón.
+            Un pedido anterior a la migración no tiene las columnas y el bloque no se dibuja. */}
+        {(pedido?.sello_precios_ts || pedido?.catalogo_ts) && (
+          <div style={sx('margin-top:12px;padding-top:9px;border-top:1px dashed var(--line2);font-size:10.5px;color:var(--faint);line-height:1.6;font-family:var(--font-mono)')}>
+            {pedido?.sello_precios_ts && (
+              <div style={sx('display:flex;justify-content:space-between;gap:10px')}>
+                <span>Precios</span>
+                <span style={sx('color:var(--muted)')}>{fmtFecha(pedido.sello_precios_ts)}</span>
+              </div>
+            )}
+            {pedido?.catalogo_ts && (
+              <div style={sx('display:flex;justify-content:space-between;gap:10px')}>
+                <span>Catálogo</span>
+                <span style={sx('color:var(--muted)')}>
+                  {fmtFecha(pedido.catalogo_ts)}
+                  {catalogoViejo ? ` (${catalogoViejo})` : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 🩸 ESTE RENGLÓN LLEVABA `lu-no-print` Y POR LO TANTO **NO SALÍA EN EL PDF** (04/09/2026).
             Cuando el ticket sólo se miraba en pantalla daba igual. Ahora se le manda al comerciante,

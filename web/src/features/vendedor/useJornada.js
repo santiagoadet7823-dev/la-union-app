@@ -43,7 +43,7 @@ const K_JORNADA = 'lu-jornada-abierta'
  * presentación. Lee el catálogo real para derivar clientes/productos.
  */
 export function useJornada() {
-  const { productos: PRODUCTS, clientes: cartera, loading: catLoading } = useCatalog()
+  const { productos: PRODUCTS, clientes: cartera, loading: catLoading, catalogoMeta } = useCatalog()
   // Identidad + posición en vivo para el check-in geolocalizado (Feature C). `pos` es la
   // posición ya adquirida por el watch (sin prompt); id/idEmpresa vienen del perfil real.
   const { pos, id: userId, nombre: nombreUsuario, idEmpresa } = useGps()
@@ -413,6 +413,18 @@ export function useJornada() {
       distancia_m: distancia,
       origen: vid.activa ? 'vidriera' : 'celular',
       intencion,
+      // 🩸 CON QUE PRECIOS SE TOMO ESTE PEDIDO (10/09/2026, db/61). Se CONGELAN acá, igual que
+      // `created_at` unas líneas arriba y que `precio_unitario` en cada línea: un comprobante dice
+      // lo que valía cuando se emitió. Consultarlo al imprimir pondría la fecha de precios de HOY
+      // en un ticket de la semana pasada, y los tickets se reimprimen todo el tiempo desde "Mis
+      // pedidos" y desde gestión.
+      //
+      // La distancia entre las dos fechas es la señal que se pidió: si el teléfono bajo el
+      // catálogo ayer a las 18:30 y el ERP cambió la lista hoy a las 12:00, este pedido se tomó
+      // con precios viejos y queda escrito en la fila.
+      // Pueden ir en null (caché vieja, o el sello nunca contestó): el ticket no dibuja el bloque.
+      sello_precios_ts: catalogoMeta?.sello || null,
+      catalogo_ts: catalogoMeta?.bajadoTs ? new Date(catalogoMeta.bajadoTs).toISOString() : null,
     }
 
     const items = lineas.map(({ p: prod, cantidad }) => ({
