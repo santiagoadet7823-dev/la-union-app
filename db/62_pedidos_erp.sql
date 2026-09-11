@@ -68,7 +68,21 @@ create index if not exists pedidos_export_lote_idx
  * reponen a mano con `reponer_pedidos_para_export()`, que es una decisión consciente de alguien,
  * mientras que mandarlos todos sería una decisión de nadie.
  *
- * `export_lote = 0` los distingue de los lotes reales, que empiezan en 1. */
+ * `export_lote = 0` los distingue de los lotes reales, que empiezan en 1.
+ *
+ * 🔴 ESTE BLOQUE SE CORRE UNA SOLA VEZ, Y YA SE CORRIÓ (10/09/2026 23:30).
+ *
+ * No es idempotente en el sentido que importa: `where exportado_ts is null` engancha todo lo que
+ * haya aparecido DESPUÉS, y congelarlo es justamente lo que no se quiere. Re-ejecutar este archivo
+ * entero para actualizar una función de más abajo vuelve a marcar como facturado lo que se acaba de
+ * cargar — y un pedido con `exportado_ts` no se puede anular ni corregir.
+ *
+ * Pasó dos veces en 48 horas. La primera congeló los 20 pedidos de prueba y terminó taponando la
+ * write queue casi 4 horas (ver `db/63`). La segunda fue el 11/09 a las 22:07, en medio del arreglo
+ * de la primera: volvió a marcar los 23 anulados que se acababan de destildar.
+ *
+ * Si hace falta re-aplicar `db/62`, **saltear este update** o acotarlo con `and created_at <
+ * '2026-09-10'`. Para destildar lo que quedó mal: ver §1 de `db/63`. */
 update public.pedidos
    set exportado_ts = now(), export_lote = 0
  where exportado_ts is null;
