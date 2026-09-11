@@ -1,4 +1,5 @@
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
+import { frenarSiExportado } from './exportado'
 
 /**
  * ANULAR Y BORRAR UN PEDIDO.
@@ -32,6 +33,11 @@ import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue
  * @param {string} userId  quién lo anula — va a `anulado_por`
  */
 export async function anularPedido(pedido, motivo, userId) {
+  // Un pedido que ya salió a facturación no se anula desde acá: el archivo del ERP no tiene cómo
+  // comunicar una anulación, así que quedaría anulado de este lado y facturado del otro. Ver
+  // `exportado.js` — y ojo, la guarda va antes de encolar, no después.
+  frenarSiExportado(pedido)
+
   const payload = {
     estado: 'Anulado',
     motivo_anulacion: String(motivo || '').trim().slice(0, 300),

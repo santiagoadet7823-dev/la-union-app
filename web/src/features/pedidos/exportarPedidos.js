@@ -1,123 +1,97 @@
 import { descargarArchivo } from '../../services/download'
+import { supabase } from '../../services/supabase'
 import { itemsDePedidos } from './usePedidos'
+import { armarAscii, CFG_POR_DEFECTO } from '../../lib/asciiPedidos'
 
 /**
- * EXPORTAR LOS PEDIDOS PARA FACTURAR EN OTRO SISTEMA.
+ * EXPORTAR LOS PEDIDOS PARA FACTURAR EN EL SISTEMA DEL CLIENTE.
  *
  * 🩸 POR QUÉ EXISTE (22/08/2026, pedido del cliente). La distribuidora factura desde su propio
  * sistema de gestión y **no hay integración posible** con él. Lo que sí acepta es un archivo de
  * texto separado por TABULADORES — lo que en varios ERP argentinos se llama "exportación ASCII",
  * que es lo que el cliente describió y por lo que "parece un CSV pero raro".
  *
- * ⚠️ **ESTE FORMATO ES PROVISORIO Y ESTÁ HECHO SIN VER EL ARCHIVO REAL.** Se pidió una muestra del
- * export de su sistema y todavía no llegó. Por eso todo lo que puede cambiar —el separador, el
- * encabezado, el orden y el nombre de las columnas— vive en las dos constantes de acá arriba y no
- * repartido por la función: ajustar esto al formato definitivo tiene que ser editar una lista, no
- * reescribir nada. Lo que NO va a cambiar es de dónde sale cada dato.
+ * ✅ **EL FORMATO YA NO ES PROVISORIO** (10/09/2026). Durante tres semanas esto emitió un layout
+ * inventado, escrito sin ver un archivo real. El 09/09 llegó uno (`20260909164538.txt`) y el layout
+ * se rehízo contra él: 25 campos, sin encabezado, verificado fila por fila con
+ * `scripts/verificar-formato-pedidos.mjs`.
  *
- * UNA FILA POR RENGLÓN DE PEDIDO, con la cabecera repetida. Es la forma que come un importador de
- * facturación: cada línea trae su propio número de comprobante, así el importador arma la cabecera
- * agrupando y no depende del orden del archivo. Un formato "cabecera + detalle" en dos bloques es
- * más compacto y mucho más frágil.
+ * 🔑 ESTE ARCHIVO YA NO DECIDE EL FORMATO. El layout vive en `lib/asciiPedidos.js`, que es el MISMO
+ * módulo que usa la Edge Function `export-pedidos` — la que contesta el pedido automático del
+ * servidor Java del cliente. Tenerlo dos veces es la regla 36 de CLAUDE.md: el día que el ERP
+ * cambie una columna, una de las dos copias se queda vieja y **no falla**, emite un archivo corrido
+ * en silencio. Acá quedan sólo las dos cosas que sí son de la app: de dónde salen los datos y cómo
+ * se baja el archivo.
  *
- * 🔑 EL NÚMERO ES EL MISMO EN TODOS LADOS. `pedidos.numero` lo asigna el trigger
- * `asignar_numero_pedido` por empresa (`000001`, `000002`…). Es el que ve el vendedor en el ticket,
- * el que se imprime y el que va acá — que es justo lo que el cliente pidió para poder relacionar el
- * pedido con lo que factura y con lo que sale al reparto. No se inventa un código nuevo.
+ * ⚠️ ESTE BOTÓN NO MUEVE EL CURSOR DE EXPORTACIÓN (`pedidos.exportado_ts`, db/62). Es a propósito:
+ * es la vía de REVISIÓN —bajar lo que está en pantalla para mirarlo— y el canal automático es el que
+ * lleva la cuenta de lo enviado. Si este botón marcara, alguien revisando un rango de 30 días
+ * dejaría afuera del ERP todo lo que todavía no se había mandado, sin enterarse.
  */
 
-// El separador. Un TAB, no una coma: es lo que espera el sistema del cliente.
-const SEP = '\t'
-
 /**
- * Las columnas, en orden. `val(p, l)` recibe el pedido y la línea.
+ * La configuración del layout por empresa (`empresas.export_erp`, db/62).
  *
- * `precio_unitario` y `descripcion` salen de la LÍNEA y no del producto vivo: se copiaron al tomar
- * el pedido (`db/43`) justamente para que un comprobante de hace seis meses siga diciendo lo que se
- * vendió y a cuánto, aunque marketing le haya cambiado el nombre o el precio.
- */
-const COLUMNAS = [
-  ['pedido', (p) => p.numero || ''],
-  ['fecha', (p) => fechaLocal(p.created_at)],
-  ['hora', (p) => horaLocal(p.created_at)],
-  ['cliente_codigo', (p) => p.comercio?.codigo || ''],
-  ['cliente', (p) => p.comercio?.name || ''],
-  ['localidad', (p) => p.comercio?.loc || ''],
-  ['vendedor', (p) => p.nombreVendedor || ''],
-  ['producto_codigo', (_p, l) => l.codigoProducto || ''],
-  ['descripcion', (_p, l) => l.descripcion || ''],
-  ['cantidad', (_p, l) => numero(l.cantidad, 0)],
-  ['precio_unitario', (_p, l) => numero(l.precio_unitario, 2)],
-  // Vacío, no cero, cuando la línea no existe: un 0,00 en un archivo de facturación se lee como
-  // "se vendió por cero", que es una afirmación distinta de "este pedido no tiene renglones".
-  ['subtotal', (_p, l) => (l.cantidad == null && l.precio_unitario == null ? '' : numero((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0), 2))],
-  ['estado', (p) => p.estado || ''],
-]
-
-/**
- * Fecha y hora LOCALES, nunca UTC. Salta es UTC−3: con `toISOString().slice(0,10)` un pedido de las
- * 21:30 se exportaría con la fecha de mañana y le caería en otro día de facturación (regla 23).
- */
-function fechaLocal(ts) {
-  const d = new Date(ts)
-  const p2 = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
-}
-function horaLocal(ts) {
-  const d = new Date(ts)
-  const p2 = (n) => String(n).padStart(2, '0')
-  return `${p2(d.getHours())}:${p2(d.getMinutes())}`
-}
-
-/**
- * Un número para un importador, no para una persona: punto decimal y sin separador de miles.
- * `fmtPesos` acá sería un bug — pondría "$ 1.234,50" y el otro sistema lee 1.
- */
-function numero(v, decimales) {
-  const n = Number(v)
-  return Number.isFinite(n) ? n.toFixed(decimales) : ''
-}
-
-/**
- * Una celda. **No se escapa con comillas**: en un archivo separado por tabs las comillas son texto
- * literal para la mayoría de los importadores, así que agregarlas ensucia el dato. Lo que sí hay que
- * hacer es que ningún valor traiga un TAB o un salto de línea adentro, o correría las columnas —
- * un nombre de comercio con un enter pegado desde una planilla alcanza para romper el archivo.
- */
-function celda(v) {
-  if (v === null || v === undefined) return ''
-  return String(v).replace(/[\t\r\n]+/g, ' ').trim()
-}
-
-/**
- * Arma el texto del archivo. Separado de la descarga para poder verificarlo sin bajar nada.
- * @returns {{ texto: string, filas: number, sinLineas: number }}
- */
-export function armarTsv(pedidos, lineasPorPedido) {
-  const filas = [COLUMNAS.map(([titulo]) => titulo).join(SEP)]
-  let sinLineas = 0
-  for (const p of pedidos) {
-    const lineas = lineasPorPedido.get(p.id) || []
-    // Un pedido sin líneas igual sale, con una fila de cantidad vacía: es un dato raro que hay que
-    // poder VER en el archivo. Omitirlo lo haría desaparecer sin que nadie se entere.
-    if (!lineas.length) { sinLineas++; filas.push(COLUMNAS.map(([, val]) => celda(val(p, {}))).join(SEP)); continue }
-    for (const l of lineas) filas.push(COLUMNAS.map(([, val]) => celda(val(p, l))).join(SEP))
-  }
-  return { texto: filas.join('\r\n') + '\r\n', filas: filas.length - 1, sinLineas }
-}
-
-/**
- * Baja el archivo. `descargarArchivo` resuelve las dos plataformas: `<a download>` en la PWA y
- * Filesystem + hoja de compartir en el APK, donde el ancla no dispara nada.
+ * Se lee de la base y no se escribe en el código porque 11 de los 25 campos son constantes cuyo
+ * significado NO conocemos —los encabezados del archivo del ERP nunca llegaron—, y el día que el
+ * cliente aclare qué es el campo 7 hay que poder corregirlo con un `update`, no con un release de
+ * APK para teléfonos que no siempre actualizan.
  *
- * El BOM UTF-8 va adelante por el mismo motivo que en Respaldo: sin él, Excel abre los acentos
- * rotos. Si el sistema del cliente resulta esperar Latin-1, se saca de acá.
+ * Se piden todas las empresas involucradas de una vez: con el scope de superadmin en '*', la lista
+ * puede traer pedidos de dos distribuidoras y cada una tiene sus constantes.
  */
-export async function exportarPedidosTsv(pedidos, { nombre = 'pedidos' } = {}) {
+async function configsDe(pedidos) {
+  const ids = [...new Set(pedidos.map((p) => p.id_empresa).filter(Boolean))]
+  const porEmpresa = new Map()
+  if (!ids.length) return porEmpresa
+  const { data, error } = await supabase.from('empresas').select('id, export_erp').in('id', ids)
+  if (error) throw error
+  for (const e of data || []) porEmpresa.set(e.id, { ...CFG_POR_DEFECTO, ...(e.export_erp || {}) })
+  return porEmpresa
+}
+
+/**
+ * Baja el archivo.
+ *
+ * `descargarArchivo` resuelve las dos plataformas: `<a download>` en la PWA y Filesystem + hoja de
+ * compartir en el APK, donde el ancla no dispara nada.
+ *
+ * ⚠️ **SIN BOM.** El respaldo CSV sí lo lleva, para que Excel no rompa los acentos; acá el lector es
+ * una máquina y esos tres bytes quedarían pegados adelante del primer campo del primer renglón, que
+ * es un número. El archivo del cliente no tiene BOM.
+ *
+ * El nombre por defecto es `Pedidos.txt` — el mismo que ellos ya reciben hoy de su sistema actual.
+ */
+export async function exportarPedidosAscii(pedidos, { nombre = 'Pedidos' } = {}) {
   if (!pedidos.length) throw new Error('No hay pedidos en el rango elegido.')
-  const lineasPorPedido = await itemsDePedidos(pedidos.map((p) => p.id))
-  const { texto, filas, sinLineas } = armarTsv(pedidos, lineasPorPedido)
-  const blob = new Blob(['\ufeff' + texto], { type: 'text/tab-separated-values;charset=utf-8' })
-  await descargarArchivo({ filename: `${nombre}.txt`, blob, mime: 'text/tab-separated-values' })
+  const [lineasPorPedido, cfgs] = await Promise.all([
+    itemsDePedidos(pedidos.map((p) => p.id)),
+    configsDe(pedidos),
+  ])
+
+  // Se arma por empresa y se concatena: cada distribuidora tiene sus propias constantes de layout.
+  // Con una sola empresa —el caso real— esto es una vuelta y el orden no cambia.
+  const partes = []
+  let filas = 0
+  let sinLineas = 0
+  for (const [idEmpresa, cfg] of (cfgs.size ? cfgs : new Map([[null, CFG_POR_DEFECTO]]))) {
+    const suyos = idEmpresa ? pedidos.filter((p) => p.id_empresa === idEmpresa) : pedidos
+    if (!suyos.length) continue
+    const r = armarAscii(suyos, lineasPorPedido, cfg)
+    if (r.texto) partes.push(r.texto)
+    filas += r.filas
+    sinLineas += r.sinLineas
+  }
+
+  const texto = partes.join('')
+  if (!texto) throw new Error('Ninguno de los pedidos del rango tiene renglones.')
+  const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' })
+  await descargarArchivo({ filename: `${nombre}.txt`, blob, mime: 'text/plain' })
   return { pedidos: pedidos.length, filas, sinLineas }
 }
+
+/**
+ * ⚠️ Nombre viejo, mantenido para no romper una importación que se me haya pasado. El export dejó de
+ * ser un TSV con encabezado el 10/09/2026; lo que emite ahora es el ASCII del ERP.
+ */
+export const exportarPedidosTsv = exportarPedidosAscii

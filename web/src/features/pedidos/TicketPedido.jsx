@@ -229,6 +229,33 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
           )}
         </div>
 
+        {/* LO QUE VA A FACTURACIÓN (10/09/2026, db/62). Se muestran sólo si están cargados: hasta hoy
+            el pedido no tenía cabecera y la enorme mayoría va a seguir saliendo sin nada de esto.
+            La forma de pago se dibuja con su código crudo y no con una etiqueta: mientras el cliente
+            no confirme su tabla, inventar el nombre sería afirmar algo que no sabemos. */}
+        {(pedido?.fecha_entrega || pedido?.observaciones || pedido?.forma_pago) && (
+          <div style={sx('margin-top:12px;padding-top:9px;border-top:1px dashed var(--line2);font-size:11px;color:var(--muted);line-height:1.6')}>
+            {pedido?.fecha_entrega && (
+              <div style={sx('display:flex;justify-content:space-between;gap:10px')}>
+                <span>Entrega</span>
+                <span style={sx('color:var(--text)')}>{String(pedido.fecha_entrega).slice(0, 10).split('-').reverse().join('/')}</span>
+              </div>
+            )}
+            {pedido?.forma_pago && (
+              <div style={sx('display:flex;justify-content:space-between;gap:10px')}>
+                <span>Forma de pago</span>
+                <span style={sx('color:var(--text)')}>{pedido.forma_pago}</span>
+              </div>
+            )}
+            {pedido?.observaciones && (
+              <div style={sx('margin-top:4px')}>
+                <span>Obs.: </span>
+                <span style={sx('color:var(--text)')}>{pedido.observaciones}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 🩸 CON QUÉ PRECIOS SE TOMÓ (10/09/2026, pedido del cliente). Va DENTRO del comprobante —
             sale impreso, que es como se pidió.
 

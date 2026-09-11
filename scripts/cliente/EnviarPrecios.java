@@ -8,8 +8,13 @@
  *
  * Sin dependencias: java.net.http, incluido desde Java 11.
  *
- *   javac EnviarPrecios.java
+ *   javac -encoding UTF-8 EnviarPrecios.java
  *   java  EnviarPrecios /ruta/lista-precios.txt
+ *
+ * 🩸 EL `-encoding UTF-8` NO ES OPCIONAL EN WINDOWS (10/09/2026). Sin él `javac` asume la
+ * codificación del sistema —windows-1252 en un Windows en español— y falla con `unmappable
+ * character` en un COMENTARIO de este mismo archivo: no llega a compilar nada. Estuvo así desde
+ * que se escribió; se descubrió al probar su gemelo `BajarPedidos.java`.
  *
  * O como método, desde el proceso que ya exporta:
  *

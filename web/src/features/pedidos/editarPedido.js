@@ -1,6 +1,7 @@
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
 import { uid } from '../../lib/uid'
 import { precioDe } from '../../lib/precios'
+import { frenarSiExportado } from './exportado'
 
 /**
  * EDITAR UN PEDIDO YA CONFIRMADO.
@@ -125,6 +126,11 @@ export function calcularCambios(lineas, cantidades, nuevas) {
  * @param {object|null} pos      la posición ya adquirida por el watch (`useGps().pos`), no un fix nuevo
  */
 export async function editarPedido({ pedido, lineas, cantidades, nuevas = [], userId, pos = null }) {
+  // 🔴 ANTES DE ENCOLAR NADA. La base también lo impide (db/62), pero la cola es FIFO y corta al
+  // primer fallo: una mutación que el servidor va a rechazar no se pierde sola, tapona la cola
+  // detrás suyo. Ver `exportado.js`.
+  frenarSiExportado(pedido)
+
   // La hora la pone el cliente, igual que en `anularPedido`: la edición puede subir horas después.
   const ts = new Date().toISOString()
   const finales = lineasFinales(lineas, cantidades, nuevas)

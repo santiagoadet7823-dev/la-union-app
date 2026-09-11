@@ -40,10 +40,11 @@ const MAX_VUELTAS = 50 // 50.000 pedidos: techo de seguridad, nunca un bucle inf
 // `*`: es la misma disciplina del ticket — una columna nueva en `pedidos` no debería aparecer sola
 // en una pantalla sin que alguien lo haya decidido.
 const SELECT = `
-  id, numero, id_vendedor, id_cliente, id_repartidor, id_visita, estado, monto_total, peso_total,
+  id, numero, id_empresa, id_vendedor, id_cliente, id_repartidor, id_visita, estado, monto_total, peso_total,
   created_at, lat, lng, accuracy, distancia_m, origen, motivo_anulacion, anulado_por, anulado_ts,
+  anulado_srv_ts, forma_pago, fecha_entrega, observaciones, exportado_ts, export_lote,
   cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng, telefono, contacto ),
-  vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre )
+  vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre, codigo_erp )
 `
 
 /** Fila de `clientes` → la forma que ya consumen `TicketPedido` y el resto de las vistas. */
@@ -57,7 +58,14 @@ export function mapComercio(c) {
 
 /** Un pedido de la base → la forma de la pantalla, con el comercio ya mapeado. */
 function mapPedido(p) {
-  return { ...p, comercio: mapComercio(p.cliente), nombreVendedor: p.vendedor?.nombre || null }
+  return {
+    ...p,
+    comercio: mapComercio(p.cliente),
+    nombreVendedor: p.vendedor?.nombre || null,
+    // El código con el que el ERP conoce a este vendedor (campo 3 del archivo, db/62). Puede venir
+    // vacío: si nadie lo cargó, el exportador cae en la constante de la empresa.
+    codigoVendedor: p.vendedor?.codigo_erp || null,
+  }
 }
 
 /**
@@ -66,9 +74,21 @@ function mapPedido(p) {
  * @param {string} desde  ISO inclusive
  * @param {string} hasta  ISO exclusivo
  * @param {string|null} idVendedor  filtra por persona (lo usa "Mis pedidos" y el selector de gestión)
- * @param {boolean} incluirAnulados  false esconde los anulados de la lista
+ * @param {boolean} papelera  `false` (por defecto) trae los pedidos VIVOS; `true` trae SOLO los anulados
  */
-export function usePedidos({ desde, hasta, idVendedor = null, incluirAnulados = true }) {
+/* 🩸 ANTES ESTE PARÁMETRO ERA `incluirAnulados` Y VENÍA EN `true` (11/09/2026).
+ *
+ * O sea que la lista de gestión mezclaba por defecto los anulados con los vivos, tachados y en
+ * gris, y quien quisiera verlos aparte tenía que acordarse de destildar un checkbox. El dueño pidió
+ * lo contrario: que lo anulado quede APARTADO, no atenuado. Y hay una razón más dura que el gusto —
+ * con la purga de `db/63` esos pedidos ahora tienen fecha de vencimiento, y algo que va a
+ * desaparecer solo en 30 días no puede estar mezclado con lo que no.
+ *
+ * El cambio de nombre es a propósito y no es cosmético: `incluirAnulados` era binario entre "todo" y
+ * "sin anulados", y la papelera necesita el tercer caso —**sólo** anulados— que con aquel nombre no
+ * se podía pedir. Son dos vistas distintas de la misma tabla, no un filtro opcional.
+ */
+export function usePedidos({ desde, hasta, idVendedor = null, papelera = false }) {
   const { idEmpresaActiva, esTodas } = useTenant()
   const [estado, setEstado] = useState({ pedidos: [], cargando: true, error: null })
   // Cambiarlo fuerza una relectura. Es lo que usa la pantalla después de anular o borrar: la lista
@@ -95,7 +115,7 @@ export function usePedidos({ desde, hasta, idVendedor = null, incluirAnulados = 
           // El centinela de "todas las empresas" es el string '*', no null.
           if (!esTodas) q = q.eq('id_empresa', idEmpresaActiva)
           if (idVendedor) q = q.eq('id_vendedor', idVendedor)
-          if (!incluirAnulados) q = q.neq('estado', 'Anulado')
+          q = papelera ? q.eq('estado', 'Anulado') : q.neq('estado', 'Anulado')
 
           const { data, error } = await q
           if (error) throw error
@@ -109,7 +129,7 @@ export function usePedidos({ desde, hasta, idVendedor = null, incluirAnulados = 
       }
     })()
     return () => { vivo = false }
-  }, [desde, hasta, idVendedor, incluirAnulados, idEmpresaActiva, esTodas, ciclo])
+  }, [desde, hasta, idVendedor, papelera, idEmpresaActiva, esTodas, ciclo])
 
   return useMemo(() => ({ ...estado, recargar }), [estado, recargar])
 }
@@ -124,7 +144,7 @@ export function usePedidos({ desde, hasta, idVendedor = null, incluirAnulados = 
 export async function itemsDePedido(idPedido) {
   const { data, error } = await supabase
     .from('pedido_items')
-    .select('id, id_producto, descripcion, cantidad, precio_unitario, peso_kg')
+    .select('id, id_producto, codigo_producto, descripcion, cantidad, precio_unitario, peso_kg')
     .eq('id_pedido', idPedido)
     .order('descripcion', { ascending: true })
   if (error) throw error
@@ -144,9 +164,11 @@ export async function itemsDePedido(idPedido) {
  * pedido hacen que 100 pedidos ya pasen el techo, así que acá no es hipotético. Se parte por LOTE DE
  * IDS y no por `range()`: un `in` con mil uuid también hace explotar la URL.
  *
- * El código del producto se trae por relación porque la línea no lo copia (copia `descripcion` y
- * `precio_unitario`, ver `db/43`). Si el producto se borró, viene null y el export deja la celda
- * vacía — que es la verdad, no un cero.
+ * 🔑 EL CÓDIGO DEL PRODUCTO SALE DE LA LÍNEA (db/62). Desde el 10/09/2026 se copia al confirmar,
+ * igual que `descripcion` y `precio_unitario`: es el campo 18 del archivo del ERP, y con la relación
+ * viva un producto borrado del catálogo dejaba la celda VACÍA — en un comprobante que ya se vendió,
+ * y que su importador rechaza. La relación se conserva sólo como respaldo para los pedidos
+ * anteriores a la migración, y por eso el orden del `||` no es intercambiable.
  *
  * @returns {Promise<Map<string, object[]>>} id de pedido → sus líneas
  */
@@ -158,13 +180,13 @@ export async function itemsDePedidos(ids) {
     const trozo = ids.slice(i, i + LOTE)
     const { data, error } = await supabase
       .from('pedido_items')
-      .select('id, id_pedido, id_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( codigo )')
+      .select('id, id_pedido, id_producto, codigo_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( codigo )')
       .in('id_pedido', trozo)
       .order('descripcion', { ascending: true })
     if (error) throw error
     for (const l of data || []) {
       const arr = porPedido.get(l.id_pedido) || []
-      arr.push({ ...l, codigoProducto: l.producto?.codigo || null })
+      arr.push({ ...l, codigoProducto: l.codigo_producto || l.producto?.codigo || null })
       porPedido.set(l.id_pedido, arr)
     }
   }

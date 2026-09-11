@@ -264,6 +264,20 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     atascados, 42501 cada 30 s durante 8 horas). Por eso `flushPosiciones` distingue
     `CODIGOS_PERMANENTES`. **Si tocás el manejo de errores de la cola, no vuelvas a tratar todos
     los errores como transitorios.**
+19-ter. 🩸 **UN CATÁLOGO DE CÓDIGOS SIEMPRE VA UN INCIDENTE ATRÁS: la cola necesita un TECHO de
+    reintentos.** Tercera vez que se paga lo mismo (GPS julio, catálogo agosto, **pedidos
+    11/09/2026**). Esta vez fue `P0001` —el SQLSTATE de cualquier `raise exception` de plpgsql, o
+    sea toda regla de negocio escrita en un trigger—: el backfill de `db/62` marcó como facturados
+    los 20 pedidos que había, alguien tocó "Anular" sobre uno, y como P0001 no estaba en
+    `CODIGOS_PERMANENTES` la cola lo reintentó **cada 30 s durante casi 4 horas en dos
+    dispositivos** (22 rechazos en los logs). Lo que se perdió no fue la anulación: fueron los
+    **borrados encolados detrás**, que nunca salieron — la pantalla decía "Pedido borrado
+    definitivamente" y en el servidor no hubo un solo DELETE.
+    Por eso `writeQueue.js` ahora tiene `MAX_INTENTOS = 20` además de la lista: una mutación que el
+    servidor rechazó 20 veces se aparta, diga lo que diga el código.
+    🔴 **Y sólo cuentan los fallos en los que el servidor CONTESTÓ** (`error.code` no vacío). Un
+    `Failed to fetch` no suma nunca: si sumara, un vendedor diez minutos sin señal vería sus pedidos
+    irse a cuarentena por estar offline, que es justo el desastre que la cola existe para evitar.
 20. **🩸 NUNCA BORRAR puntos de la cola: van a CUARENTENA (`lu-pos-cuarentena`).** El bundle
     **1.5.26 borró 264 puntos reales en producción** por hacer exactamente eso. Un punto trabado es
     recuperable; uno borrado no. La cuarentena destapa la cola igual, y `separarPorDueño()` **los

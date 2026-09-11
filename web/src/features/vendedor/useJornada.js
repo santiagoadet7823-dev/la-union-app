@@ -47,6 +47,28 @@ export function useJornada() {
   // Identidad + posición en vivo para el check-in geolocalizado (Feature C). `pos` es la
   // posición ya adquirida por el watch (sin prompt); id/idEmpresa vienen del perfil real.
   const { pos, id: userId, nombre: nombreUsuario, idEmpresa } = useGps()
+
+  /* LAS FORMAS DE PAGO QUE ACEPTA EL ERP (db/62). Salen de `empresas.export_erp.formas_pago` y no
+   * del código porque todavía NO SABEMOS sus códigos: el campo 7 del archivo del cliente viene `3`
+   * en las 300 filas del ejemplo y que sea la forma de pago es una deducción — los encabezados
+   * nunca llegaron. Mientras esto venga vacío, la hoja de confirmación no muestra el selector (ver
+   * `ConfirmarPedidoSheet`): es preferible no preguntar a que el vendedor cargue con confianza una
+   * etiqueta inventada que viaja a facturación con cara de dato bueno.
+   *
+   * Una consulta de una fila al montar. No va en la caché del catálogo: eso se baja una vez por
+   * jornada y esto tiene que poder corregirse el mismo día que el cliente conteste. */
+  const [formasPago, setFormasPago] = useState([])
+  useEffect(() => {
+    if (!idEmpresa) return
+    let vivo = true
+    ;(async () => {
+      const { data } = await supabase.from('empresas').select('export_erp').eq('id', idEmpresa).maybeSingle()
+      if (!vivo) return
+      const fp = data?.export_erp?.formas_pago
+      setFormasPago(Array.isArray(fp) ? fp : [])
+    })()
+    return () => { vivo = false }
+  }, [idEmpresa])
   const [tab, setTab] = useState('inicio')
   const [visit, setVisit] = useState(null)
   const [seconds, setSeconds] = useState(0)
@@ -279,7 +301,7 @@ export function useJornada() {
   }
 
   // --- clientes (cartera real) + estado de visita del día ---
-  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, ...(visitState[c.id] || { status: 'pendiente' }) }))
+  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, formaPagoDefault: c.formaPagoDefault, ...(visitState[c.id] || { status: 'pendiente' }) }))
   const nextId = (clients.find((c) => c.status === 'pendiente') || {}).id
   const done = clients.filter((c) => c.status !== 'pendiente').length
   const conPedido = clients.filter((c) => c.status === 'visitado')
@@ -367,7 +389,7 @@ export function useJornada() {
    * después si el vendedor estaba sin señal, y entonces la hora de la base sería la de la subida.
    * La hora del pedido es la del comercio.
    */
-  async function guardarPedido({ idCliente, idVisita, monto, kg }) {
+  async function guardarPedido({ idCliente, idVisita, monto, kg, datos = null }) {
     if (!userId || !idEmpresa || !idCliente) return null
     const lineas = Object.entries(cart)
       .map(([id, cantidad]) => ({ p: prodById(id), cantidad }))
@@ -425,6 +447,22 @@ export function useJornada() {
       // Pueden ir en null (caché vieja, o el sello nunca contestó): el ticket no dibuja el bloque.
       sello_precios_ts: catalogoMeta?.sello || null,
       catalogo_ts: catalogoMeta?.bajadoTs ? new Date(catalogoMeta.bajadoTs).toISOString() : null,
+
+      /* LOS TRES CAMPOS QUE PIDE EL ERP PARA FACTURAR (10/09/2026, db/62). Antes no existía ningún
+       * formulario de cabecera: el vendedor elegía productos y cantidades y el pedido se guardaba
+       * derecho, así que estos tres datos no se capturaban en ningún lado.
+       *
+       * ⚠️ ESTO ES UNA LISTA BLANCA, y las listas blancas de este proyecto ya fallaron antes (ver
+       * `ingest-precios`): un campo que falte acá NO da error — el pedido se guarda con null y
+       * nadie se entera hasta que el ERP rechaza el archivo. Si se agrega una columna a `pedidos`
+       * que tenga que viajar al ERP, se agrega también acá.
+       *
+       * `forma_pago` cae en la pactada con el comercio cuando la hoja no la pidió — que es el caso
+       * mientras el cliente no nos pase su tabla de códigos (ver `ConfirmarPedidoSheet`).
+       */
+      forma_pago: datos?.formaPago || cli?.formaPagoDefault || null,
+      fecha_entrega: datos?.fechaEntrega || null,
+      observaciones: datos?.observaciones?.trim() || null,
     }
 
     const items = lineas.map(({ p: prod, cantidad }) => ({
@@ -444,6 +482,10 @@ export function useJornada() {
       // `useEntregas.guardarEntregado` escribe `cantidad_entregada` y NO toca esta columna: no es
       // un olvido, es la decisión.
       precio_unitario: precioDe(prod, cantidad),
+      // 🔑 EL CÓDIGO TAMBIÉN SE COPIA (db/62). Es el campo 18 del archivo del ERP, y hasta hoy
+      // salía por relación viva contra `productos`: si marketing borraba el producto, el renglón
+      // de un comprobante YA VENDIDO se exportaba sin código y su importador lo rechazaba.
+      codigo_producto: prod.codigo || null,
       peso_kg: prod.kg || 0,
     }))
 
@@ -465,12 +507,12 @@ export function useJornada() {
    * Confirma el pedido y cierra la visita. Es el único camino: antes había dos botones que hacían
    * `endVisit('visitado', { monto })` cada uno por su lado y ninguno guardaba el pedido.
    */
-  async function confirmarPedido() {
+  async function confirmarPedido(datos = null) {
     const idCliente = visit
     const idVisita = visitaActualRef.current
     const monto = cartTotal
     const kg = cartKg
-    const guardado = await guardarPedido({ idCliente, idVisita, monto, kg })
+    const guardado = await guardarPedido({ idCliente, idVisita, monto, kg, datos })
     endVisit('visitado', { monto, idPedido: guardado?.pedido?.id || null })
     // El ticket vive en el hook y no en la pestaña: `endVisit` vuelve a "Inicio" y eso DESMONTA
     // `VisitaCatalogo`, así que un ticket que colgara de ahí desaparecería en el mismo frame en
@@ -491,5 +533,6 @@ export function useJornada() {
     pend, pendingCoords, meta, efect,
     toast, showToast, startVisit, endVisit, cancelVisit, addCart,
     quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido,
+    formasPago,
   }
 }

@@ -56,7 +56,42 @@ const CODIGOS_PERMANENTES = new Set([
   '23514', // check constraint
   '22P02', // sintaxis inválida (uuid/numérico corrupto en la cola)
   '23503', // FK: la fila referenciada ya no existe
+  /* 🩸 `P0001` — LA COLA VOLVIÓ A TAPONARSE, Y ESTA VEZ CON PEDIDOS (11/09/2026).
+   *
+   * Es el SQLSTATE de cualquier `raise exception` de plpgsql, o sea **toda regla de negocio escrita
+   * en un trigger**. El caso real: `db/62` agregó el trigger que congela un pedido ya enviado a
+   * facturación y, de paso, su backfill marcó como exportados los 20 pedidos que ya existían. El
+   * encargado tocó "Anular" sobre uno de ésos, la base contestó `pedido-ya-exportado`, y como P0001
+   * no estaba acá la cola lo tomó por transitorio: **22 rechazos en los logs entre las 17:44 y las
+   * 21:25, el mismo PATCH cada 30 segundos, en DOS dispositivos a la vez**.
+   *
+   * Y lo que se llevó puesto no fue la anulación: fueron los **borrados encolados detrás**. La
+   * pantalla decía "Pedido borrado definitivamente" y en el servidor no hubo un solo DELETE, porque
+   * nunca le llegó el turno. Es la regla 19 otra vez, tercera vez que se paga (GPS en julio,
+   * catálogo en agosto, pedidos ahora).
+   *
+   * Un `raise exception` es una decisión deliberada del otro lado: reintentarlo mil veces no lo
+   * vuelve cierto. */
+  'P0001', // raise exception de plpgsql — una regla de negocio dijo que no
 ])
+
+/**
+ * 🩸 EL TOPE QUE HACE FALTA DE VERDAD (11/09/2026).
+ *
+ * La lista de arriba es una lista de códigos CONOCIDOS, y por definición el que tapona la cola es
+ * siempre el que todavía no está en ella: 23505 en agosto, P0001 ahora. Catalogar de a uno es ir
+ * siempre un incidente atrás.
+ *
+ * Así que además del catálogo hay un techo: una mutación que el servidor rechazó 20 veces se aparta,
+ * diga lo que diga el código. Con un flush cada 30 s y otro en cada vuelta a primer plano, 20
+ * rechazos **con respuesta del servidor** no son un problema de red, son un problema del dato.
+ *
+ * 🔴 Y ACÁ ESTÁ LA PARTE DELICADA: sólo cuentan los fallos en los que **el servidor contestó**
+ * (`error.code` no vacío = viene de PostgREST). Un `Failed to fetch` NO suma. Si sumara, un vendedor
+ * diez minutos sin señal en el campo vería sus pedidos irse a cuarentena por estar offline — que es
+ * exactamente el desastre que esta cola existe para evitar. Sin red no se llega nunca al tope.
+ */
+const MAX_INTENTOS = 20
 
 async function read() { return (await persistence.get(KEY, [])) || [] }
 async function write(arr) {
@@ -153,6 +188,22 @@ export async function flushMutaciones() {
           const qp = await read()
           await write(qp.slice(1))
           continue // la cola SIGUE con la próxima
+        }
+        /* El servidor contestó, pero con un error que no está catalogado. Se cuenta. Un
+         * `Failed to fetch` no trae `code` y por lo tanto no suma: sin red no se llega al tope. */
+        const contestoElServidor = !!error.code
+        if (contestoElServidor) {
+          const intentos = (m._intentos || 0) + 1
+          const qi = await read()
+          if (qi.length && qi[0].op_uid === m.op_uid) {
+            if (intentos >= MAX_INTENTOS) {
+              await aislar(m, `${error.code}: ${error.message} (${intentos} intentos)`)
+              await write(qi.slice(1))
+              continue // la cola SIGUE: el techo cumplió su función
+            }
+            qi[0] = { ...qi[0], _intentos: intentos }
+            await write(qi)
+          }
         }
         break // transitorio: se reintenta en el próximo flush, sin perder el orden
       }

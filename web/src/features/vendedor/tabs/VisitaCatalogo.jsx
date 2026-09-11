@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos, hace } from '../../../lib/format'
+import ConfirmarPedidoSheet from '../ConfirmarPedidoSheet'
 import { precioDe } from '../../../lib/precios'
 import CarritoSheet from '../CarritoSheet'
 import GrillaCatalogo from '../../../components/GrillaCatalogo'
@@ -29,7 +30,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   // El build daba verde: Vite no detecta TDZ. Si mañana un hook nuevo necesita otro campo de `j`,
   // ya lo tiene arriba; no hay motivo para volver a bajar esta línea.
   // search + catFilter viven en useJornada para persistir el filtro al cambiar de pestaña.
-  const { vid, PRODUCTS, visitC, timer, cart, quitados, addCart, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, cartAhorro, search, setSearch, catFilter, setCatFilter, quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido } = j
+  const { vid, PRODUCTS, visitC, timer, cart, quitados, addCart, setSheet, cancelVisit, showToast, cartCount, cartKg, cartTotal, cartAhorro, search, setSearch, catFilter, setCatFilter, quitarDelCarrito, vaciarCarrito, deshacerCarrito, recuperarQuitado, confirmarPedido, formasPago } = j
 
   // 🩸 LA SESIÓN DE VIDRIERA NO VIVE ACÁ: vive en `useJornada` (18/08/2026). Primero se mudó desde
   // la ventana del QR —cerrarla desconectaba la tablet— y después un nivel más arriba, porque esta
@@ -69,6 +70,10 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
 
   const [verQr, setVerQr] = useState(false)
   const [verCarrito, setVerCarrito] = useState(false)
+  // La hoja de cabecera del pedido (forma de pago / entrega / observaciones, db/62). Es UNA sola
+  // para los dos botones que confirman —el del carrito y el del pie—: duplicarla sería la regla 31,
+  // y el día que se agregue un campo entraría en uno de los dos caminos nada más.
+  const [confirmando, setConfirmando] = useState(false)
 
   // Los ids sugeridos se resuelven contra el catálogo cargado: si un producto se dio de baja
   // después del pedido, simplemente no aparece.
@@ -296,16 +301,34 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           cartCount={cartCount} cartKg={cartKg} cartTotal={cartTotal} cartAhorro={cartAhorro}
           onCerrar={() => setVerCarrito(false)}
           onConfirmar={() => {
-            const total = cartTotal
+            // Ya no confirma acá: abre la hoja de cabecera, que es la que finalmente llama a
+            // `confirmarPedido`. Ver `ConfirmarPedidoSheet`.
             setVerCarrito(false)
-            // `confirmarPedido` es lo que ESCRIBE el pedido (cabecera + líneas) por la write queue
-            // y recién después cierra la visita. Antes acá se llamaba `endVisit` a secas y el
-            // pedido no se guardaba en ningún lado — ver el comentario de `useJornada`.
-            confirmarPedido()
-            showToast(`Pedido confirmado · ${fmtPesos(total)}`)
+            setConfirmando(true)
           }}
         />
       )}
+
+      {/* La cabecera del pedido. 🔴 Va SIEMPRE montada con `open={confirmando}` y NO envuelta en
+          `{confirmando && …}`: `Overlay` necesita quedar en el árbol para animar su propia salida —
+          está escrito con todas las letras en su encabezado, y envolverlo es el error que ese
+          componente vino a evitar. */}
+      <ConfirmarPedidoSheet
+        open={confirmando}
+        onClose={() => setConfirmando(false)}
+        comercio={visitC}
+        cartCount={cartCount} cartKg={cartKg} cartTotal={cartTotal}
+        formasPago={formasPago}
+        onConfirmar={(datos) => {
+          const total = cartTotal
+          setConfirmando(false)
+          // `confirmarPedido` es lo que ESCRIBE el pedido (cabecera + líneas) por la write queue y
+          // recién después cierra la visita. Antes acá se llamaba `endVisit` a secas y el pedido no
+          // se guardaba en ningún lado — ver el comentario de `useJornada`.
+          confirmarPedido(datos)
+          showToast(`Pedido confirmado · ${fmtPesos(total)}`)
+        }}
+      />
 
       {/* La ficha grande (el zoom) la monta ahora `GrillaCatalogo`. El orden de z-index que
           documentaba este bloque se sigue cumpliendo solo: `AvisoVidriera` usa `--z-aviso` (550)
@@ -436,7 +459,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           </div>
           {visitC ? (
             <button
-              onClick={() => { const total = cartTotal; confirmarPedido(); showToast(`Pedido confirmado · ${fmtPesos(total)}`) }}
+              onClick={() => setConfirmando(true)}
               style={sx('width:100%;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;border:none')}
             >Confirmar pedido y finalizar visita</button>
           ) : (

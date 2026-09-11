@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import { useAuth } from '../../context/AuthContext'
@@ -6,8 +6,10 @@ import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
 import EditarPedidoSheet from './EditarPedidoSheet'
 import { usePedidos, itemsDePedido, vendedoresDe } from './usePedidos'
-import { exportarPedidosTsv } from './exportarPedidos'
+import { textoPapelera, porVencer, DIAS_PAPELERA } from './papelera'
+import { exportarPedidosAscii } from './exportarPedidos'
 import { Bajar } from '../../components/icons'
+import AvisoCuarentena from '../../components/AvisoCuarentena'
 
 /**
  * REVISAR LOS PEDIDOS. Pantalla de gestión (encargado / admin / superadmin).
@@ -24,8 +26,15 @@ import { Bajar } from '../../components/icons'
  *
  * 🔴 ANULAR NO ES BORRAR, y la pantalla lo dice con todas las letras. Un pedido anulado sigue
  * estando, con motivo y con firma; uno borrado no deja nada, y sin rastro no hay forma de notar que
- * alguien se limpia los días flojos. Por eso borrar es solo del superadmin y solo sobre lo ya
- * anulado — hay que dejar el rastro antes de poder destruirlo.
+ * alguien se limpia los días flojos. Por eso borrar exige que el pedido ya esté anulado — hay que
+ * dejar el rastro antes de poder destruirlo (`pedidos_del`, db/63).
+ *
+ * 🩸 DOS PESTAÑAS, NO UN CHECKBOX (11/09/2026). Hasta hoy los anulados venían mezclados con los
+ * vivos —tachados y en gris— y se escondían destildando "Ver anulados". El dueño pidió que queden
+ * APARTADOS, y con la purga de `db/63` dejó de ser una cuestión de gusto: un pedido anulado ahora
+ * tiene fecha de vencimiento, y algo que va a desaparecer solo en 30 días no puede estar en la misma
+ * lista que lo que no. La papelera muestra esa cuenta regresiva en cada fila, que es lo único que
+ * convierte un borrado automático en algo que la gente puede prever en vez de sufrir.
  *
  * props: { onToast }
  */
@@ -50,7 +59,7 @@ export default function PedidosView({ onToast }) {
   const { user, rol } = useAuth()
   const [rango, setRango] = useState('7')
   const [filtroVendedor, setFiltroVendedor] = useState('')
-  const [verAnulados, setVerAnulados] = useState(true)
+  const [vista, setVista] = useState('activos')  // 'activos' | 'papelera'
   const [detalle, setDetalle] = useState(null)   // { pedido, lineas } — el pedido abierto
   const [ticket, setTicket] = useState(null)     // { pedido, lineas } — el comprobante
   const [editando, setEditando] = useState(null)  // { pedido, lineas } — el que se está corrigiendo
@@ -61,32 +70,55 @@ export default function PedidosView({ onToast }) {
   // `useMemo` sobre el rango: sin él, cada render arma dos Date nuevas, cambian las dependencias
   // del efecto de `usePedidos` y la pantalla consulta en loop.
   const { desde, hasta } = useMemo(() => rangoDe(dias), [dias])
-  const { pedidos, cargando, error, recargar } = usePedidos({
-    desde, hasta, idVendedor: filtroVendedor || null, incluirAnulados: verAnulados,
+  /* Dos consultas, una por pestaña, y las dos montadas siempre. La de la papelera no está de más:
+     sin ella no habría con qué numerar la pestaña, y una papelera que no dice cuánto tiene adentro
+     es una que nadie abre. Entre las dos traen las mismas filas que traía la consulta única de
+     antes — el costo no cambió, se repartió. */
+  const { pedidos: activos, cargando, error, recargar } = usePedidos({
+    desde, hasta, idVendedor: filtroVendedor || null,
   })
+  const { pedidos: anulados, cargando: cargandoPapelera, error: errorPapelera, recargar: recargarPapelera } =
+    usePedidos({ desde, hasta, idVendedor: filtroVendedor || null, papelera: true })
 
-  const personas = useMemo(() => vendedoresDe(pedidos), [pedidos])
-  const vivos = pedidos.filter((p) => p.estado !== 'Anulado')
-  const totalVendido = vivos.reduce((a, p) => a + Number(p.monto_total || 0), 0)
-  const anulados = pedidos.length - vivos.length
+  const enPapelera = vista === 'papelera'
+  const pedidos = enPapelera ? anulados : activos
+  const cargandoAhora = enPapelera ? cargandoPapelera : cargando
+  const errorAhora = enPapelera ? errorPapelera : error
+
+  /* Las dos listas se recargan juntas SIEMPRE. Anular saca una fila de una y la mete en la otra, y
+     borrar la saca de la papelera: refrescar sólo la pestaña que se está mirando dejaría la otra
+     mostrando el pedido que se acaba de mover. */
+  const recargarTodo = useCallback(() => { recargar(); recargarPapelera() }, [recargar, recargarPapelera])
+
+  // Las personas salen de las dos listas: si alguien sólo tiene pedidos anulados en el rango, tiene
+  // que seguir estando en el selector — si no, filtrar por esa persona sería imposible justo cuando
+  // se la quiere revisar.
+  const personas = useMemo(() => vendedoresDe([...activos, ...anulados]), [activos, anulados])
+  const totalVendido = activos.reduce((a, p) => a + Number(p.monto_total || 0), 0)
 
   /**
-   * Bajar el archivo para facturar en el sistema del cliente. Ver `exportarPedidos.js`: el formato
-   * es PROVISORIO hasta que llegue una muestra del export real.
+   * Bajar el archivo para facturar en el sistema del cliente, en el formato ASCII de 25 campos que
+   * espera su ERP (`lib/asciiPedidos.js`, verificado contra el archivo real del 09/09/2026).
    *
-   * Se exporta lo que está EN PANTALLA — mismo rango, misma persona, mismo filtro de anulados — y
-   * no "los de hoy" por su cuenta: si el botón bajara algo distinto de lo que la lista muestra, no
-   * habría forma de revisar antes de facturar, que es justo para lo que sirve esta pantalla.
+   * ⚠️ ESTO NO MARCA LOS PEDIDOS COMO ENVIADOS. Es la vía de REVISIÓN; la que lleva la cuenta de lo
+   * que ya se mandó es la automática (`export-pedidos`, db/62). Si este botón marcara, alguien
+   * bajando 30 días para mirarlos dejaría fuera del ERP todo lo pendiente, sin enterarse.
    *
-   * Los anulados se sacan SIEMPRE, aunque estén visibles: un pedido anulado no se factura, y
-   * mandarlo al otro sistema es exactamente el error que la anulación viene a evitar.
+   * Se exporta lo que está EN PANTALLA — mismo rango, misma persona — y no "los de hoy" por su
+   * cuenta: si el botón bajara algo distinto de lo que la lista muestra, no habría forma de revisar
+   * antes de facturar, que es justo para lo que sirve esta pantalla.
+   *
+   * Sale de `activos` y no de `pedidos`, que ahora depende de la pestaña: un pedido anulado no se
+   * factura —mandarlo al otro sistema es el error que la anulación viene a evitar— y estando parado
+   * en la papelera, `pedidos` son TODOS anulados. El botón igual sólo se ofrece en la otra pestaña;
+   * esto es el cinturón además del tirante.
    */
   async function exportar() {
-    const paraExportar = pedidos.filter((p) => p.estado !== 'Anulado')
+    const paraExportar = activos.filter((p) => p.estado !== 'Anulado')
     if (!paraExportar.length) { onToast?.('No hay pedidos para exportar en este rango.'); return }
     setExportando(true)
     try {
-      const r = await exportarPedidosTsv(paraExportar, { nombre: `pedidos-${RANGOS.find((x) => x.key === rango)?.label.toLowerCase().replace(' ', '')}` })
+      const r = await exportarPedidosAscii(paraExportar)
       onToast?.(`${r.pedidos} pedidos · ${r.filas} renglones` + (r.sinLineas ? ` · ⚠ ${r.sinLineas} sin líneas` : ''))
     } catch (e) {
       onToast?.('No se pudo exportar: ' + (e?.message || 'sin conexión'))
@@ -108,6 +140,11 @@ export default function PedidosView({ onToast }) {
 
   return (
     <div style={sx('padding:14px;max-width:900px;margin:0 auto')}>
+      {/* Va PRIMERO, arriba de los filtros: si una anulación o un borrado quedaron afuera, esa es
+          la noticia más importante de la pantalla — todo lo de abajo puede estar mostrando algo
+          distinto de lo que la persona cree haber hecho. */}
+      <AvisoCuarentena tabla="pedidos" />
+
       {/* ── Filtros ─────────────────────────────────────────────────────────────────────── */}
       <div style={sx('display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px')}>
         <div style={sx('display:flex;gap:6px')}>
@@ -135,13 +172,10 @@ export default function PedidosView({ onToast }) {
           {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
 
-        <label style={sx('display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer')}>
-          <input type="checkbox" checked={verAnulados} onChange={(e) => setVerAnulados(e.target.checked)} />
-          Ver anulados
-        </label>
-
         {/* Para facturar en el sistema del cliente. Va con los filtros y no arriba del todo porque
-            lo que baja es EXACTAMENTE lo que la lista muestra. */}
+            lo que baja es EXACTAMENTE lo que la lista muestra. No aparece en la papelera: ahí no hay
+            nada que facturar, y un botón de exportar sobre pedidos anulados sólo puede terminar mal. */}
+        {!enPapelera && (
         <button
           onClick={exportar}
           disabled={exportando || cargando}
@@ -157,38 +191,87 @@ export default function PedidosView({ onToast }) {
           <Bajar size={14} />
           {exportando ? 'Armando…' : 'Exportar para facturar'}
         </button>
-      </div>
-
-      {/* ── Resumen ─────────────────────────────────────────────────────────────────────── */}
-      <div style={sx('display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
-        <div>
-          <div style={sx('font-size:10.5px;color:var(--faint)')}>Pedidos</div>
-          <div style={sx('font-size:19px;font-weight:700')}>{vivos.length}</div>
-        </div>
-        <div>
-          <div style={sx('font-size:10.5px;color:var(--faint)')}>Vendido</div>
-          <div style={sx('font-size:19px;font-weight:700')}>{fmtPesos(totalVendido)}</div>
-        </div>
-        {anulados > 0 && (
-          <div>
-            <div style={sx('font-size:10.5px;color:var(--faint)')}>Anulados</div>
-            <div style={sx('font-size:19px;font-weight:700;color:var(--danger)')}>{anulados}</div>
-          </div>
         )}
       </div>
 
-      {/* ── La lista ────────────────────────────────────────────────────────────────────── */}
-      {error && (
-        <div style={sx('padding:13px;border:1px solid var(--danger);border-radius:var(--r-lg);color:var(--danger);font-size:12.5px')}>
-          No se pudieron leer los pedidos: {error}
+      {/* ── Las dos pestañas ────────────────────────────────────────────────────────────────
+          La papelera lleva el número adentro: es la única forma de que alguien note que hay algo
+          esperando el mes. Sin el contador, una pestaña que casi siempre está vacía se vuelve
+          invisible justo el día que no lo está. */}
+      <div style={sx('display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--line)')}>
+        {[
+          { key: 'activos',  label: 'Pedidos',  n: activos.length,  color: 'var(--primary)' },
+          { key: 'papelera', label: 'Papelera', n: anulados.length, color: 'var(--danger)' },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setVista(t.key)}
+            className="lu-press"
+            style={{
+              ...sx('padding:8px 14px;border:none;background:transparent;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:-1px'),
+              borderBottom: `2px solid ${vista === t.key ? t.color : 'transparent'}`,
+              color: vista === t.key ? 'var(--text)' : 'var(--muted)',
+            }}
+          >
+            {t.label}
+            {t.n > 0 && (
+              <span style={{
+                ...sx('margin-left:6px;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--font-mono)'),
+                background: vista === t.key ? t.color : 'var(--surface2)',
+                color: vista === t.key ? '#fff' : 'var(--faint)',
+              }}>{t.n}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Resumen ─────────────────────────────────────────────────────────────────────── */}
+      {!enPapelera ? (
+        <div style={sx('display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+          <div>
+            <div style={sx('font-size:10.5px;color:var(--faint)')}>Pedidos</div>
+            <div style={sx('font-size:19px;font-weight:700')}>{activos.length}</div>
+          </div>
+          <div>
+            <div style={sx('font-size:10.5px;color:var(--faint)')}>Vendido</div>
+            <div style={sx('font-size:19px;font-weight:700')}>{fmtPesos(totalVendido)}</div>
+          </div>
+          {anulados.length > 0 && (
+            <div>
+              <div style={sx('font-size:10.5px;color:var(--faint)')}>Anulados</div>
+              <div style={sx('font-size:19px;font-weight:700;color:var(--danger)')}>{anulados.length}</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* La papelera se explica sola arriba de todo. Un borrado automático que la gente descubre
+           cuando ya pasó es un bug de comunicación, aunque el código haga lo correcto. */
+        <div style={sx('padding:11px 13px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-size:12px;color:var(--muted);line-height:1.55')}>
+          Los pedidos anulados quedan acá <b>{DIAS_PAPELERA} días</b> y después se eliminan solos.
+          Siguen sin contar para las ventas ni para facturación. Abriendo uno se puede ver el motivo,
+          quién lo anuló, y borrarlo antes de tiempo.
         </div>
       )}
 
-      {!error && cargando && (
+      {/* ── La lista ────────────────────────────────────────────────────────────────────── */}
+      {errorAhora && (
+        <div style={sx('padding:13px;border:1px solid var(--danger);border-radius:var(--r-lg);color:var(--danger);font-size:12.5px')}>
+          No se pudieron leer los pedidos: {errorAhora}
+        </div>
+      )}
+
+      {!errorAhora && cargandoAhora && (
         <div style={sx('padding:26px;text-align:center;color:var(--faint);font-size:13px')}>Cargando pedidos…</div>
       )}
 
-      {!error && !cargando && !pedidos.length && (
+      {!errorAhora && !cargandoAhora && !pedidos.length && enPapelera && (
+        <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
+          <b>La papelera está vacía.</b><br />
+          No se anuló ningún pedido en este rango.
+        </div>
+      )}
+
+      {!errorAhora && !cargandoAhora && !pedidos.length && !enPapelera && (
         <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
           <b>No hay pedidos en este rango.</b><br />
           Los pedidos se empezaron a guardar el <b>19/08/2026</b>; antes de esa fecha la app los
@@ -196,7 +279,7 @@ export default function PedidosView({ onToast }) {
         </div>
       )}
 
-      {!error && !cargando && pedidos.map((p) => {
+      {!errorAhora && !cargandoAhora && pedidos.map((p) => {
         const anulado = p.estado === 'Anulado'
         return (
           <div
@@ -229,6 +312,18 @@ export default function PedidosView({ onToast }) {
                   ANULADO{p.motivo_anulacion ? ` · ${p.motivo_anulacion}` : ''}
                 </div>
               )}
+              {/* La cuenta regresiva, sólo en la papelera: en la lista viva no hay ninguna que
+                  mostrar. Se pinta de rojo la última semana — que un pedido esté por desaparecer
+                  para siempre es lo único de esta pantalla que tiene urgencia real. */}
+              {anulado && enPapelera && (
+                <div style={{
+                  ...sx('font-size:10.5px;margin-top:2px;font-family:var(--font-mono)'),
+                  color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
+                  fontWeight: porVencer(p) ? 600 : 400,
+                }}>
+                  {textoPapelera(p)}
+                </div>
+              )}
             </div>
             <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:700')}>
               {fmtPesos(p.monto_total)}
@@ -248,7 +343,7 @@ export default function PedidosView({ onToast }) {
         userId={user?.id || null}
         onCerrar={() => setDetalle(null)}
         onToast={onToast}
-        onRecargar={recargar}
+        onRecargar={recargarTodo}
         onTicket={(d) => { setDetalle(null); setTicket(d) }}
         onEditar={(d) => { setDetalle(null); setEditando(d) }}
       />
@@ -262,7 +357,7 @@ export default function PedidosView({ onToast }) {
           lineas={editando.lineas}
           userId={user?.id || null}
           onCerrar={() => setEditando(null)}
-          onGuardado={recargar}
+          onGuardado={recargarTodo}
           onToast={onToast}
         />
       )}

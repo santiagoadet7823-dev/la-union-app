@@ -2,391 +2,517 @@
 
 > Qué hace cada función de la app y a qué rol pertenece.
 > Complementa [CLAUDE.md](CLAUDE.md) (reglas técnicas) e [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md)
-> (arquitectura y deuda). Fecha: 18/07/2026 · `APP_VERSION 1.5.25`.
+> (arquitectura y deuda).
+>
+> **Regenerado el 08/09/2026 sobre `APP_VERSION 1.25.0`** (commit `b6d500c`), midiendo contra el
+> código y contra la base viva. La revisión anterior era del 18/07/2026 sobre 1.5.25 y había quedado
+> falsa en lo más importante: decía que los pedidos no persistían, describía un rol `propietario` que
+> se eliminó el 10/08, documentaba una pantalla (`ConsultasView`) que ya no existe y daba la
+> retención de posiciones en 7 días cuando son 45.
 
 ---
 
 ## 0. Lo primero que hay que entender
 
-> **Hoy DisT-At es un sistema de RASTREO GPS + GESTIÓN DE CARTERA.**
-> **Todavía NO es un sistema de ventas.**
+> **DisT-At ya no es sólo rastreo: el eje de ventas persiste.**
 
-Todo el eje pedidos → entregas → faltante está construido como interfaz, funciona al tocarlo, y
-**no persiste nada**. Un vendedor puede hacer su jornada completa —check-in, carrito, confirmar
-pedido— y al recargar la app no queda ningún rastro. Esta es la línea divisoria más importante del
-producto y condiciona todo lo demás.
+La revisión anterior abría diciendo que un vendedor podía hacer la jornada completa y al recargar no
+quedaba rastro. **Eso dejó de ser cierto.** Hoy `pedidos`, `pedido_items`, `visitas`, `metas` y
+`pedido_ediciones` son tablas reales con filas reales: el pedido sobrevive a la recarga, se puede
+corregir con auditoría y se puede anular.
+
+Lo que sí sigue siendo cierto es que **el volumen es chiquito**: 12 pedidos y 28 renglones en toda la
+base al 08/09. Las pantallas de venta se ven casi vacías, y eso no es un bug — cada bloque lo dice
+con palabras en vez de dibujar un cero.
 
 ### Estado real de cada módulo
 
 | Estado | Módulos |
 |---|---|
-| ✅ **REAL** (lee/escribe Supabase) | Login · Usuarios · Empresas · Zonas · Importar clientes · Clientes · Catálogo · Recorridos · Replay de jornada · Consultas · Estado del equipo · Supervisión móvil y escritorio · Alta de cliente/producto · Mi perfil · todo el pipeline GPS y de sincronización |
-| ⚠️ **REAL pero SIN PERSISTENCIA** | Jornada del vendedor (check-in, visita, carrito, montos, sin-pedido) · Entregas del repartidor (estados + firma) |
-| 🔶 **DEMO / estático** | Faltante · Ruteo · pestañas Dashboard y Órdenes · KPIs del propietario y de ambas supervisiones · el `DEPOSITO` de `demoGeo` en MapaOperativo |
-| ⛔ **CÓDIGO MUERTO** (sin ruta de acceso) | `tabs/RuteoTab.jsx` (no lo importa nadie) · `vendedor/tabs/PerfilTab.jsx` (no está en la bottom-nav de `VendedorView.jsx:52`) · `AdminView` y `MapaOperativo` (solo alcanzables por un fallback que ningún rol activa) |
+| ✅ **REAL** (lee/escribe Supabase) | Login · Usuarios · Empresas · Zonas · Categorías de rastreo · Importar clientes/productos/fotos · Clientes · Catálogo · Marketing · **Pedidos (alta, edición, anulación, export)** · **Metas y Mi tablero** · Visitas · Reportes · Respaldo · Supervisión móvil y escritorio · Panel de dirección · Vidriera · todo el pipeline GPS y de sincronización |
+| ⚠️ **REAL pero incompleto** | Entregas del repartidor: los estados y la firma escriben, pero `firmas_ins` sigue sin alcance por empresa · `rutas` está vacía y nunca se usó |
+| 🔶 **VIVO PERO SIEMPRE VACÍO** | **Faltante** — `FaltanteTab.jsx:18` declara `const [faltVacio] = useState(true)` **sin setter**, así que la pantalla se abre desde el menú de gestión y no puede mostrar nada nunca |
+| ⛔ **CÓDIGO MUERTO** (sin ruta de acceso) | `admin/AdminView.jsx` y todo lo que sólo cuelga de él: `RecorridosView`, `MapaOperativo`, `ReplayJornada` · `admin/tabs/RuteoTab.jsx` (no lo importa **nadie**, ni siquiera el padre muerto) · `vendedor/tabs/PerfilTab.jsx` |
 
-> **Nota sobre `PerfilTab`:** está muerto, pero **eso no deja al vendedor sin "Mi cuenta"**.
-> `AppShell` envuelve toda la vista del vendedor y del repartidor ([App.jsx:168-178](web/src/App.jsx#L168))
-> y monta `MiCuenta` en su topbar ([AppShell.jsx:6](web/src/components/AppShell.jsx#L6)). El menú de
-> cuenta —Mi perfil, tema, cerrar sesión— **sí está disponible**. `PerfilTab` es una segunda
-> implementación de lo mismo que quedó sin conectar.
+> **Nota sobre `PerfilTab`:** sigue muerto, y sigue sin dejar al vendedor sin "Mi cuenta".
+> `AppShell` envuelve la vista del vendedor y del repartidor y monta `MiCuenta` en su topbar. El menú
+> —Mi perfil, tema, cerrar sesión— está disponible. `PerfilTab` es una segunda implementación que
+> quedó sin conectar. ⚠️ El comentario de `VendedorView.jsx:29` todavía habla de "las 4 pestañas"
+> mientras el grid de `:191` es `repeat(3,1fr)`.
+
+### Tamaño del sistema, medido el 08/09/2026
+
+| Parte | Archivos | Líneas |
+|---|---|---|
+| `web/src/features/` | 94 | 21.096 |
+| `web/src/services/` | — | 5.221 |
+| `web/src/components/` | — | 4.036 |
+| `web/src/lib/` | — | 2.007 |
+| `web/src/hooks/` | — | 1.762 |
+| `web/src/context/` | — | 1.521 |
+| **`web/src/` total** (incluye CSS) | — | **36.515** |
+| Nativo Android (`.java`) | 25 | 5.706 |
+| Edge Functions | 7 | 2.347 |
+| Migraciones `db/*.sql` | 55 | — |
+
+> 🩸 **CLAUDE.md §4 dice "17 clases" nativas y `UploaderGpsService` con 1.452 LOC.** Son **25 clases**
+> y **1.474 LOC**. Corregir al tocar esa tabla.
 
 ---
 
 ## 1. Puerta de entrada
 
-### Login — `features/auth/LoginView.jsx:17`
-Única pantalla sin sesión. **Un solo botón: "Continuar con Google".** No hay usuario/contraseña.
-Muestra el estado y el error de autenticación en pantalla, que sirve para diagnosticar en la APK
-(donde el login nativo falla de formas opacas).
+### Login — `features/auth/LoginView.jsx`
 
-### Aprobación — `features/auth/PendienteView.jsx:9`
+**Ya no es "un solo botón".** Medido sobre la base de producción: de 14 usuarios, 13 entran con
+Google y 1 con email y contraseña. Por eso Google es lo único grande de la pantalla y el formulario
+vive **plegado** detrás de un enlace, en vez de ocupar el 70 % de la caja para un solo usuario.
+
+Lo que suma el formulario, y por qué:
+
+- **Recuerda quién entró en este teléfono** — sólo nombre y email, **nunca la contraseña**.
+- **Deja ver la contraseña mientras se escribe** — con sol de frente y una mano, escribir a ciegas
+  era la causa real de los reintentos.
+- **Recupera la contraseña** por enlace. Antes había que llamar al admin para que la cambiara a mano.
+
+### Aprobación — `features/auth/PendienteView.jsx`
+
 **Entrar con Google NO da acceso.** Crea una fila en `perfiles` con `rol = null` y `activo = false`
-que un admin debe aprobar. Regla:
+que un admin debe aprobar.
 
 ```
-aprobado = activo && rol          (AuthContext.jsx:207)
+aprobado = activo && rol
 ```
 
-Sin rol o inactivo → PendienteView, con botones "Ya me aprobaron — reintentar" y "Salir".
+Sin rol o inactivo → `PendienteView`, con "Ya me aprobaron — reintentar" y "Salir".
 
 ### Perfil offline-first
+
 El perfil se cachea. Si hay caché se usa ya y se revalida en segundo plano. **Si la red falla pero
 hay caché, no se marca error**: es preferible entrar con el perfil viejo que dejar a un vendedor sin
 GPS al abrir la app sin señal. Al cerrar sesión la caché se borra, para que no se filtre a otra
-cuenta en el mismo teléfono ([AuthContext.jsx:194](web/src/context/AuthContext.jsx#L194)).
+cuenta en el mismo teléfono.
 
-### Quién ve qué — `decidirSupervisionMovil()` en [App.jsx:102](web/src/App.jsx#L102)
+### Quién ve qué — `App.jsx`
 
-Es el **único lugar del sistema** que sabe esta regla.
+`decidirSupervisionMovil()` y `decidirPanelDireccion()` son **el único lugar** que sabe esta regla.
+Los roles son **excluyentes**: `RoleRouter` es un if/else.
 
-| Rol | En APK (nativo) | En web / PWA |
-|---|---|---|
-| `vendedor` | AppShell + VendedorView (con GpsGate) | igual |
-| `repartidor` | AppShell + RepartidorView (con GpsGate) | igual |
-| `encargado` | switch: "Mi jornada" = VendedorView · "Panel" = SupervisiónMóvil | "Panel" = SupervisiónEscritorio |
-| `admin` / `superadmin` | SupervisiónMóvil (siempre) | SupervisiónEscritorio |
-| `propietario` | SupervisiónMóvil | **SupervisiónMóvil también** — el dueño usa el celular |
+| Rol | APK (nativo) | PWA en celular | PWA en PC | ¿Se rastrea? |
+|---|---|---|---|---|
+| `vendedor` / `repartidor` | `VendedorView` / `RepartidorView` + `GpsGate` | idem | idem | **Sí, obligatorio** |
+| `encargado` | `SupervisionMovil` (Panel) · `VendedorView` (Mi jornada) | `SupervisionDesktop` | `SupervisionDesktop` | **Sí — es dual** |
+| `admin` / `superadmin` | `SupervisionMovil` | **`PanelDireccion`** | `SupervisionDesktop` | No |
+| `marketing` | `MarketingView` | `MarketingView` | `MarketingView` | **No — por privacidad** |
 
-El switch del encargado se recuerda en `localStorage['lu-encargado-vista']`.
+> 🩸 **Leer esta tabla ANTES de diagnosticar "al rol X no le aparece Y".** `PanelDireccion` (la
+> pantalla con los números, heredada del difunto `propietario`) **sólo aparece en web y con pantalla
+> de celular** — es el dueño desde su iPhone. En la APK y en la PC, admin cae en supervisión. No es
+> un bug; es `decidirPanelDireccion`.
+
+El corte celular/PC lo da `useDevice().isMobile` (ancho + puntero + userAgent). ⚠️ **El override
+manual vive en `localStorage['lu-device']` y es pegajoso**: un navegador que alguna vez eligió
+"Celular" entra al `PanelDireccion` aunque esté en 1280 px.
 
 ---
 
 ## 2. Rol VENDEDOR
 
-Toda la máquina de estado de la jornada vive en `vendedor/useJornada.js:15`. Las pestañas son
-presentación pura. **Nada de esto se guarda en la base.**
+El rol que sostiene el negocio: 6 personas activas en el parque.
 
-### Paso 1 · Inicio y check-in — `tabs/InicioTab.jsx:12`
+### El gate de GPS — `GpsGate`
 
-El vendedor ve: fecha, **banner de GPS** (con botón "Activar GPS" si no hay fix), resumen del día
-(Paradas X/Y · Pedidos · Monto), barra de progreso, meta diaria, efectividad, y su cartera.
+Antes de poder trabajar tiene que dar permiso de ubicación. Bloquea el árbol entero hasta que hay
+permiso **y token de ingesta**.
 
-Cada cliente lleva un badge: **Pendiente / Visitado / Sin pedido**. El primer pendiente se marca
-"**Próxima parada**" y se resalta. Los clientes que cargó el vendedor y gestión todavía no confirmó
-llevan el chip "**A CONFIRMAR**".
+> 🔴 **La trampa que costó la sesión del 08/08:** configurar el teléfono **no** lo pone a rastrear.
+> Sin pasar el gate no hay token, y sin token no hay puntos por más impecable que se vea el
+> `dumpsys`.
 
-**"Check-in"** → arranca el cronómetro, vacía el carrito, salta a Catálogo y avisa
-*"Check-in registrado en el comercio"*.
+### Paso 1 · Inicio y check-in — `vendedor/tabs/InicioTab.jsx` (285 LOC)
 
-> **Regla no obvia**: el botón de editar cliente solo aparece si el cliente es suyo
-> (`InicioTab.jsx:116`). Se espeja la regla del servidor para no ofrecer un "guardar" que la base
-> va a rechazar.
+Su cartera en lista y en mapa, con los no visitados destacados. `useSugeridos.js` propone a quién
+visitar mirando los pedidos anteriores.
 
-### Paso 2 · La visita — `tabs/VisitaCatalogo.jsx:10`
+El check-in marca la llegada al comercio. Desde 1.25.0, si el comercio **ya fue visitado**,
+`ElegirTicketSheet` ofrece corregir el pedido ahí mismo — y el pill "Visitado" volvió a ser tocable:
+era un `div` inerte, así que un comercio ya visitado quedaba **inalcanzable toda la jornada**.
 
-Header con punto pulsante "VISITA EN CURSO", **cronómetro mm:ss**, nombre del comercio, y dos
-salidas: "Sin pedido" y "Cancelar".
+> 🔴 **El lápiz que ubica un comercio sólo se dibuja si `c.idVendedor === user?.id`.** Es el único
+> camino por el que un vendedor geolocaliza un comercio. Al 08/09 hay **38 clientes con vendedor
+> asignado sobre 2.016**, así que para el 98 % de la cartera ningún vendedor ve ese lápiz.
+> **Mejoró mucho** (el 08/08 eran 3, con 18 ubicados; hoy hay 662 ubicados) pero el gate sigue siendo
+> la asignación directa; decidir si el correcto es la ZONA (`clientes.id_zona` → `zonas.id_vendedor`).
 
-Sin visita activa el catálogo se puede navegar en "**Modo consulta**", pero no se puede cerrar un
-pedido. Productos agrupados por categoría, buscador, stepper por producto, y una **barra de carrito
-flotante** con `N ítems · X kg · $Total` (kg y total derivados de `peso_kg` y `precio_unitario`).
+### Paso 2 · La visita — `vendedor/tabs/VisitaCatalogo.jsx` (391 LOC)
 
-"Confirmar pedido y finalizar visita" cierra la visita como `visitado` con su monto. Sin check-in el
-botón se reemplaza por el aviso *"Hacé check-in para confirmar el pedido"*.
+El catálogo real con la grilla compartida `components/GrillaCatalogo.jsx`, con cantidad tipeable y
+**escalas de precio por volumen**.
 
-### Paso 3 · Sin pedido — `tabs/SinPedidoSheet.jsx:11`
+> 🩸 **Un precio se pregunta en UN SOLO LUGAR: `lib/precios.js`.** La regla del precio efectivo
+> estaba copiada en **11 lugares de 7 archivos**. Con precio plano las once coincidían por
+> casualidad; con escalones, la primera que quede sin actualizar hace que el celular del vendedor y
+> la tablet del cliente muestren **números distintos con el comerciante enfrente**.
+> `precioPara(producto, cantidad)` y punto.
 
-Cartel centrado con **4 motivos fijos**: Stock suficiente · Precio/condición · Comercio cerrado ·
-Otro. El motivo es obligatorio.
+### Paso 3 · El carrito — `vendedor/CarritoSheet.jsx`
 
-### Paso 4 · Ruta — `tabs/RutaTab.jsx:16`
+Suma los renglones y arma el pedido. El pie del carrito es el número que se guarda como
+`pedidos.monto_total`.
 
-Mapa de 70vh con los clientes coloreados por estado y la posición GPS en vivo.
-**"Calcular ruta óptima"** ordena **solo las paradas pendientes** por camino más corto siguiendo
-calles, desde la ubicación actual y sin volver al inicio. Muestra km, minutos y "N paradas · orden
-óptimo". Sin conexión cae a línea recta, avisándolo.
+### Paso 4 · Sin pedido — `vendedor/tabs/SinPedidoSheet.jsx`
 
-### El cierre de jornada no existe
+Registrar que se visitó y **no** se compró, con el motivo. Es dato de negocio, no un hueco.
 
-`PerfilTab.jsx:66` tiene el botón "Cerrar jornada", pero **solo dispara un toast** y esa pantalla ni
-siquiera está ruteada. No hay cierre de jornada real.
+### Paso 5 · El ticket — `pedidos/TicketPedido.jsx`
+
+Desde 1.25.0 el ticket **dice quién lo emite**: empresa + vendedor responsable. La leyenda "no es una
+factura" dejó de llevar `lu-no-print`, o sea que ahora **sí sale en el PDF**.
+
+> 🔴 **"Compartir el PDF" es código NATIVO** (`ImpresionPlugin.compartirPdf` +
+> `android/print/PdfDelWebView.java`) y viaja **sólo en el APK**. En un teléfono con APK viejo el
+> botón cae a "Imprimir o guardar como PDF" — no rompe, sólo no mejora.
+
+### Paso 6 · Mis pedidos y repetir — `pedidos/MisPedidosSheet.jsx` · `usePedidos.js`
+
+Rango Hoy / 7 / 30 con total. **Repetir el último pedido** rearma lo que el comercio compró la vez
+anterior **a los precios de hoy** — recalcula con `precioPara()`, no copia el monto viejo.
+
+### Paso 7 · Corregir un pedido — `pedidos/EditarPedidoSheet.jsx` · `editarPedido.js`
+
+Corrige un pedido Pendiente sin perder el precio pactado, con auditoría de **quién, cuándo y dónde**
+(lat/lng) en `pedido_ediciones`.
+
+> `pedido_ediciones` no tiene policy de UPDATE ni de DELETE **a propósito**: una auditoría editable
+> no es auditoría.
+
+### Mi tablero — `metas/TableroSheet.jsx` (473 LOC)
+
+Las metas de venta que **el propio vendedor** se fija (`db/56`), más productos, oportunidades y
+clientes dormidos (`db/57`). Siete métricas de **venta**.
+
+> **Km y horas quedan afuera a propósito.** El vendedor se fija metas de lo que vende, no de cuánto
+> maneja. Ver el encabezado de `db/56`.
 
 ### Qué escribe realmente un vendedor
 
-| Se guarda | No se guarda |
-|---|---|
-| Posición GPS (`posiciones`) | Visitas |
-| Latido de salud (`estado_dispositivo`) | Pedidos y montos |
-| Alta de cliente (`clientes`, `activo=false`) | Carrito |
-| Edición de ubicación y días de sus clientes | Motivos de "sin pedido" |
-
-### Reglas de negocio del vendedor
-
-- **Meta diaria: $900.000 hardcodeada** (`useJornada.js:85`) — igual para todos los vendedores de
-  todas las empresas.
-- **Efectividad = pedidos / visitas cerradas**, no sobre el total de la cartera.
-- Un cliente cargado por un rol móvil nace **sin confirmar** (`activo=false`) y a nombre de quien lo
-  cargó.
-- **Cancelar una visita no deja rastro**: no queda registro de que el vendedor entró y salió.
+`posiciones` (por el servicio nativo) · `visitas` · `pedidos` + `pedido_items` ·
+`pedido_ediciones` · `metas` · `estado_dispositivo` (latido) · y `clientes` sólo cuando da de alta
+uno o ubica uno propio.
 
 ---
 
-## 3. Rol REPARTIDOR — `features/repartidor/RepartidorView.jsx:13`
+## 3. Rol REPARTIDOR — `features/repartidor/RepartidorView.jsx` (448 LOC)
 
-**Hoy es, en la práctica, un rastreador GPS con una interfaz de entregas inactiva.**
+Mismo `GpsGate` que el vendedor.
 
-La lista `deliveries` arranca vacía y **nunca se llena** (`:15`): las entregas llegarían de los
-pedidos asignados, que son parte del módulo de ventas que todavía no existe. En producción el
-repartidor **siempre** ve el estado vacío: *"No tenés entregas asignadas… Mientras, tu ubicación se
-envía en vivo al panel."*
+- **Hoja de ruta**: las entregas asignadas, en el orden más corto. El orden sale de
+  `services/routing/`, que es el **único punto de swap** del proveedor, por diseño.
+- **Confirmar entrega**: estado + firma de quien recibe.
+- `useEntregas.js` (204 LOC) lee de `pedidos`.
 
-El circuito está construido y funciona si hubiera datos:
+> 🟠 **Deuda abierta:** `firmas_ins` sigue siendo `to authenticated` **sin alcance por empresa**. Hoy
+> no muerde porque casi nadie firma, pero cuando el módulo arranque hay que darle el mismo
+> tratamiento que `db/25` le dio a las fotos.
 
-1. **Pendiente → "Marcar en camino" → En camino → "Confirmar entrega"**.
-2. **Paso 1 · Verificación de cantidades**: stepper por ítem con tope en lo pedido —no se puede
-   entregar de más. Si se entrega de menos, aparece un **selector de motivo obligatorio** (Sin stock
-   / Rechazado / Otro) que alimentaría el reporte de faltante.
-3. **Paso 2 · Firma de conformidad**: canvas de firma; el botón de confirmar queda deshabilitado
-   hasta que haya trazo.
-
-Su único aporte real al sistema hoy es su posición y su latido de salud.
+> ⚠️ **Overlay que revienta al cerrarse**: el cuerpo de un modal que deriva de
+> `deliveries.find(d => d.id === modal)` se vuelve `undefined` en el mismo frame en que se cierra.
+> Se retiene el último valor en un ref — ver `mdView` en este archivo.
 
 ---
 
 ## 4. Rol ENCARGADO — el rol dual
 
-Es el único rol que **se trackea y supervisa al mismo tiempo**:
+Se lo trackea por GPS **y** supervisa. Alterna entre "Mi jornada" (la misma vista del vendedor, con
+GPS) y "Panel" (auditoría).
 
-- **Se trackea**: entra en `esMovil` ([GpsContext.jsx:19](web/src/context/GpsContext.jsx#L19)), así que
-  publica posición aunque esté en modo "Panel".
-- **Supervisa**: accede a Clientes, Zonas, Catálogo, Faltante y Consultas. **No** a Usuarios ni a
-  Empresas.
-- **Carga clientes como preventista**: sus altas quedan sin confirmar y a su nombre.
-- **Pero edita y borra clientes a profundidad**, como gestión.
-- Alterna con el ítem "Ir a mi jornada" del menú de cuenta.
+- **Ver al equipo en vivo**: `SupervisionMovil` (922 LOC) en la APK, `SupervisionDesktop` (811) en
+  web.
+- **Paradas**: carteles sobre el mapa con cuánto estuvo detenido en cada lugar (`dwells.js`).
+- **Pedidos**: revisar y anular (`db/45`). El alcance real lo pone `pedidos_sel` **en el servidor**
+  vía `ids_a_mi_cargo()` — el encargado ve **sólo a su gente**, no toda la empresa. La tabla de
+  gestión decide quién ve la pantalla; la base decide qué hay adentro.
+- **Reportes**: `ReportesView.jsx` (504 LOC) + 6 componentes — recorrido, paradas, curva de batería,
+  línea de tiempo, pedidos del día, salud del dato. Exporta a Excel y PDF.
+- **Avisos del equipo**: push cuando alguien deja de reportar o queda quieto. 799 avisos históricos,
+  8 abiertos al 08/09.
+
+> 🩸 **Las dos supervisiones NO comparten una línea de código y ya divergieron dos veces.** Lo que
+> las dos muestran igual va en un módulo compartido, nunca copiado: `supervision/dwells.js`,
+> `trazos.js` y `components/`.
 
 ---
 
 ## 5. Roles ADMIN y SUPERADMIN
 
-### Permisos de menú
+> 🩸 **`propietario` se eliminó el 10/08/2026 (`db/31`).** Existió del 27/07 al 10/08 y **nunca tuvo
+> un solo perfil**: era un rol entero mantenido para nadie, y cada policy nueva tenía que acordarse
+> de incluirlo o el dueño perdía acceso en silencio. **El dueño de la distribuidora usa `admin`.**
+> Lo que no se tiró fue su pantalla: es `features/direccion/PanelDireccion.jsx`.
 
-⚠️ Esta tabla está **duplicada** en `SupervisionMovil.jsx:78-84` y `SupervisionDesktop.jsx:67-73`.
-**Cambiar una sin la otra hace divergir los permisos en silencio.**
+### Permisos de menú — `lib/gestion.js`
 
-| Vista | encargado | admin | superadmin | propietario |
-|---|---|---|---|---|
-| Clientes · Zonas · Catálogo · Faltante · Consultas | ✅ | ✅ | ✅ | ❌ |
-| Usuarios | ❌ | ✅ | ✅ | ❌ |
-| Empresas | ❌ | ❌ | ✅ | ❌ |
+`roles` = quién la ve por ser lo que es · `permiso` = quién la ve por tener un permiso extra
+(`perfiles.permisos text[]`, `db/23`), sin importar su rol.
 
-Al propietario se le corta el menú **explícitamente** (`isProp ? [] : …`), no por omisión — depender
-de que un rol no figure en ningún array es una invariante que se rompe sola al agregar un ítem.
+| Ítem | Quién |
+|---|---|
+| Reportes | encargado · admin · superadmin |
+| Pedidos | encargado · admin · superadmin |
+| Clientes | encargado · admin · superadmin |
+| Revisar repetidos | admin · superadmin |
+| Zonas | encargado · admin · superadmin |
+| **Catálogo** | encargado · admin · superadmin · **marketing**, o cualquiera con el permiso `catalogo` |
+| Faltante | encargado · admin · superadmin — ⚠️ **siempre vacía**, ver §0 |
+| Invitar | encargado · admin · superadmin |
+| Usuarios | admin · superadmin |
+| Empresas | **solo superadmin** |
+| Respaldo | admin · superadmin |
 
-### Usuarios — `admin/UsuariosView.jsx:70` · admin + superadmin
+> **Cuándo va un permiso y cuándo un rol nuevo.** `permisos` sirve para SUMARLE algo a alguien que ya
+> es otra cosa: un vendedor con `'catalogo'` sigue siendo vendedor —conserva GPS, jornada y su lugar
+> en el mapa— y además edita el catálogo. El criterio para un rol nuevo no es "¿qué puede hacer?"
+> sino **"¿la app la tiene que rastrear?"**.
 
-Tabla dividida en "**Pendientes de aprobación**" y "**Habilitados**". Se asigna rol, **código de
-vendedor** (`numero`, ej. 1 = Zona 1) y, si sos superadmin, la empresa. "Aprobar" activa la cuenta.
+### Panel de dirección — `features/direccion/PanelDireccion.jsx` (836 LOC)
 
-- Roles asignables: admin ve `[vendedor, repartidor, encargado, admin]`; superadmin suma
-  `superadmin`. **`propietario` no figura en ninguna lista** — hoy no se puede dar de alta un
-  propietario desde la app (ver §8).
-- No podés desactivarte a vos mismo. No se aprueba sin rol ni sin empresa.
+Scroll único que **empieza por los números**, con el mapa como una tarjeta que se abre. Es la
+pantalla que el dueño mira desde su iPhone. Componentes propios: `KpiCard`, `MiniKpi`, `FilaEquipo`,
+`SheetPersona`, `SinDatoBloque` y `titulares.js`.
 
-### Empresas — `admin/EmpresasView.jsx:17` · solo superadmin
+⚠️ Pasa `showDeviceToggle` a `MiCuenta` — sin eso quedaría encerrado por el override pegajoso de
+`lu-device`.
 
-Tres funciones distintas conviven en esta pantalla:
+### Usuarios — `admin/UsuariosView.jsx` (806 LOC)
 
-1. **Ventana horaria de rastreo GPS** — checkbox + Desde/Hasta, default **07:30–22:00**.
-   ⚠️ **Es GLOBAL a todas las empresas**, no por tenant, aunque viva en la pantalla "Empresas".
-   Fuera de esa franja los móviles no envían ubicación (ahorra backend si alguien deja la app
-   abierta).
-2. **Alta y palanca de empresas (distribuidoras)** — crear, activar/desactivar. Sin datos de
-   facturación: el abono se cobra en persona.
-   ⚠️ **Desactivar una empresa hoy no hace nada** — ver §8.
-3. **Coordenada base (depósito) por empresa** — dónde abre el mapa. Ambos valores o ninguno.
+Invitar, asignar rol, activar/desactivar y dar permisos extra.
 
-### Zonas — `admin/ZonasView.jsx:19` · encargado, admin, superadmin
+> 🩸 **`posiciones.id_usuario` es `NO ACTION`.** Borrar a una persona **exige borrar antes su
+> recorrido**: en la limpieza del 12/08 costó 23.945 posiciones, el 37 % de la tabla, irreversible.
+> Si hay que dar de baja a alguien **conservando** su historial, el único camino es `activo=false`.
+> Y ojo: `estado_dispositivo` y `recorridos_snap` **no tienen FK a `perfiles`**, no se van solas.
 
-> **Regla de negocio central: "la zona lleva el vendedor".**
+### Empresas — `admin/EmpresasView.jsx` (440 LOC) · solo superadmin
 
-Cada zona tiene número, color y un **vendedor dueño**. Los clientes que se importen o se muevan a esa
-zona **heredan automáticamente ese vendedor**. La opción "— Sin dueño —" se rotula
-"**(todos lo ven)**", que es la contracara de la regla del servidor: un vendedor solo ve los clientes
-que tiene asignados.
+Alta de distribuidoras. Monta `CategoriasRastreo.jsx` (los horarios de rastreo).
 
-### Importar clientes — `admin/ImportarClientes.jsx:29`
+> ⚠️ **`empresas.activo` no gatea nada hoy.** Se escribe y se muestra, pero ninguna policy ni el gate
+> de `App.jsx` lo consultan. Desactivar una empresa **no tiene efecto**, aunque la UI diga lo
+> contrario.
 
-Importación masiva desde **Excel .xlsx**, con plantilla descargable.
+### Zonas — `admin/ZonasView.jsx`
 
-- **Encabezados flexibles**: acepta `codigo/cod/code`, `nombre/comercio/razón social`,
-  `localidad/loc/ciudad`, `zona/n zona/nro zona`… sin distinguir mayúsculas ni tildes.
-- **Previsualización con 4 estados**: `ok` (Nuevo) · `dup` (Código repetido) · `zona?` (Zona no
-  encontrada) · `sin-nombre`.
-- **Reglas**: dedup por `codigo` contra la cartera **y** dentro del mismo lote. Las filas `zona?`
-  **sí se importan**, sin zona ni vendedor; las `dup` y `sin-nombre` no. Los importados nacen
-  **`activo=true`** —es una acción de admin, no necesita confirmación— y **sin coordenadas**: se
-  ubican después tocando el mapa en la ficha.
+Divide el territorio. 16 zonas, 15 clientes con zona asignada.
 
-### Clientes — `admin/tabs/ClientesTab.jsx:17`
+### Cartera — `admin/tabs/ClientesTab.jsx` · `FichaCliente.jsx` · `ImportarClientes.jsx` · `RevisarDuplicados.jsx`
 
-Tabla (escritorio) o tarjetas (celular). Contadores: total, "**N por confirmar**" y "**N sin
-ubicar**" (este último es un filtro clickeable).
+2.016 clientes. **662 con ubicación** (33 %), 38 con vendedor.
 
-**Es el circuito de aprobación** de lo que cargan los móviles: botón "Confirmar" en cada fila no
-activa.
+> ⚠️ **Una capa de Leaflet que no está agregada al mapa no puede responder `getBounds()`.** El
+> encuadre del geocerco en la ficha de un cliente reventaba con *"Cannot read properties of undefined
+> (reading 'layerPointToLatLng')"*. Va `L.latLng(lat,lng).toBounds(radio*2)`, que no necesita mapa
+> (ojo: toma el LADO, no el radio).
 
-La ficha tiene dos niveles de permiso:
-- **Todos**: geofence (50–150 m), días de visita, frecuencia (Semanal/Quincenal/Mensual), y ubicar
-  en el mapa un cliente importado.
-- **Solo gestión** (admin/encargado/superadmin): razón social, código, localidad, horario, zona, y
-  **eliminar** (con confirmación en dos pasos).
+### Catálogo — `admin/tabs/CatalogoTab.jsx` (407 LOC)
 
-> **Regla clave**: al cambiar la zona de un cliente, **se le reasigna el vendedor dueño de la zona
-> nueva**. Está anunciado en la interfaz.
+617 productos, 547 vigentes. Lo alcanzan **tres** pantallas distintas por `lazy`: `MarketingView`,
+`DespachoGestion` y `VendedorView`.
 
-### Catálogo — `admin/tabs/CatalogoTab.jsx:7`
-Tabla de productos + "Nuevo producto". **No se puede editar ni borrar un producto.**
+> 🩸 **Un campo nuevo del catálogo hay que ponerlo en CUATRO listas blancas, y la cuarta se olvida
+> siempre**: `lib/planillaProductos.js` → `filaAImportar`; el `.map()` de `ImportarProductos.jsx`;
+> `CatalogContext.jsx`; y **`supabase/functions/ingest-precios/index.ts`**. Las tres primeras las
+> ejercita cualquiera subiendo una planilla; **la cuarta sólo corre en el canal automático del
+> cliente**, así que un campo que falte ahí funciona perfecto en todas las pruebas manuales y no hace
+> nada en producción.
 
-### Recorridos — `admin/RecorridosView.jsx:25` · lo usa también el propietario
+### Respaldo — `features/gestion/RespaldoDatos.jsx` (252 LOC)
 
-Mapa con todos los recorridos del día, un color por persona. Selector de fecha, Recargar, y toggle
-"**Pegar a calles**" (por defecto **apagado** = rastro GPS crudo y fiel). Panel lateral con nombre,
-rol, puntos y **km recorridos** por persona.
-
-> **Los km se calculan siempre sobre el rastro crudo**, aunque se dibuje el pegado a calles: es más
-> fiel. Y el mapa **no reencuadra** al auto-refrescar (cada 60 s si la fecha es hoy), para no
-> interrumpir al que está navegando.
-
-### Replay de jornada — `admin/components/ReplayJornada.jsx:30`
-
-Elegís usuario + fecha → se anima el recorrido grabado. Play/pausa, **scrub**, velocidades
-**1×/2×/4×/8×**. Panel con punto actual, distancia, hora de inicio/fin y coordenada.
-**Exportar PNG** genera una imagen del recorrido con título, rol, fecha, distancia y horario.
-
-### La cuota de consultas — la regla comercial del sistema
-
-- **Límite: 5.000 consultas por mes y por empresa.** Referencia semanal de 1.250, solo informativa.
-- **1 consulta = cargar el recorrido de un vendedor en Replay.** Nada más: Recorridos y las dos
-  supervisiones **no consumen cuota** aunque carguen posiciones.
-- Al llegar al límite, Replay **bloquea** con un aviso.
-
-> ⚠️ **Es evadible.** El límite es una constante en el bundle, el chequeo ocurre en el teléfono, y
-> el registro del contador es "disparar y olvidar": si falla, la consulta se sirvió igual y no se
-> contabilizó. No hay nada en el servidor que lo imponga. Tampoco hay una columna de cuota por
-> empresa, así que **no se le puede vender un plan más grande a un cliente sin recompilar la app**.
-
-### Consultas — `admin/ConsultasView.jsx:37`
-Dos medidores (mes y semana) con color según el consumo, y un **heatmap estilo GitHub**: columnas =
-semanas, filas = días. Leyenda literal: *"1 consulta = cargar el recorrido de un vendedor"*.
+> Los recorridos se purgan a los **45 días** (`db/42`). Esto es la **única** salida del historial
+> fuera de Supabase. Sólo admin y superadmin: exporta la empresa entera.
 
 ---
 
-## 6. Supervisión
+## 6. Rol MARKETING — `features/marketing/MarketingView.jsx` (227 LOC)
 
-`SupervisionMovil.jsx` (APK, pantalla completa) y `SupervisionDesktop.jsx` (PWA, sidebar + topbar)
-son **dos implementaciones de lo mismo con distinta piel**. No comparten código salvo `dwells.js`, y
-ya divergieron antes (los carteles de parada salieron en 1.5.7 solo en móvil).
+Creado el 12/08/2026 (`db/38`). Es la persona a cargo del catálogo —precios, fotos, productos,
+códigos— y **no sale a la calle**.
 
-Funciones comunes: mapa de recorridos del día · móviles en vivo clickeables · filtro
-Vendedores/Repartidores · selector de fecha · toggles Calles / Paradas / Clientes · sincronizar
-ubicaciones · menú de cuenta · dashboard de KPIs "próximamente" · acceso a Gestión.
+- **Una sola pantalla**, la misma en los tres canales.
+- **Una sola fila** en `GESTION_ITEMS`.
+- `ControlCodigos.jsx` (códigos repetidos) · `GuiaFotos.jsx` (cómo sacarlas) · `ImportarFotos.jsx`.
+
+> 🔴 **Es el único rol que NO se trackea, y eso es una decisión de privacidad, no un olvido.**
+> Ninguna policy de `posiciones`, `recorridos_snap`, `estado_dispositivo`, `visitas`,
+> `alertas_equipo`, `rutas` ni `ubicaciones_compartidas` lo menciona.
+>
+> **Por qué un rol y no un permiso:** `vendedor` la encerraba detrás del `GpsGate` y `encargado` la
+> ponía en el mapa del supervisor y en los avisos de "sin reportar" todos los días. Ver el encabezado
+> de `db/38_rol_marketing.sql`.
+
+---
+
+## 7. Supervisión
+
+`SupervisionMovil` (APK, full-screen) y `SupervisionDesktop` (PWA/PC). Componentes compartidos:
+`BurbujasEquipo`, `BurbujasParadas`, `EstadoEquipo`, `TarjetaPin`, `RailMapa`, `DespachoGestion`.
 
 ### Reglas no obvias
 
-1. **Los pines en vivo solo se muestran si la fecha es HOY.** En un día pasado solo tiene sentido el
-   recorrido, no la "posición ahora".
-2. **El rastro crudo es el default**, no el pegado a calles: la fidelidad al GPS real prima sobre la
-   estética.
-3. **Los carteles de parada se calculan sobre el rastro CRUDO a propósito**: el pegado a calles ya
-   descartó los tramos quietos, así que sobre él una parada no existe.
-4. La **batería** del pin se saca del último punto con dato, recorriendo de atrás para adelante.
-5. **Pendiente conocido**: el cartel de parada debería decir el nombre del comercio cuando cae dentro
-   del geofence de un cliente. Está bloqueado **por datos, no por código**: de 2.001 clientes, uno
-   solo tiene coordenadas.
-
-### Estado del equipo — `supervision/components/EstadoEquipo.jsx:22`
-
-La pieza de diagnóstico más valiosa del sistema. Responde "**¿por qué no llega la señal de fulano?**"
-
-| Estado | Significado |
-|---|---|
-| 🟢 **OK** | Fix fresco + latido reciente + **2º plano confirmado** |
-| 🟡 **GPS apagado** | Late pero sin fix (ubicación off o permiso denegado) |
-| 🟡 **En pantalla OK pero NO grabó en 2º plano** | Reporta ahora, pero si guarda el celular el recorrido se pierde |
-| 🔴 **Sin señal desde HH:MM** | Latido más viejo que 5 minutos |
-| ⚪ **Sin actividad hoy** | Ningún latido registrado hoy |
-
-> **`bg_ok` es el campo clave.** Se pone en `true` solo cuando el móvil recibió un fix **estando en
-> segundo plano**, lo que confirma el permiso "Siempre" y que el sistema no lo está matando. El
-> código lo dice sin vueltas: *es la causa nº1 de "hice el recorrido y no aparece"*.
-
-El consejo que muestra **cambia según `bg_ok`**: con 2º plano confirmado sugiere revisar la
-optimización de batería; sin confirmar, sugiere el permiso "solo mientras uso la app".
+- **`LeafletMap` lleva `isolation: isolate` y NO se saca.** Leaflet asigna z-index de hasta 1000 a
+  sus capas y las esquinas de controles se escapan al contexto padre. Toda la escala `--z-*` depende
+  de esto.
+- **Un overlay flotante sobre el mapa va con `pointerEvents:'none'`** en su contenedor y `'auto'` sólo
+  en las piezas que se tocan. Un contenedor absoluto con `left`/`right` fijos ocupa todo el ancho
+  aunque su contenido mida 40 px, y se traga los toques del mapa en esa franja.
+- **El pin animado se compara contra el último destino MANDADO**, nunca contra `getLatLng()`, que a
+  mitad de animación devuelve el fotograma actual.
+- **`requestAnimationFrame` NO dispara con el documento oculto.** Toda animación por rAF necesita red
+  de contención en `visibilitychange`, o el pin queda congelado en una posición por la que la persona
+  ya pasó — y eso es peor que no animar, porque es indistinguible de un dato real.
+- **"El mapa está lento" se PERFILA, no se adivina.** `detectarParadas` era cuadrática: 7.090 ms sobre
+  una jornada real, el 99 % del costo. Hoy quickselect, ×7,8 y salida **bit-idéntica** sobre 63
+  persona-días.
+- **El recorrido crudo miente.** Pasarlo siempre por `limpiarTrazo` (`lib/geo.js`): hay teleports de
+  127 km. Un día figuraba con 524,8 km y los reales eran 17,9.
 
 ---
 
-## 7. Rol PROPIETARIO
+## 8. Vidriera — la tablet del mostrador
 
-Rol de **solo lectura**, pensado para el celular del dueño. No tiene un solo botón de crear o editar.
+Módulo grande y con reglas propias: `VidrieraTablet.jsx` (1.041 LOC), `useVidriera.js`,
+`ParearTablet`, `EspejoTablet`, `PrepararCatalogo`, `AvisoVidriera`.
 
-Ve: alerta de GPS apagado · franja "**Equipo en vivo**" (quién comparte GPS ahora, con "hace Xs"
-contando en vivo) · mapa de recorridos del día · y **KPIs "próximamente"** (Pedidos por preventista,
-Horas trabajadas, Clientes visitados, Recaudado en la semana) todos en "—".
+Una tablet en el mostrador le muestra al comerciante el catálogo mientras el vendedor carga el
+pedido. Se conecta por **hotspot local** del teléfono (`EnlaceTabletPlugin.java`, 544 LOC) contra un
+servidor HTTP embebido (`ServidorLocal.java`, 405 LOC), con pareo por QR.
 
-En la práctica el propietario entra por SupervisiónMóvil con la bandera de solo-lectura, tanto en la
-APK como en la PWA. `PropietarioView.jsx` solo se alcanza por un fallback que casi nunca se activa.
+> 🔴 **La tablet NO PUEDE recibir una OTA, nunca.** No se loguea, se une a un hotspot sin salida a
+> internet y no tiene SIM: se queda congelada en el bundle que trajo su APK. Todo arreglo de
+> `VidrieraTablet.jsx` necesita **un APK nuevo, o una sesión en un WiFi con internet de verdad**.
+
+> El aviso "el cliente está mirando esto" tiene su propio nivel de apilamiento (`--z-aviso`, 550),
+> **arriba de los modales**: en la primera jornada real el vendedor estaba en el carrito, el cliente
+> tocó otro producto y el aviso no llegó nunca porque el sheet lo tapaba.
 
 ---
 
-## 8. Reglas del producto, en un solo lugar
+## 9. Reglas del producto, en un solo lugar
+
+**Verificadas contra el código el 08/09/2026.** Las tres marcadas ⚠️ estaban mal en la revisión
+anterior.
 
 | Regla | Valor | Dónde |
 |---|---|---|
-| **Una parada** | permanecer **≥ 3 min dentro de 40 m** | `geolocation/dwell.js:24-25` |
-| Centro de la parada | **mediana** de lat y lng por separado (no promedio: robusto a outliers) | `dwell.js:42-45` |
-| Movimiento mínimo para registrar un punto | **10 m** | `gpsConfig.js` |
-| Reenvío de cortesía estando quieto | **90 s** | `gpsConfig.js` |
-| Precisión máxima aceptada | **30 m** (peor se descarta: el jitter en interiores es la causa #1 de "vueltas" falsas) | `gpsConfig.js` |
-| Velocidad máxima creíble | **45 m/s** (~160 km/h); más rápido = glitch | `gpsConfig.js` |
-| Ventana horaria de rastreo | **07:30–22:00**, global, solo superadmin | `services/tracking.js` |
-| Cuota de consultas | **5.000/mes por empresa** | `ConsultasView.jsx:13` |
-| Meta diaria del vendedor | **$900.000**, hardcodeada para todos | `useJornada.js:85` |
+| **Una parada** | permanecer **≥ 3 min dentro de 40 m** | `geolocation/dwell.js:51-52` |
+| Centro de la parada | **mediana** de lat y lng por separado (robusto a outliers) | `dwell.js` |
+| Movimiento mínimo para registrar un punto | ⚠️ **9 m** (la revisión anterior decía 10) | `gpsConfig.js:18` |
+| Movimiento mínimo, urbano (11-40 km/h) | **15 m** | `gpsConfig.js:220` |
+| Movimiento mínimo, ruta (> 40 km/h) | **50 m** | `gpsConfig.js:239` |
+| Reenvío de cortesía estando quieto | **90 s** | `gpsConfig.js:19` |
+| Cadencia de captura, quieto / normal / rápido | **30 s · 4 s · 2 s** | `gpsConfig.js:245, 80, 106` |
+| Umbral de "va rápido" | **3 m/s** (~11 km/h), con 20 s de histéresis anti-flapping | `gpsConfig.js:112, 146` |
+| **Precisión que se CAPTURA** | **120 m** | `gpsConfig.js:196` |
+| **Precisión que se CONFÍA** (línea llena y km) | **30 m** — el que no se toca | `gpsConfig.js:147` |
+| Velocidad máxima creíble | **45 m/s** (~160 km/h); más rápido = glitch | `gpsConfig.js:197` |
+| Ventana horaria de rastreo | ⚠️ default **07:30–22:00**, pero ya **no es global**: hay categorías por persona con semántica de **unión** | `services/tracking.js:30, 64` |
+| Meta diaria del vendedor | **$900.000**, todavía hardcodeada para todos | `useJornada.js:336` |
 | Geofence por cliente | 50–150 m, default **75 m** | `NuevoCliente.jsx` |
-| Retención de posiciones | **7 días**, purga diaria 03:30 | `db/03_retention.sql` |
-| La zona lleva el vendedor | el cliente hereda el vendedor de su zona | `ZonasView.jsx:60` |
-| Cliente cargado por rol móvil | nace `activo=false`, necesita confirmación | `CatalogContext.jsx:130` |
-| Cliente importado por admin | nace `activo=true` | `CatalogContext.jsx:242` |
+| **Retención de posiciones** | ⚠️ **45 días** (la revisión anterior decía 7). La cuenta está en el encabezado: 45 días ≈ 900.000 filas ≈ 293 MB, y le da 15 días de gracia a la exportación mensual | `db/42_retencion_posiciones.sql` |
+| La zona lleva el vendedor | el cliente hereda el vendedor de su zona | `ZonasView.jsx` |
+| Cliente cargado por rol móvil | nace `activo=false`, necesita confirmación | `CatalogContext.jsx` |
+| Cliente importado por admin | nace `activo=true` | `CatalogContext.jsx` |
+
+> ⛔ **La "cuota de consultas" (5.000/mes por empresa) ya no existe.** `admin/ConsultasView.jsx` fue
+> eliminado y no queda un solo rastro de la regla en el código. La revisión anterior la documentaba
+> como "la regla comercial del sistema"; hoy no hay ninguna.
+
+Otras reglas transversales:
+
+1. **Los roles son excluyentes.** Para sumar una capacidad va `perfiles.permisos`, no un rol nuevo.
+2. **Un precio se pregunta sólo a `lib/precios.js`.**
+3. **La ventana de rastreo está implementada TRES veces** —`dentroDeHorario()` en JS,
+   `VentanaRastreo.dentro()` en Java, `en_ventana` en SQL— y nada las sincroniza. Tocar una sin las
+   otras hace que los avisos al supervisor **mientan en silencio**.
+4. **El techo de confianza del GPS vive en CUATRO runtimes**: `gpsConfig.js`, `metricas_actividad` y
+   `vigilancia_equipo` (SQL), más el nativo. Si se mueve el 30, se mueven los cuatro.
+5. **Nunca `new Date().toISOString().slice(0,10)`** — devuelve UTC y Salta es UTC−3. Usar `hoyStr()`.
+6. **Un punto de la cola nunca se borra**: va a cuarentena.
+7. **Publicar no es entregar.** El release se cierra mirando `estado_dispositivo`, no la respuesta
+   del push.
 
 ---
 
-## 9. Brechas funcionales
+## 10. Brechas funcionales y deuda, al 08/09/2026
 
-Lo que hay que saber antes de prometerle algo a un cliente:
+### 🔴 Bloqueante
 
-1. **La jornada del vendedor no se guarda.** Qué vendió cada quién y a quién —el activo comercial
-   central del sistema— hoy no existe en la base. Es la brecha más grande del producto.
-2. **El repartidor nunca recibe entregas.** Su interfaz completa de dos pasos con firma está
-   construida y nunca se activa.
-3. **El propietario no se puede dar de alta.** El rol existe en el código pero no en la restricción
-   de la base, y no figura en las listas de Usuarios.
-4. **Desactivar una empresa no hace nada.** La palanca de cobro está desconectada: ninguna regla del
-   servidor ni la puerta de entrada consultan `empresas.activo`. El texto de la propia interfaz
-   —*"deja sin acceso a todos sus usuarios"*— es falso hoy. Ver [PLAN_SAAS.md](PLAN_SAAS.md).
-5. **La ventana horaria de rastreo es global**, no por empresa: en un SaaS multi-tenant, cambiarla
-   afecta a todas las distribuidoras a la vez.
-6. **La meta de $900.000 está hardcodeada** para todos los vendedores de todas las empresas.
-7. **La cuota es client-side y evadible**, y no configurable por cliente.
-8. **Faltante y Ruteo son maquetas.** `FaltanteTab` tiene el reporte completo escrito pero
-   inalcanzable (`faltVacio` fijo en `true`); `RuteoTab` no está importado en ningún lado.
+- **El keystore no está respaldado fuera de una máquina.** `web/android/app/launion.keystore` y
+  `web/android/keystore.properties` no viajan en git. Sin ellos **ningún APK nuevo se puede instalar
+  como actualización**: habría que desinstalar y reinstalar en cada teléfono, perdiendo cola de
+  posiciones, cuarentena y sesión.
+  🩸 **`.claude/keystore.md` NO es un respaldo**: es el volcado de la sesión de `keytool`, y las
+  contraseñas no están ahí.
+
+### 🟠 Abierto
+
+- **6 de 12 equipos siguen por debajo de `min_version`** cinco días después de subirla a 1.24.0
+  (Zura en APK 1.21.0, Gabriel en 1.13.0, Nelson y Gustavo en 1.18.0). Nelson y Gustavo **no dan
+  señal desde el 21-22/08**. Luis Mendoza tiene un `bundle_encolado` de 1.22.0 con 1.23.0 ya
+  aplicado — un encolado más viejo que lo aplicado, huérfano.
+- **"Faltante" es una pantalla viva que nunca puede mostrar nada** (`FaltanteTab.jsx:18`).
+- **`firmas_ins`** sin alcance por empresa.
+- **`empresas.activo`** no gatea nada: la palanca de cobro está desconectada, y el texto de la propia
+  interfaz —*"deja sin acceso a todos sus usuarios"*— es falso hoy.
+- **La meta de $900.000 está hardcodeada** para todos los vendedores de todas las empresas.
+- **`rutas` está vacía** y nunca se usó. `categorias` también: la categoría vive como texto en
+  `productos`.
+- **Key de Stadia** hardcodeada en `services/maps/basemap.js:13`. Si vence, la app no se rompe: se
+  queda con OSM y se ocultan las capas Oscuro y Satélite.
+- **No hay red de verificación.** `npm run lint` es `eslint . || true` sobre un repo **sin config de
+  ESLint**: nunca falla. No hay tests. Y desde 1.12.1 la OTA se aplica sola en los 9 equipos,
+  mientras `notifyAppReady()` sólo cubre un bundle que revienta **al arrancar**, no uno que arranca
+  bien y rompe adentro — que fue exactamente el caso de la regla 51.
+- **`ingest-posiciones`** cita en su encabezado un `db/16_ingesta_tokens.sql` que no existe
+  (`db/16` es `visitas`); la referencia correcta es `db/48`.
+
+### ✅ Cerrado desde la revisión anterior
+
+- **Los pedidos persisten** (`db/45`, `db/55`, `db/56`, `db/57`). Era "la brecha más grande del
+  producto" y dejó de serlo.
+- **El repartidor ya recibe entregas**: `useEntregas.js` lee de `pedidos`.
+- **Las categorías numéricas del ERP no volvieron**: cero productos con categoría enteramente
+  numérica. La guarda de `filaAImportar` aguanta. Quedan 316 con categoría nula **a propósito**, que
+  la app deduce con `inferCategoria`.
+- **La cartera se destrabó**: de 18 clientes ubicados el 08/08 a **662** hoy.
+- **Rol `propietario` eliminado**; ya no hay un rol que no se pueda dar de alta.
+- **Códigos únicos por empresa** (`db/48`): dos distribuidoras ya pueden usar el mismo código.
+- **Storage con alcance por empresa** (`db/25`).
+
+### Código muerto verificado — 850 líneas
+
+Trazado por `import` real, no por menciones en comentarios. `AuthedApp` ataja a los seis roles antes
+de que `RoleRouter` llegue a su `return <AdminView/>`.
+
+| Archivo | LOC | Único importador | Veredicto |
+|---|---|---|---|
+| `admin/AdminView.jsx` | 150 | `App.jsx` (rama muerta) | Inalcanzable |
+| `admin/components/ReplayJornada.jsx` | 226 | `AdminView` | **Rescatar** — reproduce la jornada como película; no hay equivalente vivo |
+| `admin/tabs/MapaOperativo.jsx` | 145 | `AdminView` | Borrar — sólo la consola de eventos es única |
+| `admin/RecorridosView.jsx` | 140 | `AdminView` | Borrar — subconjunto de `SupervisionDesktop` |
+| `admin/tabs/RuteoTab.jsx` | 112 | **nadie** | Borrar — andamiaje TSP; ni el padre muerto lo importa |
+| `vendedor/tabs/PerfilTab.jsx` | 77 | **nadie** | Borrar — la bottom-nav tiene 3 columnas |
+
+Los datos de todas están vivos, así que borrarlas es una decisión de **producto**, no de datos.
+Rescatar `ReplayJornada` significa colgarla del menú "Menú" (`GestionHost`), que es el único camino
+vivo.
+
+---
+
+## 11. Docs que no hay que creer
+
+- `ESTRUCTURA_PROYECTO.md` — del 04/08, pre-monorepo, describe el rol `propietario` que ya no existe.
+  Sirve como mapa histórico, no como verdad.
+- `README.md` — menciona un componente `GoogleMap` que no existe; omite `CAP_BUILD=1`.
+- `GUIA_APK_ANDROID.md` — se contradice sobre `storeFile` (`:230` mal, `:320` bien).
+- `GUIA_API_KEY_GOOGLE_MAPS.md` — obsoleta; nada del código lee esa variable.
+- `INFORME_AUDITORIA.md` — rev. 3, sobre 1.10.0. La arquitectura sigue valiendo; los números no.

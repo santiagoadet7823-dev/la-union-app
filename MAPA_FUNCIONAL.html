@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa funcional DisT-At</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ============================================================
+   Tokens tomados de web/src/index.css — el sistema real del repo.
+   Tiffany claro / teal oscuro, estética "sala de control".
+   Tres estados de tema: bare :root = claro, media = sistema,
+   [data-theme] = elección explícita.
+   ============================================================ */
+:root {
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --bg-app: #fbfefd;
+  --surface: #ffffff;
+  --surface2: #f4faf9;
+  --line: #e2efee;
+  --line2: #c9e0de;
+  --text: #0b2b2a;
+  --muted: #5a7371;
+  --faint: #93a9a7;
+  --primary: #0abab5;
+  --on-primary: #ffffff;
+  --deep: #06807c;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #0ea5e9;
+  --primary-tint: rgba(10, 186, 181, 0.10);
+  --success-tint: rgba(16, 185, 129, 0.12);
+  --warning-tint: rgba(245, 158, 11, 0.14);
+  --danger-tint: rgba(239, 68, 68, 0.10);
+  --info-tint: rgba(14, 165, 233, 0.12);
+  --grid: rgba(11, 43, 42, 0.06);
+  --shadow: 0 2px 8px rgba(11, 43, 42, 0.06);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-app: #0c0c0c;
+    --surface: #0d1f1e;
+    --surface2: #12302e;
+    --line: rgba(255, 255, 255, 0.12);
+    --line2: rgba(255, 255, 255, 0.20);
+    --text: #ecf5f4;
+    --muted: #8fa9a6;
+    --faint: #5c7370;
+    --primary: #2dd4ce;
+    --on-primary: #04211f;
+    --deep: #2dd4ce;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #38bdf8;
+    --primary-tint: rgba(45, 212, 206, 0.14);
+    --success-tint: rgba(52, 211, 153, 0.14);
+    --warning-tint: rgba(251, 191, 36, 0.14);
+    --danger-tint: rgba(248, 113, 113, 0.14);
+    --info-tint: rgba(56, 189, 248, 0.14);
+    --grid: rgba(255, 255, 255, 0.06);
+    --shadow: none;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg-app: #0c0c0c;
+  --surface: #0d1f1e;
+  --surface2: #12302e;
+  --line: rgba(255, 255, 255, 0.12);
+  --line2: rgba(255, 255, 255, 0.20);
+  --text: #ecf5f4;
+  --muted: #8fa9a6;
+  --faint: #5c7370;
+  --primary: #2dd4ce;
+  --on-primary: #04211f;
+  --deep: #2dd4ce;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #38bdf8;
+  --primary-tint: rgba(45, 212, 206, 0.14);
+  --success-tint: rgba(52, 211, 153, 0.14);
+  --warning-tint: rgba(251, 191, 36, 0.14);
+  --danger-tint: rgba(248, 113, 113, 0.14);
+  --info-tint: rgba(56, 189, 248, 0.14);
+  --grid: rgba(255, 255, 255, 0.06);
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+/* ---------- Encabezado ---------- */
+.top {
+  border-bottom: 1px solid var(--line);
+  padding: 40px 0 22px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+.ident { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+h1 {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4.4vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0;
+  text-wrap: balance;
+}
+.sub { color: var(--muted); font-size: 14px; max-width: 62ch; margin: 2px 0 0; }
+
+/* ---------- Conmutador de vista ---------- */
+.switch {
+  display: inline-flex;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 3px;
+  gap: 2px;
+  flex: none;
+}
+.switch button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 160ms cubic-bezier(.23,1,.32,1), color 160ms;
+}
+.switch button:hover { color: var(--text); }
+.switch button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.switch button:focus-visible { outline: 2px solid var(--deep); outline-offset: 2px; }
+
+/* ---------- Tira de estado ---------- */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  margin: 28px 0 0;
+  background: var(--surface);
+}
+.stat {
+  padding: 16px 18px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.stat:last-child { border-right: none; }
+.stat .k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.stat .v {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.stat .n { font-size: 11.5px; color: var(--muted); }
+
+/* ---------- Secciones ---------- */
+section { margin-top: 56px; }
+.shead {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-bottom: 1px solid var(--line2);
+  padding-bottom: 8px;
+  margin-bottom: 22px;
+}
+h2 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.shead .note { font-size: 12px; color: var(--muted); margin-left: auto; text-align: right; }
+
+h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+
+/* ---------- Tablas ---------- */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 560px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 500;
+  border-bottom: 1px solid var(--line2);
+  white-space: nowrap;
+}
+td.mono, th.mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.num { text-align: right; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+
+/* ---------- Roles ---------- */
+.roles { display: flex; flex-direction: column; gap: 2px; }
+.role {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.role > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface2);
+  flex-wrap: wrap;
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.role > header .where {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.fn {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 18px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.fn:last-child { border-bottom: none; }
+.fn .name { font-weight: 600; font-size: 13.5px; }
+.fn .body { color: var(--muted); font-size: 13px; }
+.fn .body strong { color: var(--text); font-weight: 600; }
+code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--primary-tint);
+  color: var(--deep);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  word-break: break-word;
+}
+
+/* Conmutación de vistas: sólo una de las dos capas se muestra.
+   Se restituye el display propio de cada elemento — un `td` vuelve a
+   `table-cell` y un `span` a `inline`, nunca `block`, que rompería la fila. */
+.tec, .only-tec { display: none; }
+body.v-tec .tit, body.v-tec .only-tit { display: none; }
+
+body.v-tec span.tec,
+body.v-tec span.only-tec { display: inline; }
+body.v-tec td.tec { display: table-cell; }
+body.v-tec div.tec,
+body.v-tec p.only-tec { display: block; }
+
+/* ---------- Píldoras ---------- */
+.pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.p-ok   { background: var(--success-tint); color: var(--success); }
+.p-warn { background: var(--warning-tint); color: var(--warning); }
+.p-bad  { background: var(--danger-tint);  color: var(--danger); }
+.p-info { background: var(--info-tint);    color: var(--info); }
+.p-tif  { background: var(--primary-tint); color: var(--deep); }
+.p-mute { background: var(--surface2); color: var(--muted); border: 1px solid var(--line); }
+
+/* ---------- Pipeline GPS ---------- */
+.pipe {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 0 10px;
+}
+.node {
+  border: 1px solid var(--line2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 12px 14px;
+  min-width: 168px;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.node .t { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+.node .h { font-weight: 600; font-size: 13px; }
+.node .d { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.node.hot { border-color: var(--danger); }
+.arrow {
+  flex: none;
+  width: 26px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+
+/* ---------- Hallazgos ---------- */
+.finds { display: flex; flex-direction: column; gap: 12px; }
+.find {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.find.sev-bad  { border-left-color: var(--danger); }
+.find.sev-warn { border-left-color: var(--warning); }
+.find.sev-ok   { border-left-color: var(--success); }
+.find .fh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.find .fb { color: var(--muted); font-size: 13px; }
+.find .fb strong { color: var(--text); }
+.src {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+footer {
+  margin-top: 64px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .fn { grid-template-columns: 1fr; gap: 4px; }
+  .wrap { padding: 0 16px 72px; }
+  .role > header .where { margin-left: 0; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="ident">
+      <div class="eyebrow">Auditoría · 08 septiembre 2026 · baseline 1.25.0</div>
+      <h1>Mapa funcional DisT-At</h1>
+      <p class="sub">Qué hace cada parte del SaaS logístico, de quién es, y por cuál de los tres canales llega. Medido contra el código en <code>b6d500c</code> y contra la base viva, no contra la documentación.</p>
+    </div>
+    <div class="switch" role="group" aria-label="Nivel de detalle">
+      <button id="b-tit" aria-pressed="true">Títulos</button>
+      <button id="b-tec" aria-pressed="false">Técnico</button>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="stat"><span class="k">Bundle OTA</span><span class="v">1.25.0</span><span class="n">publicado 04/09</span></div>
+    <div class="stat"><span class="k">APK</span><span class="v">1.24.0</span><span class="n">versionCode 39</span></div>
+    <div class="stat"><span class="k">Piso obligatorio</span><span class="v">1.24.0</span><span class="n">reinstala solo</span></div>
+    <div class="stat"><span class="k">Equipos al día</span><span class="v">6 / 12</span><span class="n">5 días después</span></div>
+    <div class="stat"><span class="k">Posiciones</span><span class="v">511.194</span><span class="n">131.456 en 7 días</span></div>
+    <div class="stat"><span class="k">Cartera</span><span class="v">2.016</span><span class="n">662 ubicadas</span></div>
+  </div>
+
+  <!-- ============ ROLES Y CANALES ============ -->
+  <section>
+    <div class="shead">
+      <h2>Quién ve qué</h2>
+      <span class="note">Los roles son excluyentes. Lo decide <code>App.jsx</code> y nada más.</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Rol</th>
+            <th>APK en el teléfono</th>
+            <th>Web desde el celular</th>
+            <th>Web desde la PC</th>
+            <th>¿Se rastrea?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Vendedor</strong></td>
+            <td class="tit">Su jornada de venta</td><td class="tec mono">VendedorView + GpsGate</td>
+            <td class="tit">Lo mismo</td><td class="tec mono">idem</td>
+            <td class="tit">Lo mismo</td><td class="tec mono">idem</td>
+            <td><span class="pill p-tif">Sí, obligatorio</span></td>
+          </tr>
+          <tr>
+            <td><strong>Repartidor</strong></td>
+            <td class="tit">Sus entregas del día</td><td class="tec mono">RepartidorView + GpsGate</td>
+            <td class="tit">Lo mismo</td><td class="tec mono">idem</td>
+            <td class="tit">Lo mismo</td><td class="tec mono">idem</td>
+            <td><span class="pill p-tif">Sí, obligatorio</span></td>
+          </tr>
+          <tr>
+            <td><strong>Encargado</strong></td>
+            <td class="tit">Panel del equipo, y su propia jornada</td><td class="tec mono">SupervisionMovil · VendedorView</td>
+            <td class="tit">Tablero de escritorio</td><td class="tec mono">SupervisionDesktop</td>
+            <td class="tit">Tablero de escritorio</td><td class="tec mono">SupervisionDesktop</td>
+            <td><span class="pill p-tif">Sí — es dual</span></td>
+          </tr>
+          <tr>
+            <td><strong>Admin</strong> / <strong>Superadmin</strong></td>
+            <td class="tit">Panel del equipo</td><td class="tec mono">SupervisionMovil</td>
+            <td class="tit">Panel de dirección (los números primero)</td><td class="tec mono">PanelDireccion</td>
+            <td class="tit">Tablero de escritorio</td><td class="tec mono">SupervisionDesktop</td>
+            <td><span class="pill p-mute">No</span></td>
+          </tr>
+          <tr>
+            <td><strong>Marketing</strong></td>
+            <td class="tit">El catálogo, y nada más</td><td class="tec mono">MarketingView</td>
+            <td class="tit">Lo mismo</td><td class="tec mono">MarketingView</td>
+            <td class="tit">Lo mismo</td><td class="tec mono">MarketingView</td>
+            <td><span class="pill p-mute">No — por privacidad</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub only-tec" style="margin-top:14px">
+      El corte celular/PC lo da <code>useDevice().isMobile</code> (ancho + puntero + userAgent). El override manual vive en <code>localStorage['lu-device']</code> y es pegajoso: un navegador que alguna vez eligió «Celular» entra al <code>PanelDireccion</code> aunque esté en 1280&nbsp;px.
+    </p>
+  </section>
+
+  <!-- ============ FUNCIONES POR ROL ============ -->
+  <section>
+    <div class="shead">
+      <h2>Qué puede hacer cada uno</h2>
+      <span class="note">94 archivos · 21.096 líneas en <code>features/</code></span>
+    </div>
+
+    <div class="roles">
+
+      <article class="role">
+        <header>
+          <span class="dot" style="background:var(--primary)"></span>
+          <h3>Vendedor</h3>
+          <span class="where">6 personas activas · el rol que sostiene el negocio</span>
+        </header>
+        <div class="fn"><div class="name">Abrir la jornada</div><div class="body">
+          <span class="tit">Antes de poder trabajar tiene que dar permiso de ubicación. Sin eso la app no lo deja pasar.</span>
+          <span class="tec"><code>GpsGate</code> bloquea el árbol entero hasta que hay permiso <em>y</em> token de ingesta. Sin token no hay puntos, por impecable que se vea el <code>dumpsys</code>.</span>
+        </div></div>
+        <div class="fn"><div class="name">Recorrer su cartera</div><div class="body">
+          <span class="tit">Ve sus comercios en una lista y en el mapa, con los que todavía no visitó destacados.</span>
+          <span class="tec"><code>tabs/InicioTab.jsx</code> (285 LOC) + <code>useSugeridos.js</code>. El lápiz que ubica un comercio sólo se dibuja si <code>c.idVendedor === user?.id</code>.</span>
+        </div></div>
+        <div class="fn"><div class="name">Hacer el check-in</div><div class="body">
+          <span class="tit">Marca que llegó al comercio. Si ya lo visitó, ahí mismo puede corregir el pedido que había cargado.</span>
+          <span class="tec"><code>ElegirTicketSheet.jsx</code>. Desde 1.25.0 el pill «Visitado» volvió a ser tocable — era un <code>div</code> inerte y dejaba el comercio inalcanzable toda la jornada.</span>
+        </div></div>
+        <div class="fn"><div class="name">Tomar el pedido</div><div class="body">
+          <span class="tit">Arma el carrito con el catálogo real, con los precios por cantidad aplicados solos.</span>
+          <span class="tec"><code>VisitaCatalogo.jsx</code> + <code>CarritoSheet.jsx</code> sobre <code>components/GrillaCatalogo.jsx</code>. El precio lo resuelve <strong>sólo</strong> <code>lib/precios.js</code> — la regla estaba copiada en 11 lugares de 7 archivos hasta el 27/08.</span>
+        </div></div>
+        <div class="fn"><div class="name">Repetir el pedido anterior</div><div class="body">
+          <span class="tit">Rearma lo que el comercio compró la última vez, a los precios de hoy.</span>
+          <span class="tec"><code>usePedidos.js</code>. Recalcula con <code>precioPara()</code>, no copia el monto viejo.</span>
+        </div></div>
+        <div class="fn"><div class="name">Entregar el ticket</div><div class="body">
+          <span class="tit">Comparte el comprobante en PDF, con la empresa y su nombre como emisor.</span>
+          <span class="tec"><code>TicketPedido.jsx</code> → <code>ImpresionPlugin.compartirPdf</code> (<strong>nativo</strong>, sólo viaja en el APK). Con APK viejo cae a «Imprimir o guardar como PDF».</span>
+        </div></div>
+        <div class="fn"><div class="name">Mi tablero</div><div class="body">
+          <span class="tit">Sus metas de venta, sus productos, oportunidades y los clientes que dejaron de comprar.</span>
+          <span class="tec"><code>metas/TableroSheet.jsx</code> (473 LOC) sobre <code>db/56</code> y <code>db/57</code>. Siete métricas de venta — km y horas quedan afuera a propósito.</span>
+        </div></div>
+        <div class="fn"><div class="name">Vidriera para el cliente</div><div class="body">
+          <span class="tit">Una tablet en el mostrador le muestra al comerciante el catálogo mientras el vendedor carga.</span>
+          <span class="tec"><code>VidrieraTablet.jsx</code> (1.041 LOC) por hotspot local + <code>ServidorLocal.java</code>. <strong>Nunca recibe OTA</strong>: no se loguea y no tiene salida a internet.</span>
+        </div></div>
+      </article>
+
+      <article class="role">
+        <header>
+          <span class="dot" style="background:var(--info)"></span>
+          <h3>Repartidor</h3>
+          <span class="where">Reparto · mismo gate de GPS que el vendedor</span>
+        </header>
+        <div class="fn"><div class="name">Hoja de ruta</div><div class="body">
+          <span class="tit">Las entregas que le tocan, en el orden más corto.</span>
+          <span class="tec"><code>RepartidorView.jsx</code> (448 LOC) + <code>useEntregas.js</code>. El orden sale de <code>services/routing/</code> (OSRM), único punto de swap del proveedor.</span>
+        </div></div>
+        <div class="fn"><div class="name">Confirmar la entrega</div><div class="body">
+          <span class="tit">Marca entregado y toma la firma del que recibe.</span>
+          <span class="tec">Bucket de firmas. <span class="pill p-warn">Deuda</span> <code>firmas_ins</code> sigue <code>to authenticated</code> sin alcance por empresa.</span>
+        </div></div>
+      </article>
+
+      <article class="role">
+        <header>
+          <span class="dot" style="background:var(--deep)"></span>
+          <h3>Encargado</h3>
+          <span class="where">Dual: supervisa y además sale a la calle</span>
+        </header>
+        <div class="fn"><div class="name">Ver al equipo en vivo</div><div class="body">
+          <span class="tit">Dónde está cada uno ahora, con el recorrido del día dibujado.</span>
+          <span class="tec"><code>SupervisionMovil</code> (922 LOC) / <code>SupervisionDesktop</code> (811). <strong>No comparten una línea</strong> y ya divergieron dos veces; lo común vive en <code>trazos.js</code> y <code>dwells.js</code>.</span>
+        </div></div>
+        <div class="fn"><div class="name">Ver dónde se quedó parado</div><div class="body">
+          <span class="tit">Carteles sobre el mapa con cuánto estuvo detenido en cada lugar.</span>
+          <span class="tec"><code>detectarParadas</code> era cuadrática: 7.090&nbsp;ms sobre una jornada real. Hoy quickselect, ×7,8 y salida bit-idéntica sobre 63 persona-días.</span>
+        </div></div>
+        <div class="fn"><div class="name">Revisar y anular pedidos</div><div class="body">
+          <span class="tit">Los pedidos de su gente, con el detalle y la opción de anular.</span>
+          <span class="tec"><code>PedidosView.jsx</code>. El alcance real lo pone <code>pedidos_sel</code> en el servidor vía <code>ids_a_mi_cargo()</code>, no la UI.</span>
+        </div></div>
+        <div class="fn"><div class="name">Reportes de jornada</div><div class="body">
+          <span class="tit">Informe por persona y por día: recorrido, paradas, batería y pedidos.</span>
+          <span class="tec"><code>ReportesView.jsx</code> (504 LOC) + 6 componentes. Exporta a Excel y PDF.</span>
+        </div></div>
+        <div class="fn"><div class="name">Avisos del equipo</div><div class="body">
+          <span class="tit">Le llega un push cuando alguien deja de reportar o quedó quieto demasiado tiempo.</span>
+          <span class="tec">Detección en SQL (<code>vigilancia_equipo</code>), dedupe por índice parcial <code>alertas_equipo_abierta_uidx</code>, no por lógica en la función. <strong>799</strong> avisos, 8 abiertos.</span>
+        </div></div>
+      </article>
+
+      <article class="role">
+        <header>
+          <span class="dot" style="background:var(--warning)"></span>
+          <h3>Admin y Superadmin</h3>
+          <span class="where">El dueño usa <code>admin</code> — el rol <code>propietario</code> murió en db/31</span>
+        </header>
+        <div class="fn"><div class="name">Panel de dirección</div><div class="body">
+          <span class="tit">Los números primero y el mapa como una tarjeta que se abre. Es la pantalla que el dueño mira desde su iPhone.</span>
+          <span class="tec"><code>PanelDireccion.jsx</code> (836 LOC). Sólo aparece en <strong>web + pantalla de celular</strong>; en la APK y en la PC caen en supervisión. Es <code>decidirPanelDireccion</code>, no un bug.</span>
+        </div></div>
+        <div class="fn"><div class="name">Cartera de clientes</div><div class="body">
+          <span class="tit">Alta, edición, importación masiva y revisión de repetidos.</span>
+          <span class="tec"><code>ClientesTab</code> · <code>FichaCliente</code> · <code>ImportarClientes</code> · <code>RevisarDuplicados</code>. Llegan por <code>DespachoGestion</code>, no por <code>AdminView</code>.</span>
+        </div></div>
+        <div class="fn"><div class="name">Usuarios y permisos</div><div class="body">
+          <span class="tit">Invitar gente, darle un rol, y sumarle capacidades extra sin cambiarle el rol.</span>
+          <span class="tec"><code>UsuariosView.jsx</code> (806 LOC) + <code>perfiles.permisos text[]</code> (db/23). Un vendedor con <code>'catalogo'</code> sigue siendo vendedor.</span>
+        </div></div>
+        <div class="fn"><div class="name">Zonas y horarios de rastreo</div><div class="body">
+          <span class="tit">Divide el territorio y define en qué franja se rastrea a cada quien.</span>
+          <span class="tec"><code>ZonasView</code> · <code>CategoriasRastreo</code>. <strong>La ventana está implementada 3 veces</strong> y nada las sincroniza: JS, Java y SQL.</span>
+        </div></div>
+        <div class="fn"><div class="name">Respaldo mensual</div><div class="body">
+          <span class="tit">Baja el historial completo antes de que se borre.</span>
+          <span class="tec"><code>RespaldoDatos.jsx</code>. Los recorridos se purgan a los 45 días (db/42): es la <strong>única</strong> salida del historial fuera de Supabase.</span>
+        </div></div>
+        <div class="fn"><div class="name">Empresas</div><div class="body">
+          <span class="tit">Sólo superadmin. Da de alta distribuidoras.</span>
+          <span class="tec"><code>EmpresasView.jsx</code> (440 LOC). <span class="pill p-warn">Ojo</span> <code>empresas.activo</code> se escribe y se muestra pero <strong>no gatea nada</strong>: ninguna policy lo consulta.</span>
+        </div></div>
+      </article>
+
+      <article class="role">
+        <header>
+          <span class="dot" style="background:#a78bfa"></span>
+          <h3>Marketing</h3>
+          <span class="where">Una sola pantalla · el único rol que no se rastrea</span>
+        </header>
+        <div class="fn"><div class="name">Mantener el catálogo</div><div class="body">
+          <span class="tit">Precios, fotos, productos y códigos. No sale a la calle, así que no está en ningún mapa.</span>
+          <span class="tec"><code>MarketingView.jsx</code> (227 LOC), una sola fila en <code>GESTION_ITEMS</code>. Ninguna policy de <code>posiciones</code>, <code>visitas</code> ni <code>alertas_equipo</code> lo menciona — es una decisión de privacidad, no un olvido.</span>
+        </div></div>
+        <div class="fn"><div class="name">Control de códigos y fotos</div><div class="body">
+          <span class="tit">Detecta códigos repetidos y productos sin foto, con una guía de cómo sacarlas.</span>
+          <span class="tec"><code>ControlCodigos.jsx</code> · <code>GuiaFotos.jsx</code> · <code>ImportarFotos.jsx</code>.</span>
+        </div></div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============ PIPELINE GPS ============ -->
+  <section>
+    <div class="shead">
+      <h2>El camino de un punto de GPS</h2>
+      <span class="note">La zona más peligrosa del proyecto</span>
+    </div>
+    <div class="pipe">
+      <div class="node hot">
+        <span class="t">Nativo</span>
+        <span class="h">UploaderGpsService</span>
+        <span class="d">1.474 LOC. Toma un wakelock parcial; en Doze la callback no corre sin él. Fuera de horario <strong>pausa</strong>, no se apaga.</span>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <span class="t">Filtro</span>
+        <span class="h">Dos techos</span>
+        <span class="d">120 m decide qué se <em>captura</em>; 30 m decide qué se <em>dibuja y suma km</em>. Confundirlos costó 39,6 km de ruta perdidos en un día.</span>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node hot">
+        <span class="t">Cola</span>
+        <span class="h">Cuarentena</span>
+        <span class="d">Un punto trabado nunca se borra: va a <code>lu-pos-cuarentena</code>. Borrarlos costó 264 puntos reales en producción.</span>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <span class="t">Servidor</span>
+        <span class="h">ingest-posiciones</span>
+        <span class="d">El <strong>token es la identidad</strong>: saca usuario y empresa del token, no del punto. <code>posiciones</code> no tiene DELETE ni UPDATE.</span>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <span class="t">Dibujo</span>
+        <span class="h">limpiarTrazo</span>
+        <span class="d">El crudo miente: hay teleports de 127 km. Un día figuraba con 524,8 km y los reales eran 17,9.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BACKEND ============ -->
+  <section>
+    <div class="shead">
+      <h2>Backend</h2>
+      <span class="note">24 tablas, todas con RLS · 7 Edge Functions, 2.347 líneas</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Función</th><th>Qué hace</th><th class="num">LOC</th><th>Dispara</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">snap-recorridos</td><td class="tit">Pega el recorrido a las calles reales</td><td class="tec">OSRM por modo (<code>routed-foot</code> / <code>routed-car</code>). Se planta si la fracción ciega supera 35&nbsp;%.</td><td class="num">826</td><td>cron</td></tr>
+          <tr><td class="mono">alertas-equipo</td><td class="tit">Avisa que alguien dejó de reportar o quedó quieto</td><td class="tec">Detección en SQL; la función sólo despacha FCM. Borra el token muerto en 404.</td><td class="num">640</td><td>cron 10 min</td></tr>
+          <tr><td class="mono">ingest-precios</td><td class="tit">El ERP del cliente sube la lista de precios</td><td class="tec">Su <code>lib/</code> es copia de <code>web/src/lib/</code>. Es la <strong>cuarta lista blanca</strong>, la que siempre se olvida.</td><td class="num">254</td><td>cada hora</td></tr>
+          <tr><td class="mono">push-actualizacion</td><td class="tit">Avisa que hay versión nueva</td><td class="tec">Decide el <code>channel_id</code> por teléfono mirando <code>app_version</code>: el parque es mixto.</td><td class="num">223</td><td>manual</td></tr>
+          <tr><td class="mono">push-heartbeat</td><td class="tit">Latido de estado de cada equipo</td><td class="tec">Sube <code>bundle_aplicado</code>, <code>bundle_encolado</code> y <code>ota_error</code> (db/46).</td><td class="num">148</td><td>app</td></tr>
+          <tr><td class="mono">ingest-posiciones</td><td class="tit">Recibe los puntos del servicio nativo</td><td class="tec">Identidad por token de dispositivo. Su encabezado cita un <code>db/16</code> que no existe.</td><td class="num">134</td><td>nativo</td></tr>
+          <tr><td class="mono">crear-usuario</td><td class="tit">Alta de una persona con su rol</td><td class="tec">v4 — sin <code>propietario</code> desde db/31.</td><td class="num">122</td><td>admin</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="scroll" style="margin-top:26px">
+      <table>
+        <thead><tr><th>Tabla</th><th class="num">Filas</th><th>Lectura</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">posiciones</td><td class="num">511.194</td><td>131.456 en los últimos 7 días — el GPS está sano</td></tr>
+          <tr><td class="mono">clientes</td><td class="num">2.016</td><td>662 con ubicación · 38 con vendedor · 15 con zona</td></tr>
+          <tr><td class="mono">productos</td><td class="num">617</td><td>547 vigentes · 316 sin categoría (se deduce en la app)</td></tr>
+          <tr><td class="mono">alertas_equipo</td><td class="num">799</td><td>8 abiertas</td></tr>
+          <tr><td class="mono">recorridos_snap</td><td class="num">268</td><td>recorridos pegados a calles ya calculados</td></tr>
+          <tr><td class="mono">visitas</td><td class="num">129</td><td>check-ins registrados</td></tr>
+          <tr><td class="mono">pedidos</td><td class="num">12</td><td>28 renglones · el módulo recién arranca</td></tr>
+          <tr><td class="mono">metas</td><td class="num">3</td><td>las que se fijaron los propios vendedores</td></tr>
+          <tr><td class="mono">rutas</td><td class="num">0</td><td><span class="pill p-mute">vacía</span> nunca se usó</td></tr>
+          <tr><td class="mono">categorias</td><td class="num">0</td><td><span class="pill p-mute">vacía</span> la categoría vive como texto en <code>productos</code></td></tr>
+          <tr><td class="mono">ubicaciones_compartidas</td><td class="num">0</td><td><span class="pill p-mute">vacía</span> permiso de compartir en vivo, sin uso</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ NATIVO ============ -->
+  <section>
+    <div class="shead">
+      <h2>Lo que sólo existe en el APK</h2>
+      <span class="note">25 clases Java · 5.706 líneas escritas a mano</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Clase</th><th class="num">LOC</th><th>Para qué</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">UploaderGpsService</td><td class="num">1.474</td><td class="tit">Sigue emitiendo la posición con la pantalla apagada</td><td class="tec">Foreground service con wakelock parcial. Pausa fuera de ventana; <code>stopService()</code> sólo al cerrar sesión.</td></tr>
+          <tr><td class="mono">EnlaceTabletPlugin</td><td class="num">544</td><td class="tit">Conecta la tablet de vidriera al teléfono</td><td class="tec">Hotspot local, sin internet.</td></tr>
+          <tr><td class="mono">ServidorLocal</td><td class="num">405</td><td class="tit">Sirve el catálogo a la tablet</td><td class="tec">HTTP embebido en el teléfono.</td></tr>
+          <tr><td class="mono">EnlaceLocalPlugin</td><td class="num">372</td><td class="tit">Descubrimiento y pareo</td><td class="tec">—</td></tr>
+          <tr><td class="mono">AlarmWatchdogPlugin</td><td class="num">306</td><td class="tit">Despierta la app sola para que actualice</td><td class="tec">Desde 1.12.1 descarga el bundle solo y recién ahí avisa.</td></tr>
+          <tr><td class="mono">EnlaceBluetoothPlugin</td><td class="num">299</td><td class="tit">Impresora y balanza</td><td class="tec">—</td></tr>
+          <tr><td class="mono">MovimientoPlugin</td><td class="num">265</td><td class="tit">Detecta si va caminando o en vehículo</td><td class="tec"><code>FLAG_MUTABLE</code> obligatorio: con <code>IMMUTABLE</code> registra sin error y nunca entrega nada.</td></tr>
+          <tr><td class="mono">VentanaRastreo</td><td class="num">222</td><td class="tit">Sabe si estamos dentro del horario de trabajo</td><td class="tec">Barrido minuto a minuto, no fórmula — una derivación analítica sería una cuarta implementación.</td></tr>
+          <tr><td class="mono">ApkUpdaterPlugin</td><td class="num">215</td><td class="tit">Instala la actualización sin que nadie toque nada</td><td class="tec">Requiere ser su propio instalador: <code>adb install -r -i com.launion.app</code>.</td></tr>
+          <tr><td class="mono">ImpresionPlugin</td><td class="num">186</td><td class="tit">Comparte el ticket en PDF</td><td class="tec">+ <code>PdfDelWebView.java</code> (133). Novedad de 1.24.0, sólo por APK.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ HALLAZGOS ============ -->
+  <section>
+    <div class="shead">
+      <h2>Lo que encontró esta auditoría</h2>
+      <span class="note">Medido el 08/09/2026 contra código y base viva</span>
+    </div>
+    <div class="finds">
+
+      <div class="find sev-bad">
+        <div class="fh"><span class="pill p-bad">Bloqueante</span><h3>El keystore no está en esta máquina</h3></div>
+        <div class="fb"><code>launion.keystore</code> y <code>keystore.properties</code> no viajan en git y no aparecieron en lo que sincronizó OneDrive. <strong>Sin ellos ningún APK nuevo se puede instalar como actualización</strong> — habría que desinstalar y reinstalar en cada teléfono, perdiendo cola de posiciones, cuarentena y sesión. Y <code>.claude/keystore.md</code> <em>no</em> es un respaldo: es el volcado de <code>keytool</code>, las contraseñas no están ahí.</div>
+        <div class="src">Única copia conocida: la PC vieja</div>
+      </div>
+
+      <div class="find sev-warn">
+        <div class="fh"><span class="pill p-warn">Release abierto</span><h3>La mitad del parque sigue por debajo del piso</h3></div>
+        <div class="fb"><code>min_version</code> se subió a 1.24.0 el 03/09 esperando que la reinstalación se dispare sola. Cinco días después <strong>6 de 12 equipos siguen abajo</strong>: Zura y Gabriel en APK 1.21.0 y 1.13.0, Nelson y Gustavo en 1.18.0 <em>y sin dar señal desde el 21-22/08</em>. Luis Mendoza tiene además un <code>bundle_encolado</code> de 1.22.0 con 1.23.0 ya aplicado — un encolado más viejo que lo aplicado, que quedó huérfano.</div>
+        <div class="src">estado_dispositivo · 08/09/2026</div>
+      </div>
+
+      <div class="find sev-warn">
+        <div class="fh"><span class="pill p-warn">Pantalla muerta en vivo</span><h3>«Faltante» no puede mostrar nada, nunca</h3></div>
+        <div class="fb"><code>FaltanteTab.jsx:18</code> declara <code>const [faltVacio] = useState(true)</code> <strong>sin setter</strong>, y todo el cuerpo cuelga de ese booleano. La pantalla está viva y en el menú de gestión de encargado, admin y superadmin — y siempre renderiza su estado vacío. Es distinta del código muerto: ésta sí se puede abrir.</div>
+        <div class="src">web/src/features/admin/tabs/FaltanteTab.jsx</div>
+      </div>
+
+      <div class="find sev-ok">
+        <div class="fh"><span class="pill p-ok">Mejoró solo</span><h3>La cartera se destrabó</h3></div>
+        <div class="fb">CLAUDE.md §8 documenta «1998 clientes, 3 con <code>id_vendedor</code> y 18 con ubicación» y lo trata como un bloqueo abierto. Hoy son <strong>2.016 clientes, 38 con vendedor y 662 con ubicación</strong> — la geolocalización pasó del 0,9&nbsp;% al 33&nbsp;%. El diagnóstico del documento quedó viejo.</div>
+        <div class="src">clientes · 08/09/2026</div>
+      </div>
+
+      <div class="find sev-ok">
+        <div class="fh"><span class="pill p-ok">Guarda funcionando</span><h3>Las categorías numéricas no volvieron</h3></div>
+        <div class="fb">El desastre del 01/09 —el ERP mandó códigos de rubro (<code>01</code>, <code>06</code>, <code>97</code>) en vez de nombres y dejó 541 productos con 31 categorías numéricas— está cerrado: <strong>cero categorías enteramente numéricas</strong> hoy. La guarda de <code>filaAImportar</code> aguanta. Quedan 316 productos con categoría nula a propósito, que la app deduce con <code>inferCategoria</code>.</div>
+        <div class="src">productos · regla 59</div>
+      </div>
+
+      <div class="find sev-warn">
+        <div class="fh"><span class="pill p-warn">Documentación</span><h3>Tres números de CLAUDE.md quedaron viejos</h3></div>
+        <div class="fb">§4 dice «<strong>17 clases</strong> nativas» y son <strong>25</strong> (5.706 LOC). <code>UploaderGpsService</code> figura con 1.452 LOC y tiene <strong>1.474</strong>. Y §8 no menciona <code>RuteoTab</code> entre lo que arrastra el <code>AdminView</code> muerto, aunque <code>DOCUMENTACION_FUNCIONAL.md:26</code> sí lo registra.</div>
+        <div class="src">CLAUDE.md §4 · §8</div>
+      </div>
+
+      <div class="find sev-warn">
+        <div class="fh"><span class="pill p-warn">Sin verificación</span><h3>No hay red que ataje un error antes de publicar</h3></div>
+        <div class="fb"><code>npm run lint</code> es <code>eslint . || true</code> sobre un repo sin config de ESLint: <strong>nunca falla</strong>. No hay tests. Y desde 1.12.1 la OTA se aplica sola en los 9 equipos, mientras que <code>notifyAppReady()</code> sólo cubre un bundle que revienta al arrancar — no uno que arranca bien y rompe adentro, que fue exactamente el caso de la regla 51.</div>
+        <div class="src">web/package.json</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ CÓDIGO MUERTO ============ -->
+  <section>
+    <div class="shead">
+      <h2>Código muerto verificado</h2>
+      <span class="note">Trazado por <code>import</code> real, no por menciones en comentarios</span>
+    </div>
+    <p class="sub" style="margin:0 0 18px">
+      <code>AuthedApp</code> ataja a los seis roles antes de que <code>RoleRouter</code> llegue a su <code>return &lt;AdminView/&gt;</code>. Todo lo que sólo cuelga de ahí es inalcanzable desde cualquier sesión.
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Archivo</th><th class="num">LOC</th><th>Único importador</th><th>Veredicto</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">admin/AdminView.jsx</td><td class="num">150</td><td class="mono">App.jsx (rama muerta)</td><td><span class="pill p-bad">Inalcanzable</span></td></tr>
+          <tr><td class="mono">admin/components/ReplayJornada.jsx</td><td class="num">226</td><td class="mono">AdminView</td><td><span class="pill p-warn">Rescatar</span> — reproduce la jornada como película, no hay equivalente vivo</td></tr>
+          <tr><td class="mono">admin/tabs/MapaOperativo.jsx</td><td class="num">145</td><td class="mono">AdminView</td><td><span class="pill p-bad">Borrar</span> — sólo la consola de eventos es única</td></tr>
+          <tr><td class="mono">admin/RecorridosView.jsx</td><td class="num">140</td><td class="mono">AdminView</td><td><span class="pill p-bad">Borrar</span> — subconjunto de SupervisionDesktop</td></tr>
+          <tr><td class="mono">admin/tabs/RuteoTab.jsx</td><td class="num">112</td><td class="mono">nadie</td><td><span class="pill p-bad">Borrar</span> — andamiaje TSP, ni el padre muerto lo importa</td></tr>
+          <tr><td class="mono">vendedor/tabs/PerfilTab.jsx</td><td class="num">77</td><td class="mono">nadie</td><td><span class="pill p-bad">Borrar</span> — la bottom-nav tiene 3 columnas, no 4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub" style="margin-top:16px">
+      Son <strong>850 líneas</strong> sin ruta de acceso. Los datos que leen están vivos, así que borrarlas es una decisión de producto, no de datos. Rescatar <code>ReplayJornada</code> significa colgarla del menú «Menú» (<code>GestionHost</code>), que es el único camino vivo.
+      <span class="only-tec"> El comentario de <code>VendedorView.jsx:29</code> todavía dice «las 4 pestañas» mientras el grid de la línea 191 es <code>repeat(3,1fr)</code>.</span>
+    </p>
+  </section>
+
+  <footer>
+    <span>DisT-At · auditoría sobre <code>b6d500c</code> · 08/09/2026</span>
+    <span>Base viva <code>lqhtxivednffpiicnbog</code> · 24 tablas con RLS</span>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var bTit = document.getElementById('b-tit');
+  var bTec = document.getElementById('b-tec');
+  function set(tec) {
+    document.body.classList.toggle('v-tec', tec);
+    bTit.setAttribute('aria-pressed', String(!tec));
+    bTec.setAttribute('aria-pressed', String(tec));
+  }
+  bTit.addEventListener('click', function () { set(false); });
+  bTec.addEventListener('click', function () { set(true); });
+})();
+</script>
+</body>
+</html>

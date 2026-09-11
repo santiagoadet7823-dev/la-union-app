@@ -39,6 +39,9 @@ function mapCliente(c) {
     archivado: !!c.archivado_ts,
     idZona: c.id_zona || null,
     idVendedor: c.id_vendedor || null,
+    // La condición de pago pactada con el comercio (db/62). Sin esto el vendedor elegiría lo
+    // mismo cuarenta veces por día, y a la cuadragésima elegiría mal.
+    formaPagoDefault: c.forma_pago_default || null,
   }
 }
 

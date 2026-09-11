@@ -22,7 +22,7 @@ id_usuario  uuid       a nombre de quién quedó emitida
 id_empresa  uuid       🔑 de acá sale el alcance. NUNCA del payload
 creado      timestamptz
 revocado    boolean    default false
-proposito   text       'gps' | 'precios'
+proposito   text       'gps' | 'precios' | 'pedidos'
 ```
 
 ### 🔑 La regla de oro: `id_empresa` sale del TOKEN, nunca del payload
@@ -32,16 +32,23 @@ dice** a qué distribuidora pertenece, y aunque lo dijera, se ignora. La empresa
 el token en la tabla. Un cliente **no puede** escribirle el catálogo a otro ni equivocándose ni
 queriendo.
 
-### Los dos propósitos, y por qué están separados
+### Los tres propósitos, y por qué están separados
 
 | Propósito | Quién lo usa | Qué puede escribir |
 |---|---|---|
 | `gps` | Los 13 teléfonos, vía `ingest-posiciones` | Sus propias posiciones |
 | `precios` | El ERP del cliente, vía `ingest-precios` | El catálogo entero de su empresa |
+| `pedidos` | El ERP del cliente, vía `export-pedidos` | **Nada — sólo LEE.** Se lleva los pedidos a facturar |
 
 `db/48` los separó a propósito: **un token de GPS no puede escribir precios**, y son dos superficies
 muy distintas — una de ellas vive adentro de trece teléfonos que andan por la calle y se pierden.
-El endpoint lo verifica explícitamente (`if (tk.proposito !== 'precios') return 401`).
+Cada endpoint lo verifica explícitamente (`if (tk.proposito !== 'precios') return 401`, y su
+equivalente en `export-pedidos`).
+
+🔴 `pedidos` (db/62, 10/09/2026) **es el único que no escribe nada, y aun así es el más sensible de
+los tres**: es el que expone qué compró cada comercio y a cuánto. Un token de precios **no** puede
+leer la cartera de pedidos — que es justamente por lo que no se reusó el que ya existía. Ver
+`GUIA_EXPORT_PEDIDOS.md`.
 
 ---
 

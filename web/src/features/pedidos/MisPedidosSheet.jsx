@@ -8,6 +8,7 @@ import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
 import EditarPedidoSheet from './EditarPedidoSheet'
 import { usePedidos, itemsDePedido } from './usePedidos'
+import { textoPapelera, porVencer, DIAS_PAPELERA } from './papelera'
 import { pendientesDe } from '../../services/sync/writeQueue'
 
 /**
@@ -64,7 +65,12 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
 
   const { desde, hasta } = useMemo(() => rangoUltimosDias(dias), [dias])
   const userId = user?.id || null
+  /* Dos consultas: lo vivo y la papelera. El vendedor ve sus anulados APARTE y no mezclados en la
+     misma lista (11/09/2026) — mezclados, un día flojo con tres anulaciones se lee como un día
+     normal hasta que uno mira los renglones tachados de a uno. */
   const { pedidos, cargando, error, recargar } = usePedidos({ desde, hasta, idVendedor: userId })
+  const { pedidos: anulados, recargar: recargarAnulados } =
+    usePedidos({ desde, hasta, idVendedor: userId, papelera: true })
 
   // Lo que la cola todavía no subió. Se relee cada vez que se abre la hoja y después de cada
   // acción: entre una lectura y la otra el flush puede haber vaciado la cola, y un pedido que
@@ -80,7 +86,10 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
 
   // Las que ya llegaron a la base se sacan de la lista de "sin subir": la cola puede conservar la
   // entrada un rato más y quedarían las dos.
-  const idsSubidos = useMemo(() => new Set(pedidos.map((p) => p.id)), [pedidos])
+  const idsSubidos = useMemo(
+    () => new Set([...pedidos, ...anulados].map((p) => p.id)),
+    [pedidos, anulados],
+  )
   const pendientes = enCola
     .filter((p) => !idsSubidos.has(p.id))
     .map((p) => ({
@@ -97,14 +106,12 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
   const resumen = useMemo(() => {
     let total = 0
     let n = 0
-    let anulados = 0
     for (const p of lista) {
-      if (p.estado === 'Anulado') { anulados++; continue }
       n++
       total += Number(p.monto_total) || 0
     }
-    return { total, n, anulados }
-  }, [lista])
+    return { total, n, anulados: anulados.length }
+  }, [lista, anulados])
 
   async function abrir(pedido) {
     try {
@@ -118,7 +125,7 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
     }
   }
 
-  function alRecargar() { recargar(); releerCola() }
+  function alRecargar() { recargar(); recargarAnulados(); releerCola() }
 
   return (
     <>
@@ -219,6 +226,61 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
             </div>
           )
         })}
+
+        {/* ── Los anulados, aparte ──────────────────────────────────────────────────────────
+            Abajo y bajo su propio título, no intercalados entre los que sí se vendieron. Lo que el
+            vendedor viene a mirar acá es cuánto hizo; un pedido anulado no es parte de esa respuesta
+            —no suma al total ni al conteo— pero tampoco se puede esconder: él lo anuló, tiene que
+            poder encontrarlo, ver el motivo que escribió y saber hasta cuándo va a estar.
+
+            Sin botón de borrar: `pedidos_del` (db/63) no se lo da al vendedor, y ofrecer un botón
+            que RLS va a rechazar en silencio sería peor que no tenerlo. */}
+        {anulados.length > 0 && (
+          <div style={sx('margin-top:18px')}>
+            <div style={sx('display:flex;align-items:baseline;justify-content:space-between;padding-bottom:6px;border-bottom:1px solid var(--line)')}>
+              <span style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--danger)')}>
+                Anulados ({anulados.length})
+              </span>
+              <span style={sx('font-size:10.5px;color:var(--faint)')}>
+                se borran a los {DIAS_PAPELERA} días
+              </span>
+            </div>
+
+            {anulados.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => abrir(p)}
+                className="lu-press"
+                role="button"
+                style={{
+                  ...sx('display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;opacity:0.72'),
+                  borderBottom: '1px solid var(--line)',
+                }}
+              >
+                <div style={sx('flex:1;min-width:0')}>
+                  <div style={{ ...sx('font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'), textDecoration: 'line-through' }}>
+                    {p.comercio?.name || 'Comercio'}
+                  </div>
+                  <div style={sx('font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--font-mono)')}>
+                    {p.numero ? `#${p.numero} · ` : ''}{fmtFecha(p.created_at)}
+                  </div>
+                  {p.motivo_anulacion && (
+                    <div style={sx('font-size:10.5px;color:var(--danger);margin-top:3px')}>{p.motivo_anulacion}</div>
+                  )}
+                  <div style={{
+                    ...sx('font-size:10.5px;margin-top:2px;font-family:var(--font-mono)'),
+                    color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
+                  }}>
+                    {textoPapelera(p)}
+                  </div>
+                </div>
+                <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);text-decoration:line-through')}>
+                  {fmtPesos(p.monto_total)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Overlay>
 
       <DetallePedido

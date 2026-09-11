@@ -5,6 +5,8 @@ import Overlay from '../../components/Overlay'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import { asignarRepartidor } from '../repartidor/useEntregas'
 import { anularPedido, borrarPedido } from './anularPedido'
+import { yaExportado, MSG_EXPORTADO } from './exportado'
+import { textoPapelera, porVencer } from './papelera'
 
 /**
  * UN PEDIDO ABIERTO, con sus líneas y sus acciones.
@@ -44,16 +46,31 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
   // Un pedido que todavía no subió no se puede anular contra la base: la fila no existe allá. Se
   // dice, en vez de ofrecer un botón que no haría nada.
   const sinSubir = !!pedido?.sinSubir
-  // Los dos cerrojos del borrado son de `pedidos_del` (db/45); acá se repiten SOLO para no ofrecer
-  // un botón que la base va a rechazar en silencio — un DELETE que RLS bloquea afecta cero filas y
+  // Los cerrojos del borrado son de `pedidos_del` (db/63); acá se repiten SOLO para no ofrecer un
+  // botón que la base va a rechazar en silencio — un DELETE que RLS bloquea afecta cero filas y
   // vuelve con éxito, así que sin esto la pantalla diría "borrado" sobre algo que sigue ahí.
-  const puedeBorrar = rol === 'superadmin' && anulado && !sinSubir
+  //
+  // 🩸 EL ENCARGADO Y EL ADMIN TAMBIÉN BORRAN, DESDE EL 11/09/2026. Antes era sólo `superadmin`, y
+  // el resultado práctico fue que la papelera no se vaciaba nunca: el único que podía hacerlo no
+  // está mirando esta pantalla todos los días. Un anulado que no se puede sacar de la vista se
+  // termina resolviendo mal — borrando lo que no hay que borrar, o dejando de anular.
+  //
+  // Acá no se distingue admin de encargado aunque la policy sí lo hace (el encargado sólo alcanza a
+  // su gente): esa parte la resuelve `ids_a_mi_cargo()` en el servidor, y repetir la jerarquía en el
+  // cliente sería tener dos verdades sobre lo mismo. Lo único que se repite es lo que se puede
+  // afirmar sin consultar la base: el rol y el estado del pedido.
+  const puedeBorrar = ['superadmin', 'admin', 'encargado'].includes(rol) && anulado && !sinSubir
   // 🔑 LA VENTANA DE EDICIÓN (03/09/2026): sólo mientras el pedido sigue Pendiente. Cuando el
   // repartidor lo pasa a "En camino" se cierra — nadie corrige lo que ya salió a la calle. Acá se
   // repite la condición de `items_upd`/`items_del` (db/55) SOLO para no ofrecer un botón que la base
   // va a rechazar en silencio; el cerrojo de verdad está allá.
   // Un pedido sin subir tampoco: sus líneas todavía no existen en la base para editarlas.
-  const puedeEditar = !!onEditar && !anulado && !sinSubir && pedido?.estado === 'Pendiente'
+  // 🔑 Y TAMPOCO SE EDITA LO QUE YA SE FACTURÓ (10/09/2026, db/62). Mismo criterio que la línea
+  // de abajo: la base lo impide igual, esto es para no OFRECER un botón que va a fallar. La
+  // diferencia con el resto es que acá el motivo se le DICE al usuario, porque no es obvio —
+  // el pedido sigue Pendiente y sin embargo no se puede tocar.
+  const exportado = yaExportado(pedido)
+  const puedeEditar = !!onEditar && !anulado && !sinSubir && pedido?.estado === 'Pendiente' && !exportado
 
   // Al cambiar de pedido se limpia el formulario. Sin esto, el motivo tipeado para uno quedaría
   // cargado al abrir el siguiente y se anularía el equivocado con el texto del anterior.
@@ -130,7 +147,13 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               style={sx('width:100%;min-height:46px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;background:transparent;color:var(--text);font-size:13.5px;font-weight:600;cursor:pointer')}
             >Ver e imprimir el ticket</button>
 
-            {!anulado && !sinSubir && (
+            {exportado && (
+              <div style={sx('padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--muted);font-size:12.5px;line-height:1.45')}>
+                {MSG_EXPORTADO}
+              </div>
+            )}
+
+            {!anulado && !sinSubir && !exportado && (
               <>
                 <input
                   value={motivo}
@@ -203,6 +226,14 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   Sin registro de quién lo anuló (anterior al 20/08/2026).
                 </div>
               )}
+              {/* Cuándo se lo lleva la purga (`db/63`). Va en el mismo cartel que el motivo porque
+                  es parte de la misma noticia: esto está anulado Y tiene fecha de vencimiento. */}
+              <div style={{
+                ...sx('font-size:11px;margin-top:5px;font-weight:600'),
+                color: porVencer(pedido) ? 'var(--danger)' : 'var(--muted)',
+              }}>
+                {textoPapelera(pedido)}
+              </div>
             </div>
           )}
 

@@ -26,63 +26,57 @@ por empresa**, con formato `lpad(n, 6, '0')`. En la base viva hoy hay `000001`, 
 
 ---
 
-## 2. El export para facturar
+## 2. El export para facturar — CERRADO el 10/09/2026
 
-### Lo que ya está hecho (1.21.0)
+### Ya no es provisorio
 
-Botón **"Exportar para facturar"** en *Pedidos* (`PedidosView`), al lado de los filtros.
-Baja un `.txt` **separado por tabuladores**, UTF-8 con BOM.
+Durante tres semanas esto emitió un formato **inventado**, escrito sin ver un archivo del cliente y
+declarado como tal en su propio encabezado. El 09/09/2026 llegó uno real (`20260909164538.txt`) y el
+layout se rehízo contra él.
 
-- **Exporta exactamente lo que la lista muestra**: mismo rango, misma persona. Si bajara algo
-  distinto de lo que está en pantalla, no habría forma de revisar antes de facturar — y revisar es
-  para lo que sirve esa pantalla.
-- **Los anulados se sacan siempre**, aunque estén visibles. Un pedido anulado no se factura, y
-  mandarlo al otro sistema es justo el error que la anulación viene a evitar.
-- **Una fila por renglón de pedido**, con la cabecera repetida: cada línea trae su propio número de
-  comprobante, así el importador arma la cabecera agrupando y no depende del orden del archivo.
-- Fecha y hora **locales**, nunca UTC: Salta es UTC−3 y un pedido de las 21:30 se iría al día
-  siguiente (regla 23).
-- Los números salen con **punto decimal y sin separador de miles** (`27450.00`). `fmtPesos` acá
-  sería un bug: pondría `$ 27.450,50` y el otro sistema lee `27`.
+**25 campos separados por TAB, sin fila de encabezado**, una fila por renglón con la cabecera
+repetida, `
+`, UTF-8 **sin BOM**. Verificado con `scripts/verificar-formato-pedidos.mjs`:
+**23/23 filas idénticas** fuera de tres campos que no pueden coincidir por diseño.
 
-Columnas actuales:
+Lo que aquella versión acertó: el separador TAB y la forma "una fila por renglón". Lo que no: las
+columnas, el encabezado, el BOM y el formato de fecha.
 
-```
-pedido · fecha · hora · cliente_codigo · cliente · localidad · vendedor
-       · producto_codigo · descripcion · cantidad · precio_unitario · subtotal · estado
-```
+### Lo que hubo que agregarle al sistema
 
-Verificado contra los 3 pedidos reales de la base: el `subtotal` calculado coincide con el
-`monto_total` guardado en los tres (27.450 · 41.000 · 17.100).
+El archivo real mostró cuatro huecos que no se veían antes (db/62):
 
-### 🔴 Es PROVISORIO, y a propósito
+- **forma de pago, fecha de entrega y observaciones** — no existían. El pedido no tenía NINGUNA
+  pantalla de cabecera: el vendedor elegía productos y cantidades y se guardaba derecho. Ahora hay
+  una hoja de confirmación (`ConfirmarPedidoSheet`) con los tres campos, todos opcionales.
+- **cantidad fraccionada** — su archivo trae renglones de `0.5` y `pedido_items.cantidad` era
+  `int`: media unidad no se podía ni cargar, y el export la redondeaba a 1 (facturaba de más, sin
+  error). Ahora es `numeric(10,2)`.
+- **el código de producto** — salía por relación viva contra `productos`, así que un producto
+  borrado dejaba la celda vacía en un comprobante ya vendido. Ahora se copia en la línea, igual que
+  la descripción y el precio.
+- **el código ERP del vendedor** (`perfiles.codigo_erp`), para el campo 3.
 
-**Está hecho sin ver el archivo real del cliente.** Todo lo que puede cambiar —el separador, el
-encabezado, el orden y el nombre de las columnas— vive en dos constantes al tope de
-`web/src/features/pedidos/exportarPedidos.js`. Ajustarlo tiene que ser editar una lista, no
-reescribir la función.
+### El canal automático
 
-### Qué pedirle al cliente
+El botón sigue estando y sirve para REVISAR. Lo que factura de verdad es el canal: el cliente
+ejecuta un comando, su servidor Java pide los pedidos y recibe **sólo lo nuevo desde la vez
+anterior**. Todo documentado en **`GUIA_EXPORT_PEDIDOS.md`**.
 
-Lo que llamó **"asqui"** es casi seguro **ASCII** — así le dicen varios sistemas de gestión
-argentinos (Tango Gestión entre ellos) a su exportación `.txt`, de ancho fijo o separada por tabs.
-Coincide con lo que se vio: *"parece un CSV pero separado por tabs, un poco raro"*.
+⚠️ **El botón no marca los pedidos como enviados**, y es a propósito: si lo hiciera, alguien bajando
+30 días para mirarlos dejaría fuera del ERP todo lo pendiente sin enterarse.
 
-Para cerrar el formato hacen falta cinco cosas:
+### Lo que sigue faltando del cliente
 
-1. **Un archivo de ejemplo real**, con 2 o 3 comprobantes adentro. No una foto de la pantalla: el
-   separador y la codificación no se ven en una captura.
-2. **Qué sistema es** (nombre y versión) y **cómo se llama la opción** que genera ese archivo.
-3. **El layout**: ¿lleva fila de encabezado? ¿Es cabecera + renglones en dos bloques, o una fila por
-   renglón como el nuestro? ¿Los campos van separados o son de ancho fijo?
-4. **Con qué código identifica a sus clientes y a sus productos.** Es lo que tiene que viajar en el
-   archivo para que él pueda importar sin tocar nada.
-   > ⚠️ Ojo con esto: `clientes_codigo_key` es `UNIQUE` **global**, no por empresa. Con dos
-   > distribuidoras vivas en la base ya dejó de ser hipotético.
-5. **La codificación**: si abre bien con acentos, o si espera Latin-1 en vez de UTF-8. Hoy se manda
-   UTF-8 con BOM, que es lo que Excel necesita para no romper los acentos.
+El archivo llegó **sin la fila de encabezados**, así que 11 de los 25 campos son constantes cuyo
+significado es deducción. Por eso ninguna está en el código: viven en `empresas.export_erp` y se
+corrigen con un `update`. La lista completa de lo que falta preguntar está en
+`GUIA_EXPORT_PEDIDOS.md` §8; las dos que importan son el campo 7 (probable forma de pago) y el
+campo 3.
 
----
+> ⚠️ El aviso de que `clientes_codigo_key` era UNIQUE **global** ya no corre: `db/48` lo pasó a
+> único por empresa.
+
 
 ## 3. Quién baja los pedidos del día
 
