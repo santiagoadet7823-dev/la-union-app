@@ -13,7 +13,14 @@ import { cerrarSesionUploader } from '../services/uploaderNativo'
 // null → la app expulsaba a Login. Guardamos la última sesión conocida en el puerto durable
 // (SQLite nativo / localStorage web) y, si getSession falla offline, la restauramos: la app abre
 // igual (modo sin conexión) y se sincroniza sola al volver la red. NO se borra en un SIGNED_OUT
-// transitorio (un refresh fallido offline emite SIGNED_OUT); solo la borra el signOut() explícito.
+// transitorio; solo la borra el signOut() explícito o un rechazo del servidor (ver abajo).
+//
+// ⚠️ 12/09/2026 — con auth-js ≥ 2.110 (el instalado) supabase-js YA conserva su propio storage
+// cuando el refresh falla por RED (cualquier error que no sea una respuesta HTTP es
+// `AuthRetryableFetchError` y no borra nada; el SIGNED_OUT offline era de versiones viejas). Lo que
+// el espejo cubre hoy es OTRA cosa: `getSession()` devuelve `null` igual cuando el token está
+// vencido y no pudo refrescar, y tarda ~25–30 s en decirlo (reintenta con backoff hasta agotar
+// los 30 s del tick). Sin el espejo, en esa ventana no habría con qué abrir la app.
 const SESSION_KEY = 'lu-session-cache'
 const leerCacheSesion = () => persistence.get(SESSION_KEY, null)
 const escribirCacheSesion = (s) => { if (s?.access_token) persistence.set(SESSION_KEY, s) }
@@ -126,9 +133,12 @@ export function AuthProvider({ children }) {
   // sin señal (ver AuthContext/App.jsx: Gate bloquea todo mientras !perfil).
   const cargarPerfil = useCallback(async (userId) => {
     if (!userId) { setPerfil(null); setPerfilError(false); setPerfilLoading(false); return }
+    // 🩸 ANTES del await de la caché, no después (12/09/2026). En el APK esa lectura cruza el puente
+    // de SQLite (y en frío paga la init), y en ese instante había sesión, perfil null y loading
+    // false: el Gate caía en `!aprobado` y mostraba un flash de "Tu cuenta está esperando permiso".
+    setPerfilLoading(true)
     const cached = await leerCachePerfil(userId)
     if (cached) { setPerfil(cached); setPerfilError(false) }
-    setPerfilLoading(true)
     if (!cached) setPerfilError(false)
     try {
       const { data } = await fetchPerfil(userId)
@@ -145,8 +155,31 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!hasSupabase) { setLoading(false); return }
     let active = true
+    // `true` cuando getSession() ya contestó (con sesión o sin ella). Lo mira el safety de abajo.
+    let sesionResuelta = false
     // Red de seguridad: nunca quedarse trabado en "Cargando…".
-    const safety = setTimeout(() => { if (active) setLoading(false) }, 6000)
+    //
+    // 🩸 Y SI HAY ESPEJO, ABRE CON EL ESPEJO — no suelta a Login (12/09/2026). Al reabrir sin señal
+    // con el token vencido, getSession() tarda ~25–30 s en devolver null (supabase-js reintenta el
+    // refresh con backoff hasta agotar el tick de 30 s). Hasta hoy este timeout bajaba `loading` a
+    // los 6 s con `session` todavía null, así que el Gate mostraba la pantalla de INGRESO durante
+    // ~20 s a un vendedor que estaba logueado; si tocaba "Continuar como…" sin red caía al cartel de
+    // "Sin conexión", y recién después la app abría sola. Eso era "el modo offline no permanece".
+    // Ahora a los 6 s se aplica el espejo (el mismo trío que `restaurarDesdeEspejo`, sin llamar a
+    // `supabase.auth.setSession`: el refresh de supabase-js ya está en curso). La cadena de
+    // getSession() sigue y refina: sesión fresca → la pisa (y `authEpoch` recarga lo que falló);
+    // null → `restaurarDesdeEspejo` decide si el servidor la rechazó. Con red normal getSession()
+    // contesta en menos de 6 s y nada de esto corre.
+    const safety = setTimeout(async () => {
+      if (!active || sesionResuelta) return
+      const cached = await leerCacheSesion()
+      if (active && !sesionResuelta && cached) {
+        tokenDegradadoRef.current = cached.access_token
+        setSession(cached)
+        cargarPerfil(cached.user?.id)
+      }
+      if (active) setLoading(false)
+    }, 6000)
 
     // Restaura la sesión espejada cuando getSession no la devuelve (offline / refresh fallido).
     // Setea el estado de React para que el Gate pase, y le pasa los tokens a supabase-js para que
@@ -155,8 +188,13 @@ export function AuthProvider({ children }) {
     const restaurarDesdeEspejo = async () => {
       const cached = await leerCacheSesion()
       if (!cached || !active) return null
-      setSession(cached)
-      cargarPerfil(cached.user?.id)
+      // Si el safety de los 6 s ya abrió con este mismo espejo, no repetir el trío: sería otra
+      // lectura de SQLite y otros tres intentos de fetchPerfil sin red. Lo que sigue (setSession de
+      // supabase-js y la decisión de rechazo) sí corre siempre.
+      if (tokenDegradadoRef.current !== cached.access_token) {
+        setSession(cached)
+        cargarPerfil(cached.user?.id)
+      }
       // 🩸 EL `await` NO ES COSMÉTICO (18/08/2026). Hasta hoy este `setSession` salía sin esperar y
       // con el error tragado, así que el Gate dejaba pasar a la app con el token VENCIDO del
       // espejo. Todas las pantallas montan y disparan sus consultas en ese instante — perfiles,
@@ -194,8 +232,13 @@ export function AuthProvider({ children }) {
     }
 
     supabase.auth.getSession().then(async ({ data }) => {
+      sesionResuelta = true
       if (!active) return
       if (data.session) {
+        // Si el safety ya abrió con el espejo y este es el MISMO token (llegó lento pero vivo), el
+        // arranque no fue degradado: sin esto, el próximo refresco rutinario subiría authEpoch al
+        // vicio y recargaría la jornada entera.
+        if (tokenDegradadoRef.current === data.session.access_token) tokenDegradadoRef.current = null
         escribirCacheSesion(data.session)
         setSession(data.session)
         cargarPerfil(data.session.user?.id) // en background
@@ -207,6 +250,7 @@ export function AuthProvider({ children }) {
       setLoading(false) // NO esperamos el perfil (offline-first)
       clearTimeout(safety)
     }).catch(async () => {
+      sesionResuelta = true
       if (!active) return
       await restaurarDesdeEspejo()
       setLoading(false)
