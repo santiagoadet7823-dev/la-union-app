@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
+import { codigoOcupado } from '../../../lib/codigoCliente'
 import { useTheme } from '../../../context/ThemeContext'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useAuth } from '../../../context/AuthContext'
@@ -33,7 +34,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const { theme } = useTheme()
   const { idEmpresa } = useAuth()
   const base = useEmpresaBase(idEmpresa) // dónde abre el mini-mapa si el cliente no tiene ubicación
-  const { zonas, updateCliente, deleteCliente } = useCatalog()
+  const { zonas, clientesTodos, updateCliente, deleteCliente } = useCatalog()
 
   // Estado inicializado del cliente. Al remontar por `key`, arranca limpio.
   const [geoRadio, setGeoRadio] = useState(fc.geofence || 75)
@@ -58,6 +59,11 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
 
   const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)')
 
+  // Otro cliente (vigente o archivado) que ya usa el código escrito. Se bloquea el guardado: el
+  // índice único de la base rechazaría el update con 23505 y la cola lo mandaría a cuarentena
+  // después de que la pantalla dijo "actualizado". Ver lib/codigoCliente.js.
+  const ocupadoPor = useMemo(() => codigoOcupado(codigoEdit, clientesTodos, fc.id), [codigoEdit, clientesTodos, fc.id])
+
   async function guardarUbicacion() {
     if (!puntoNuevo) return
     setSavingLoc(true)
@@ -69,6 +75,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   }
 
   async function guardar() {
+    if (puedeEditar && ocupadoPor) { onToast(`El código ${codigoEdit.trim()} ya lo usa ${ocupadoPor.name}`); return }
     setGuardando(true)
     const dias_visita = DIAS.filter((d) => diasSel[d]).join(' · ')
     const patch = { geofence_radio: geoRadio, dias_visita: dias_visita || null, frecuencia: freqSel }
@@ -119,7 +126,12 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
           <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>
             <div>
               <div style={fieldLabel}>Código</div>
-              <input value={codigoEdit} onChange={(e) => setCodigoEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
+              <input value={codigoEdit} onChange={(e) => setCodigoEdit(e.target.value)} placeholder="—" className="lu-input" style={{ ...inp, ...(ocupadoPor ? { borderColor: 'var(--danger)' } : null) }} aria-invalid={!!ocupadoPor} />
+              {ocupadoPor && (
+                <div style={sx('margin-top:5px;font-size:11px;color:var(--danger);font-weight:600;line-height:1.4')}>
+                  Ya lo usa {ocupadoPor.name}{ocupadoPor.archivado ? ' (archivado)' : ''}.
+                </div>
+              )}
             </div>
             <div>
               <div style={fieldLabel}>Localidad</div>

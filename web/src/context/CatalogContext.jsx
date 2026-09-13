@@ -480,20 +480,48 @@ export function CatalogProvider({ children }) {
    * cargado a mano (en particular NO toca lat/lng salvo que vengan). Los duplicados DENTRO del
    * mismo lote sí se saltan (no tiene sentido aplicar dos veces la misma fila). Offline-first.
    *
-   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?}>} rows
-   * @returns {{insertados:number, actualizados:number, saltados:number, avisos:string[]}}
+   * El pareo va por `codigoKey()` —igual que `importProductos` y que `codigo_norm()` en la base—
+   * y no por el string crudo: `0041` y `41` son el mismo cliente para el índice único, así que
+   * tienen que serlo también acá o el insert revienta con 23505.
+   *
+   * ARCHIVADO desde la planilla (12/09/2026). La planilla que se baja desde Clientes trae la
+   * columna `archivado` (si/no) para que el ida y vuelta sea seguro:
+   *   - `archivado: true`  sobre un vigente  → se archiva.
+   *   - `archivado: false` o `null` (la columna no vino) sobre un archivado → VUELVE a la cartera.
+   *     Misma regla que productos: si la planilla lo nombra, está vigente salvo que diga lo
+   *     contrario. Un archivado que reaparece en la lista del ERP es un comercio que volvió.
+   *
+   * 🩸 `listaCompleta` NO ES UN DETALLE DE UI. Con la opción prendida, todo cliente vigente CON
+   * código que NO venga en la planilla se ARCHIVA (`archivado_ts`). Es lo que hace que borrar una
+   * fila en Excel y volver a subir la planilla saque al cliente del sistema — y es una catástrofe
+   * si alguien sube una planilla de 10 filas para corregir 10 teléfonos. Por eso viene en `false`
+   * y la pantalla lo pide explícito, con el número de bajas contado ANTES de confirmar.
+   *
+   * Se ARCHIVA y no se borra: `pedidos.id_cliente` y `visitas.id_cliente` son FK sin ON DELETE,
+   * así que un DELETE de un cliente con historial falla (23503) y va a cuarentena. Archivar es
+   * reversible desde el filtro "archivados" y no pierde nada.
+   *
+   * Solo alcanza a los que TIENEN código: un cliente sin código nunca estuvo en ninguna lista, así
+   * que su ausencia no prueba nada.
+   *
+   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?, archivado?: boolean|null}>} rows
+   * @param {{listaCompleta?: boolean}} [opts]
+   * @returns {{insertados:number, actualizados:number, archivados:number, desarchivados:number, saltados:number, avisos:string[]}}
    */
-  const importClientes = useCallback(async (rows) => {
+  const importClientes = useCallback(async (rows, { listaCompleta = false } = {}) => {
     // Map codigo→cliente (con su id) para poder ACTUALIZAR, no solo detectar duplicado.
     const porCodigo = new Map()
-    clientes.forEach((c) => { const k = (c.codigo || '').trim().toLowerCase(); if (k) porCodigo.set(k, c) })
+    clientes.forEach((c) => { const k = codigoKey(c.codigo); if (k) porCodigo.set(k, c) })
     const vistosEnLote = new Set()
     const avisos = []
     const nuevos = []
     const updates = [] // { id, patch }
+    const ahora = new Date().toISOString()
+    let archivados = 0
+    let desarchivados = 0
     for (const r of rows || []) {
       const cod = (r.codigo || '').trim()
-      const codKey = cod.toLowerCase()
+      const codKey = codigoKey(cod)
       if (codKey && vistosEnLote.has(codKey)) {
         avisos.push(`Código repetido en la planilla, se saltó: ${cod}`)
         continue
@@ -502,19 +530,28 @@ export function CatalogProvider({ children }) {
 
       const existente = codKey ? porCodigo.get(codKey) : null
       if (existente) {
-        // UPDATE parcial: solo columnas con dato en la planilla (no pisar con vacío).
+        // UPDATE parcial: solo columnas con dato en la planilla (no pisar con vacío) Y que sean
+        // distintas de lo que ya hay. Lo segundo importa desde que existe "Descargar planilla":
+        // bajar la cartera y volver a subirla sin tocar nada es un gesto normal, y sin este diff
+        // eran 2.001 updates idénticos entrando a la cola de escrituras para no cambiar nada.
         const patch = {}
-        if (r.nombre_comercio) patch.nombre_comercio = r.nombre_comercio
-        if (r.localidad) patch.localidad = r.localidad
-        if (r.dias_visita) patch.dias_visita = r.dias_visita
-        if (r.frecuencia) patch.frecuencia = r.frecuencia
-        if (r.horario) patch.horario = r.horario
-        if (r.telefono) patch.telefono = r.telefono
-        if (r.contacto) patch.contacto = r.contacto
-        if (r.id_zona) patch.id_zona = r.id_zona
-        if (r.id_vendedor) patch.id_vendedor = r.id_vendedor
-        if (r.lat != null) patch.lat = r.lat
-        if (r.lng != null) patch.lng = r.lng
+        const pon = (col, valor, actual) => { if (valor && valor !== actual) patch[col] = valor }
+        pon('nombre_comercio', r.nombre_comercio, existente.name)
+        pon('localidad', r.localidad, existente.loc)
+        pon('dias_visita', r.dias_visita, existente.dias)
+        pon('frecuencia', r.frecuencia, existente.frecuencia)
+        pon('horario', r.horario, existente.horario)
+        pon('telefono', r.telefono, existente.telefono)
+        pon('contacto', r.contacto, existente.contacto)
+        pon('id_zona', r.id_zona, existente.idZona)
+        pon('id_vendedor', r.id_vendedor, existente.idVendedor)
+        if (r.lat != null && r.lat !== existente.lat) patch.lat = r.lat
+        if (r.lng != null && r.lng !== existente.lng) patch.lng = r.lng
+        if (r.archivado === true) {
+          if (!existente.archivado) { patch.archivado_ts = ahora; archivados++ }
+        } else if (existente.archivado) {
+          patch.archivado_ts = null; desarchivados++
+        }
         if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
         continue
       }
@@ -535,8 +572,28 @@ export function CatalogProvider({ children }) {
         id_vendedor: r.id_vendedor || null,
         id_zona: r.id_zona || null,
         activo: true, // importación de admin → confirmados
+        // Puede nacer archivado: el ERP ya lo tiene dado de baja pero lo lista igual.
+        archivado_ts: r.archivado === true ? ahora : null,
       })
     }
+
+    // Bajas por ausencia. Va DESPUÉS del recorrido completo porque la pregunta es "¿este código
+    // apareció en ALGUNA fila?", no "¿apareció en la que estoy mirando?".
+    //
+    // 🩸 Va por UN `updateMany`, no por N `update` (regla de writeQueue.js): una acción de lote que
+    // encole 200 mutaciones sueltas puede empujar fuera de la ventana de 2.000 escrituras más
+    // viejas todavía sin subir, y se pierden calladas.
+    const idsAusentes = []
+    if (listaCompleta) {
+      for (const c of clientes) {
+        const k = codigoKey(c.codigo)
+        if (!k || vistosEnLote.has(k) || c.archivado) continue
+        idsAusentes.push(c.id)
+      }
+      const sinCodigo = clientes.filter((c) => !c.archivado && !codigoKey(c.codigo)).length
+      if (sinCodigo) avisos.push(`${sinCodigo} cliente(s) sin código: quedan en la cartera (no se pueden cruzar con la planilla)`)
+    }
+
     // Aplicar altas (optimista + encolar).
     if (nuevos.length) {
       setClientes((prev) => [...prev, ...nuevos.map(mapCliente)].sort((a, b) => a.name.localeCompare(b.name)))
@@ -558,17 +615,33 @@ export function CatalogProvider({ children }) {
         if ('dias_visita' in p) v.dias = p.dias_visita || ''
         if ('frecuencia' in p) v.frecuencia = p.frecuencia || ''
         if ('horario' in p) v.horario = p.horario || ''
+        if ('telefono' in p) v.telefono = p.telefono || ''
+        if ('contacto' in p) v.contacto = p.contacto || ''
         if ('lat' in p) v.lat = p.lat ?? null
         if ('lng' in p) v.lng = p.lng ?? null
+        if ('archivado_ts' in p) v.archivado = !!p.archivado_ts
         return { ...c, ...v }
       }).sort((a, b) => a.name.localeCompare(b.name)))
       for (const u of updates) {
         await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'update', id: u.id, payload: u.patch })
       }
     }
-    if (nuevos.length || updates.length) flushMutaciones()
+    if (idsAusentes.length) {
+      const set = new Set(idsAusentes)
+      setClientes((prev) => prev.map((c) => (set.has(c.id) ? { ...c, archivado: true } : c)))
+      await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'updateMany', ids: idsAusentes, payload: { archivado_ts: ahora } })
+    }
+    if (nuevos.length || updates.length || idsAusentes.length) flushMutaciones()
     const total = rows?.length || 0
-    return { insertados: nuevos.length, actualizados: updates.length, saltados: total - nuevos.length - updates.length, avisos }
+    return {
+      insertados: nuevos.length,
+      actualizados: updates.length,
+      // Los que se archivan: los que la planilla marcó + los que faltaron (si era la lista completa).
+      archivados: archivados + idsAusentes.length,
+      desarchivados,
+      saltados: total - nuevos.length - updates.length,
+      avisos,
+    }
   }, [idEmpresa, clientes])
 
   /** Edición de zona (nombre/color), offline-first. */

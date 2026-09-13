@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { buscarParecidos, motivoTexto } from '../../lib/texto'
+import { primerCodigoLibre, codigoOcupado } from '../../lib/codigoCliente'
 import { useCatalog } from '../../context/CatalogContext'
 import { useTheme } from '../../context/ThemeContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
@@ -47,6 +48,14 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     [nombre, clientesTodos, punto],
   )
 
+  // CÓDIGO (12/09/2026). El código lo emite el ERP de la distribuidora, así que acá NO se precarga:
+  // se SUGIERE el primer hueco libre desde el 1 (los archivados cuentan como ocupados) con un botón
+  // para usarlo, y se avisa que hay que verificarlo contra el ERP. Lo que sí se bloquea es guardar
+  // un código que ya está en uso: el índice único de la base lo rechazaría con 23505 y la cola lo
+  // mandaría a cuarentena — la pantalla diría "agregado" y el cliente no existiría.
+  const sugerido = useMemo(() => primerCodigoLibre(clientesTodos), [clientesTodos])
+  const ocupadoPor = useMemo(() => codigoOcupado(codigo, clientesTodos), [codigo, clientesTodos])
+
   async function usarMiUbicacion() {
     setLocBusy(true)
     try {
@@ -62,6 +71,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
 
   async function guardar() {
     if (!nombre.trim()) { onToast?.('Poné el nombre del comercio'); return }
+    if (ocupadoPor) { onToast?.(`El código ${codigo.trim()} ya lo usa ${ocupadoPor.name}`); return }
     if (!punto) { onToast?.('Marcá la ubicación en el mapa'); return }
     setSaving(true)
     const diasStr = DIAS.filter((d) => dias[d]).join(' · ')
@@ -145,9 +155,30 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
         </div>
       )}
       <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
-        <Field label="Código (opcional)"><input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="CLI-005" style={inputStyle} className="lu-input" /></Field>
+        <Field label="Código (opcional)">
+          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="El que tiene en el ERP" inputMode="numeric" style={{ ...inputStyle, ...(ocupadoPor ? { borderColor: 'var(--danger)' } : null) }} className="lu-input" aria-invalid={!!ocupadoPor} />
+        </Field>
         <Field label="Localidad"><input value={localidad} onChange={(e) => setLocalidad(e.target.value)} style={inputStyle} className="lu-input" /></Field>
       </div>
+      {/* Sugerencia y colisión del código. Una sola línea debajo de la grilla, para no
+          desalinear las dos columnas. */}
+      {ocupadoPor ? (
+        <div style={sx('margin:-6px 0 12px;display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--danger);font-weight:600;line-height:1.4')}>
+          <Alerta size={14} w={2.2} style={{ flex: 'none' }} />
+          <span>El código {codigo.trim()} ya lo usa <b>{ocupadoPor.name}</b>{ocupadoPor.archivado ? ' (archivado)' : ''}. Elegí otro.</span>
+        </div>
+      ) : (
+        <div style={sx('margin:-6px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-xs);color:var(--muted);line-height:1.4')}>
+          <span>Libre en DisT-At: <b style={sx('font-family:var(--font-mono);color:var(--deep)')}>{sugerido}</b></span>
+          {codigo.trim() !== sugerido && (
+            <button type="button" onClick={() => setCodigo(sugerido)} className="lu-press"
+              style={sx('border:1px solid var(--line2);background:var(--surface2);color:var(--deep);border-radius:var(--r-sm);padding:4px 9px;font-size:var(--fs-2xs);font-weight:700;cursor:pointer')}>
+              Usar
+            </button>
+          )}
+          <span style={sx('color:var(--faint)')}>· Verificalo con el ERP: acá sólo se ven los códigos cargados en la app (los archivados cuentan como ocupados).</span>
+        </div>
+      )}
 
       <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
         <Field label="Teléfono"><input value={telefono} onChange={(e) => setTelefono(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="3877 123456" style={inputStyle} className="lu-input" /></Field>

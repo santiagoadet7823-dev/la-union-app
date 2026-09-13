@@ -4,10 +4,12 @@ import { sx } from '../../../lib/sx'
 import { useDevice } from '../../../context/DeviceContext'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useAuth } from '../../../context/AuthContext'
+import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
 import ImportarClientes from '../ImportarClientes'
+import { exportarClientes } from '../exportarClientes'
 import FichaCliente from './FichaCliente'
 import { panel, label10, cliGrid, miniLbl, EmptyState } from '../ui'
-import { Check, Mas, Search } from '../../../components/icons'
+import { Bajar, Check, Mas, Search } from '../../../components/icons'
 
 /**
  * Pestaña "Clientes": cartera real (tabla en PC / tarjetas en teléfono). La ficha
@@ -31,8 +33,13 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   // ninguna pantalla que muestre "qué pasó con la cartera". Es una acción de dueño del sistema.
   const puedeArchivar = rol === 'superadmin'
 
+  // Nombres del equipo, para la columna informativa `vendedor` de la planilla exportada.
+  const perfiles = usePerfilesEquipo()
+
   const [selCli, setSelCli] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [descargaOpen, setDescargaOpen] = useState(false) // elección xlsx / csv
+  const [descargando, setDescargando] = useState(false)
   const [soloSinUbicar, setSoloSinUbicar] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [verArchivados, setVerArchivados] = useState(false)
@@ -81,6 +88,15 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
     onToast(verArchivados
       ? `${n} cliente${n === 1 ? '' : 's'} devuelto${n === 1 ? '' : 's'} a la cartera`
       : `${n} cliente${n === 1 ? '' : 's'} archivado${n === 1 ? '' : 's'}`)
+  }
+
+  // Baja la cartera COMPLETA (archivados incluidos, con su columna) para editarla en Excel y
+  // volver a subirla por "Importar planilla". Ver exportarClientes.js.
+  async function descargar(formato) {
+    setDescargaOpen(false)
+    setDescargando(true)
+    await exportarClientes({ clientes: clientesTodos, zonas, perfiles, formato, onToast })
+    setDescargando(false)
   }
 
   // La ficha del cliente `c`, si es el abierto. `key` fuerza el remonte al cambiar
@@ -151,6 +167,23 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                 {seleccionando ? 'Cancelar' : 'Seleccionar'}
               </button>
             )}
+            {/* Descargar planilla. La elección de formato es un menú chico inline (dos botones),
+                no un Overlay: son dos opciones y se elige de un toque. */}
+            <div style={sx('position:relative')}>
+              <button onClick={() => setDescargaOpen((v) => !v)} disabled={descargando || cartera.length === 0} className="lu-press" aria-expanded={descargaOpen}
+                style={{ ...sx('display:flex;align-items:center;gap:7px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:var(--r-md);padding:9px 13px;font-size:12.5px;font-weight:600;cursor:pointer'), opacity: descargando ? 0.6 : 1 }}>
+                <Bajar size={13} />{descargando ? 'Generando…' : 'Descargar planilla'}
+              </button>
+              {descargaOpen && (
+                <div style={{ ...sx('position:absolute;top:calc(100% + 6px);right:0;display:flex;flex-direction:column;min-width:170px;padding:6px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);box-shadow:0 8px 24px rgba(0,0,0,.18)'), zIndex: 'var(--z-popover)' }}>
+                  <button onClick={() => descargar('xlsx')} className="lu-press" style={sx('text-align:left;background:transparent;border:none;border-radius:var(--r-sm);padding:9px 10px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer')}>Excel (.xlsx)</button>
+                  <button onClick={() => descargar('csv')} className="lu-press" style={sx('text-align:left;background:transparent;border:none;border-radius:var(--r-sm);padding:9px 10px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer')}>CSV (.csv)</button>
+                  <div style={sx('padding:6px 10px 4px;font-size:10.5px;color:var(--faint);line-height:1.4;border-top:1px solid var(--line);margin-top:4px')}>
+                    Incluye archivados, con su columna. Editala y volvé a subirla por “Importar planilla”.
+                  </div>
+                </div>
+              )}
+            </div>
             <button onClick={() => setImportOpen(true)} className="lu-press" style={sx('display:flex;align-items:center;gap:7px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:var(--r-md);padding:9px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 21h14" /></svg>Importar planilla
             </button>
