@@ -40,6 +40,7 @@ import InvitarModal from '../../components/InvitarModal'
 // chunk inicial de esta pantalla sigue siendo el pulso del período y nada más.
 import DespachoGestion from '../supervision/components/DespachoGestion'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
+import { marcadoresCartera } from '../../lib/marcadoresCartera'
 
 // Modales de alta que abren Clientes y Catálogo. Van por Overlay (--z-modal, 500), o sea por
 // encima del GestionHost (--z-screen, 400) — mismo apilamiento que en SupervisionMovil.
@@ -122,7 +123,7 @@ export default function PanelDireccion() {
   const { idEmpresaActiva } = useTenant()
   const base = useEmpresaBase(idEmpresaActiva)
   const avisos = useAlertasEquipo()
-  const { clientes: cartera } = useCatalog()
+  const { clientes: cartera, zonas } = useCatalog()
   // Trazos del día para el mapa y para el detalle de persona. Es la ÚNICA consulta que baja puntos
   // crudos: los números salen todos de la RPC agregada.
   const { byUser: byUserCrudo } = useRecorridosDelDia(fechaMapa, idEmpresaActiva, esHoy)
@@ -252,10 +253,7 @@ export default function PanelDireccion() {
     bubble: true, foto: fotos[mv.id], ts: mv.ts,
   })) : []), [esHoy, moversArr, nombres, fotos])
 
-  const clientMarkers = useMemo(
-    () => (cartera || []).filter((c) => c.lat != null && c.lng != null).map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name || c.nombre_comercio })),
-    [cartera]
-  )
+  const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
 
   const dwells = useMemo(
     () => (dwellOn ? calcularDwells(byUser, SIN_FILTRO, cartera) : []),

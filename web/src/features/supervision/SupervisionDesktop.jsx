@@ -29,6 +29,7 @@ import DespachoGestion from './components/DespachoGestion'
 import ThemeToggle from '../../components/ThemeToggle'
 import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
 import { APP_VERSION } from '../../version'
+import { marcadoresCartera } from '../../lib/marcadoresCartera'
 
 /**
  * Shell de ESCRITORIO (PWA / .exe) para los roles de supervisión: replica las
@@ -130,11 +131,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada para que su
   // referencia sea estable entre ticks y LeafletMap no la re-dibuje cada segundo.
-  const { clientes: cartera } = useCatalog()
-  const clientMarkers = useMemo(
-    () => (cartera || []).filter((c) => c.lat != null && c.lng != null).map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name || c.nombre_comercio })),
-    [cartera]
-  )
+  const { clientes: cartera, zonas } = useCatalog()
+  const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {

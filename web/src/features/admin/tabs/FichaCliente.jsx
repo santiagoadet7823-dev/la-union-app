@@ -157,7 +157,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
               <div style={fieldLabel}>Zona</div>
               <select value={zonaEdit || ''} onChange={(e) => setZonaEdit(e.target.value || null)} className="lu-input" style={{ ...inp, cursor: 'pointer' }}>
                 <option value="">Sin zona</option>
-                {zonas.map((z) => <option key={z.id} value={z.id}>{z.numero != null ? `Z${z.numero} · ` : ''}{z.nombre}</option>)}
+                {zonas.map((z) => <option key={z.id} value={z.id}>{z.numero != null ? `Z${z.numero} · ` : ''}{z.abrev ? `${z.abrev} · ` : ''}{z.nombre}</option>)}
               </select>
             </div>
           </div>

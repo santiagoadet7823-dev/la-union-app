@@ -13,6 +13,7 @@ import GestionarCategorias from '../../catalog/GestionarCategorias'
 import EstadoCatalogo from '../../catalog/EstadoCatalogo'
 import { descargarArchivo } from '../../../services/download'
 import { Bajar, Basura, Editar, ImagenVacia, Mas, Subir } from '../../../components/icons'
+import AvisoScopeCatalogo from '../../../components/AvisoScopeCatalogo'
 
 // Grilla del catálogo (escritorio): foto · código · descripción · categoría · precio · unid. · nivel · acciones.
 // El CÓDIGO va visible y temprano: es la llave con la que se parean las fotos (el archivo se
@@ -300,7 +301,8 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   }
 
   return (
-    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+      <AvisoScopeCatalogo />
       <div style={{ ...panel, minWidth: isMobile ? 0 : 760 }}>
         {/* Va ARRIBA de la barra de acciones, no al pie: es lo que hay que ver ANTES de cargar algo.
             Ver el encabezado del componente — los dos números que faltaban cuando la cola se tapó. */}

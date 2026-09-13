@@ -462,7 +462,7 @@ export function CatalogProvider({ children }) {
   const addZona = useCallback(async (z) => {
     const row = {
       id: uid(), id_empresa: idEmpresa, nombre: z.nombre, color: z.color || null,
-      numero: z.numero ?? null, id_vendedor: z.id_vendedor || null,
+      numero: z.numero ?? null, id_vendedor: z.id_vendedor || null, abrev: z.abrev || null,
     }
     setZonas((prev) => [...prev, row].sort((a, b) => a.nombre.localeCompare(b.nombre)))
     await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'insert', payload: row })
@@ -644,13 +644,57 @@ export function CatalogProvider({ children }) {
     }
   }, [idEmpresa, clientes])
 
-  /** Edición de zona (nombre/color), offline-first. */
-  const updateZona = useCallback(async (id, patch) => {
+  /**
+   * Edición de zona (número, abreviatura, nombre, color, vendedor), offline-first.
+   *
+   * `propagarVendedor`: "la zona lleva el vendedor" — pero hasta el 13/09/2026 cambiar el dueño de
+   * una zona sólo tocaba la fila de `zonas`, y los clientes que YA estaban en ella quedaban con el
+   * vendedor viejo (sólo heredaban los importados después). Con esta opción los clientes de la zona
+   * —vigentes y archivados, para que uno que vuelva no quede con dueño viejo— pasan al vendedor
+   * nuevo en UN `updateMany` (regla de writeQueue: nunca un `for` de updates para un lote).
+   */
+  const updateZona = useCallback(async (id, patch, { propagarVendedor = false } = {}) => {
     setZonas((prev) => prev.map((z) => (z.id === id ? { ...z, ...patch } : z)).sort((a, b) => a.nombre.localeCompare(b.nombre)))
     await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'update', id, payload: patch })
+    let movidos = 0
+    if (propagarVendedor && 'id_vendedor' in patch) {
+      const idVendedor = patch.id_vendedor || null
+      const ids = clientes.filter((c) => c.idZona === id && (c.idVendedor || null) !== idVendedor).map((c) => c.id)
+      if (ids.length) {
+        const set = new Set(ids)
+        setClientes((prev) => prev.map((c) => (set.has(c.id) ? { ...c, idVendedor } : c)))
+        await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'updateMany', ids, payload: { id_vendedor: idVendedor } })
+        movidos = ids.length
+      }
+    }
     flushMutaciones()
-    return { ok: true }
-  }, [])
+    return { ok: true, movidos }
+  }, [clientes])
+
+  /**
+   * Borrar una zona. Sus clientes (vigentes y archivados) van a `moverA` —y heredan el vendedor
+   * dueño de esa zona, mismo criterio que la ficha— o quedan sin zona CONSERVANDO su vendedor: que
+   * nadie pierda cartera por borrar una zona. Un solo `updateMany` y después el delete.
+   *
+   * En la base `clientes.id_zona` y `perfiles.id_zona` son `ON DELETE SET NULL`, así que el delete
+   * nunca falla por FK; y aunque drenara antes que el updateMany, éste vuelve a poner `id_zona`.
+   */
+  const deleteZona = useCallback(async (id, { moverA = null } = {}) => {
+    const destino = moverA ? zonas.find((z) => z.id === moverA) || null : null
+    const idZona = destino ? destino.id : null
+    const afectados = clientes.filter((c) => c.idZona === id)
+    if (afectados.length) {
+      const ids = afectados.map((c) => c.id)
+      const set = new Set(ids)
+      const payload = destino ? { id_zona: idZona, id_vendedor: destino.id_vendedor || null } : { id_zona: null }
+      setClientes((prev) => prev.map((c) => (set.has(c.id) ? { ...c, idZona, ...(destino ? { idVendedor: destino.id_vendedor || null } : {}) } : c)))
+      await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'updateMany', ids, payload })
+    }
+    setZonas((prev) => prev.filter((z) => z.id !== id))
+    await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'delete', id })
+    flushMutaciones()
+    return { ok: true, movidos: afectados.length }
+  }, [zonas, clientes])
 
   // ---------- Categorías (gestionadas por empresa) ----------
   /** Alta de categoría, offline-first. */
@@ -890,7 +934,7 @@ export function CatalogProvider({ children }) {
   const productosVigentes = useMemo(() => productos.filter((p) => !p.descontinuado), [productos])
 
   return (
-    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, catalogoMeta, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, addCategoria, updateCategoria, deleteCategoria }}>
+    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, catalogoMeta, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, deleteZona, addCategoria, updateCategoria, deleteCategoria }}>
       {children}
     </CatalogContext.Provider>
   )

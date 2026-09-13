@@ -363,6 +363,23 @@ const GLIFO_FIN = '<span style="width:5px;height:5px;background:#fff;border-radi
 const inicioIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_INICIO })
 const finIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_FIN })
 
+/** Zoom desde el cual la capa de clientes muestra la abreviatura de la zona en vez del punto. */
+const ZOOM_CHIP_ZONA = 14
+
+/**
+ * Chip de la capa de clientes: la abreviatura de la zona (2 letras) sobre el color de la zona.
+ * Mismo esquema que `hitoIcon`: estilos inline y anclado al centro, para que el chip quede sobre
+ * la coordenada exacta como el circleMarker al que reemplaza.
+ */
+function zonaChipIcon({ abrev, color, stroke }) {
+  return L.divIcon({
+    className: 'lu-zona-chip',
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;background:${color};color:#fff;border:1px solid ${stroke};border-radius:4px;padding:1px 4px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:700;line-height:1.3;letter-spacing:.04em;box-shadow:0 1px 3px rgba(0,0,0,.35)">${esc(abrev)}</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  })
+}
+
 export default function LeafletMap({
   theme = 'dark',
   center = CENTRO_DEFECTO,
@@ -1126,21 +1143,39 @@ export default function LeafletMap({
 
   // Capa de clientes (contexto). Efecto SEPARADO del redibujo de overlays: `clients` llega
   // memoizado desde la vista, así que su referencia es estable entre ticks y este efecto no se
-  // dispara cada segundo aunque haya 2.000 puntos. Puntito chico y neutro, distinto de los
-  // móviles en vivo (círculos grandes de color). No modifica el encuadre.
+  // dispara cada segundo aunque haya 2.000 puntos. Puntito chico, distinto de los móviles en vivo
+  // (círculos grandes de color). No modifica el encuadre.
+  //
+  // Cada punto lleva el COLOR de su zona (`marcadoresCartera`), y desde ZOOM_CHIP_ZONA se
+  // reemplaza por un chip con la ABREVIATURA de la zona (LJ, GA…): de lejos 686 chips se
+  // amontonan y tapan el recorrido, de cerca es lo que permite ver de qué zona es cada comercio.
+  // Se redibuja SÓLO cuando el zoom cruza el umbral, no en cada paso.
   useEffect(() => {
     const map = mapRef.current
     const layer = clientsLayerRef.current
     if (!map || !layer) return
-    layer.clearLayers()
-    const fill = theme === 'dark' ? '#94A3B8' : '#475569'
+    const neutro = theme === 'dark' ? '#94A3B8' : '#475569'
     const stroke = theme === 'dark' ? '#0B2B2A' : '#ffffff'
-    ;(clients || []).forEach((cl) => {
-      if (cl.lat == null || cl.lng == null) return
-      const m = L.circleMarker([cl.lat, cl.lng], { radius: 4, color: stroke, weight: 1, fillColor: fill, fillOpacity: 0.95 })
-      if (cl.nombre) m.bindTooltip(cl.nombre, { direction: 'top', offset: [0, -4] })
-      m.addTo(layer)
-    })
+    let modoChip = null
+    const dibujar = () => {
+      const chip = (map.getZoom() || 0) >= ZOOM_CHIP_ZONA
+      if (chip === modoChip) return
+      modoChip = chip
+      layer.clearLayers()
+      ;(clients || []).forEach((cl) => {
+        if (cl.lat == null || cl.lng == null) return
+        const color = cl.color || neutro
+        const tip = [cl.abrev, cl.nombre, cl.zona].filter(Boolean).join(' · ')
+        const m = chip && cl.abrev
+          ? L.marker([cl.lat, cl.lng], { icon: zonaChipIcon({ abrev: cl.abrev, color, stroke }), interactive: true, keyboard: false })
+          : L.circleMarker([cl.lat, cl.lng], { radius: 4, color: stroke, weight: 1, fillColor: color, fillOpacity: 0.95 })
+        if (tip) m.bindTooltip(tip, { direction: 'top', offset: [0, chip ? -8 : -4] })
+        m.addTo(layer)
+      })
+    }
+    dibujar()
+    map.on('zoomend', dibujar)
+    return () => { map.off('zoomend', dibujar) }
   }, [clients, theme])
 
   // 🩸 `isolation: isolate` (20/07/2026) — NO SACAR.

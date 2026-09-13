@@ -38,6 +38,7 @@ import { APP_VERSION } from '../../version'
 // Las vistas de gestión (Clientes, Zonas, Catálogo, …) se despachan desde un módulo compartido con
 // SupervisionDesktop y PanelDireccion: acá solo se dice CUÁL abrir, no cómo construirla (regla 31).
 import InvitarModal from '../../components/InvitarModal'
+import { marcadoresCartera } from '../../lib/marcadoresCartera'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
@@ -167,11 +168,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
   // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada: referencia estable
   // entre ticks para que LeafletMap no la redibuje cada segundo.
-  const { clientes: cartera } = useCatalog()
-  const clientMarkers = useMemo(
-    () => (cartera || []).filter((c) => c.lat != null && c.lng != null).map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name || c.nombre_comercio })),
-    [cartera]
-  )
+  const { clientes: cartera, zonas } = useCatalog()
+  const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
 
   // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
   const cargarSnap = useCallback(async () => {

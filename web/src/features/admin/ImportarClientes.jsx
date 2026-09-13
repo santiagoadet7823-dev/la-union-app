@@ -355,7 +355,7 @@ export default function ImportarClientes({ onClose, onToast }) {
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 130px 130px', gap: 8, alignItems: 'center', ...sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)') }}>
                     <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.codigo || '—'}</span>
                     <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.nombre || <span style={sx('color:var(--faint)')}>(fila {f.fila})</span>}</span>
-                    <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.zona ? `Z${f.zona.numero} ${f.zona.nombre}` : (f.zonaNum != null ? `Z${f.zonaNum}?` : '—')}</span>
+                    <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.zona ? `Z${f.zona.numero} ${f.zona.abrev ? f.zona.abrev + ' ' : ''}${f.zona.nombre}` : (f.zonaNum != null ? `Z${f.zonaNum}?` : '—')}</span>
                     <span>{estadoPill(f.estado, f.cambioArchivo)}</span>
                   </div>
                 ))}

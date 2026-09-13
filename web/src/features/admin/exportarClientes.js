@@ -11,7 +11,7 @@ import { hoyStr } from '../../lib/format'
  * planilla como "cartera completa" los daría por ausentes y, peor, la persona no podría ver qué
  * códigos considera ocupados el sistema — que es justo lo que necesita para no repetir uno.
  *
- * `vendedor` y `confirmado` son INFORMATIVAS: el importador las ignora. El vendedor lo da la zona
+ * `vendedor`, `abrev_zona` y `confirmado` son INFORMATIVAS: el importador las ignora. El vendedor lo da la zona
  * ("la zona lleva el vendedor") y confirmar es una acción explícita de gestión.
  *
  * Mismo camino que `exportarPedidos` y el catálogo: SheetJS lazy → buffer → Blob →
@@ -29,6 +29,7 @@ export function filasPlanillaClientes(clientes, zonas, perfiles) {
     nombre: c.name || '',
     localidad: c.loc || '',
     zona: zonaPorId.get(c.idZona)?.numero ?? '',
+    abrev_zona: zonaPorId.get(c.idZona)?.abrev || '',
     vendedor: nombrePorId.get(c.idVendedor) || '',
     dias: c.dias || '',
     frecuencia: c.frecuencia || '',
@@ -52,7 +53,7 @@ export async function exportarClientes({ clientes, zonas, perfiles, formato = 'x
     const ws = XLSX.utils.json_to_sheet(filas)
     // Un ancho por columna, en el orden de `filas`.
     ws['!cols'] = [
-      { wch: 8 }, { wch: 36 }, { wch: 16 }, { wch: 6 }, { wch: 18 }, { wch: 14 }, { wch: 11 },
+      { wch: 8 }, { wch: 36 }, { wch: 16 }, { wch: 6 }, { wch: 7 }, { wch: 18 }, { wch: 14 }, { wch: 11 },
       { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 },
     ]
     const wb = XLSX.utils.book_new()

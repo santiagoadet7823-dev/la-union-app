@@ -10,6 +10,7 @@ import { exportarClientes } from '../exportarClientes'
 import FichaCliente from './FichaCliente'
 import { panel, label10, cliGrid, miniLbl, EmptyState } from '../ui'
 import { Bajar, Check, Mas, Search } from '../../../components/icons'
+import AvisoScopeCatalogo from '../../../components/AvisoScopeCatalogo'
 
 /**
  * Pestaña "Clientes": cartera real (tabla en PC / tarjetas en teléfono). La ficha
@@ -138,7 +139,8 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   // una ventana angosta necesita scroll PROPIO. Sin eso el desborde se va al documento y
   // scrollea la página entera de costado. En teléfono son tarjetas, que no desbordan.
   return (
-    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+    <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1100px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px'), padding: isMobile ? 12 : 20, overflowX: isMobile ? 'visible' : 'auto' }}>
+      <AvisoScopeCatalogo />
       <div style={{ ...panel, minWidth: 0 }}>
         <div style={{ ...sx('display:flex;justify-content:space-between;margin-bottom:14px;gap:10px'), flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={sx('display:flex;align-items:center;gap:10px;flex-wrap:wrap')}>
@@ -294,7 +296,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                     <div style={sx('display:flex;gap:16px;margin-top:10px;font-size:11px')}>
                       <div><span style={miniLbl}>Días</span><span style={sx('font-family:var(--font-mono);font-weight:600')}>{c.dias || '—'}</span></div>
                       <div><span style={miniLbl}>Frecuencia</span><span style={sx('font-weight:600')}>{c.frecuencia || '—'}</span></div>
-                      <div><span style={miniLbl}>Zona</span><span style={{ ...sx('font-weight:600'), color: z?.color || 'var(--muted)' }}>{z?.nombre || '—'}</span></div>
+                      <div><span style={miniLbl}>Zona</span><span style={{ ...sx('font-weight:600'), color: z?.color || 'var(--muted)' }}>{z ? `${z.abrev ? z.abrev + ' · ' : ''}${z.nombre}` : '—'}</span></div>
                     </div>
                   </div>
                   {fichaDe(c)}
