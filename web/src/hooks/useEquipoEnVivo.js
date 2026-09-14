@@ -185,7 +185,9 @@ export default function useEquipoEnVivo() {
       }).catch(() => { /* sin permisos o sin red: no es un error de esta pantalla */ })
     }
     cargar()
-    const iv = setInterval(cargar, 60000)
+    // 13/09/2026: 60 s → 5 min. Casi siempre vuelve vacío (hoy no hay ubicaciones compartidas) y
+    // la posición de un invitado no es lo que el supervisor mira en vivo.
+    const iv = setInterval(cargar, 5 * 60000)
     return () => { vivo = false; clearInterval(iv) }
   }, [idEmpresa])
 

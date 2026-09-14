@@ -21,7 +21,7 @@ import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import { Check, ChevronRight, Menu } from '../../components/icons'
-import { fetchSnapRecorridos } from '../../services/recorridos'
+import useSnapConectores from '../supervision/useSnapConectores'
 import { apilarAtras } from '../../services/atras'
 import { sx } from '../../lib/sx'
 import { colorPorId } from '../../lib/colors'
@@ -100,7 +100,6 @@ export default function PanelDireccion() {
   const [cuentaAbierta, setCuentaAbierta] = useState(false)
   // ---- Estado del MAPA a pantalla completa. Antes no existía ninguno de estos: el mapa se abría
   // en un sheet de 60vh con cuatro props y sin un solo control.
-  const [snapped, setSnapped] = useState({})
   const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [dwellOn, setDwellOn] = useState(true)
   const [dwellSel, setDwellSel] = useState(null)
@@ -136,6 +135,11 @@ export default function PanelDireccion() {
   // justamente el que veía los teleports. El 29/07/2026 un vendedor figuraba con 524,8 km porque
   // cuatro fixes falsos lo mandaban 127 km al norte y lo traían; su día real fueron 17,9 km.
   const byUser = useMemo(() => limpiarPorUsuario(byUserCrudo), [byUserCrudo])
+  // 🔴 Va ACÁ, arriba de `leafletTrails` que lo consume (regla 51: TDZ, el build no lo avisa).
+  // Conectores de hueco largo (Edge Function `snap-recorridos`). Solo con el mapa abierto —el dueño
+  // abre esta pantalla muchas veces por día y el ruteo es un recurso donado (FOSSGIS)— y, desde el
+  // 13/09/2026, sólo cuando hay un hueco candidato que rutear: ver useSnapConectores.js.
+  const snapped = useSnapConectores({ byUser, fecha: fechaMapa, idEmpresa: idEmpresaActiva, activo: mapaAbierto })
 
   const ahora = Date.now()
 
@@ -227,9 +231,12 @@ export default function PanelDireccion() {
   // misma que ven las dos supervisiones, así que no se puede volver a desincronizar (regla 31).
   const SIN_FILTRO = useCallback(() => true, []) // el dueño no filtra por rol: ve a todo el equipo
   const trails = useMemo(() => construirTrails(byUser, SIN_FILTRO), [byUser, SIN_FILTRO])
+  // `snapOn` ya no viaja a `construirLeaflet`: el pegado de tramos se retiró el 18/08/2026 y la
+  // función dejó de aceptar el parámetro (ver trazos.js). El toggle sigue en la UI hasta que se
+  // decida sacarlo, pero no cambia nada de lo que se dibuja.
   const leafletTrails = useMemo(
-    () => construirLeaflet({ trails, snapped, snapOn, focoId: foco?.id || null }),
-    [trails, snapped, snapOn, foco]
+    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null }),
+    [trails, snapped, foco]
   )
   // Hitos "▶ 08:47" y "■ 17:20". Las dos supervisiones ya los mostraban y acá faltaban: era una
   // omisión y no una decisión, así que el dueño veía el mismo trazo sin saber a qué hora empezó ni
@@ -285,18 +292,6 @@ export default function PanelDireccion() {
     return mv ? { id: seguirId, lat: mv.lat, lng: mv.lng, ts: mv.ts, nonce: seguirNonce } : null
   }, [seguirId, seguirNonce, movers])
 
-  // Snap-to-road (toggle "Calles"). Solo se pide cuando el mapa está abierto: el dueño abre esta
-  // pantalla muchas veces por día y el ruteo es un recurso donado (FOSSGIS).
-  useEffect(() => {
-    if (!mapaAbierto || !idEmpresaActiva) return
-    let vivo = true
-    fetchSnapRecorridos({
-      fecha: fechaMapa,
-      desde: new Date(fechaMapa + 'T00:00:00').toISOString(),
-      hasta: new Date(fechaMapa + 'T23:59:59').toISOString(),
-    }).then((s) => { if (vivo) setSnapped(s) }).catch(() => {})
-    return () => { vivo = false }
-  }, [mapaAbierto, idEmpresaActiva, fechaMapa])
 
   // Encuadrar solo la primera vez que hay datos; después se preserva el zoom/pan del usuario.
   useEffect(() => {

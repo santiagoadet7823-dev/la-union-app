@@ -56,9 +56,10 @@ export async function anularPedido(pedido, motivo, userId) {
     op: 'update',
     id: pedido.id,
     payload,
+    verificar: true, // cero filas afectadas = cuarentena, no "listo" (ver borrarPedido)
   })
   flushMutaciones()
-  // Se devuelve la fila como queda, para que la pantalla la muestre ya anulada sin esperar la red.
+  // Se devuelve la fila como queda: la pantalla la APLICA a su lista (usePedidos.aplicar) y no relee.
   return { ...pedido, ...payload }
 }
 
@@ -69,9 +70,12 @@ export async function anularPedido(pedido, motivo, userId) {
  *
  * 🔴 UNA OPERACIÓN QUE RLS RECHAZA **NO DA ERROR**: `delete().eq('id', …)` sobre una fila que la
  * policy esconde afecta cero filas y vuelve con éxito. Lo mismo pasa con el `update` de anular. O
- * sea que la cola nunca se entera, no reintenta, y la pantalla mostraría "listo" sobre algo que no
- * pasó. Por eso las dos acciones terminan con una RELECTURA (`recargar()` de `usePedidos`): lo que
- * se muestra después es lo que quedó en la base, no lo que supusimos.
+ * sea que la cola no se enteraba, no reintentaba, y la pantalla mostraría "listo" sobre algo que no
+ * pasó. Hasta el 13/09/2026 la defensa era una RELECTURA completa de las dos listas después de cada
+ * acción (dos consultas paginadas, spinner, y sin red la lista quedaba VACÍA con la mutación todavía
+ * en cola). Ahora la verificación vive en la cola: `verificar: true` hace que el request pida las
+ * filas afectadas y que cero vaya a cuarentena (`SIN_FILAS`, ver writeQueue.js), donde
+ * `AvisoCuarentena` lo muestra. La pantalla aplica el resultado local y no relee.
  */
 export async function borrarPedido(pedido) {
   await enqueueMutacion({
@@ -79,6 +83,7 @@ export async function borrarPedido(pedido) {
     table: 'pedidos',
     op: 'delete',
     id: pedido.id,
+    verificar: true,
   })
   flushMutaciones()
 }

@@ -755,6 +755,26 @@ Cada una de estas costó un bug de producción. No hay excepciones "por esta vez
     regla 36 —la misma regla en dos runtimes— por comodidad de una migración de una sola corrida.
     **Cuando haya que reparar datos en masa, buscar primero un origen que ya exista.**
 
+60. 🩸 **ANTES DE HACER UN REQUEST POR EVENTO, MULTIPLICAR: eventos × teléfonos × días. Y ANTES DE
+    UN `setInterval` CONTRA EL SERVIDOR, PREGUNTAR QUÉ CAMBIA ENTRE TICK Y TICK.** (13/09/2026.)
+    Es la regla 48 (MB × despertares × teléfonos) aplicada a las invocaciones. Medido en la base:
+    18-27k puntos por día hábil, y el uploader nativo hacía **un POST por punto** a
+    `ingest-posiciones` → ~500k invocaciones/mes, el techo del plan, sin que nadie lo hubiera
+    calculado. Del lado del supervisor, `snap-recorridos` se invocaba **cada 60 s por vista abierta,
+    también mirando días pasados**, para devolver `geometrias` que el front descarta desde el 18/08
+    y unos conectores que cambian menos de diez veces por día. Y `metricas_actividad` recalculaba
+    cada minuto 29-150 días de recorridos para mover los números de un solo día.
+    Lo que quedó: el nativo agrupa el envío en `LOTE_SUBIDA_MS` (15 s, `gpsConfig.js` → `K_LOTE_MS`,
+    afinable por OTA; **la captura no cambia**); el snap se pide cuando cambia la firma de huecos
+    candidatos (`firmaConectores`, `useSnapConectores.js`) y nunca con firma vacía; las métricas
+    piden el histórico una vez y sólo "hoy" en el intervalo; y `useRecorridosDelDia` lleva el cursor
+    por `id` (bigint secuencial) en vez de por `ts`, así un punto rezagado de una cola offline entra
+    por el incremental y ya no dispara la recarga completa del día (~3 MB) ni el `count` por tick.
+    ⚠️ **Y una pantalla que muta NO relee la lista: aplica la fila resultante** (`usePedidos.aplicar`).
+    La verificación de "RLS lo rechazó sin error" vive en la cola (`verificar: true` →
+    `SIN_FILAS` → cuarentena → evento `EVENTO_CUARENTENA` → revalidación silenciosa), no en un
+    refetch que sin red vaciaba la lista con la mutación todavía encolada.
+
 ---
 
 ## 3. Comandos
@@ -783,7 +803,7 @@ set CAP_BUILD=1&& npm run build              # CMD
 
 # APK completo
 CAP_BUILD=1 npm run build && npx cap sync android
-cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Android\Android Studio\jbr"
+cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
 # → web/android/app/build/outputs/apk/release/app-release.apk
 
 # ── Desde la RAÍZ del repo ────────────────────────────────────────────────────
@@ -822,7 +842,10 @@ adb shell dumpsys notification --noredact | grep -i channel   # en qué canal ca
 ```
 
 **Notas:**
-- El `-Dorg.gradle.java.home` del JBR es necesario si salta `Unsupported class file major version 69`.
+- El `-Dorg.gradle.java.home` tiene que apuntar a un **JDK 17** (Temurin, verificado 09/09/2026). El
+  `jbr` de Android Studio, que decía este documento hasta el 13/09, se actualizó a Java 25 y Gradle
+  8.2.1 no lo soporta: falla con `Unsupported class file major version 69`, un error que no menciona
+  Java y manda a revisar el `build.gradle`. Si el path cambió, `(Get-Command java).Source`.
 - Si falla `Keystore file not found`: en `keystore.properties`, `storeFile` debe ser
   **`launion.keystore`** (relativo al módulo `app`), **no** `app/launion.keystore`.
   `GUIA_APK_ANDROID.md:230` dice lo contrario y **está mal**; la que funciona es `:320`.

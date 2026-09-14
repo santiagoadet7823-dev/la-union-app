@@ -68,8 +68,8 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
   /* Dos consultas: lo vivo y la papelera. El vendedor ve sus anulados APARTE y no mezclados en la
      misma lista (11/09/2026) — mezclados, un día flojo con tres anulaciones se lee como un día
      normal hasta que uno mira los renglones tachados de a uno. */
-  const { pedidos, cargando, error, recargar } = usePedidos({ desde, hasta, idVendedor: userId })
-  const { pedidos: anulados, recargar: recargarAnulados } =
+  const { pedidos, cargando, error, recargar, aplicar: aplicarVivo, quitar: quitarVivo } = usePedidos({ desde, hasta, idVendedor: userId })
+  const { pedidos: anulados, aplicar: aplicarAnulado, quitar: quitarAnulado } =
     usePedidos({ desde, hasta, idVendedor: userId, papelera: true })
 
   // Lo que la cola todavía no subió. Se relee cada vez que se abre la hoja y después de cada
@@ -125,7 +125,15 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
     }
   }
 
-  function alRecargar() { recargar(); recargarAnulados(); releerCola() }
+  // Después de anular o corregir NO se relee (13/09/2026; ver el 🩸 de usePedidos.js): se aplica la
+  // fila resultante a las dos listas y se vuelve a mirar la cola. Para el vendedor esto importa
+  // más que para nadie — suele estar sin señal, y la relectura le vaciaba la lista.
+  function alAplicado({ accion, pedido }) {
+    if (pedido?.id) {
+      if (accion === 'borrar') { quitarVivo(pedido.id); quitarAnulado(pedido.id) } else { aplicarVivo(pedido); aplicarAnulado(pedido) }
+    }
+    releerCola()
+  }
 
   return (
     <>
@@ -171,9 +179,13 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
           </span>
         </div>
 
+        {/* El error no tapa la lista: sin red se conserva lo último leído más lo aplicado localmente. */}
         {error && (
-          <div style={sx('padding:12px;border:1px solid var(--danger);border-radius:11px;color:var(--danger);font-size:12px')}>
-            No se pudieron leer: {error}
+          <div style={sx('padding:12px;border:1px solid var(--danger);border-radius:11px;color:var(--danger);font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap')}>
+            <span style={sx('flex:1;min-width:0')}>No se pudieron leer: {error}</span>
+            <button type="button" className="lu-press" onClick={recargar} style={sx('padding:5px 9px;border:1px solid var(--danger);border-radius:9px;background:transparent;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer')}>
+              Reintentar
+            </button>
           </div>
         )}
 
@@ -289,7 +301,7 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
         userId={userId}
         onCerrar={() => setDetalle(null)}
         onToast={onToast}
-        onRecargar={alRecargar}
+        onAplicado={alAplicado}
         onTicket={(d) => { setDetalle(null); setTicket(d) }}
         onEditar={(d) => { setDetalle(null); setEditando(d) }}
       />
@@ -303,7 +315,7 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
           lineas={editando.lineas}
           userId={userId}
           onCerrar={() => setEditando(null)}
-          onGuardado={alRecargar}
+          onGuardado={(p) => alAplicado({ accion: 'editar', pedido: p })}
           onToast={onToast}
         />
       )}

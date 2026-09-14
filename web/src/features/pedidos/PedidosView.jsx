@@ -74,10 +74,10 @@ export default function PedidosView({ onToast }) {
      sin ella no habría con qué numerar la pestaña, y una papelera que no dice cuánto tiene adentro
      es una que nadie abre. Entre las dos traen las mismas filas que traía la consulta única de
      antes — el costo no cambió, se repartió. */
-  const { pedidos: activos, cargando, error, recargar } = usePedidos({
+  const { pedidos: activos, cargando, error, recargar, aplicar: aplicarActivo, quitar: quitarActivo } = usePedidos({
     desde, hasta, idVendedor: filtroVendedor || null,
   })
-  const { pedidos: anulados, cargando: cargandoPapelera, error: errorPapelera, recargar: recargarPapelera } =
+  const { pedidos: anulados, cargando: cargandoPapelera, error: errorPapelera, recargar: recargarPapelera, aplicar: aplicarAnulado, quitar: quitarAnulado } =
     usePedidos({ desde, hasta, idVendedor: filtroVendedor || null, papelera: true })
 
   const enPapelera = vista === 'papelera'
@@ -85,10 +85,24 @@ export default function PedidosView({ onToast }) {
   const cargandoAhora = enPapelera ? cargandoPapelera : cargando
   const errorAhora = enPapelera ? errorPapelera : error
 
-  /* Las dos listas se recargan juntas SIEMPRE. Anular saca una fila de una y la mete en la otra, y
-     borrar la saca de la papelera: refrescar sólo la pestaña que se está mirando dejaría la otra
-     mostrando el pedido que se acaba de mover. */
+  /* Las dos listas se recargan juntas SIEMPRE (botón "Reintentar"). Anular saca una fila de una y la
+     mete en la otra, y borrar la saca de la papelera: refrescar sólo la pestaña que se está mirando
+     dejaría la otra mostrando el pedido que se acaba de mover. */
   const recargarTodo = useCallback(() => { recargar(); recargarPapelera() }, [recargar, recargarPapelera])
+
+  /* 🩸 DESPUÉS DE UNA ACCIÓN NO SE RELEE: SE APLICA (13/09/2026). Hasta hoy anular, corregir,
+     asignar o borrar terminaban en `recargarTodo()` — las dos consultas paginadas otra vez, la
+     lista pasando por "Cargando pedidos…", y sin red la pantalla vacía. Las mutaciones ya devuelven
+     la fila como queda; acá se la aplica a LAS DOS listas (cada `aplicar` decide si la fila le
+     corresponde por estado) y al detalle abierto, si es el mismo pedido. El rechazo silencioso de
+     RLS lo detecta la cola (ver usePedidos.js). */
+  const alAplicado = useCallback(({ accion, pedido }) => {
+    if (!pedido?.id) return
+    if (accion === 'borrar') { quitarActivo(pedido.id); quitarAnulado(pedido.id); return }
+    aplicarActivo(pedido)
+    aplicarAnulado(pedido)
+    setDetalle((d) => (d && d.pedido?.id === pedido.id ? { ...d, pedido: { ...d.pedido, ...pedido } } : d))
+  }, [aplicarActivo, aplicarAnulado, quitarActivo, quitarAnulado])
 
   // Las personas salen de las dos listas: si alguien sólo tiene pedidos anulados en el rango, tiene
   // que seguir estando en el selector — si no, filtrar por esa persona sería imposible justo cuando
@@ -254,13 +268,18 @@ export default function PedidosView({ onToast }) {
       )}
 
       {/* ── La lista ────────────────────────────────────────────────────────────────────── */}
+      {/* El error NO tapa la lista (13/09/2026): sin red `usePedidos` conserva lo que había, así que
+          lo que se ve es lo último que se leyó más lo que se aplicó localmente. El botón relee. */}
       {errorAhora && (
-        <div style={sx('padding:13px;border:1px solid var(--danger);border-radius:var(--r-lg);color:var(--danger);font-size:12.5px')}>
-          No se pudieron leer los pedidos: {errorAhora}
+        <div style={sx('padding:13px;border:1px solid var(--danger);border-radius:var(--r-lg);color:var(--danger);font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap')}>
+          <span style={sx('flex:1;min-width:0')}>No se pudieron leer los pedidos: {errorAhora}</span>
+          <button type="button" className="lu-press" onClick={recargarTodo} style={sx('padding:6px 10px;border:1px solid var(--danger);border-radius:var(--r-md);background:transparent;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer')}>
+            Reintentar
+          </button>
         </div>
       )}
 
-      {!errorAhora && cargandoAhora && (
+      {cargandoAhora && (
         <div style={sx('padding:26px;text-align:center;color:var(--faint);font-size:13px')}>Cargando pedidos…</div>
       )}
 
@@ -279,7 +298,7 @@ export default function PedidosView({ onToast }) {
         </div>
       )}
 
-      {!errorAhora && !cargandoAhora && pedidos.map((p) => {
+      {!cargandoAhora && pedidos.map((p) => {
         const anulado = p.estado === 'Anulado'
         return (
           <div
@@ -343,7 +362,7 @@ export default function PedidosView({ onToast }) {
         userId={user?.id || null}
         onCerrar={() => setDetalle(null)}
         onToast={onToast}
-        onRecargar={recargarTodo}
+        onAplicado={alAplicado}
         onTicket={(d) => { setDetalle(null); setTicket(d) }}
         onEditar={(d) => { setDetalle(null); setEditando(d) }}
       />
@@ -357,7 +376,7 @@ export default function PedidosView({ onToast }) {
           lineas={editando.lineas}
           userId={user?.id || null}
           onCerrar={() => setEditando(null)}
-          onGuardado={recargarTodo}
+          onGuardado={(p) => alAplicado({ accion: 'editar', pedido: p })}
           onToast={onToast}
         />
       )}

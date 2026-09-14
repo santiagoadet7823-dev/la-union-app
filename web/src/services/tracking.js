@@ -16,7 +16,9 @@ import { supabase, hasSupabase } from './supabase'
 let gCache = null
 let gCacheAt = 0
 const uCache = new Map() // userId → { cfg, at }
-const TTL = 4 * 60000
+// 13/09/2026: 4 → 10 min. Es la cadencia con la que cada teléfono relee `app_config` + su categoría
+// (usePublishPosition); un cambio de horario desde el panel tarda hasta esto en llegar.
+const TTL = 10 * 60000
 // Último `gps_perfil` conocido por usuario. Es la red de contención para el caso sin red — ver
 // `cfgGps`, abajo.
 const ultimoGps = new Map() // userId → gps_perfil crudo (o null)
@@ -88,7 +90,7 @@ async function cfgOverride(userId) {
  * parámetros con `services/gpsPerfil.js` — acá NO se interpreta, solo se transporta.
  *
  * Se lee acá y no del `perfil` de AuthContext a propósito: este camino ya tiene refresco periódico
- * (TTL de 4 min desde usePublishPosition) e invalidación desde el panel (`invalidarTrackCache`, que
+ * (TTL de 10 min desde usePublishPosition) e invalidación desde el panel (`invalidarTrackCache`, que
  * UsuariosView ya llama al guardar). Colgado de `perfil`, un cambio del superadmin habría tardado
  * hasta el próximo `cargarPerfil`, que no tiene periodicidad.
  *

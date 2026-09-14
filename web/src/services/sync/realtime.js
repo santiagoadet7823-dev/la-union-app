@@ -52,16 +52,29 @@ export function suscribirPosiciones(handler, idEmpresa) {
  */
 export async function historialPosiciones(idUsuario, desdeISO, hastaISO, idEmpresa) {
   if (!hasSupabase || !idUsuario || !idEmpresa) return []
-  const { data, error } = await supabase
-    .from('posiciones')
-    .select('lat,lng,ts')
-    .eq('id_empresa', idEmpresa)
-    .eq('id_usuario', idUsuario)
-    .gte('ts', desdeISO)
-    .lte('ts', hastaISO)
-    .order('ts', { ascending: true })
-  if (error) { console.warn('[realtime] historialPosiciones:', error.message); return [] }
-  return data || []
+  // Se PAGINA (13/09/2026). PostgREST corta en `max-rows` (1.000) y devuelve 200 sin avisar; una
+  // persona-día tiene hoy entre 735 y 2.628 puntos, así que la reproducción de la jornada llegaba
+  // recortada a la mañana en silencio. Mismo bug ya arreglado en useRecorridosDelDia y en
+  // snap-recorridos; el desempate por `id` da un orden total para que no se pierdan filas entre
+  // páginas.
+  const PAGE = 1000
+  const MAX_VUELTAS = 20
+  const filas = []
+  for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+    const { data, error } = await supabase
+      .from('posiciones')
+      .select('lat,lng,ts')
+      .eq('id_empresa', idEmpresa)
+      .eq('id_usuario', idUsuario)
+      .gte('ts', desdeISO)
+      .lte('ts', hastaISO)
+      .order('ts', { ascending: true }).order('id', { ascending: true })
+      .range(vuelta * PAGE, vuelta * PAGE + PAGE - 1)
+    if (error) { console.warn('[realtime] historialPosiciones:', error.message); return filas }
+    if (!data || !data.length) break
+    filas.push(...data)
+  }
+  return filas
 }
 
 // ---------- Alertas efímeras (GPS on/off) por empresa ----------

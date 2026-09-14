@@ -40,7 +40,7 @@ import { editarPedido, nuevaLinea, totalesDeLineas } from './editarPedido'
  * ya estaba genera un **renglón aparte a precio de hoy** (decisión del dueño, 04/09), y el ticket lo
  * muestra en dos líneas: es la verdad de lo que pasó y el comerciante ve por qué paga dos precios.
  *
- * props: { pedido, lineas, onCerrar, onGuardado, onToast, userId }
+ * props: { pedido, lineas, onCerrar, onGuardado(pedidoResultante), onToast, userId }
  */
 export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGuardado, onToast, userId }) {
   const { productos } = useCatalog()
@@ -116,18 +116,20 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   async function guardar() {
     setTrabajando(true)
     try {
+      let resultado
       if (quedaVacio) {
-        await anularPedido(pedido, motivo, userId)
+        resultado = await anularPedido(pedido, motivo, userId)
         onToast?.(`Pedido ${pedido.numero ? '#' + pedido.numero : ''} anulado`)
       } else {
-        await editarPedido({ pedido, lineas, cantidades, nuevas, userId, pos })
+        resultado = (await editarPedido({ pedido, lineas, cantidades, nuevas, userId, pos })).pedido
         onToast?.('Pedido corregido')
       }
       cerrar()
-      // 🔴 La pantalla de arriba TIENE que releer. Un UPDATE que RLS rechaza —por ejemplo si el
-      // repartidor pasó el pedido a "En camino" mientras esto estaba abierto— afecta cero filas y
-      // vuelve con éxito. Lo que se muestre después sale de la base, no de acá.
-      onGuardado?.()
+      // La pantalla de arriba APLICA la fila resultante a su lista (13/09/2026); antes releía las
+      // dos listas enteras. Un UPDATE que RLS rechaza —por ejemplo si el repartidor pasó el pedido
+      // a "En camino" mientras esto estaba abierto— afecta cero filas y vuelve con éxito: eso ahora
+      // lo detecta la cola (`verificar`, ver anularPedido.js) y lo manda a cuarentena con aviso.
+      onGuardado?.(resultado)
     } catch (e) {
       onToast?.('No se pudo guardar: ' + (e?.message || 'sin conexión'))
     } finally { setTrabajando(false) }

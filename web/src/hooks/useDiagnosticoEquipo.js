@@ -111,7 +111,10 @@ export default function useDiagnosticoEquipo({ tick: conTick = false } = {}) {
   }, [])
 
   useEffect(() => { cargarEstados() }, [cargarEstados])
-  useEffect(() => { const iv = setInterval(cargarEstados, 45000); return () => clearInterval(iv) }, [cargarEstados])
+  // 13/09/2026: 45 s → 2 min. `ultimo_punto_equipo` agrega sobre TODAS las posiciones del día
+  // (20-26k filas) en cada tick y `estado_dispositivo` cambia cada 2-10 min por teléfono (es la
+  // cadencia del latido): pedirlo cada 45 s era leer lo mismo tres veces.
+  useEffect(() => { const iv = setInterval(cargarEstados, 120000); return () => clearInterval(iv) }, [cargarEstados])
   useEffect(() => {
     if (!conTick) return
     const t = setInterval(() => forzar((n) => n + 1), 1000)

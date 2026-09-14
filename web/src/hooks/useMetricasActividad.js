@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
+import { persistence } from '../services/persistence'
+import { useAuth } from '../context/AuthContext'
 import { hoyStr } from '../lib/format'
 import { sumarDias } from '../lib/comparar'
 
@@ -29,9 +31,28 @@ const VENTANAS = {
 }
 
 const REFRESH_MS = 60000
+const CACHE_KEY = 'lu-metricas-cache'
+
+/* 🩸 EL HISTÓRICO SE PIDE UNA VEZ; LO QUE SE REFRESCA ES SÓLO HOY (13/09/2026).
+ *
+ * Hasta hoy el refresco de 60 s repetía la RPC sobre la ventana ENTERA: 29 días para 'hoy', 35
+ * para 'semana', 150 para 'mes'. `metricas_actividad` recorre `posiciones` con haversine y cuatro
+ * window functions, y está medida (HANDOFF §"dashboard"): 0,55 s por día, 4,3 s a 7 días, 7,2 s
+ * a 30. O sea que el panel del dueño le pedía a la base recalcular un mes de recorridos cada
+ * minuto para mover los números de un solo día — el único que cambia mientras se mira.
+ *
+ * Ahora son dos consultas: el histórico (`desdeConsulta` → ayer) se pide una vez por día y
+ * horizonte y se guarda en `persistence` (SQLite/localStorage), y `hoy` es la única que va al
+ * `setInterval`. La respuesta y el `derivado` son los mismos: `filas = histórico ∪ hoy`.
+ *
+ * La caché va por usuario además de por día y horizonte: la RPC filtra por `mi_empresa()` y por
+ * `ids_a_mi_cargo()`, así que dos personas de la misma empresa pueden ver filas distintas. */
 
 export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
-  const [filas, setFilas] = useState([])
+  const { user } = useAuth()
+  const uid = user?.id || null
+  const [historico, setHistorico] = useState([]) // filas con dia < hasta (no cambian intradía)
+  const [hoyFilas, setHoyFilas] = useState([])   // filas de `hasta` (hoy): las únicas que se refrescan
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [updatedAt, setUpdatedAt] = useState(null)
@@ -45,37 +66,71 @@ export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
   const desde = sumarDias(hasta, -(cfg.dias - 1))
   const desdeConsulta = sumarDias(desde, -cfg.atras)
 
-  const cargar = useCallback(async (silencioso) => {
-    if (!activo) return
-    if (!silencioso) setLoading(true)
-
-    const { data, error: e } = await supabase.rpc('metricas_actividad', {
-      p_desde: desdeConsulta,
-      p_hasta: hasta,
-    })
-
-    if (!silencioso) setLoading(false)
+  const rpc = useCallback(async (p_desde, p_hasta) => {
+    const { data, error: e } = await supabase.rpc('metricas_actividad', { p_desde, p_hasta })
     if (e) {
       // El error se MIRA y se PROPAGA. El mismo criterio que `useRecorridosDelDia`: una consulta
       // que falla en silencio deja la pantalla en cero, que es indistinguible de "no trabajó
       // nadie" — el peor error posible en una pantalla que juzga el trabajo de gente real.
-      console.error('[metricas] la RPC falló', { desdeConsulta, hasta, horizonte, msg: e.message }, e)
+      console.error('[metricas] la RPC falló', { p_desde, p_hasta, horizonte, msg: e.message }, e)
       setError(e)
-      return
+      return null
     }
     setError(null)
-    setFilas(data || [])
+    return data || []
+  }, [horizonte])
+
+  /** Sólo el día de hoy: es lo que corre en el intervalo. */
+  const cargarHoy = useCallback(async () => {
+    if (!activo) return
+    const data = await rpc(hasta, hasta)
+    if (!data) return
+    setHoyFilas(data)
     setUpdatedAt(Date.now())
-  }, [activo, desdeConsulta, hasta, horizonte])
+  }, [activo, hasta, rpc])
+
+  /**
+   * Histórico (desdeConsulta → ayer). `forzar` saltea la caché (botón "reintentar"). Con la caché
+   * vigente no toca la red; si no, pide y guarda.
+   */
+  const cargarHistorico = useCallback(async (forzar) => {
+    if (!activo) return
+    const ayer = sumarDias(hasta, -1)
+    const clave = `${uid}|${horizonte}|${hasta}`
+    if (!forzar) {
+      const cache = await persistence.get(CACHE_KEY)
+      if (cache && cache.clave === clave && Array.isArray(cache.filas)) {
+        setHistorico(cache.filas)
+        return
+      }
+    }
+    const data = await rpc(desdeConsulta, ayer)
+    if (!data) return
+    setHistorico(data)
+    // Una sola entrada (la clave viaja adentro): cambiar de horizonte o de día la pisa, y el
+    // storage no crece una entrada por cada combinación visitada.
+    persistence.set(CACHE_KEY, { clave, filas: data })
+  }, [activo, hasta, horizonte, uid, desdeConsulta, rpc])
+
+  const cargar = useCallback(async (silencioso, forzar = false) => {
+    if (!activo) return
+    if (!silencioso) setLoading(true)
+    await Promise.all([cargarHistorico(forzar), cargarHoy()])
+    if (!silencioso) setLoading(false)
+  }, [activo, cargarHistorico, cargarHoy])
 
   useEffect(() => { cargar(false) }, [cargar])
 
-  // Refresco en vivo solo cuando la ventana termina hoy (el pasado no cambia).
+  // Refresco en vivo solo cuando la ventana termina hoy (el pasado no cambia) — y sólo de hoy.
   useEffect(() => {
     if (!activo || hasta !== hoyStr()) return
-    const iv = setInterval(() => cargar(true), REFRESH_MS)
+    const iv = setInterval(cargarHoy, REFRESH_MS)
     return () => clearInterval(iv)
-  }, [activo, hasta, cargar])
+  }, [activo, hasta, cargarHoy])
+
+  // Lo que consume `derivado`: el histórico más hoy. Si por una carrera el histórico trajera una
+  // fila de `hasta` (no debería: se pide hasta ayer), la de hoy manda.
+  const filas = useMemo(() => [...historico.filter((f) => f.dia !== hasta), ...hoyFilas], [historico, hoyFilas, hasta])
 
   const derivado = useMemo(() => {
     // Serie del EQUIPO por día: la que alimenta las comparaciones y las sparklines.
@@ -150,6 +205,6 @@ export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
     ...derivado,
     desde, hasta, barras: cfg.barras,
     loading, error, updatedAt,
-    reload: () => cargar(false),
+    reload: () => cargar(false, true),
   }
 }

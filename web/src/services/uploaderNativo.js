@@ -6,7 +6,7 @@ import {
   MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS,
   ACCURACY_MAX_M, ACCURACY_CAPTURA_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS,
   MIN_MOVE_URBANO_M, MIN_MOVE_RUTA_M, VEL_RUTA_MPS, NEAR_LIVE_QUIETO_MS,
-  ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS,
+  ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS, LOTE_SUBIDA_MS,
 } from './gpsConfig'
 import { paramsDePerfil } from './gpsPerfil'
 
@@ -29,7 +29,7 @@ const INGEST_URL = BASE ? `${BASE.replace(/\/$/, '')}/functions/v1/ingest-posici
 
 let iniciado = false
 // Token de dispositivo cacheado (RPC mi_token_ingesta). Se mintea una vez por sesión y se reusa en cada
-// reempuje de config: sin esto, refrescar la ventana cada 4 min golpearía la RPC cada vez. Se limpia al
+// reempuje de config: sin esto, refrescar la ventana cada 10 min golpearía la RPC cada vez. Se limpia al
 // detener/desloguear (detenerUploaderNativo) para no arrastrarlo a otra cuenta en el mismo teléfono.
 let tokenCache = null
 
@@ -58,7 +58,7 @@ function aMinutos(hhmm) {
  *
  * Desde 1.14.0, `cfg.gps` puede traer un PERFIL DE GPS POR USUARIO (db/39) que pisa la cadencia y el
  * filtro de movimiento de esa persona. Llega gratis: `getTrackConfig` ya lo adosa al mismo `cfg` que
- * los dos llamadores pasan, y se reempuja en cada refresco de la ventana (cada 4 min), así que un
+ * los dos llamadores pasan, y se reempuja en cada refresco de la ventana (cada 10 min), así que un
  * cambio desde el panel llega al teléfono sin reiniciar nada — igual que el horario.
  */
 export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIVE_MS, userId = null } = {}) {
@@ -106,6 +106,9 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       token: tokenCache, url: INGEST_URL, intervaloMs, dueno,
       startMin, endMin, dias, ventanas,
       minMoveM: MIN_MOVE_M, keepAliveMs: STATIONARY_KEEPALIVE_MS,
+      // Ventana de agrupado del POST (13/09/2026). Los APK anteriores ignoran la clave (siguen con un
+      // POST por punto) hasta que se actualicen; ver K_LOTE_MS en UploaderGpsService.
+      loteMs: LOTE_SUBIDA_MS,
       // Cadencia adaptativa por velocidad: el nativo captura más seguido en movimiento rápido (auto) para
       // que el trazo siga la calle, y vuelve a la lenta al frenar. Afinables por OTA (SharedPreferences).
       intervaloRapidoMs: NEAR_LIVE_RAPIDO_MS, velUmbralMps: VEL_UMBRAL_MPS, velHistMs: VEL_HIST_MS,

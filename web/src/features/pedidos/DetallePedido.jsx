@@ -20,7 +20,9 @@ import { textoPapelera, porVencer } from './papelera'
  * y lo decide la base. Acá no hay una sola condición de permiso que no sea para **no ofrecer** un
  * botón que RLS va a rechazar.
  *
- * props: { detalle: {pedido, lineas} | null, rol, userId, onCerrar, onToast, onRecargar, onTicket, onEditar }
+ * props: { detalle: {pedido, lineas} | null, rol, userId, onCerrar, onToast, onAplicado({ accion, pedido }), onTicket, onEditar }
+ *   onAplicado: la fila como queda tras 'anular' / 'asignar', o el pedido que se acaba de 'borrar'.
+ *   La pantalla de arriba la aplica a sus listas; nada relee (ver usePedidos.aplicar).
  */
 
 /** Fecha + hora corta, en hora local. Compartida por las dos pantallas de pedidos. */
@@ -29,7 +31,7 @@ export function fmtFecha(ts) {
   return `${d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
-export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast, onRecargar, onTicket, onEditar }) {
+export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast, onAplicado, onTicket, onEditar }) {
   const [motivo, setMotivo] = useState('')
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
   const [trabajando, setTrabajando] = useState(false)
@@ -79,10 +81,10 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
   async function alAnular() {
     setTrabajando(true)
     try {
-      await anularPedido(pedido, motivo, userId)
+      const anuladoYa = await anularPedido(pedido, motivo, userId)
       onToast?.(`Pedido ${pedido.numero ? '#' + pedido.numero : ''} anulado`)
       onCerrar()
-      onRecargar?.()
+      onAplicado?.({ accion: 'anular', pedido: anuladoYa })
     } catch (e) {
       onToast?.('No se pudo anular: ' + (e?.message || 'sin conexión'))
     } finally { setTrabajando(false) }
@@ -101,10 +103,10 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
   async function alAsignar(idRepartidor) {
     setAsignando(true)
     try {
-      await asignarRepartidor(pedido, idRepartidor)
+      const asignadoYa = await asignarRepartidor(pedido, idRepartidor)
       const quien = repartidores.find((r) => r.id === idRepartidor)?.nombre
       onToast?.(idRepartidor ? `Asignado a ${quien || 'el repartidor'}` : 'Sin repartidor asignado')
-      onRecargar?.()
+      onAplicado?.({ accion: 'asignar', pedido: asignadoYa })
     } catch (e) {
       onToast?.('No se pudo asignar: ' + (e?.message || 'sin conexión'))
     } finally { setAsignando(false) }
@@ -116,7 +118,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
       await borrarPedido(pedido)
       onToast?.('Pedido borrado definitivamente')
       onCerrar()
-      onRecargar?.()
+      onAplicado?.({ accion: 'borrar', pedido })
     } catch (e) {
       onToast?.('No se pudo borrar: ' + (e?.message || 'sin conexión'))
     } finally { setTrabajando(false) }

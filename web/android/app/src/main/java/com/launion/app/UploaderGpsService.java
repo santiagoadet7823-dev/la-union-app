@@ -74,6 +74,27 @@ public class UploaderGpsService extends Service {
     // STATIONARY_KEEPALIVE_MS), los pasa el JS en configurar() → ajustables por OTA sin recompilar.
     static final String K_MIN_MOVE = "minMoveM";     // metros mínimos de desplazamiento para GUARDAR un punto
     static final String K_KEEPALIVE = "keepAliveMs"; // estando quieto, guardar igual cada tanto (marcador "vivo")
+    /* 🩸 UN POST POR PUNTO ERA EL 95 % DE LAS INVOCACIONES DE EDGE FUNCTIONS (13/09/2026).
+     *
+     * `subir()` corre después de cada `onLocationResult`, y con red la cola casi nunca acumula: cada
+     * punto guardado salía en su propio POST a `ingest-posiciones`, con sus 4 viajes a la base
+     * (token, perfil, upsert de posiciones, upsert de estado_dispositivo). Medido en la base viva,
+     * 07-12/09/2026: entre 18.223 y 26.556 puntos por día hábil en el parque → ~500.000 invocaciones
+     * al mes, que es exactamente el techo del plan. El `LOTE = 200` existía, pero sólo se llenaba
+     * sin señal.
+     *
+     * `K_LOTE_MS` es la VENTANA DE AGRUPADO del envío: un punto que llega dentro de la ventana desde
+     * la última subida no dispara el POST, se programa uno para cuando la ventana venza, y salen
+     * juntos todos los capturados hasta entonces. **La captura no cambia** (intervalos, filtros por
+     * movimiento y precisión, `ts` de cada fix: todo igual); lo único que cambia es cuántos viajes
+     * hace la red. Con 15 s y captura de 2-4 s en movimiento son 4-7 puntos por POST.
+     *
+     * Lo que cuesta: el pin "en vivo" del supervisor ve el último punto hasta `K_LOTE_MS` después
+     * de tomado, en vez de 2-4 s después. Decidido con el cliente el 13/09/2026 (15 s).
+     *
+     * Lo pasa el JS en configurar() desde gpsConfig.LOTE_SUBIDA_MS → afinable por OTA. **0 = subir en
+     * cada fix**, que es lo que hace un APK nuevo con un bundle viejo que no manda la clave. */
+    static final String K_LOTE_MS = "loteMs";
     // Cadencia ADAPTATIVA por velocidad (27/07/2026): a 15 s de captura, en auto un fix cada ~165 m → el
     // trazo une esos puntos con una recta que cruza la manzana. Sobre K_VEL_UMBRAL m/s la captura sube a
     // K_INTERVALO_RAPIDO ms (más puntos en curvas/avenidas) y vuelve a K_INTERVALO al frenar. Los pasa el
@@ -261,6 +282,14 @@ public class UploaderGpsService extends Service {
     private LocationCallback callback;
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
     private final AtomicBoolean subiendo = new AtomicBoolean(false);
+    // Ventana de agrupado del envío (ver K_LOTE_MS): cuándo salió el último POST y si ya hay uno
+    // programado para cuando venza la ventana. Corre en `latidoH` (main looper, bajo el WakeLock
+    // parcial que sostiene la captura), igual que el latido.
+    private volatile long ultimaSubidaAt = 0L;
+    private final AtomicBoolean subidaProgramada = new AtomicBoolean(false);
+    private final Runnable subidaDiferida = new Runnable() {
+        @Override public void run() { subidaProgramada.set(false); subir(true); }
+    };
 
     // Filtro por movimiento (espejo de procesarFix en tracker.js): último punto GUARDADO + cuándo. Se
     // encola solo si se movió >= minMove, o si pasó keepAlive estando quieto (marcador "vivo"). Vive en
@@ -1012,8 +1041,30 @@ public class UploaderGpsService extends Service {
         } catch (Exception ignored) {}
     }
 
-    private void subir() {
+    private void subir() { subir(false); }
+
+    /**
+     * Empuja la cola. Con `K_LOTE_MS > 0`, un punto que llega dentro de la ventana desde la última
+     * subida NO sale ya: se deja programada UNA subida para cuando la ventana venza y se vuelve. La
+     * ventana se salta si la cola ya llenó un lote (venía de estar sin red) o si es el primer punto
+     * después de más de una ventana de silencio, que así llega igual de rápido que antes.
+     *
+     * `ultimaSubidaAt` se sella al INTENTAR, no al lograr: sin red, esto también acota los intentos
+     * a uno por ventana en vez de uno por fix (cada intento fallido cuesta hasta 15 s de timeout).
+     *
+     * @param vencida true cuando llama `subidaDiferida`: la ventana ya pasó, no se vuelve a esperar.
+     */
+    private void subir(boolean vencida) {
+        long loteMs = prefs().getInt(K_LOTE_MS, 0);
+        if (loteMs > 0 && !vencida) {
+            long espera = ultimaSubidaAt + loteMs - System.currentTimeMillis();
+            if (espera > 0 && largoCola() < LOTE) {
+                if (subidaProgramada.compareAndSet(false, true)) latidoH.postDelayed(subidaDiferida, espera);
+                return;
+            }
+        }
         if (subiendo.getAndSet(true)) return;   // una sola subida a la vez
+        ultimaSubidaAt = System.currentTimeMillis();
         pool.execute(() -> {
             try { subirLote(); } catch (Exception ignored) {} finally { subiendo.set(false); }
         });
@@ -1126,8 +1177,9 @@ public class UploaderGpsService extends Service {
      * puntos hasta las 14:45 por este mismo POST. **Justo cuando un teléfono falla, el diagnóstico
      * deja de llegar**, y comparar contadores entre personas era comparar horas distintas sin saberlo.
      *
-     * Cuesta ~200 bytes por lote y ningún request extra: el uploader ya postea cada 5-10 s con red.
-     * El servidor sella `telemetria_ts`, así que el número siempre viene con la hora en que se midió.
+     * Cuesta ~200 bytes por lote y ningún request extra: el uploader postea cada `K_LOTE_MS` (15 s
+     * desde el 13/09/2026; antes, cada 5-10 s, un POST por punto) con red. El servidor sella
+     * `telemetria_ts`, así que el número siempre viene con la hora en que se midió.
      */
     private JSONObject telemetriaJson() {
         JSONObject t = new JSONObject();
@@ -1181,7 +1233,7 @@ public class UploaderGpsService extends Service {
                 quitarPrimeros(lote);
                 // Los contadores viajan con esta misma escritura: cero writes extra. Entre subidas
                 // quedan levemente atrasados, y no importa — el latido los lee cada 2 min y las
-                // subidas pasan cada 5-10 s cuando hay red.
+                // subidas pasan cada `K_LOTE_MS` (15 s) cuando hay red.
                 volcarTelemetria(sp.edit().putLong(K_ULTIMA, System.currentTimeMillis())).apply();
                 // Subió: la red está bien. Si veníamos de 'sin-red'/'avion', esto es lo que cierra
                 // el período y deja el `red_desde` listo para que el latido lo suba.
@@ -1465,6 +1517,10 @@ public class UploaderGpsService extends Service {
             volcarTelemetria(prefs().edit()).putInt(K_TEL_DIA, diaContadores).commit();
         } catch (Exception ignored) {}
         latidoH.removeCallbacks(latido);
+        // La subida diferida no puede correr sobre un servicio muerto (pool y prefs ya no son de
+        // nadie). Lo que quedó en la cola sale en el próximo arranque, como siempre.
+        latidoH.removeCallbacks(subidaDiferida);
+        subidaProgramada.set(false);
         apagarCarrilRed();
         soltarWakeLock();
         // Soltar la referencia estática: sin esto queda un Service muerto retenido para siempre.

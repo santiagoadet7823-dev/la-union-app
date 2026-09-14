@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../services/supabase'
 import { useTenant } from '../../context/TenantContext'
+import { EVENTO_CUARENTENA } from '../../services/sync/writeQueue'
 
 /**
  * LOS PEDIDOS, PARA REVISARLOS.
@@ -91,15 +92,55 @@ function mapPedido(p) {
 export function usePedidos({ desde, hasta, idVendedor = null, papelera = false }) {
   const { idEmpresaActiva, esTodas } = useTenant()
   const [estado, setEstado] = useState({ pedidos: [], cargando: true, error: null })
-  // Cambiarlo fuerza una relectura. Es lo que usa la pantalla después de anular o borrar: la lista
-  // tiene que reflejar lo que quedó en la base, no lo que creemos que quedó.
+  // Cambiarlo fuerza una relectura (botón "Reintentar", cambio de rango). Después de anular,
+  // corregir o asignar ya NO se usa: la pantalla aplica la fila resultante con `aplicar`/`quitar`.
   const [ciclo, setCiclo] = useState(0)
   const recargar = useCallback(() => setCiclo((n) => n + 1), [])
+
+  /* 🩸 LOCAL PRIMERO, LA RED DESPUÉS (13/09/2026).
+   *
+   * Hasta hoy cada acción sobre un pedido —anular, corregir, asignar repartidor, borrar— terminaba
+   * con `recargar()` de las DOS listas (activos y papelera): dos consultas paginadas con el embed
+   * de cliente y vendedor, la lista reemplazada por "Cargando pedidos…" mientras tanto, y sin red
+   * la lista quedaba VACÍA con un error, aunque la mutación estuviera bien guardada en la cola. El
+   * motivo era honesto (un UPDATE que RLS rechaza afecta cero filas sin error) pero la relectura
+   * no lo resolvía offline y le costaba a cada acción dos viajes por datos móviles.
+   *
+   * Ahora las mutaciones ya devuelven la fila como queda (`anularPedido`, `editarPedido`,
+   * `asignarRepartidor`) y la pantalla la APLICA acá. El rechazo silencioso lo detecta la cola
+   * (`verificar: true` → cuarentena `SIN_FILAS`, ver writeQueue.js), que es donde corresponde:
+   * es la cola la que sabe si el servidor aceptó o no. */
+
+  /**
+   * Aplica a la lista un pedido tal como queda después de una acción. Si su estado ya no
+   * corresponde a esta lista (anulado en la de vivos, o al revés) lo quita; si corresponde y no
+   * estaba, lo agrega adelante; si estaba, lo reemplaza. Acepta la fila en la forma de la pantalla
+   * (con `comercio`) o cruda de la base (con `cliente`): `mapPedido` es idempotente sobre la primera.
+   */
+  const aplicar = useCallback((pedido) => {
+    if (!pedido?.id) return
+    const fila = pedido.comercio !== undefined ? pedido : mapPedido(pedido)
+    const vaAca = papelera ? fila.estado === 'Anulado' : fila.estado !== 'Anulado'
+    setEstado((e) => {
+      const sin = e.pedidos.filter((p) => p.id !== fila.id)
+      if (!vaAca) return sin.length === e.pedidos.length ? e : { ...e, pedidos: sin }
+      const estaba = e.pedidos.some((p) => p.id === fila.id)
+      const pedidos = estaba ? e.pedidos.map((p) => (p.id === fila.id ? { ...p, ...fila } : p)) : [fila, ...sin]
+      return { ...e, pedidos }
+    })
+  }, [papelera])
+
+  /** Saca un pedido de la lista (borrado definitivo). */
+  const quitar = useCallback((id) => {
+    setEstado((e) => (e.pedidos.some((p) => p.id === id) ? { ...e, pedidos: e.pedidos.filter((p) => p.id !== id) } : e))
+  }, [])
 
   useEffect(() => {
     if (!desde || !hasta || !idEmpresaActiva) return
     let vivo = true
-    setEstado((e) => ({ ...e, cargando: true }))
+    // `cargando` sólo si no hay nada que mostrar (mismo criterio que CatalogContext.recargar del
+    // 10/09): una relectura con lista en pantalla es una revalidación silenciosa, no un spinner.
+    setEstado((e) => (e.pedidos.length ? e : { ...e, cargando: true }))
     ;(async () => {
       try {
         const filas = []
@@ -125,13 +166,27 @@ export function usePedidos({ desde, hasta, idVendedor = null, papelera = false }
         if (!vivo) return
         setEstado({ pedidos: filas.map(mapPedido), cargando: false, error: null })
       } catch (e) {
-        if (vivo) setEstado({ pedidos: [], cargando: false, error: e?.message || String(e) })
+        // Sin red se CONSERVA lo que había: vaciar la lista por un fallo de lectura hacía que un
+        // pedido recién anulado offline "desapareciera" de la pantalla con la mutación en cola.
+        if (vivo) setEstado((prev) => ({ pedidos: prev.pedidos, cargando: false, error: e?.message || String(e) }))
       }
     })()
     return () => { vivo = false }
   }, [desde, hasta, idVendedor, papelera, idEmpresaActiva, esTodas, ciclo])
 
-  return useMemo(() => ({ ...estado, recargar }), [estado, recargar])
+  // Si la cola apartó una mutación de pedidos (RLS la rechazó, regla de negocio, etc.), lo que se
+  // aplicó en local ya no es lo que hay en la base: se revalida en silencio (la lista se conserva
+  // mientras llega). Es el único caso en que una acción termina en una relectura.
+  useEffect(() => {
+    const onCuarentena = (ev) => {
+      const t = ev?.detail?.table
+      if (t === 'pedidos' || t === 'pedido_items') recargar()
+    }
+    window.addEventListener(EVENTO_CUARENTENA, onCuarentena)
+    return () => window.removeEventListener(EVENTO_CUARENTENA, onCuarentena)
+  }, [recargar])
+
+  return useMemo(() => ({ ...estado, recargar, aplicar, quitar }), [estado, recargar, aplicar, quitar])
 }
 
 /**

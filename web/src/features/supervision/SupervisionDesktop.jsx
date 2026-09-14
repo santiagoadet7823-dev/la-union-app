@@ -9,8 +9,8 @@ import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
 import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import useSnapConectores from './useSnapConectores'
 import MetricasEquipo from './MetricasEquipo'
-import { fetchSnapRecorridos } from '../../services/recorridos'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
@@ -60,7 +60,6 @@ const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
 
-const REFRESH_MS = 60000
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
 const SIDEBAR_W = 232
@@ -95,7 +94,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [drawerOpen, setDrawerOpen] = useState(false) // sidebar como drawer en mobile
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
-  const [snapped, setSnapped] = useState({}) // { id: [{lat,lng}] } pegado a calles
   const [, tick] = useState(0)
   const [fitDone, setFitDone] = useState(false)
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin sidebar ni topbar
@@ -134,15 +132,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const { clientes: cartera, zonas } = useCatalog()
   const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
 
-  // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
-  const cargarSnap = useCallback(async () => {
-    if (!idEmpresaActiva) return
-    const s = await fetchSnapRecorridos({ fecha, desde: new Date(fecha + 'T00:00:00').toISOString(), hasta: new Date(fecha + 'T23:59:59').toISOString() })
-    setSnapped(s)
-  }, [idEmpresaActiva, fecha])
-
-  useEffect(() => { cargarSnap() }, [cargarSnap])
-  useEffect(() => { const iv = setInterval(cargarSnap, REFRESH_MS); return () => clearInterval(iv) }, [cargarSnap])
+  // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
+  // `setInterval` de 60 s que la invocaba también mirando días pasados; ahora se pide sólo cuando
+  // aparece un hueco candidato — ver useSnapConectores.js. Falla suave → recta.
+  const snapped = useSnapConectores({ byUser, fecha, idEmpresa: idEmpresaActiva })
   // Encuadrar el mapa solo la primera vez que hay datos; después se preserva el zoom/pan.
   useEffect(() => {
     if (fitDone) return

@@ -106,6 +106,56 @@ function largoDe(linea) {
   return m
 }
 
+/* 🩸 LA EDGE FUNCTION SE INVOCA CUANDO HAY UN HUECO QUE RUTEAR, NO CADA MINUTO (13/09/2026).
+ *
+ * Desde el 18/08 lo único que el front usa de `snap-recorridos` son los CONECTORES (ver el 🩸 de
+ * `construirLeaflet`): la ruta por calle de un hueco largo, que aparece un puñado de veces por día
+ * (el día más movido de Javier da 4) y muchos días ninguna. Y sin embargo las tres vistas la
+ * invocaban con `setInterval` cada 60 s, también mirando días PASADOS: 1 invocación/min × 3 vistas
+ * × 10 h ≈ 1.800 invocaciones por día, y cada una relee del lado del servidor las ~20.000
+ * posiciones de la jornada (21 páginas) y hace un upsert por persona, para devolver un dato que
+ * cambió menos de 10 veces en todo el día — y unas `geometrias` que el front descarta.
+ *
+ * Ahora la vista calcula una FIRMA con los huecos candidatos a conector que ve en su propio
+ * recorrido limpio, y sólo invoca la función cuando esa firma cambia (y nunca cuando está vacía).
+ * Un día sin huecos largos cuesta cero invocaciones; un día pasado, a lo sumo una.
+ *
+ * ⚠️ Las tres condiciones son las MISMAS que decide `snap-recorridos/index.ts` (`CONECTOR_MIN_M`,
+ * `CONECTOR_MAX_MS`, `CONECTOR_VEL_MIN_MPS`), copiadas porque Deno y el bundle no comparten módulo
+ * — el mismo espejo que `HUECO_MS` ↔ `GAP_MS` en lib/geo.js. Si se toca una, tocar la otra. No hace
+ * falta replicar `splitGaps` ni el promediado de racimos: los bordes que ve el front salen de
+ * `limpiarTrazo`, que corta a los mismos 4 minutos, y un falso positivo cuesta una invocación, no
+ * un conector inventado (eso lo sigue decidiendo la función). */
+const CONECTOR_MIN_M = 5000
+const CONECTOR_MAX_MS = 90 * 60000
+const CONECTOR_VEL_MIN_MPS = 8
+
+/**
+ * Firma de los huecos que la Edge Function podría rutear como conector, sobre el recorrido YA
+ * limpio de cada persona. Cadena vacía = no hay nada que pedirle a `snap-recorridos`.
+ *
+ * @param {Record<string,{segmentos?:Array<Array<{lat:number,lng:number,ts?:string}>>}>} byUser salida de limpiarPorUsuario
+ * @returns {string} p.ej. `uid1:2026-08-17T12:08:10Z|2026-08-17T12:35:44Z;uid2:…`, orden estable
+ */
+export function firmaConectores(byUser) {
+  const partes = []
+  for (const [id, v] of Object.entries(byUser || {})) {
+    const segs = v.segmentos || []
+    for (let i = 1; i < segs.length; i++) {
+      const a = segs[i - 1][segs[i - 1].length - 1]
+      const b = segs[i][0]
+      if (!a || !b) continue
+      const recta = distanciaMetros(a, b)
+      if (recta < CONECTOR_MIN_M) continue
+      const dt = new Date(b.ts).getTime() - new Date(a.ts).getTime()
+      if (!Number.isFinite(dt) || dt <= 0 || dt > CONECTOR_MAX_MS) continue
+      if (recta / (dt / 1000) < CONECTOR_VEL_MIN_MPS) continue
+      partes.push(`${id}:${a.ts}|${b.ts}`)
+    }
+  }
+  return partes.sort().join(';')
+}
+
 /**
  * ¿La geometría pegada a calles representa el recorrido, o perdió pedazos por el camino?
  *

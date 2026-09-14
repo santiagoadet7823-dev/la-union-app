@@ -23,8 +23,8 @@ import { isNative } from '../services/platform'
  */
 
 // Calcula cuántos ms faltan hasta el próximo límite (inicio o fin) de la ventana
-// horaria, para recalcular `enHorario` justo en el borde y no hasta 4 min tarde.
-// Tope de 4 min: igual se recalibra con el refresco periódico de la config.
+// horaria, para recalcular `enHorario` justo en el borde y no hasta 10 min tarde.
+// Tope de 10 min: igual se recalibra con el refresco periódico de la config.
 function msHastaProximoLimite(cfg) {
   if (!cfg || cfg.enabled === false) return null
   const now = new Date()
@@ -38,7 +38,7 @@ function msHastaProximoLimite(cfg) {
   ventanas.forEach((v) => { bordes.push(toSec(v.start || '00:00'), toSec(v.end || '23:59')) })
   const candidatos = bordes.map((s) => (s > cur ? s - cur : s - cur + 86400)).filter((d) => d > 0)
   if (!candidatos.length) return null
-  return Math.min(Math.min(...candidatos) * 1000, 4 * 60000)
+  return Math.min(Math.min(...candidatos) * 1000, 10 * 60000)
 }
 
 export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
@@ -65,7 +65,7 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
 
   // Carga (y refresca) la ventana horaria de rastreo controlada por el superadmin.
   // Además de guardarla, apaga/prende el sensor GPS en sí (no solo la subida) según
-  // la ventana, y se recalibra justo en el borde (no solo cada 4 min).
+  // la ventana, y se recalibra justo en el borde (no solo cada 10 min).
   useEffect(() => {
     if (!enabled) return
     let alive = true
@@ -76,7 +76,7 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
       setConfig(cfg) // el tracker lee la ventana horaria SÍNCRONO en procesarFix
       const dentro = dentroDeHorario(cfg)
       setEnHorario(dentro)
-      // REEMPUJAR la ventana al servicio nativo cuando cambia la config (cada 4 min / en el borde). Sin
+      // REEMPUJAR la ventana al servicio nativo cuando cambia la config (cada 10 min / en el borde). Sin
       // esto, un cambio de horario desde EmpresasView no llegaba al teléfono con el nativo ya corriendo:
       // configurar() solo se llamaba una vez al arrancar. `iniciarUploaderNativo` es re-invocable y
       // reempuja la ventana (el nativo la relee de prefs) + relevanta el servicio si se auto-apagó. En
@@ -98,7 +98,7 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     // si no, getTrackConfig cae al horario global. Sin id, usa el global.
     const load = () => getTrackConfig(id).then((c) => { if (alive) aplicar(c) }).catch(() => {})
     load()
-    const iv = setInterval(load, 4 * 60000)
+    const iv = setInterval(load, 10 * 60000) // mismo TTL que services/tracking.js
     return () => { alive = false; clearInterval(iv); clearTimeout(boundaryTimer) }
   }, [enabled, id])
 
@@ -111,7 +111,7 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     // todavía es null —el efecto que lo llena es async— y arrancar el uploader con null hacía que
     // `iniciarUploaderNativo` cayera a `getTrackConfig()` SIN userId, o sea al horario GLOBAL: la
     // categoría de rastreo de la persona quedaba CAPADA por el horario general hasta el siguiente
-    // `aplicar()` (hasta 4 minutos), y el servicio nativo arrancaba tarde o se cortaba temprano.
+    // `aplicar()` (hasta 10 minutos desde el 13/09/2026; antes 4), y el servicio nativo arrancaba tarde o se cortaba temprano.
     // No hace falta arrancarlo acá: `aplicar()` lo hace apenas llega la config, con la ventana buena.
     if (enabled && enHorario && cfgRef.current) iniciarUploaderNativo(cfgRef.current, { userId: id })
     else if (!enabled || !enHorario) detenerUploaderNativo()

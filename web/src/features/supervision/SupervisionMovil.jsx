@@ -8,8 +8,8 @@ import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
 import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import useSnapConectores from './useSnapConectores'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
-import { fetchSnapRecorridos } from '../../services/recorridos'
 import { apilarAtras } from '../../services/atras'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
@@ -62,7 +62,6 @@ const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
  * Empresas) se abren NATIVAS desde el botón "Menú" (GestionHost). Ya no se navega al
  * AdminView de escritorio (PWA) desde la APK.
  */
-const REFRESH_MS = 60000
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
 // Métricas del chrome flotante. Antes vivían como literales sueltos (56/64/70/72/84/86/142)
@@ -99,7 +98,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [plusOpen, setPlusOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
-  const [snapped, setSnapped] = useState({})     // { id: [{lat,lng}] } pegado a calles
   // 🩸 PRENDIDO POR DEFECTO desde el 03/08/2026 (antes arrancaba en crudo). Con un motor por modo
   // (ALGO 8) el snap ya cubre el día entero y no solo las caminatas, así que el trazo que se abre
   // es el que sigue la calle. Apagarlo devuelve el rastro crudo en un toque, y sigue siendo el que
@@ -171,15 +169,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const { clientes: cartera, zonas } = useCatalog()
   const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
 
-  // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
-  const cargarSnap = useCallback(async () => {
-    if (!idEmpresaActiva) return
-    const s = await fetchSnapRecorridos({ fecha, desde: new Date(fecha + 'T00:00:00').toISOString(), hasta: new Date(fecha + 'T23:59:59').toISOString() })
-    setSnapped(s)
-  }, [idEmpresaActiva, fecha])
-
-  useEffect(() => { cargarSnap() }, [cargarSnap])
-  useEffect(() => { const iv = setInterval(cargarSnap, REFRESH_MS); return () => clearInterval(iv) }, [cargarSnap])
+  // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
+  // `setInterval` de 60 s que la invocaba también mirando días pasados; ahora se pide sólo cuando
+  // aparece un hueco candidato — ver useSnapConectores.js. Falla suave → recta.
+  const snapped = useSnapConectores({ byUser, fecha, idEmpresa: idEmpresaActiva })
   // Encuadrar el mapa solo la primera vez que hay datos; después se preserva el zoom/pan.
   useEffect(() => {
     if (fitDone) return

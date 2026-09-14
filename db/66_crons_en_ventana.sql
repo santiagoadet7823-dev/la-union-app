@@ -1,0 +1,21 @@
+-- 66 — Los crons de push corren sólo en la ventana en que la función manda algo (13/09/2026)
+--
+-- ⚠️ NO EJECUTAR: es un REGISTRO. Los jobs viven en `cron.job` y no están versionados (ver
+-- PLAN_BACKEND_DEDICADO.md §2.3); los `alter_job` de abajo YA se aplicaron a mano en la base viva
+-- el 13/09/2026, verificados con `select jobid, jobname, schedule from cron.job`.
+--
+-- Por qué. `push-heartbeat` y `push-actualizacion` tienen la ventana 06-22 (hora de Salta, UTC−3)
+-- escrita adentro y fuera de ella devuelven `fuera de ventana` sin hacer nada — pero el cron las
+-- invocaba las 24 h: 16 de las 48 invocaciones diarias del heartbeat y 8 de las 24 de actualización
+-- eran una Edge Function arrancando para contestar que no. pg_cron corre en GMT (`cron.timezone`),
+-- así que 06:00–21:59 Salta son las horas UTC 9..23 y 0.
+--
+-- ⚠️ `alertas-equipo-10min` (jobid 6) y `resumen-equipo-1h` (jobid 10) NO se tocan a propósito: no
+-- tienen ventana global, usan `en_ventana` por persona (`vigilancia_equipo`), y la ventana de
+-- rastreo es configurable por empresa — una jornada nocturna (22:00–06:00, regla 36) se quedaría
+-- sin avisos.
+--
+-- select cron.alter_job(4,  schedule := '*/30 9-23,0 * * *');  -- push-heartbeat-30min   (era */30 * * * *)
+-- select cron.alter_job(11, schedule := '25 9-23,0 * * *');    -- push-actualizacion-1h  (era 25 * * * *)
+--
+-- Para volver atrás: los mismos dos `alter_job` con los horarios de "era".

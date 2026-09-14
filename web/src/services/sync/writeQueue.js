@@ -8,12 +8,14 @@ import { persistence } from '../persistence'
  * la conexión. Usa el puerto `persistence` (async), así en la APK puede pasar a
  * SQLite sin tocar este archivo.
  *
- * Cada mutación: { op_uid, table, op:'insert'|'update'|'updateMany'|'delete'|'borrarArchivos', payload, id?, ids? }.
+ * Cada mutación: { op_uid, table, op:'insert'|'update'|'updateMany'|'delete'|'borrarArchivos', payload, id?, ids?, verificar? }.
  * - insert:     upsert(onConflict:'id', ignoreDuplicates) → reintentar no duplica.
  * - update:     update(payload).eq('id', id).
  * - updateMany: update(payload).in('id', ids) → UNA entrada para N filas.
  * - delete:     delete().eq('id', id) → reintentar es idempotente (borrar lo ya borrado no falla).
  * - borrarArchivos: Storage, no tabla. `{ bucket, paths[] }` → remove(paths).
+ * - verificar (opcional, update/updateMany/delete): pide `.select('id')` y trata CERO filas
+ *   afectadas como fallo permanente (`SIN_FILAS`). Ver el 🩸 en el flush.
  * El id de las filas nuevas lo genera el cliente (uuid), así la fila optimista y la
  * de la base comparten el mismo id.
  *
@@ -25,6 +27,8 @@ import { persistence } from '../persistence'
  */
 const KEY = 'lu-write-queue'
 const QKEY = 'lu-write-cuarentena'
+/** Nombre del evento que se emite en `window` cuando una mutación se aparta a cuarentena. */
+export const EVENTO_CUARENTENA = 'lu-write-cuarentena'
 const MAX = 2000
 const MAX_Q = 500
 
@@ -73,6 +77,15 @@ const CODIGOS_PERMANENTES = new Set([
    * Un `raise exception` es una decisión deliberada del otro lado: reintentarlo mil veces no lo
    * vuelve cierto. */
   'P0001', // raise exception de plpgsql — una regla de negocio dijo que no
+  /* 🩸 `SIN_FILAS` — NO ES UN CÓDIGO DE POSTGRES, LO PONE ESTA COLA (13/09/2026).
+   *
+   * Un UPDATE o DELETE sobre una fila que la RLS esconde **no da error**: afecta cero filas y vuelve
+   * con 200. La cola lo daba por subido, y la pantalla mostraba "listo" sobre algo que no pasó. La
+   * defensa hasta hoy era RELEER la lista entera de pedidos después de cada acción (dos consultas
+   * paginadas, con spinner, y sin red la lista quedaba vacía). Ahora las mutaciones que lo piden
+   * (`verificar: true`) hacen `.select('id')` sobre el mismo request, y cero filas se aparta a
+   * cuarentena como cualquier rechazo: reintentarlo daría cero otra vez. */
+  'SIN_FILAS', // el servidor aceptó y no tocó ninguna fila (RLS la esconde, o ya no existe)
 ])
 
 /**
@@ -113,6 +126,28 @@ async function aislar(m, motivo) {
   if (q.length > MAX_Q) q = q.slice(-MAX_Q)
   console.warn(`[writeQueue] mutación a CUARENTENA (${motivo}):`, m.op, m.table, m.id, '· en cuarentena:', q.length)
   try { await persistence.set(QKEY, q) } catch (_) { /* si no entra, ya estaba trabada igual */ }
+  // Aviso para las pantallas que aplicaron la mutación en local sin releer (usePedidos, 13/09/2026):
+  // lo que mostraron ya no es lo que hay en la base, y tienen que revalidar. Es un evento del
+  // documento y no un callback registrado porque la cola no sabe quién está montado.
+  try { window.dispatchEvent(new CustomEvent(EVENTO_CUARENTENA, { detail: { table: m.table, op: m.op, id: m.id, motivo } })) } catch (_) { /* sin window (tests, SSR) */ }
+}
+
+/**
+ * Ejecuta la consulta y devuelve su `error` (o null). Con `m.verificar`, pide las filas afectadas
+ * y convierte "ninguna" en el error sintético `SIN_FILAS` (ver CODIGOS_PERMANENTES). Sin el flag,
+ * es exactamente el request de siempre: ninguna op de catálogo cambia de comportamiento.
+ */
+async function conVerificacion(m, consulta) {
+  if (!m.verificar) {
+    const { error } = await consulta
+    return error || null
+  }
+  const { data, error } = await consulta.select('id')
+  if (error) return error
+  if (!Array.isArray(data) || data.length === 0) {
+    return { code: 'SIN_FILAS', message: `${m.op} sobre ${m.table} no afectó ninguna fila (RLS, o la fila ya no existe)` }
+  }
+  return null
 }
 
 /** Encola una mutación para sincronizar. */
@@ -140,14 +175,14 @@ export async function flushMutaciones() {
       if (m.op === 'insert') {
         ({ error } = await supabase.from(m.table).upsert(m.payload, { onConflict: 'id', ignoreDuplicates: true }))
       } else if (m.op === 'update') {
-        ({ error } = await supabase.from(m.table).update(m.payload).eq('id', m.id))
+        error = await conVerificacion(m, supabase.from(m.table).update(m.payload).eq('id', m.id))
       } else if (m.op === 'updateMany') {
         // Sin ids no hay nada que hacer, y `.in('id', [])` es un no-op caro: se descarta.
         if (Array.isArray(m.ids) && m.ids.length) {
-          ({ error } = await supabase.from(m.table).update(m.payload).in('id', m.ids))
+          error = await conVerificacion(m, supabase.from(m.table).update(m.payload).in('id', m.ids))
         }
       } else if (m.op === 'delete') {
-        ({ error } = await supabase.from(m.table).delete().eq('id', m.id))
+        error = await conVerificacion(m, supabase.from(m.table).delete().eq('id', m.id))
       } else if (m.op === 'borrarArchivos') {
         /* 🩸 LA FOTO NO SE BORRABA NUNCA (18/08/2026). `deleteProducto` encolaba el DELETE de la
          * fila y no tocaba Storage, así que cada producto eliminado dejaba su imagen para siempre.

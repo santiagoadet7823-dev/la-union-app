@@ -198,6 +198,7 @@ export async function asignarRepartidor(pedido, idRepartidor) {
     op_uid: `${pedido.id}:repartidor:${idRepartidor || 'ninguno'}:${ts}`,
     table: 'pedidos', op: 'update', id: pedido.id,
     payload: { id_repartidor: idRepartidor || null },
+    verificar: true, // cero filas = cuarentena (ver anularPedido.js); la pantalla no relee
   })
   flushMutaciones()
   return { ...pedido, id_repartidor: idRepartidor || null }

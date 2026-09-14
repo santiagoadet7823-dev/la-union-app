@@ -6,6 +6,8 @@ import { hoyStr } from '../lib/format'
 
 const REFRESH_MS = 60000
 const CACHE_KEY = 'lu-recorridos-cache'
+// La caché se escribe como mucho cada tanto (ver el efecto de persistencia, abajo).
+const PERSISTIR_CADA_MS = 5 * 60000
 
 /**
  * Carga las posiciones del día (todas las de la empresa, agrupadas por
@@ -33,11 +35,30 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   const [updatedAt, setUpdatedAt] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const lastTsRef = useRef(null)
-  // Cuántos puntos tenemos cargados en total (todos los usuarios). Sirve para detectar
-  // BACKFILL: si el server tiene más puntos del día que los que tenemos, es que entraron
-  // puntos con ts viejo por detrás del cursor incremental (ver comentario en `load`).
-  const cargadosRef = useRef(0)
+  /* 🩸 EL CURSOR INCREMENTAL ES EL `id`, NO EL `ts` (13/09/2026).
+   *
+   * Hasta hoy el refresco pedía `ts > último ts visto`. Eso no ve nunca un punto que entra a la
+   * base con `ts` VIEJO — y eso pasa todos los días: un vendedor sin señal acumula la cola en el
+   * teléfono y, cuando vuelve la red, sube puntos tomados hace 20 minutos con su hora real de
+   * captura (21/07/2026: una cola de ~2.400 puntos de la mañana que el crudo no mostraba). El
+   * remedio era un `count` extra por tick y, ante cualquier diferencia, una RECARGA COMPLETA del
+   * día: 21 páginas de 1.000 filas, ~3 MB por datos móviles, disparada por un solo punto rezagado.
+   *
+   * `posiciones.id` es un bigint secuencial (verificado en la base viva): se asigna al INSERTAR,
+   * así que un punto rezagado tiene `ts` viejo pero `id` más alto que todo lo que ya tenemos. Con
+   * `id > último id visto` el incremental lo trae solo, sin count y sin recarga. El día sigue
+   * acotado por `ts` (`gte desde / lte hasta`); lo que cambia es sólo el cursor.
+   *
+   * Lo que sí hay que cuidar es el ORDEN: `limpiarTrazo` y `detectarParadas` asumen puntos en
+   * orden temporal, y un rezagado llega al final del array. Antes eso lo garantizaba la recarga
+   * completa; ahora se reordena por `ts` SÓLO el array de la persona que recibió un punto fuera
+   * de orden (ver el merge). */
+  const lastIdRef = useRef(null)
+  const lastTsRef = useRef(null) // sólo informativo (caché y "act. hace")
+  // Persistencia diferida de la caché (ver el efecto al final). Van acá arriba porque el efecto de
+  // carga inicial, más arriba que el de persistencia, también los toca (regla 51).
+  const ultimaPersistRef = useRef(0)
+  const pendienteRef = useRef(null) // el último snapshot que todavía no se escribió
   const esHoy = fecha === hoyStr()
   // Sube cuando la app arrancó con el token vencido y después consiguió uno bueno: hay que volver
   // a pedir lo que se cayó con 401 (ver AuthContext). Sin esto el mapa quedaba vacío hasta cerrar
@@ -50,8 +71,8 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     // (los de más de ACCURACY_MAX_M), y `limpiarTrazo` los necesita para dibujarlos punteados y
     // dejarlos fuera de los km. Sin esta columna el trazo aproximado se dibujaría como si fuera GPS.
     const cols = conRol
-      ? 'id_usuario, rol, lat, lng, ts, bateria, accuracy'
-      : 'id_usuario, lat, lng, ts, bateria, accuracy'
+      ? 'id, id_usuario, rol, lat, lng, ts, bateria, accuracy'
+      : 'id, id_usuario, lat, lng, ts, bateria, accuracy'
     const desde = new Date(fecha + 'T00:00:00').toISOString()
     const hasta = new Date(fecha + 'T23:59:59').toISOString()
     if (!incremental) setLoading(true)
@@ -75,17 +96,23 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     let err = null
     let offset = 0
     let total = null // cuántas filas dice el servidor que hay (solo se pide en la 1ª vuelta)
+    const inc = incremental && lastIdRef.current != null
     for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
       let q = supabase.from('posiciones')
-        .select(cols, vuelta === 0 ? { count: 'exact' } : undefined)
-        .lte('ts', hasta)
-        .order('ts', { ascending: true }).order('id', { ascending: true })
+        // El `count` sólo en la carga COMPLETA: es la guarda contra una paginación rota (abajo) y
+        // la completa ahora es rara. En el incremental no hay nada que contar.
+        .select(cols, !inc && vuelta === 0 ? { count: 'exact' } : undefined)
+        .gte('ts', desde).lte('ts', hasta)
         .range(offset, offset + PAGE - 1)
+      // Orden TOTAL en los dos casos (sin él, dos filas iguales pueden repartirse entre páginas):
+      // la completa por `ts` (y `id` de desempate) porque así los puntos ya llegan en orden
+      // temporal; la incremental por `id`, que es su cursor.
+      q = inc ? q.order('id', { ascending: true }) : q.order('ts', { ascending: true }).order('id', { ascending: true })
       // '*' = TODAS las empresas (selector de scope del superadmin). Sin el `.eq()`, RLS decide:
       // para un superadmin `posiciones_sel` no filtra por tenant, para cualquier otro sí. O sea
       // que el peor caso de un '*' mal puesto es ver lo mismo de siempre, no una fuga.
       if (idEmpresa !== '*') q = q.eq('id_empresa', idEmpresa)
-      q = incremental && lastTsRef.current ? q.gt('ts', lastTsRef.current) : q.gte('ts', desde)
+      if (inc) q = q.gt('id', lastIdRef.current)
       // El error se MIRA. Antes esto era `const { data } = await q` y descartaba `error`:
       // cualquier falla (timeout, RLS, red) dejaba `data` en null, el hook hacía `return` y el
       // mapa quedaba vacío SIN UN SOLO MENSAJE. Los fallos tienen que ser ruidosos.
@@ -107,9 +134,6 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     }
     setError(null)
     const data = filas
-    // Llevamos la cuenta de lo cargado: la completa REEMPLAZA el total, la incremental SUMA.
-    if (incremental) cargadosRef.current += data.length
-    else cargadosRef.current = data.length
     // Autocontrol: el servidor dice cuántas filas hay (`count: 'exact'`) y comparamos contra
     // lo que realmente juntamos. Si FALTAN, el recorrido que se está por dibujar está
     // incompleto — y un recorrido incompleto se ve igual de convincente que uno entero. Este
@@ -169,33 +193,33 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
         })
         porUsuario.forEach((e, id) => {
           const rolVal = conRol ? e.rol : next[id]?.rol
-          const prevPoints = next[id]?.points
-          next[id] = { rol: rolVal, points: prevPoints?.length ? prevPoints.concat(e.points) : e.points }
+          const prevPoints = next[id]?.points || []
+          // El incremental viene ordenado por `id`, no por `ts`. Si algún punto nuevo es anterior
+          // al que lo precede (cola que drenó tarde), se reordena por `ts` sólo esta persona. Es
+          // la única situación en que hace falta, y es barata: un sort por día y persona rezagada,
+          // no uno por tick. Vale también para una persona que aparece por primera vez en un tick
+          // (sin `prevPoints`): su lote puede mezclar rezagados con frescos.
+          const points = prevPoints.length ? prevPoints.concat(e.points) : e.points
+          let desordenado = false
+          for (let i = Math.max(1, prevPoints.length); i < points.length; i++) {
+            if (points[i].ts < points[i - 1].ts) { desordenado = true; break }
+          }
+          if (desordenado) points.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
+          next[id] = { rol: rolVal, points }
         })
         return next
       })
-      lastTsRef.current = data[data.length - 1].ts
+      // El cursor es el `id` MÁXIMO recibido. En la completa las filas vienen por `ts`, así que el
+      // último de la lista no es necesariamente el de `id` más alto; se barre.
+      let maxId = lastIdRef.current ?? -1
+      let maxTs = lastTsRef.current || ''
+      for (const p of data) { if (p.id > maxId) maxId = p.id; if (p.ts > maxTs) maxTs = p.ts }
+      lastIdRef.current = maxId
+      lastTsRef.current = maxTs
     } else if (!incremental) {
       setByUser({})
     }
     setUpdatedAt(Date.now())
-
-    // BACKFILL: el refresco incremental solo trae puntos con `ts > cursor`. Cuando una cola de
-    // posiciones drena TARDE (p.ej. tras destaparse un taponamiento), esos puntos entran a la
-    // base con `ts` VIEJO — anterior al cursor — así que el incremental NO los ve nunca y el
-    // recorrido crudo se queda corto (21/07/2026: un vendedor cuya cola drenó ~2.400 puntos de
-    // la mañana no aparecía en crudo, aunque el snap —que baja completo— sí lo mostraba). Para
-    // detectarlo comparamos el total del día en el server contra lo que tenemos; si el server
-    // tiene más, hacemos una recarga COMPLETA (trae también los re-insertados con fecha vieja).
-    // Es un count `head:true` (sin filas): barato aunque corra cada 60 s.
-    if (incremental) {
-      let qc = supabase.from('posiciones')
-        .select('id', { count: 'exact', head: true })
-        .gte('ts', desde).lte('ts', hasta)
-      if (idEmpresa !== '*') qc = qc.eq('id_empresa', idEmpresa)
-      const { count: totalDia } = await qc
-      if (typeof totalDia === 'number' && totalDia > cargadosRef.current) load(false)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idEmpresa, fecha, conRol])
 
@@ -204,8 +228,9 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   // Si la caché no corresponde a esta fecha/empresa/forma, se cae a la carga completa.
   useEffect(() => {
     let vigente = true
+    lastIdRef.current = null
     lastTsRef.current = null
-    cargadosRef.current = 0
+    ultimaPersistRef.current = 0 // el día nuevo se persiste apenas llega, sin esperar la ventana
     // Limpiar SINCRÓNICAMENTE al cambiar de fecha/empresa/forma. Si no, durante los ~800 ms que
     // tarda la lectura de caché, `byUser` sigue teniendo los datos del día ANTERIOR, y las vistas
     // (que reencuadran "la primera vez que hay datos") marcan el encuadre como hecho con esos
@@ -227,14 +252,14 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
       // `vigente` corta la carrera: si la fecha cambió mientras leíamos la caché, este
       // resultado ya es viejo y pisaría datos más frescos.
       if (!vigente) return
+      // `lastId` es obligatorio: una caché escrita antes del cursor por `id` (13/09/2026) no
+      // sirve para seguir incremental y cae a la carga completa, una sola vez.
       const sirve = cache && cache.fecha === fecha && cache.idEmpresa === idEmpresa &&
-        cache.conRol === conRol && cache.lastTs && cache.byUser
+        cache.conRol === conRol && cache.lastId != null && cache.byUser
       if (sirve) {
         setByUser(cache.byUser)
-        lastTsRef.current = cache.lastTs
-        // Sembrar el contador con lo que trae la cache, para que la comparación de backfill del
-        // primer refresco incremental sea contra el total real (y no contra 0 → falso positivo).
-        cargadosRef.current = Object.values(cache.byUser).reduce((a, u) => a + (u?.points?.length || 0), 0)
+        lastIdRef.current = cache.lastId
+        lastTsRef.current = cache.lastTs || null
         load(true)
       } else {
         setByUser({})
@@ -255,11 +280,36 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   // keys() ni clear(), así que las entradas de tenants viejos quedarían huérfanas y sin
   // forma de purgarlas, que es justo lo que el párrafo de arriba evita. Revisar solo si
   // llega el selector de scope del TenantContext.
+  //
+  // 13/09/2026 — se escribe DIFERIDO. Antes iba en cada cambio de `byUser`, o sea cada tick de
+  // 60 s: la jornada entera (20-26k puntos ≈ 2-3 MB de JSON) serializada y escrita en SQLite o
+  // localStorage sesenta veces por hora, para una caché cuyo único fin es que la PRÓXIMA apertura
+  // pinte al instante. Ahora se guarda como mucho cada `PERSISTIR_CADA_MS`, y además al ocultarse
+  // el documento (que es cuando de verdad puede venir el cierre) y al desmontar.
   useEffect(() => {
-    if (!idEmpresa || !lastTsRef.current) return
+    if (!idEmpresa || lastIdRef.current == null) return
     if (!Object.keys(byUser).length) return
-    persistence.set(CACHE_KEY, { fecha, idEmpresa, conRol, byUser, lastTs: lastTsRef.current })
+    const snap = { fecha, idEmpresa, conRol, byUser, lastId: lastIdRef.current, lastTs: lastTsRef.current }
+    const ahora = Date.now()
+    if (ahora - ultimaPersistRef.current >= PERSISTIR_CADA_MS) {
+      ultimaPersistRef.current = ahora
+      pendienteRef.current = null
+      persistence.set(CACHE_KEY, snap)
+    } else {
+      pendienteRef.current = snap
+    }
   }, [byUser, fecha, idEmpresa, conRol])
+  useEffect(() => {
+    const volcar = () => {
+      if (!pendienteRef.current) return
+      persistence.set(CACHE_KEY, pendienteRef.current)
+      pendienteRef.current = null
+      ultimaPersistRef.current = Date.now()
+    }
+    const onVis = () => { if (document.visibilityState === 'hidden') volcar() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { document.removeEventListener('visibilitychange', onVis); volcar() }
+  }, [])
 
   // Auto-refresh incremental cada 60s (solo si la fecha es HOY; el pasado no cambia).
   useEffect(() => {
@@ -271,5 +321,5 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
   // El botón "refrescar" va INCREMENTAL si ya hay cursor: traer de nuevo la jornada entera
   // no aporta nada (intradía nadie borra puntos) y era justo lo que hacía que refrescar
   // tardara. Sin cursor todavía no hay nada que completar, así que va la carga completa.
-  return { byUser, updatedAt, loading, esHoy, error, reload: () => load(!!lastTsRef.current) }
+  return { byUser, updatedAt, loading, esHoy, error, reload: () => load(lastIdRef.current != null) }
 }

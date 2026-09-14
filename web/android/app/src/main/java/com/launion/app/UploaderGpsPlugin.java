@@ -72,6 +72,9 @@ public class UploaderGpsPlugin extends Plugin {
         double accuracyRedMaxM = call.getDouble("accuracyRedMaxM", 150.0);
         int silencioMs = call.getInt("silencioMs", 90000);
         int repedidoMinMs = call.getInt("repedidoMinMs", 60000);
+        // 13/09/2026 — ventana de agrupado del POST (gpsConfig.LOTE_SUBIDA_MS). Default 0 = un POST por
+        // punto, o sea lo que hacía siempre: un APK nuevo con un bundle viejo no cambia de conducta.
+        int loteMs = call.getInt("loteMs", 0);
         // Dueño de los puntos que capture esta sesión (id_usuario). Es lo que impide que la cola de
         // una cuenta se suba con el token de otra: ver K_DUENO en UploaderGpsService.
         String dueno = call.getString("dueno");
@@ -106,6 +109,7 @@ public class UploaderGpsPlugin extends Plugin {
             .putFloat(UploaderGpsService.K_ACCURACY_RED_MAX, (float) accuracyRedMaxM)
             .putInt(UploaderGpsService.K_SILENCIO_MS, silencioMs)
             .putInt(UploaderGpsService.K_REPEDIDO_MIN_MS, repedidoMinMs)
+            .putInt(UploaderGpsService.K_LOTE_MS, loteMs)
             .apply();
         call.resolve();
     }

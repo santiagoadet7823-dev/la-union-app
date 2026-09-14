@@ -85,6 +85,17 @@ export const NEAR_LIVE_MS = 4000   // 4 s (era 10 s hasta 1.13.5)
 // parado; 30 s da mejor frescura a costa de ~2× el volumen de quieto, aceptable). En movimiento no cambia
 // nada: ahí manda MIN_MOVE_M. Lo comparte el filtro nativo (uploaderNativo.js → K_KEEPALIVE del servicio).
 export const STATIONARY_KEEPALIVE_MS = 30000  // 30 s
+/* 🩸 VENTANA DE AGRUPADO DEL ENVÍO (13/09/2026). NO es una cadencia de captura: el chip sigue
+ * tomando fixes a NEAR_LIVE_MS / NEAR_LIVE_RAPIDO_MS y el filtro por movimiento sigue decidiendo qué
+ * se guarda, con el `ts` real de cada uno. Lo que gobierna es cuántos POST hace el servicio nativo
+ * a `ingest-posiciones`: hasta hoy uno POR PUNTO guardado (cada 2-4 s en movimiento), o sea 18-27k
+ * invocaciones de Edge Function por día hábil en el parque (medido en la base 07-12/09/2026) —
+ * ~500k al mes, el techo del plan. Con 15 s, los puntos capturados en ese lapso viajan en un solo
+ * request: 4-7 puntos por POST en movimiento, quieto no cambia nada (ya era uno cada 30 s).
+ *
+ * El costo es que el pin en vivo del supervisor ve el último punto hasta 15 s después de tomado.
+ * Decidido con el cliente. Viaja al nativo por prefs (K_LOTE_MS) → se afina por OTA; 0 = como antes. */
+export const LOTE_SUBIDA_MS = 15000
 // Cadencia ADAPTATIVA por velocidad (pedido del cliente 27/07/2026): a 15 s de captura, en auto (~40 km/h
 // ≈ 11 m/s) el chip da un fix cada ~165 m → la polilínea une esos dos puntos con una RECTA que cruza la
 // manzana (el trazo "no respeta la calle"). El filtro por movimiento no ayuda: a esa velocidad todo fix

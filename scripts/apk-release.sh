@@ -9,7 +9,8 @@
 # Requisitos: gh (GitHub CLI) logueado, Git Bash, y el .apk YA compilado y FIRMADO
 # con el keystore de release. Compilarlo antes con (ver CLAUDE.md §3):
 #   CAP_BUILD=1 npm run build && npx cap sync android
-#   cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Android\Android Studio\jbr"
+#   cd android && ./gradlew assembleRelease -Dorg.gradle.java.home="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
+#   (JDK 17, no el jbr de Android Studio: ese pasó a Java 25 y Gradle 8.2.1 no lo soporta — ver CLAUDE.md §3)
 #
 # Uso:   bash scripts/apk-release.sh 1.6.0
 # ============================================================================

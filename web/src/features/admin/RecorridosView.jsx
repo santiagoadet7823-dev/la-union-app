@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { hoyStr } from '../../lib/format'
 import { useTheme } from '../../context/ThemeContext'
@@ -6,7 +6,8 @@ import { useDevice } from '../../context/DeviceContext'
 import { useAuth } from '../../context/AuthContext'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { colorPorId } from '../../lib/colors'
-import { fetchSnapRecorridos } from '../../services/recorridos'
+import { limpiarPorUsuario } from '../supervision/trazos'
+import useSnapConectores from '../supervision/useSnapConectores'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import LeafletMap from '../../components/LeafletMap'
@@ -20,18 +21,15 @@ import LeafletMap from '../../components/LeafletMap'
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const selectStyle = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body);cursor:pointer') }
-const REFRESH_MS = 60000
 
 export default function RecorridosView() {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
   const { idEmpresa } = useAuth()
   const [fecha, setFecha] = useState(hoyStr)
-  const [snapped, setSnapped] = useState({}) // { id_usuario: [{lat,lng}] } pegado a calles
   const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [fitDone, setFitDone] = useState(false)
   const [, forceTick] = useState(0)
-  const snapCallRef = useRef(0)
 
   const users = usePerfilesEquipo()
   const { byUser, updatedAt, loading, esHoy, reload, error } = useRecorridosDelDia(fecha, idEmpresa)
@@ -45,24 +43,11 @@ export default function RecorridosView() {
   // Tick para el "hace Xs".
   useEffect(() => { const t = setInterval(() => forceTick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
 
-  // Snap-to-road: geometría pegada a calles (Edge Function con cache). Falla suave → crudo.
-  // Guarda de staleness: se invoca desde un efecto Y desde el polling (no solo como
-  // cuerpo de un efecto), así que un `cancel` de closure no alcanza — se usa un
-  // contador de llamada y solo se aplica la respuesta si sigue siendo la última.
-  const cargarSnap = useCallback(async () => {
-    if (!idEmpresa) return
-    const myCall = ++snapCallRef.current
-    const desde = new Date(fecha + 'T00:00:00').toISOString()
-    const hasta = new Date(fecha + 'T23:59:59').toISOString()
-    const s = await fetchSnapRecorridos({ fecha, desde, hasta })
-    if (myCall === snapCallRef.current) setSnapped(s)
-  }, [idEmpresa, fecha])
-  useEffect(() => { setSnapped({}); cargarSnap() }, [cargarSnap])
-  useEffect(() => {
-    if (!esHoy) return
-    const iv = setInterval(cargarSnap, REFRESH_MS)
-    return () => clearInterval(iv)
-  }, [esHoy, cargarSnap])
+  // ⚠️ Esta vista es CÓDIGO MUERTO: vive en `AdminView`, cuyo `return` en App.jsx es inalcanzable.
+  // Se la pasa igual a `useSnapConectores` (13/09/2026) para que, si alguien la resucita, no vuelva
+  // el `setInterval` de 60 s contra la Edge Function. La firma sale del recorrido limpio.
+  const byUserLimpio = useMemo(() => limpiarPorUsuario(byUser), [byUser])
+  const snapped = useSnapConectores({ byUser: byUserLimpio, fecha, idEmpresa, activo: snapOn })
 
   const trails = useMemo(() => Object.entries(byUser)
     .filter(([, v]) => v.points.length >= 2)

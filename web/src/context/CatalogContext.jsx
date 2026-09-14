@@ -711,7 +711,10 @@ export function CatalogProvider({ children }) {
 
   /**
    * Renombrar categoría: además de la fila, PROPAGA el nombre nuevo a todos los productos que
-   * tengan el nombre viejo (productos.categoria es texto, no FK). Optimista + encola cada update.
+   * tengan el nombre viejo (productos.categoria es texto, no FK). Optimista + UNA entrada en la cola
+   * (`updateMany`) para todos los afectados: hasta el 13/09/2026 era un `for` con N updates
+   * sueltos, que es justo lo que el encabezado de writeQueue.js prohíbe — 200 productos de una
+   * categoría empujaban fuera de la ventana de 2.000 mutaciones más viejas sin subir.
    */
   const updateCategoria = useCallback(async (id, nuevoNombre) => {
     const nombre = (nuevoNombre || '').trim()
@@ -722,8 +725,8 @@ export function CatalogProvider({ children }) {
     if (anterior && anterior !== nombre) {
       const afectados = productos.filter((p) => p.cat === anterior)
       setProductos((prev) => prev.map((p) => (p.cat === anterior ? { ...p, cat: nombre } : p)))
-      for (const p of afectados) {
-        await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id: p.id, payload: { categoria: nombre } })
+      if (afectados.length) {
+        await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'updateMany', ids: afectados.map((p) => p.id), payload: { categoria: nombre } })
       }
     }
     flushMutaciones()
@@ -737,9 +740,8 @@ export function CatalogProvider({ children }) {
       const afectados = productos.filter((p) => p.cat === nombre)
       if (afectados.length) {
         setProductos((prev) => prev.map((p) => (p.cat === nombre ? { ...p, cat: 'Otros' } : p)))
-        for (const p of afectados) {
-          await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'update', id: p.id, payload: { categoria: 'Otros' } })
-        }
+        // `updateMany`, no un `for` de updates (ver updateCategoria y el encabezado de writeQueue.js).
+        await enqueueMutacion({ op_uid: uid(), table: 'productos', op: 'updateMany', ids: afectados.map((p) => p.id), payload: { categoria: 'Otros' } })
       }
     }
     setCategorias((prev) => prev.filter((c) => c.id !== id))

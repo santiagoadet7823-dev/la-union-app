@@ -45,6 +45,60 @@
 
 ---
 
+## 🟩 00. SESIÓN DEL 13/09 — bajar el consumo de Edge Functions y de datos
+
+Plan aprobado en `~/.claude/plans/como-bajamos-el-consumo-curried-gosling.md`. Regla 60 de
+CLAUDE.md resume la lección. Lo que se hizo, por canal:
+
+**Sale por OTA + PWA (JS puro):**
+- `snap-recorridos` deja de invocarse cada 60 s por vista. `features/supervision/useSnapConectores.js`
+  la pide sólo cuando cambia la firma de huecos candidatos a conector (`firmaConectores` en
+  `trazos.js`, mismas tres condiciones que la Edge Function) y nunca con firma vacía. Las tres
+  vistas + `PanelDireccion` + el `RecorridosView` muerto van por el mismo hook.
+- `useRecorridosDelDia`: cursor por `id` (bigint) en vez de `ts`; sin `count` por tick; sin recarga
+  completa por backfill; reordena por `ts` sólo a la persona que recibió un rezagado; la caché se
+  escribe cada 5 min / al ocultarse, no cada tick. **La caché vieja (sin `lastId`) cae a carga
+  completa una vez.**
+- `useMetricasActividad`: histórico (`desdeConsulta` → ayer) una vez y cacheado en
+  `lu-metricas-cache`; sólo hoy en el `setInterval`.
+- Pedidos: `usePedidos` expone `aplicar`/`quitar`; `PedidosView`, `MisPedidosSheet`, `DetallePedido`
+  (`onAplicado`) y `EditarPedidoSheet` (`onGuardado(pedido)`) aplican la fila resultante en vez de
+  releer; `recargar` es silencioso y en error conserva la lista; botón Reintentar en el banner.
+  `writeQueue`: flag `verificar` → `.select('id')` → cero filas = `SIN_FILAS` (permanente) →
+  cuarentena → `EVENTO_CUARENTENA` en `window` → `usePedidos` revalida. Lo activan anular, borrar,
+  editar (cabecera y líneas) y asignar repartidor. Las ops de catálogo no cambian.
+- Cadencias: `useDiagnosticoEquipo` 45 s → 2 min; `ultimas_posiciones_compartidas` 60 s → 5 min;
+  `getTrackConfig` 4 → 10 min (un cambio de horario tarda hasta 10 min en llegar al teléfono).
+- `historialPosiciones` (ReplayJornada) pagina; `updateCategoria`/`deleteCategoria` usan `updateMany`.
+
+**Requiere APK (Java tocado, compila con JDK 17):**
+- `UploaderGpsService.subir()` agrupa el POST en una ventana `K_LOTE_MS` (15 s; `LOTE_SUBIDA_MS` en
+  `gpsConfig.js`, viaja por `configurar()` → afinable por OTA; 0 = como antes). La captura no cambia.
+  Un APK viejo con bundle nuevo ignora la clave; un APK nuevo con bundle viejo se comporta como antes.
+
+**Hecho a mano en la base (registro en `db/66_crons_en_ventana.sql`):** `push-heartbeat-30min` y
+`push-actualizacion-1h` corren sólo en `9-23,0` UTC (06-22 Salta). `alertas-equipo` no se tocó.
+
+**`db/67` (14/09, aplicada):** `ultimas_posiciones` daba **timeout** (8 s) al montar la supervisión —
+`distinct on` sobre las ~900k filas de la empresa— así que las burbujas iniciales del mapa no
+cargaban. Ahora es un `LATERAL limit 1` por perfil sobre `idx_posiciones_usuario_ts`: 7 ms.
+
+✅ **PUBLICADO el 14/09 como 1.36.0 en los tres canales**: PWA (push a `main`), OTA (`ota-1.36.0`,
+`bundle_version` + `latest_version`) y APK (`apk-1.36.0`, versionCode 41, `min_version` 1.36.0 —
+es el primer APK desde 1.27.0). Verificación pendiente de campo: contar invocaciones por día de
+`ingest-posiciones` y `snap-recorridos` en los logs antes/después (antes: 18-27k/día de ingest).
+
+**Para después (decidido posponer):**
+- Realtime: `postgres_changes` manda la fila ENTERA de `posiciones` a cada supervisor (~20k
+  eventos/día, 6-8 MB/día por pantalla abierta). Reemplazar por broadcast desde trigger con
+  `{id_usuario, lat, lng, ts}`.
+- Admin (`UsuariosView` 4-5 consultas por edición, `EmpresasView`, `CategoriasRastreo`): update
+  directo + `cargar()` completo → merge local.
+- Caché local de `pedidos` en `persistence` (hidratar antes de la red, como el catálogo).
+- `metricas_dia` precomputada (ya propuesto más abajo).
+
+---
+
 ## 🟩 0. SESIÓN DEL 09/09 (tarde) — cuatro pedidos, y dos máquinas mandando precios
 
 ✅ **PUBLICADO el 09/09** — OTA + PWA en **1.26.0**. `app_config`: `bundle_version` y

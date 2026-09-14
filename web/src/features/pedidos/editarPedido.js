@@ -26,8 +26,9 @@ import { frenarSiExportado } from './exportado'
  * precio de hoy.
  *
  * 🔴 UNA OPERACIÓN QUE RLS RECHAZA NO DA ERROR. Afecta cero filas y vuelve con éxito (está
- * explicado en `anularPedido.js`). Por eso la pantalla que llame a esto tiene que RELEER
- * (`recargar()` de `usePedidos`) y mostrar lo que quedó en la base, no lo que supusimos.
+ * explicado en `anularPedido.js`). Desde el 13/09/2026 eso lo ataja la cola (`verificar: true` en
+ * las mutaciones de `pedidos` y `pedido_items`): cero filas va a cuarentena. La pantalla aplica
+ * el resultado a su lista y ya no relee.
  */
 
 /** Las líneas que la edición deja vivas, en la forma que espera la base. */
@@ -150,13 +151,14 @@ export async function editarPedido({ pedido, lineas, cantidades, nuevas = [], us
       // Se quita la línea entera. NO se deja en `cantidad = 0`: un producto que el comerciante no se
       // llevó no es un renglón en cero, es un renglón que no está — y un cero ensucia el ticket
       // impreso, el TSV de facturación y todo reporte que cuente renglones.
-      await enqueueMutacion({ op_uid: `${l.id}:quitar:${ts}`, table: 'pedido_items', op: 'delete', id: l.id })
+      await enqueueMutacion({ op_uid: `${l.id}:quitar:${ts}`, table: 'pedido_items', op: 'delete', id: l.id, verificar: true })
     } else {
       // 🔑 SÓLO `cantidad`. `precio_unitario` no viaja en el payload y por eso no se puede pisar.
       await enqueueMutacion({
         op_uid: `${l.id}:editar:${ts}`,
         table: 'pedido_items', op: 'update', id: l.id,
         payload: { cantidad: despues },
+        verificar: true,
       })
     }
   }
@@ -173,6 +175,7 @@ export async function editarPedido({ pedido, lineas, cantidades, nuevas = [], us
     op_uid: `${pedido.id}:totales:${ts}`,
     table: 'pedidos', op: 'update', id: pedido.id,
     payload: { monto_total: total, peso_total: kg },
+    verificar: true,
   })
 
   // ── 3. La auditoría ────────────────────────────────────────────────────────────────────────
@@ -196,8 +199,8 @@ export async function editarPedido({ pedido, lineas, cantidades, nuevas = [], us
 
   flushMutaciones()
 
-  // Se devuelve cómo queda, para que la pantalla lo muestre sin esperar la red. Pero la pantalla
-  // igual tiene que RELEER: esto es lo que pedimos, no necesariamente lo que la base aceptó.
+  // Se devuelve cómo queda, para que la pantalla lo aplique a su lista sin esperar la red. Si la
+  // base lo rechaza, la cola lo aparta y lo avisa (ver el 🔴 de arriba).
   return { pedido: { ...pedido, monto_total: total, peso_total: kg }, lineas: finales, cambios, edicion }
 }
 
