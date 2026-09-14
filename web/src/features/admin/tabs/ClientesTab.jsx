@@ -41,6 +41,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   const [importOpen, setImportOpen] = useState(false)
   const [descargaOpen, setDescargaOpen] = useState(false) // elección xlsx / csv
   const [descargando, setDescargando] = useState(false)
+  const [completarHuecos, setCompletarHuecos] = useState(true) // filas lila por cada código libre
   const [soloSinUbicar, setSoloSinUbicar] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [verArchivados, setVerArchivados] = useState(false)
@@ -96,7 +97,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   async function descargar(formato) {
     setDescargaOpen(false)
     setDescargando(true)
-    await exportarClientes({ clientes: clientesTodos, zonas, perfiles, formato, onToast })
+    await exportarClientes({ clientes: clientesTodos, zonas, perfiles, formato, completarHuecos, onToast })
     setDescargando(false)
   }
 
@@ -180,8 +181,12 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                 <div style={{ ...sx('position:absolute;top:calc(100% + 6px);right:0;display:flex;flex-direction:column;min-width:170px;padding:6px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);box-shadow:0 8px 24px rgba(0,0,0,.18)'), zIndex: 'var(--z-popover)' }}>
                   <button onClick={() => descargar('xlsx')} className="lu-press" style={sx('text-align:left;background:transparent;border:none;border-radius:var(--r-sm);padding:9px 10px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer')}>Excel (.xlsx)</button>
                   <button onClick={() => descargar('csv')} className="lu-press" style={sx('text-align:left;background:transparent;border:none;border-radius:var(--r-sm);padding:9px 10px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer')}>CSV (.csv)</button>
-                  <div style={sx('padding:6px 10px 4px;font-size:10.5px;color:var(--faint);line-height:1.4;border-top:1px solid var(--line);margin-top:4px')}>
-                    Incluye archivados, con su columna. Editala y volvé a subirla por “Importar planilla”.
+                  <label style={sx('display:flex;align-items:center;gap:7px;padding:8px 10px 6px;font-size:11.5px;color:var(--text);border-top:1px solid var(--line);margin-top:4px;cursor:pointer')}>
+                    <input type="checkbox" checked={completarHuecos} onChange={(e) => setCompletarHuecos(e.target.checked)} style={sx('margin:0')} />
+                    Completar códigos libres (filas lila)
+                  </label>
+                  <div style={sx('padding:2px 10px 4px;font-size:10.5px;color:var(--faint);line-height:1.4')}>
+                    Ordenada por código, archivados incluidos. Los colores están en la hoja «Leyenda». Editala y volvé a subirla por “Importar planilla”.
                   </div>
                 </div>
               )}

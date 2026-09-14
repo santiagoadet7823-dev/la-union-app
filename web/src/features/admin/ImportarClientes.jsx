@@ -61,6 +61,10 @@ const siNo = (v) => {
   if (['no', 'n', '0', 'false'].includes(s)) return false
   return null
 }
+// Qué filas entran: nuevos ('ok'/'zona?'/'parecido') + existentes a actualizar ('update'). Los
+// 'dup' (repetidos dentro del lote), 'sin-nombre' y 'vacia' se saltan. Una sola definición para el
+// import y para el conteo de bajas: si difieren, la vista miente sobre lo que se va a archivar.
+const esImportable = (f) => f.estado === 'ok' || f.estado === 'zona?' || f.estado === 'update' || f.estado === 'parecido'
 
 export default function ImportarClientes({ onClose, onToast }) {
   // `clientesTodos` y no `clientes`: acá hacen falta TAMBIÉN los archivados. `codigo` es UNIQUE en
@@ -139,7 +143,11 @@ export default function ImportarClientes({ onClose, onToast }) {
         const archivado = siNo(campo.archivado)
         let estado = 'ok'
         let parecidoA = null
-        if (!nombre) estado = 'sin-nombre'
+        // Una fila con sólo el código (o nada) es una fila LILA de la planilla que baja la app: un
+        // código libre que volvió tal cual (13/09/2026). No es un error: se cuenta aparte, no se
+        // lista y no se importa. Sin nombre pero CON datos sigue siendo un error a corregir.
+        const soloCodigo = Object.keys(campo).every((k) => k === 'codigo' || String(campo[k] ?? '').trim() === '')
+        if (!nombre) estado = soloCodigo ? 'vacia' : 'sin-nombre'
         else if (codKey && vistos.has(codKey)) estado = 'dup'          // repetido DENTRO del lote → saltar
         else if (existente) estado = 'update'                           // ya existe en la cartera → ACTUALIZAR
         else if (String(campo.zona ?? '').trim() && !zona) estado = 'zona?'
@@ -186,7 +194,7 @@ export default function ImportarClientes({ onClose, onToast }) {
 
   const resumen = useMemo(() => {
     if (!parsed) return null
-    const c = { ok: 0, update: 0, dup: 0, parecido: 0, 'zona?': 0, 'sin-nombre': 0, archivan: 0, vuelven: 0 }
+    const c = { ok: 0, update: 0, dup: 0, parecido: 0, 'zona?': 0, 'sin-nombre': 0, vacia: 0, archivan: 0, vuelven: 0 }
     parsed.forEach((f) => {
       c[f.estado] = (c[f.estado] || 0) + 1
       if (f.cambioArchivo === 'archiva') c.archivan++
@@ -200,7 +208,10 @@ export default function ImportarClientes({ onClose, onToast }) {
   // opción con la planilla equivocada. Mismo criterio que `importClientes`: sólo vigentes con código.
   const bajasSiCompleta = useMemo(() => {
     if (!parsed) return 0
-    const enPlanilla = new Set(parsed.map((f) => codigoKey(f.codigo)).filter(Boolean))
+    // Sólo las filas que SE IMPORTAN cuentan como presentes: es el mismo `vistosEnLote` que arma
+    // `importClientes`. Contar también las que se saltan ('vacia', 'sin-nombre', 'dup') diría
+    // "0 bajas" y después el import archivaría al que perdió el nombre en Excel.
+    const enPlanilla = new Set(parsed.filter(esImportable).map((f) => codigoKey(f.codigo)).filter(Boolean))
     return clientes.filter((c) => {
       const k = codigoKey(c.codigo)
       return k && !enPlanilla.has(k) && !c.archivado
@@ -209,14 +220,13 @@ export default function ImportarClientes({ onClose, onToast }) {
 
   async function importar() {
     if (!parsed) return
-    // Importables: nuevos ('ok'/'zona?'/'parecido') + existentes a actualizar ('update'). Los 'dup'
-    // (repetidos dentro del lote) y 'sin-nombre' se saltan. importClientes hace el upsert por código.
+    // Qué entra lo define `esImportable`; importClientes hace el upsert por código.
     //
     // 'parecido' SÍ se importa: es un aviso, no un veto. Descartarlo automáticamente perdería
     // comercios reales de nombre similar, y en una importación de miles de filas nadie podría
     // decidir uno por uno. Lo que queda es la pantalla de revisión, para resolverlos después.
     const rows = parsed
-      .filter((f) => f.estado === 'ok' || f.estado === 'zona?' || f.estado === 'update' || f.estado === 'parecido')
+      .filter(esImportable)
       .map((f) => ({
         codigo: f.codigo || null,
         nombre_comercio: f.nombre,
@@ -260,6 +270,7 @@ export default function ImportarClientes({ onClose, onToast }) {
       parecido: { t: 'Ya hay uno parecido', c: 'var(--warning)', b: 'var(--warning-tint)' },
       'zona?': { t: 'Zona no encontrada', c: 'var(--info)', b: 'var(--surface2)' },
       'sin-nombre': { t: 'Sin nombre', c: 'var(--danger)', b: 'var(--danger-tint)' },
+      vacia: { t: 'Código libre', c: 'var(--muted)', b: 'var(--surface2)' },
     }[estado] || { t: estado, c: 'var(--muted)', b: 'var(--surface2)' }
     return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap'), color: map.c, background: map.b }}>{map.t}</span>
   }
@@ -316,6 +327,7 @@ export default function ImportarClientes({ onClose, onToast }) {
               {resumen['zona?'] > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--info)', background: 'var(--surface2)' }}>{resumen['zona?']} sin zona</span>}
               {resumen.dup > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{resumen.dup} repetidos</span>}
               {resumen['sin-nombre'] > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--danger)', background: 'var(--danger-tint)' }}>{resumen['sin-nombre']} sin nombre</span>}
+              {resumen.vacia > 0 && <span title="Filas con sólo el código (las lila de la planilla). No se importan ni se listan." style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--muted)', background: 'var(--surface2)' }}>{resumen.vacia} códigos libres (vacías)</span>}
               {/* Faltaba en el resumen: sólo se veía fila por fila. Con la planilla exportada es el
                   caso típico de los clientes SIN código — se reimportan como nuevos (duplicados)
                   porque no hay código con qué parearlos, y hay que verlo antes de confirmar. */}
@@ -351,7 +363,7 @@ export default function ImportarClientes({ onClose, onToast }) {
               <span>Código</span><span>Nombre</span><span>Zona → Vendedor</span><span>Estado</span>
               </div>
               <div style={{ maxHeight: 360, overflow: 'auto' }}>
-                {parsed.map((f, i) => (
+                {parsed.filter((f) => f.estado !== 'vacia').map((f, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 130px 130px', gap: 8, alignItems: 'center', ...sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)') }}>
                     <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.codigo || '—'}</span>
                     <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.nombre || <span style={sx('color:var(--faint)')}>(fila {f.fila})</span>}</span>
