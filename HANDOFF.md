@@ -83,10 +83,20 @@ CLAUDE.md resume la lección. Lo que se hizo, por canal:
 `distinct on` sobre las ~900k filas de la empresa— así que las burbujas iniciales del mapa no
 cargaban. Ahora es un `LATERAL limit 1` por perfil sobre `idx_posiciones_usuario_ts`: 7 ms.
 
-✅ **PUBLICADO el 14/09 como 1.36.0 en los tres canales**: PWA (push a `main`), OTA (`ota-1.36.0`,
-`bundle_version` + `latest_version`) y APK (`apk-1.36.0`, versionCode 41, `min_version` 1.36.0 —
-es el primer APK desde 1.27.0). Verificación pendiente de campo: contar invocaciones por día de
-`ingest-posiciones` y `snap-recorridos` en los logs antes/después (antes: 18-27k/día de ingest).
+✅ **PUBLICADO el 14/09 como 1.36.0 en los tres canales** (commit `65f3295`):
+- PWA: workflow de Pages verde, sirve `index-Bez75QkP.js` con 1.36.0.
+- OTA: `ota-1.36.0` (bundle verificado desde la URL pública: 124 archivos, idéntico al local, con
+  `loteMs`/`SIN_FILAS`/1.36.0 adentro) → `bundle_version` y `latest_version` en 1.36.0.
+- APK: `apk-1.36.0`, versionCode 41, **misma firma** que el 1.27.0 instalado (SHA-256 verificado con
+  apksigner), 23,2 MB → `min_version` 1.36.0 y `apk_url`. Es el primer APK desde 1.27.0: los ~12
+  equipos van a bajarlo solos (freno de 6 h por versión, regla 48) y pedir el diálogo de instalar.
+- El push de "hay versión nueva" sale por el cron `push-actualizacion-1h` (:25, ventana 06-22); no
+  se disparó a mano.
+
+⏳ **Verificación pendiente de campo** (lunes 15/09): en `function_edge_logs`, invocaciones por día
+de `ingest-posiciones` (antes: 18-27k, una por punto; esperado con el APK nuevo: 4-6× menos, y
+sólo en los teléfonos ya reinstalados) y de `snap-recorridos` (antes ~600/día por pantalla;
+esperado: unidades). Y que `posiciones` siga sumando lo mismo por día (la captura no cambió).
 
 **Para después (decidido posponer):**
 - Realtime: `postgres_changes` manda la fila ENTERA de `posiciones` a cada supervisor (~20k
