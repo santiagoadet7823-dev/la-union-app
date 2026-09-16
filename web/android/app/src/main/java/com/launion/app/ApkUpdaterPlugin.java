@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Updater del APK NATIVO. Descarga un .apk (hosteado en un GitHub Release) y lanza el instalador
@@ -45,12 +46,35 @@ import java.net.URL;
  *  - descargarEInstalar({ url, version }): descarga y lanza el instalador.
  *      → resuelve { installed: true }           si arrancó el instalador
  *      → resuelve { needsPermission: true }      si falta el permiso (ya abrió Ajustes; reintentar)
- *      → rechaza                                 si falló la descarga
+ *      → resuelve { enCurso: true }              si YA hay una descarga andando (ver abajo)
+ *      → rechaza                                 si falló la descarga (o se canceló)
+ *  - cancelar(): corta la descarga en curso; el `descargarEInstalar` pendiente rechaza.
+ *  - evento "progreso" { bytes, total, pct, fin?, error? } mientras baja.
+ *
+ * 🩸 UNA SOLA DESCARGA A LA VEZ (16/09/2026). Hasta hoy cada llamada arrancaba su propio hilo
+ * sobre el MISMO archivo: el cartel al abrir la app y el watchdog cada 6 h podían pisarse, y un
+ * teléfono con mala señal reabría la app varias veces mientras la descarga anterior seguía viva
+ * — "carga y carga como en un bucle" (Gabriel, 16/09), con 22 MB de datos móviles por cada
+ * intento. Ahora la segunda llamada devuelve `{ enCurso: true }` y el JS se cuelga del evento
+ * de progreso de la que ya está andando.
  */
 @CapacitorPlugin(name = "ApkUpdater")
 public class ApkUpdaterPlugin extends Plugin {
 
     private static final String TAG = "ApkUpdater";
+
+    /** Hay una descarga andando (por proceso: un solo WebView, un solo plugin). */
+    private static final AtomicBoolean descargando = new AtomicBoolean(false);
+    /** Pedido de cancelación de la descarga en curso; lo mira el bucle de lectura. */
+    private static final AtomicBoolean cancelada = new AtomicBoolean(false);
+
+    @PluginMethod
+    public void cancelar(PluginCall call) {
+        cancelada.set(descargando.get());
+        JSObject ret = new JSObject();
+        ret.put("cancelada", cancelada.get());
+        call.resolve(ret);
+    }
 
     @PluginMethod
     public void descargarEInstalar(PluginCall call) {
@@ -80,19 +104,43 @@ public class ApkUpdaterPlugin extends Plugin {
             }
         }
 
+        // Si ya hay una bajando, no se arranca otra: el JS se engancha al progreso de ésa.
+        if (!descargando.compareAndSet(false, true)) {
+            JSObject ret = new JSObject();
+            ret.put("enCurso", true);
+            call.resolve(ret);
+            return;
+        }
+        cancelada.set(false);
+
         // La descarga es de red: fuera del hilo principal (NetworkOnMainThreadException). Resolver el
         // PluginCall desde el hilo de fondo es válido en Capacitor.
         new Thread(() -> {
             try {
                 File apk = descargar(url, version);
+                emitirProgreso(apk.length(), apk.length(), true, null);
                 lanzarInstalador(apk);
                 JSObject ret = new JSObject();
                 ret.put("installed", true);
                 call.resolve(ret);
             } catch (Exception e) {
+                emitirProgreso(0, 0, true, e.getMessage());
                 call.reject("No se pudo actualizar: " + e.getMessage(), e);
+            } finally {
+                descargando.set(false);
             }
         }).start();
+    }
+
+    /** Evento "progreso" para el cartel. `fin` marca el último (con `error` si terminó mal). */
+    private void emitirProgreso(long bytes, long total, boolean fin, String error) {
+        JSObject ev = new JSObject();
+        ev.put("bytes", bytes);
+        ev.put("total", total);
+        ev.put("pct", total > 0 ? (int) (bytes * 100 / total) : -1);
+        ev.put("fin", fin);
+        if (error != null) ev.put("error", error);
+        notifyListeners("progreso", ev);
     }
 
     /** Baja el .apk a getExternalFilesDir/updates/. Sigue redirects (GitHub Releases redirige el
@@ -113,11 +161,30 @@ public class ApkUpdaterPlugin extends Plugin {
             con.connect();
             int code = con.getResponseCode();
             if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
+            // Content-Length del asset (GitHub lo manda); -1 si no viene → barra indeterminada.
+            long total = con.getContentLengthLong();
+            long bytes = 0;
+            long ultimoAviso = 0;
             try (InputStream in = con.getInputStream(); OutputStream out = new FileOutputStream(destino)) {
                 byte[] buf = new byte[8192];
                 int n;
-                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                while ((n = in.read(buf)) != -1) {
+                    if (cancelada.get()) throw new Exception("descarga cancelada");
+                    out.write(buf, 0, n);
+                    bytes += n;
+                    // Cada ~250 ms alcanza para una barra; cada 8 KB serían miles de cruces del bridge.
+                    long ahora = System.currentTimeMillis();
+                    if (ahora - ultimoAviso >= 250) {
+                        ultimoAviso = ahora;
+                        emitirProgreso(bytes, total, false, null);
+                    }
+                }
                 out.flush();
+            } catch (Exception e) {
+                // Un .apk a medias no sirve para nada y ocupa 20 MB: se borra acá, no en el próximo
+                // intento (que puede no llegar nunca si la persona desiste).
+                destino.delete();
+                throw e;
             }
         } finally {
             con.disconnect();

@@ -53,3 +53,23 @@ export async function apkStartUpdate({ url, version }) {
   const res = await ApkUpdater.descargarEInstalar({ url, version })
   return res || {}
 }
+
+/**
+ * Progreso de la descarga del .apk: `cb({ bytes, total, pct, fin, error })`. `pct` es -1 si el
+ * servidor no mandó Content-Length (barra indeterminada). `fin: true` es el último evento — con
+ * `error` si terminó mal. Devuelve una función para desuscribirse.
+ *
+ * ⚠️ FLOTA MIXTA: un APK anterior al 16/09/2026 tiene el plugin pero NO emite este evento (el
+ * cambio es nativo). El cartel tiene que seguir funcionando sin recibir nada: barra indeterminada
+ * hasta que `apkStartUpdate` resuelva o rechace.
+ */
+export function onApkProgreso(cb) {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('ApkUpdater')) return () => {}
+  const p = ApkUpdater.addListener('progreso', cb)
+  return () => { p.then((h) => h.remove()).catch(() => {}) }
+}
+
+/** Corta la descarga en curso. En un APK viejo el método no existe: se traga el error. */
+export async function apkCancelar() {
+  try { await ApkUpdater.cancelar() } catch (_) {}
+}
