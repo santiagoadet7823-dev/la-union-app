@@ -357,7 +357,14 @@ export function AuthProvider({ children }) {
         setAuthStatus(`3/3 · Sesión ${data?.session ? 'creada' : 'NO'} · ${data?.user?.email || '¿?'}`)
         return { error: null }
       } catch (e) {
-        setAuthError('Excepción en el login: ' + (e?.message || JSON.stringify(e) || String(e)).slice(0, 260))
+        // 🩸 EL CÓDIGO VA EN EL MENSAJE (17/09/2026). El plugin de Google rechaza con un texto fijo
+        // ("Something went wrong") y pone el GoogleSignInStatusCode en `e.code`: 7 = sin red,
+        // 10 = SHA-1/client id mal registrados, 12500 = Play Services o cuenta del teléfono. Hasta
+        // hoy se mostraba sólo `e.message` y el soporte adivinaba entre "es su internet" y "es el
+        // APK" con la misma captura. `clasificar()` en LoginView lee ese número para elegir cartel.
+        const msg = (e?.message || JSON.stringify(e) || String(e)).slice(0, 260)
+        const code = e?.code != null && e.code !== '' ? ` (código ${e.code})` : ''
+        setAuthError('Excepción en el login: ' + msg + code)
         setAuthStatus(null)
         return { error: e }
       }

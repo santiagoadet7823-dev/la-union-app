@@ -45,6 +45,35 @@
 
 ---
 
+## 🟦 00000. RELEASE 1.40.0 (17/09/2026) — el login de Google dice POR QUÉ falló
+
+⏳ **Pendiente de publicar** (el `gh release` lo corre el usuario): commit + push a `main` ·
+`bash scripts/ota-release.sh 1.40.0` · `update public.app_config set bundle_version='1.40.0',
+latest_version='1.40.0', bundle_url='https://github.com/santiagoadet7823-dev/la-union-app/releases/download/ota-1.40.0/bundle.zip', updated_at=now();`
+· `min_version` queda en 1.36.0. Todo JS: **no lleva APK nuevo**.
+
+Un cliente no podía entrar: "No pudimos entrar" y en el detalle `Excepción en el login: Something
+went wrong`. Ese texto **no es de la app ni de Supabase**: lo devuelve Google Play Services a través
+del plugin `@codetrix-studio/capacitor-google-auth` (`GoogleAuth.java:130`), en el paso "1/3 ·
+Abriendo Google…", antes de tocar Supabase. El plugin manda el `GoogleSignInStatusCode` en `e.code`
+y `AuthContext` lo tiraba: sólo mostraba `e.message`. Con la misma captura no se podía distinguir
+"es su internet" (código 7) de "es el APK" (código 10, SHA-1 mal registrado, le pasaría a todos) o
+"es Play Services / la cuenta de ese teléfono" (12500 / 8).
+
+**Qué cambió:**
+- `context/AuthContext.jsx` — el detalle anexa `(código N)`.
+- `features/auth/LoginView.jsx` — `clasificar()` lee ese número: 7 → cartel "Sin conexión" (el que
+  ya existía); 12500 / 8 / 12502 → cartel nuevo `'google'` ("Google no respondió en este teléfono")
+  con botón **Entrar con email**, porque ese camino no pasa por Play Services; 10 → sigue en
+  "No pudimos entrar" con el detalle para soporte. También `timeout NNNNms` (el techo de 10 s de
+  `services/supabase.js`) cae en "Sin conexión" en vez del cartel genérico.
+
+**Para el cliente que no entra HOY, sin esperar la OTA:** que use "Ingresar con email y contraseña"
+(o "Recuperar contraseña" si no la tiene). Si entra por ahí, el problema es Google en su teléfono.
+Cuando tenga la 1.40.0, pedirle captura del detalle: el número dice la causa.
+
+---
+
 ## 🟦 00000. RELEASE 1.39.0 (17/09/2026) — pines con estado, ubicación obligatoria, bot de WhatsApp
 
 ✅ **Publicado el 17/09 por la tarde**: commit `0d78255` + push a `main` (PWA por el workflow) ·

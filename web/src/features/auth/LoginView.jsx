@@ -36,7 +36,22 @@ function clasificar(mensaje) {
   const m = mensaje || ''
   // 🩸 Se clasifica por el MENSAJE, nunca por `navigator.onLine`: el WebView de Android reporta
   // offline estando conectado (regla 12) y nos mandaría al cartel equivocado en pleno uso normal.
-  if (/failed to fetch|networkerror|load failed|network request failed|sin conexión/i.test(m)) return 'red'
+  //
+  // 🩸 LOS DOS ERRORES DE GOOGLE QUE PARECÍAN "OTRO" (17/09/2026). El botón de Google falla ANTES de
+  // tocar Supabase, en Play Services, con un texto fijo ("Something went wrong") y un código que
+  // AuthContext ahora anexa como "(código N)". Un cliente estuvo sin poder entrar viendo "No pudimos
+  // entrar", que sugiere reintentar lo mismo, cuando la salida era el email. Y el `timeout 10000ms`
+  // del transporte (services/supabase.js) es la misma red mala que "Failed to fetch", no un error
+  // de cuenta.
+  //   · código 7 = Play Services sin red → mismo cartel que sin conexión.
+  //   · 12500 / 8 / 12502 = Play Services o la cuenta Google de ESE teléfono → 'google': se le dice
+  //     que entre con email, que no pasa por Play Services.
+  //   · 10 = SHA-1 / client id mal registrados → le pasa a TODOS con ese APK; queda en 'otro' con el
+  //     detalle para soporte, porque el vendedor no puede hacer nada.
+  const codigo = (m.match(/\(código (\d+)\)/) || [])[1]
+  if (codigo === '7') return 'red'
+  if (['12500', '8', '12502'].includes(codigo)) return 'google'
+  if (/failed to fetch|networkerror|load failed|network request failed|sin conexión|^timeout \d+ms$|: timeout \d+ms/i.test(m)) return 'red'
   if (/invalid login|incorrect|contraseña incorrect/i.test(m)) return 'pass'
   return 'otro'
 }
@@ -127,18 +142,22 @@ export default function LoginView({ onTablet }) {
           </div>
         )}
 
-        {(tipoError === 'pass' || tipoError === 'otro') && (
+        {(tipoError === 'pass' || tipoError === 'otro' || tipoError === 'google') && (
           <div className="lu-rise" style={sx('margin-top:18px;padding:14px;border-radius:var(--r-lg);background:var(--danger-tint);border:1px solid var(--danger)')}>
             <div style={{ ...sx('display:flex;align-items:flex-start'), '--gx': '12px' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="1.8" strokeLinecap="round" style={{ flex: 'none', marginTop: 1 }}><circle cx="12" cy="12" r="9.2" /><path d="M12 7.5v5.2M12 16.3h.01" /></svg>
               <div>
                 <div style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.35')}>
-                  {tipoError === 'pass' ? 'La contraseña no es correcta' : 'No pudimos entrar'}
+                  {tipoError === 'pass' ? 'La contraseña no es correcta'
+                    : tipoError === 'google' ? 'Google no respondió en este teléfono'
+                    : 'No pudimos entrar'}
                 </div>
                 <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.5;margin-top:3px')}>
                   {tipoError === 'pass'
                     ? 'Probá de nuevo con el ojito activado para verla mientras escribís.'
-                    : 'Volvé a intentar. Si sigue pasando, mostrale el detalle a quien te da soporte.'}
+                    : tipoError === 'google'
+                      ? 'No es tu cuenta ni tu contraseña: es Google en este teléfono. Entrá con tu email y contraseña. Si querés seguir con Google, actualizá "Servicios de Google Play" en Play Store y reiniciá el teléfono.'
+                      : 'Volvé a intentar. Si sigue pasando, mostrale el detalle a quien te da soporte.'}
                 </div>
               </div>
             </div>
@@ -147,6 +166,12 @@ export default function LoginView({ onTablet }) {
                 <button onClick={() => { setMailRecuperar(email); setHoja('recuperar') }} className="lu-press"
                   style={sx('min-height:44px;padding:0 16px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);color:var(--text);font-size:var(--fs-sm);font-weight:600;cursor:pointer')}>
                   Recuperar contraseña
+                </button>
+              )}
+              {tipoError === 'google' && !form && (
+                <button onClick={() => setForm(true)} className="lu-press"
+                  style={sx('min-height:44px;padding:0 16px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);color:var(--text);font-size:var(--fs-sm);font-weight:600;cursor:pointer')}>
+                  Entrar con email
                 </button>
               )}
               <button onClick={() => setDetalle((v) => !v)}
