@@ -8,7 +8,7 @@ import EditarPedidoSheet from './EditarPedidoSheet'
 import { usePedidos, itemsDePedido, vendedoresDe } from './usePedidos'
 import { textoPapelera, porVencer, DIAS_PAPELERA } from './papelera'
 import { exportarPedidosAscii } from './exportarPedidos'
-import { Bajar } from '../../components/icons'
+import { Bajar, Whatsapp } from '../../components/icons'
 import AvisoCuarentena from '../../components/AvisoCuarentena'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import { normalizar } from '../../lib/texto'
@@ -444,6 +444,7 @@ export default function PedidosView({ onToast }) {
                 <span>
                 {fmtFecha(p.created_at)} · {p.nombreVendedor || '—'}
                 {p.origen === 'vidriera' ? ' · tablet' : ''}
+                {p.origen === 'whatsapp' && <> · <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#25D366', fontWeight: 600 }}><Whatsapp size={11} />WhatsApp</span></>}
                 {/* La distancia informa; no acusa. Se muestra el número y nada más — el GPS de
                     estos equipos miente hasta 30 m y el comercio puede no tener ubicación. */}
                 {p.distancia_m != null ? ` · ${Math.round(p.distancia_m)} m` : ''}

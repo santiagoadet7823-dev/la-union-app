@@ -14,6 +14,7 @@ import VisitaCatalogo from './tabs/VisitaCatalogo'
 import RutaTab from './tabs/RutaTab'
 import TicketPedido from '../pedidos/TicketPedido'
 import SinPedidoSheet from './tabs/SinPedidoSheet'
+import UbicarComercioSheet from './UbicarComercioSheet'
 import ElegirTicketSheet from './ElegirTicketSheet'
 import EditarPedidoSheet from '../pedidos/EditarPedidoSheet'
 import { useUltimoPedido } from './useSugeridos'
@@ -89,6 +90,7 @@ export default function VendedorView() {
    */
   const { user, idEmpresa } = useAuth()
   const [elegir, setElegir] = useState(null)      // el cliente sobre el que hay que decidir
+  const [ubicar, setUbicar] = useState(null)      // el cliente SIN ubicación al que se le hace check-in
   const [editando, setEditando] = useState(null)  // { pedido, lineas } — el que se está corrigiendo
   // El hook devuelve null mientras no haya id, así que se puede llamar siempre (los hooks no van
   // adentro de un `if`).
@@ -99,8 +101,15 @@ export default function VendedorView() {
    *
    * Un comercio ya visitado hoy NO vuelve a hacer check-in: la presencia ya quedó registrada, y una
    * segunda visita a los diez minutos ensuciaría los reportes con una parada que no existió.
+   *
+   * 🩸 UN COMERCIO SIN UBICACIÓN PRIMERO SE UBICA (17/09/2026). Antes el check-in guardaba en
+   * silencio el GPS del teléfono como ubicación del comercio; con teléfonos que reportan mal, eso
+   * cargaba ubicaciones falsas que nadie revisaba. Ahora sale `UbicarComercioSheet` (obligatorio)
+   * y la visita arranca recién al confirmar. Desde el pin del mapa nunca pasa: un pin YA tiene
+   * ubicación. Ver `useJornada.ubicarComercio`.
    */
   function alTocarCliente(c) {
+    if (c.status === 'pendiente' && c.lat == null) { setUbicar(c); return }
     if (c.status === 'pendiente') j.startVisit(c.id)
     setElegir(c)
   }
@@ -171,6 +180,20 @@ export default function VendedorView() {
       {j.tab === 'ruta' && <RutaTab j={j} onCheckIn={alTocarCliente} />}
 
       {j.sheet && <SinPedidoSheet j={j} />}
+
+      {ubicar && (
+        <UbicarComercioSheet
+          comercio={ubicar}
+          onConfirmar={async (punto) => {
+            await j.ubicarComercio(ubicar.id, punto)
+            j.startVisit(ubicar.id)
+            setElegir(ubicar)
+            setUbicar(null)
+          }}
+          // Sólo sin conexión: la visita arranca igual y el cartel vuelve en el próximo check-in.
+          onSeguirSinUbicar={() => { j.startVisit(ubicar.id); setElegir(ubicar); setUbicar(null) }}
+        />
+      )}
 
       {/* Sólo aparece si hay algo que decidir: sin pedido previo, el check-in es un toque y esto no
           se ve nunca. Un diálogo que pregunta cuando hay una sola respuesta posible es un toque de

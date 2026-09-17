@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
+import { DIAS, formatDias } from '../../lib/diasVisita'
 import { buscarParecidos, motivoTexto } from '../../lib/texto'
 import { primerCodigoLibre, codigoOcupado } from '../../lib/codigoCliente'
 import { useCatalog } from '../../context/CatalogContext'
-import { useTheme } from '../../context/ThemeContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
-import { CENTRO } from '../../data/demoGeo'
-import LeafletMap from '../../components/LeafletMap'
+import SelectorUbicacion from '../../components/SelectorUbicacion'
 import Overlay from '../../components/Overlay'
 import { Field, inputStyle } from '../../components/form'
 import { Alerta, Crosshair } from '../../components/icons'
@@ -18,13 +17,11 @@ import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
  * repartidor y admin — cada empresa carga su propia cartera.
  */
 const FRECUENCIAS = ['Semanal', 'Quincenal', 'Mensual']
-const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
 
 export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente }) {
   // `clientesTodos` incluye los archivados: si alguien vuelve a cargar un comercio que se archivó,
   // avisarlo es MÁS importante, no menos — es la señal de que hay que desarchivarlo, no duplicarlo.
   const { addCliente, clientesTodos } = useCatalog()
-  const { theme } = useTheme()
   const [nombre, setNombre] = useState('')
   const [codigo, setCodigo] = useState('')
   const [localidad, setLocalidad] = useState('Las Lajitas')
@@ -34,12 +31,14 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   const [telefono, setTelefono] = useState('')
   const [contacto, setContacto] = useState('')
   const [geofence, setGeofence] = useState(75)
-  const [punto, setPunto] = useState(center || null) // {lat,lng}
+  // `inicial` = de dónde arranca el pin (el GPS del vendedor, `center`); `punto` = dónde quedó al
+  // mover el mapa. Dos estados: si el resultado alimentara el arranque, cada `moveend` centraría.
+  const [inicial, setInicial] = useState(center ? { lat: center.lat, lng: center.lng } : null)
+  const [punto, setPunto] = useState(inicial) // {lat,lng}
   const [locBusy, setLocBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [abierto, setAbierto] = useState(true) // ver Overlay.jsx: el padre monta condicionalmente
 
-  const base = center || CENTRO
 
   // Candidatos a duplicado, recalculados mientras se escribe. Es 100 % local (la cartera ya está
   // en memoria), así que funciona con el teléfono sin señal — que es donde el vendedor carga.
@@ -60,10 +59,10 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     setLocBusy(true)
     try {
       const p = await pedirUbicacionUnaVez()
-      setPunto({ lat: p.lat, lng: p.lng })
-      onToast?.('Ubicación tomada del GPS')
+      setInicial({ lat: p.lat, lng: p.lng })
+      onToast?.('Ubicación tomada del GPS · ajustá el pin si hace falta')
     } catch {
-      onToast?.('No se pudo obtener el GPS. Tocá el mapa para marcar el punto.')
+      onToast?.('No se pudo obtener el GPS. Mové el mapa hasta el comercio.')
     } finally {
       setLocBusy(false)
     }
@@ -74,7 +73,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     if (ocupadoPor) { onToast?.(`El código ${codigo.trim()} ya lo usa ${ocupadoPor.name}`); return }
     if (!punto) { onToast?.('Marcá la ubicación en el mapa'); return }
     setSaving(true)
-    const diasStr = DIAS.filter((d) => dias[d]).join(' · ')
+    const diasStr = formatDias(DIAS.filter((d) => dias[d]))
     const res = await addCliente({
       nombre_comercio: nombre.trim(),
       codigo: codigo.trim() || null,
@@ -190,18 +189,10 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
           <Crosshair />
           {locBusy ? 'Obteniendo…' : 'Usar mi ubicación actual'}
         </button>
-        <div style={sx('font-size:var(--fs-xs);color:var(--faint);margin-bottom:6px')}>…o tocá el mapa para marcar el punto exacto del comercio.</div>
-        {/* redondeo + recorte: sin esto los tiles cortan en esquinas rectas */}
-        <div style={sx('border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line)')}>
-          <LeafletMap
-            theme={theme}
-            height={200}
-            zoom={15}
-            center={punto || base}
-            markers={punto ? [{ lat: punto.lat, lng: punto.lng, color: 'var(--primary)', title: nombre || 'Nuevo cliente' }] : []}
-            onMapClick={(ll) => setPunto(ll)}
-          />
-        </div>
+        <div style={sx('font-size:var(--fs-xs);color:var(--faint);margin-bottom:6px')}>…y movés el mapa hasta que el pin quede sobre el comercio.</div>
+        {/* Pin fijo al centro (17/09/2026): ver `SelectorUbicacion`. `center` es la posición viva
+            del vendedor cuando lo abre él; desde gestión no hay GPS y el mapa arranca en el pueblo. */}
+        <SelectorUbicacion inicial={inicial} live={center || null} nombre={nombre || 'Nuevo cliente'} alto={200} onCambio={setPunto} />
         <div style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);margin-top:6px')}>
           {punto ? `${punto.lat.toFixed(5)}, ${punto.lng.toFixed(5)}` : 'Sin ubicación marcada'}
         </div>

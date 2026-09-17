@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
+import { DIAS, parseDias, formatDias } from '../../lib/diasVisita'
 import { useCatalog } from '../../context/CatalogContext'
-import { useTheme } from '../../context/ThemeContext'
 import { useGps } from '../../context/GpsContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
-import { CENTRO } from '../../data/demoGeo'
-import LeafletMap from '../../components/LeafletMap'
-import ErrorBoundary from '../../components/ErrorBoundary'
+import SelectorUbicacion from '../../components/SelectorUbicacion'
 import Overlay from '../../components/Overlay'
 import { Crosshair } from '../../components/icons'
 import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
@@ -23,18 +21,20 @@ import { inputStyle } from '../../components/form'
  *
  * props: { clienteId, onClose, onToast }
  */
-const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
 
 export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   const { clientes, updateCliente } = useCatalog()
-  const { theme } = useTheme()
   const { pos: livePos } = useGps()
   const c = clientes.find((x) => x.id === clienteId) || null
 
-  const [punto, setPunto] = useState(c && c.lat != null ? { lat: c.lat, lng: c.lng } : null)
+  // `inicial` es de dónde ARRANCA el pin (la ubicación guardada, o el GPS al tocar "usar mi
+  // ubicación"); `punto` es dónde QUEDÓ después de mover el mapa. Son dos estados a propósito:
+  // si el resultado alimentara el arranque, cada `moveend` volvería a centrar el mapa.
+  const [inicial, setInicial] = useState(c && c.lat != null ? { lat: c.lat, lng: c.lng } : null)
+  const [punto, setPunto] = useState(inicial)
   const [dias, setDias] = useState(() => {
     const ds = {}
-    ;(c?.dias || '').split('·').map((s) => s.trim()).filter(Boolean).forEach((d) => { ds[d] = true })
+    parseDias(c?.dias).forEach((d) => { ds[d] = true })
     return ds
   })
   const [telefono, setTelefono] = useState(c?.telefono || '')
@@ -48,16 +48,14 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   const [abierto, setAbierto] = useState(true)
 
   if (!c) return null
-  const base = punto || livePos || CENTRO
-
   async function usarMiUbicacion() {
     setLocBusy(true)
     try {
       const p = await pedirUbicacionUnaVez()
-      setPunto({ lat: p.lat, lng: p.lng })
-      onToast?.('Ubicación tomada del GPS')
+      setInicial({ lat: p.lat, lng: p.lng })
+      onToast?.('Ubicación tomada del GPS · ajustá el pin si hace falta')
     } catch {
-      onToast?.('No se pudo obtener el GPS. Tocá el mapa para marcar el punto.')
+      onToast?.('No se pudo obtener el GPS. Mové el mapa hasta el comercio.')
     } finally {
       setLocBusy(false)
     }
@@ -65,7 +63,7 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
 
   async function guardar() {
     setSaving(true)
-    const diasStr = DIAS.filter((d) => dias[d]).join(' · ')
+    const diasStr = formatDias(DIAS.filter((d) => dias[d]))
     const patch = {
       dias_visita: diasStr || null,
       // Sin validar el formato a propósito: el "15" intercalado, los códigos de área de 2 a 4
@@ -129,22 +127,11 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
         <Crosshair />
         {locBusy ? 'Obteniendo…' : 'Usar mi ubicación actual'}
       </button>
-      <div style={sx('font-size:var(--fs-xs);color:var(--faint);margin-bottom:8px')}>…o tocá el mapa para marcar el punto exacto del comercio.</div>
+      <div style={sx('font-size:var(--fs-xs);color:var(--faint);margin-bottom:8px')}>…y movés el mapa hasta que el pin quede sobre el comercio.</div>
 
-      {/* El contenedor redondea y recorta: sin esto los tiles de Leaflet quedan
-          con esquinas rectas adentro de una card redondeada. */}
-      <div style={sx('border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line)')}>
-        <ErrorBoundary compact message="No se pudo cargar el mapa.">
-          <LeafletMap
-            theme={theme}
-            height={230}
-            zoom={15}
-            center={base}
-            markers={punto ? [{ lat: punto.lat, lng: punto.lng, color: 'var(--primary)', title: c.name }] : []}
-            onMapClick={(p) => setPunto({ lat: p.lat, lng: p.lng })}
-          />
-        </ErrorBoundary>
-      </div>
+      {/* Pin fijo al centro, se mueve el mapa (17/09/2026). Antes era "tocá el mapa", que con el
+          dedo no se puede afinar. Ver `SelectorUbicacion`. */}
+      <SelectorUbicacion inicial={inicial} live={livePos} nombre={c.name} alto={230} onCambio={setPunto} />
       <div style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);margin-top:6px')}>
         {punto ? `${punto.lat.toFixed(5)}, ${punto.lng.toFixed(5)}` : 'Sin ubicación marcada'}
       </div>

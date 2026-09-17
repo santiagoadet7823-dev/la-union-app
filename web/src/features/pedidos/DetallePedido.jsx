@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
+import { Whatsapp } from '../../components/icons'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import { asignarRepartidor } from '../repartidor/useEntregas'
 import { anularPedido, borrarPedido } from './anularPedido'
@@ -275,7 +276,11 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               </div>
             )}
             <div>
-              {pedido.origen === 'vidriera' ? 'Tomado con la tablet' : 'Tomado en el celular'}
+              {/* El bot de WhatsApp es el tercer origen (db/71): con logo, para que se reconozca de
+                  un vistazo — es la marca la que le dice al dueño que el bot está vendiendo. */}
+              {pedido.origen === 'whatsapp'
+                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#25D366', fontWeight: 600 }}><Whatsapp size={13} />Tomado por el bot de WhatsApp</span>
+                : pedido.origen === 'vidriera' ? 'Tomado con la tablet' : 'Tomado en el celular'}
               {/* La distancia informa; no acusa. El GPS de estos equipos miente hasta 30 m, y el
                   comercio puede no tener ubicación registrada — ahí no hay nada que medir. */}
               {pedido.distancia_m != null

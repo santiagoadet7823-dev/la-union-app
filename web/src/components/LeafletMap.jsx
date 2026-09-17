@@ -14,8 +14,8 @@ import { crearAnimadorPines } from '../features/supervision/animarPin'
  * props: theme, center, zoom, markers[{lat,lng,label,color,labelColor,title,selected}],
  *        depot{lat,lng,title}, live{lat,lng}, route[{lat,lng}], routeColor,
  *        circle{lat,lng,radiusM,color}, dwells[{lat,lng,label,sub,color}], height,
- *        onMarkerClick(index), clients[{lat,lng,nombre,color,abrev,zona}], onClientClick(index),
- *        clientRadius
+ *        onMarkerClick(index), onClientClick(index), onMoveEnd({lat,lng}), clientRadius,
+ *        clients[{lat,lng,nombre,color,abrev,zona,glifo,hueco,sel,radio,stroke,peso}]
  */
 
 // El basemap ya NO depende del tema: lo elige el usuario y es global (services/maps/basemap.js).
@@ -364,22 +364,102 @@ const GLIFO_FIN = '<span style="width:5px;height:5px;background:#fff;border-radi
 const inicioIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_INICIO })
 const finIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_FIN })
 
-/** Zoom desde el cual la capa de clientes muestra la abreviatura de la zona en vez del punto. */
-const ZOOM_CHIP_ZONA = 14
+/**
+ * Zoom desde el cual la capa de clientes dibuja un PIN DE UBICACIÓN en vez del puntito (17/09/2026).
+ *
+ * Es 15 y no 14 a propósito: a 14 todavía se ve el pueblo entero y 700 pines de 26 px serían una
+ * mancha; a 15 se ven unas pocas manzanas, que es cuando el vendedor pregunta "¿cuál es cuál?".
+ *
+ * 🩸 EL PIN ES EL ÚNICO MARCADOR DE CERCA, EN TODOS LOS MODOS (17/09/2026, segunda pasada). La
+ * primera versión conservaba el chip rectangular de la zona (`zonaChipIcon`, desde zoom 14) para
+ * el modo "por zona" de la supervisión y usaba el pin sólo cuando los puntos traían estado. Dos
+ * problemas: los comercios SIN zona quedaban con un chip vacío —una raya gris de 9 px que el cliente
+ * describió como "un guion grueso"— y el mapa cambiaba de lenguaje según el botón. Ahora el pin
+ * lleva la abreviatura de la zona como glifo y el color de la zona; sin zona, gris neutro y sin
+ * glifo. Un comercio se ve igual en todos los mapas y en todos los modos.
+ */
+const ZOOM_PIN_COMERCIO = 15
 
 /**
- * Chip de la capa de clientes: la abreviatura de la zona (2 letras) sobre el color de la zona.
- * Mismo esquema que `hitoIcon`: estilos inline y anclado al centro, para que el chip quede sobre
- * la coordenada exacta como el circleMarker al que reemplaza.
+ * Cuánto se agranda el recuadro del viewport para decidir qué marcadores del DOM se crean. 0,25 =
+ * un cuarto de pantalla de margen para cada lado, así un paneo corto no deja huecos mientras
+ * Leaflet todavía no disparó `moveend`.
  */
-function zonaChipIcon({ abrev, color, stroke }) {
+const PAD_VIEWPORT = 0.25
+
+/**
+ * Cuántos pines se dibujan como máximo antes de volver a los círculos. **Es un techo de
+ * LEGIBILIDAD antes que de performance**, y por eso no se sube "porque la máquina aguanta".
+ *
+ * Medido el 17/09/2026 con 800 comercios sintéticos en un teléfono de 400 px: a zoom 15 sobre una
+ * mancha densa entran ~680 en pantalla, el redibujo cuesta 75 ms y el mapa queda con 2.267 nodos.
+ * Pero el problema real es otro: 680 gotas de 25×30 px sobre 400×800 px se tapan unas a otras y no
+ * se distingue ninguna — se ve peor que el punto, que al menos deja ver la calle debajo.
+ *
+ * 120 pines son ~90.000 px² sobre ~320.000: ya es un cuarto de la pantalla cubierta, que es el
+ * límite de "puedo señalar uno con el dedo". Pasado eso se dibuja el círculo, que es la respuesta
+ * correcta a "hay demasiados para mirarlos de a uno: acercate más".
+ */
+const MAX_PINES = 120
+
+/**
+ * PIN DE COMERCIO: gota con la punta abajo, con la identidad del estado adentro (17/09/2026).
+ *
+ * 🩸 NO ES `pinIcon`, Y NO LO REEMPLAZA. `pinIcon` ancla al CENTRO (`iconAnchor: [size/2, size/2]`)
+ * y lo usan las fichas de cliente, la próxima parada y los marcadores sueltos de media docena de
+ * pantallas: moverle el ancla a la punta correría 11 px todos los marcadores que ya existen, en
+ * mapas donde el punto ES el dato (la ficha desde la que se corrige una ubicación). Este nace con
+ * la punta abajo y `iconAnchor` en la punta, que es lo que hace que un pin marque la coordenada
+ * exacta en vez de flotar arriba de ella.
+ *
+ * 🩸 EL COLOR NUNCA VA SOLO: `glifo` es el segundo canal. Verde / naranja / rojo juntos son el trío
+ * que peor se distingue con daltonismo (deuteranopia), y el parque es de varones — donde eso es
+ * ~8 %. Es la misma regla que ya se aplicó en `components/charts/paleta.js` ("la identidad nunca es
+ * color solo"). El glifo también sirve para el número de orden de la ruta, que son 1-2 dígitos.
+ *
+ * `hueco` es el comercio que HOY NO TOCA: sin relleno y más chico. Se hunde en vez de gritar — por
+ * eso no lleva un color de alarma, que era la primera idea y se descartó (ver el código de colores
+ * en DOCUMENTACION_FUNCIONAL.md).
+ */
+// El glifo del pin: un carácter (escapado) o `{ svg }` con markup propio — el logo de WhatsApp
+// para los pedidos del bot (`lib/estadoComercio`). El SVG viene de una constante del repo, nunca
+// de datos, por eso se inserta sin escapar.
+const glifoHtml = (g) => (g && typeof g === 'object' && g.svg ? g.svg : esc(g || ''))
+// Un carácter entra a 11 px en la cabeza de 25; la abreviatura de zona (2-3 letras) a 8,5 px.
+const tamGlifo = (g, w) => (typeof g === 'string' && g.length > 1 ? (w >= 25 ? 8.5 : 7) : (w >= 25 ? 11 : 9))
+
+function pinComercioIcon({ color, glifo, hueco, sel, stroke }) {
+  // Todas las medidas salen de `w`, como en `dwellIcon`: no hay dos versiones del pin que se puedan
+  // desincronizar.
+  //
+  // El alto NO es un número elegido a ojo: el cuadrado girado 45° asoma su esquina hasta
+  // (w/2)·√2 ≈ 0,707w por debajo del centro, así que la gota entera mide w/2 + 0,707w = 1,207w.
+  // Si `h` fuera menos, `translate(-50%,-100%)` dejaría la punta POR DEBAJO de la coordenada y el
+  // pin marcaría un lugar donde no está el comercio — que es justo el error que este icono existe
+  // para no cometer.
+  const w = sel ? 30 : hueco ? 19 : 25
+  const h = Math.round(w * 1.207)
+  const fondo = hueco ? 'transparent' : color
+  const borde = hueco ? color : (sel ? '#2DD4CE' : stroke)
+  const tinta = hueco ? color : '#fff'
+  const grosor = hueco ? 2 : sel ? 2.5 : 1.5
   return L.divIcon({
-    className: 'lu-zona-chip',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;background:${color};color:#fff;border:1px solid ${stroke};border-radius:4px;padding:1px 4px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:700;line-height:1.3;letter-spacing:.04em;box-shadow:0 1px 3px rgba(0,0,0,.35)">${esc(abrev)}</div>`,
+    className: 'lu-pin-comercio',
+    // `rotate(-45deg)` sobre un borde 50%/50%/50%/0 da la gota clásica con la punta abajo a la
+    // izquierda; el wrapper la endereza girando el contenido al revés para que el glifo se lea.
+    // La gota va pegada ARRIBA del recuadro (top:0) y el glifo centrado sobre esa misma cabeza de
+    // w×w, no sobre el recuadro entero: centrarlo en `h` lo bajaría hacia la punta, donde no entra.
+    // `rotate(-45deg)` sobre la esquina sin redondear (abajo a la izquierda) es lo que la deja
+    // apuntando hacia abajo; el glifo NO se rota, por eso son dos elementos y no uno.
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);width:${w}px;height:${h}px">
+      <div style="position:absolute;left:0;top:0;width:${w}px;height:${w}px;background:${fondo};border:${grosor}px solid ${borde};border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 1px 4px rgba(0,0,0,.35);box-sizing:border-box"></div>
+      <div style="position:absolute;left:0;top:0;width:${w}px;height:${w}px;display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:${tamGlifo(glifo, w)}px;font-weight:700;line-height:1;letter-spacing:${typeof glifo === 'string' && glifo.length > 1 ? '-.02em' : '0'};color:${tinta};pointer-events:none">${glifoHtml(glifo)}</div>
+    </div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
 }
+
 
 export default function LeafletMap({
   theme = 'dark',
@@ -431,11 +511,19 @@ export default function LeafletMap({
   // propio, para no re-dibujarlos en cada tick de "hace Xs".
   // Cada uno puede traer `radio`, `stroke` y `peso` propios (el mapa del vendedor resalta así al
   // comercio tocado); si no vienen, se usan `clientRadius` y el borde por tema.
+  // Desde ZOOM_PIN_COMERCIO cada uno es un PIN de ubicación: con `glifo` (un carácter o `{ svg }`)
+  // adentro si lo trae, si no con `abrev` (la zona); `hueco` = sin relleno y más chico; `sel` =
+  // agrandado. De lejos, un puntito de canvas.
   clients = [],
   // Toque sobre un cliente de la capa de contexto: `(index)` dentro de `clients`. Opcional (16/09/2026,
   // mapa de cartera del vendedor): sin él la capa sigue siendo puramente informativa, como en las
   // supervisiones. Va por ref igual que `onMarkerClick`, para no redibujar 700 puntos por render.
   onClientClick,
+  // Fin de un movimiento del mapa (arrastre, zoom, `setView`): `({ lat, lng })` del CENTRO. Lo usa
+  // `SelectorUbicacion` (17/09/2026): el pin queda clavado en el centro del contenedor y lo que se
+  // mueve es el mapa, así que "dónde quedó el pin" es exactamente el centro al soltar. Por ref,
+  // como `onMapClick`, para no re-suscribir el listener en cada render.
+  onMoveEnd,
   // Radio del puntito de cliente. 4 es el de siempre (contexto detrás de un recorrido); el mapa del
   // vendedor pasa más, porque ahí el punto es el TARGET TÁCTIL y con 4 px no lo agarra un dedo.
   clientRadius = 4,
@@ -517,6 +605,8 @@ export default function LeafletMap({
   clientClickRef.current = onClientClick
   const mapClickRef = useRef(onMapClick)
   mapClickRef.current = onMapClick
+  const moveEndRef = useRef(onMoveEnd)
+  moveEndRef.current = onMoveEnd
   const seguirFinRef = useRef(onSeguirCancelado)
   seguirFinRef.current = onSeguirCancelado
   // Pines en vivo que PERSISTEN entre refrescos: id → { marker, firma, indice, lat, lng, ts }.
@@ -600,6 +690,7 @@ export default function LeafletMap({
     iniciosLayerRef.current = L.layerGroup().addTo(map)
     finesLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
+    map.on('moveend', () => { if (moveEndRef.current) { const c = map.getCenter(); moveEndRef.current({ lat: c.lat, lng: c.lng }) } })
     // Arrastrar el mapa desengancha el seguimiento. Va acá (una sola vez, en el init) y no en el
     // efecto de `seguir`: el handler es estable porque lee el callback de un ref, y re-suscribirlo
     // en cada posición nueva sería registrar y quitar un listener cada 5 segundos.
@@ -642,7 +733,13 @@ export default function LeafletMap({
       // setLatLng sobre marcadores de un mapa que ya no existe.
       animadorRef.current?.cancelarTodo()
       pinesRef.current.clear()
-      map.remove()
+      // 🩸 `remove()` puede TIRAR si el mapa muere con un gesto a medias (17/09/2026): al
+      // desmontar un `SelectorUbicacion` durante un arrastre, Leaflet corta el drag
+      // (`finishDrag` → `removeClass` sobre un elemento que ya no existe → "reading 'baseVal'") y
+      // el error subía hasta el ErrorBoundary de la pantalla ENTERA, que mostraba "Esta pantalla no
+      // se pudo abrir" por un mapa que justamente se estaba cerrando. Lo mismo el `clearRect` del
+      // canvas ya destruido. Un mapa que se está yendo no tiene nada que reportar.
+      try { map.remove() } catch (_) { /* ver arriba */ }
       mapRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1161,40 +1258,77 @@ export default function LeafletMap({
   // dispara cada segundo aunque haya 2.000 puntos. Puntito chico, distinto de los móviles en vivo
   // (círculos grandes de color). No modifica el encuadre.
   //
-  // Cada punto lleva el COLOR de su zona (`marcadoresCartera`), y desde ZOOM_CHIP_ZONA se
-  // reemplaza por un chip con la ABREVIATURA de la zona (LJ, GA…): de lejos 686 chips se
-  // amontonan y tapan el recorrido, de cerca es lo que permite ver de qué zona es cada comercio.
-  // Se redibuja SÓLO cuando el zoom cruza el umbral, no en cada paso.
+  // DOS FORMAS SEGÚN EL ZOOM:
+  //   · `circulo` (lejos, CANVAS) — dónde hay comercios. Los 700 en un solo nodo.
+  //   · `pin`     (≥ 15, DOM)     — cuál es cuál: el pin de ubicación con el glifo del estado
+  //                                 (vendedor/repartidor) o la abreviatura de la zona (supervisor).
+  // Se redibuja SÓLO al cruzar el umbral, no en cada paso de zoom. (Hasta el 17/09 había una
+  // tercera forma, el chip rectangular de zona; ver el 🩸 en ZOOM_PIN_COMERCIO.)
+  //
+  // 🩸 EN MODO PIN SE RECORTA POR VIEWPORT (17/09/2026). Cada pin es un `<div>`: sin recorte, la
+  // cartera entera son ~700 nodos creados de golpe, que es exactamente lo que se sacó del mapa del
+  // vendedor el 16/09 por lentitud (regla 50) y lo que el chip de zona venía haciendo desde siempre
+  // con sus 686. Con el recorte se crean sólo los que se ven (más un cuarto de pantalla de margen),
+  // o sea decenas. En modo círculo NO se recorta: el canvas dibuja los 700 barato y recortar sólo
+  // agregaría parpadeo al panear.
   useEffect(() => {
     const map = mapRef.current
     const layer = clientsLayerRef.current
     if (!map || !layer) return
     const neutro = theme === 'dark' ? '#94A3B8' : '#475569'
     const stroke = theme === 'dark' ? '#0B2B2A' : '#ffffff'
-    let modoChip = null
-    const dibujar = () => {
-      const chip = (map.getZoom() || 0) >= ZOOM_CHIP_ZONA
-      if (chip === modoChip) return
-      modoChip = chip
+    let modo = null
+    const modoDeZoom = () => {
+      const z = map.getZoom() || 0
+      // De cerca, pin; de lejos, círculo. Vale para cualquier capa de comercios: el pin lleva el
+      // glifo que venga (estado) o, si no, la abreviatura de la zona.
+      return z >= ZOOM_PIN_COMERCIO ? 'pin' : 'circulo'
+    }
+    const dibujar = (forzar) => {
+      let m = modoDeZoom()
+      // En los modos del DOM hay que redibujar también al PANEAR (entran y salen marcadores del
+      // recuadro); en círculo, sólo si cambió el modo.
+      if (!forzar && m === modo && m === 'circulo') return
       layer.clearLayers()
       const tocable = !!clientClickRef.current
+      const limite = m === 'circulo' ? null : map.getBounds().pad(PAD_VIEWPORT)
+      // Se cuenta ANTES de dibujar: con demasiados a la vista, el pin deja de informar y se cae a
+      // círculo (ver MAX_PINES). Recorrer el array dos veces cuesta microsegundos; crear 680 nodos
+      // del DOM para borrarlos, no.
+      if (m === 'pin') {
+        let visibles = 0
+        for (const cl of clients || []) {
+          if (cl.lat == null || cl.lng == null) continue
+          if (limite.contains([cl.lat, cl.lng]) && ++visibles > MAX_PINES) break
+        }
+        if (visibles > MAX_PINES) m = 'circulo'
+      }
+      modo = m
       ;(clients || []).forEach((cl, i) => {
         if (cl.lat == null || cl.lng == null) return
+        if (m !== 'circulo' && limite && !limite.contains([cl.lat, cl.lng])) return
         const color = cl.color || neutro
         const tip = [cl.abrev, cl.nombre, cl.zona].filter(Boolean).join(' · ')
-        const m = chip && cl.abrev
-          ? L.marker([cl.lat, cl.lng], { icon: zonaChipIcon({ abrev: cl.abrev, color, stroke }), interactive: true, keyboard: false })
-          : L.circleMarker([cl.lat, cl.lng], { radius: cl.radio || clientRadius, color: cl.stroke || stroke, weight: cl.peso || 1, fillColor: color, fillOpacity: 0.95 })
+        const mk = m === 'pin'
+          ? L.marker([cl.lat, cl.lng], { icon: pinComercioIcon({ color, glifo: cl.glifo ?? cl.abrev ?? '', hueco: cl.hueco, sel: cl.sel, stroke }), interactive: true, keyboard: false })
+          : L.circleMarker([cl.lat, cl.lng], { radius: cl.radio || clientRadius, color: cl.stroke || stroke, weight: cl.peso || 1, fillColor: color, fillOpacity: cl.hueco ? 0.25 : 0.95 })
         // Con handler, el tooltip sobra: el toque abre algo más rico que un globito, y en un
         // teléfono el tooltip aparecería junto con el toque y taparía justo lo que se abrió.
-        if (tip && !tocable) m.bindTooltip(tip, { direction: 'top', offset: [0, chip ? -8 : -4] })
-        if (tocable) m.on('click', (e) => { L.DomEvent.stopPropagation(e); clientClickRef.current?.(i) })
-        m.addTo(layer)
+        if (tip && !tocable) mk.bindTooltip(tip, { direction: 'top', offset: [0, m === 'circulo' ? -4 : -26] })
+        if (tocable) mk.on('click', (e) => { L.DomEvent.stopPropagation(e); clientClickRef.current?.(i) })
+        mk.addTo(layer)
       })
     }
-    dibujar()
-    map.on('zoomend', dibujar)
-    return () => { map.off('zoomend', dibujar) }
+    // Los dos van envueltos: Leaflet le pasa el EVENTO al handler, y ese objeto como `forzar`
+    // haría que el modo círculo se redibujara en cada zoom en vez de sólo al cruzar el umbral.
+    const alZoom = () => dibujar(false)
+    // Se redibuja al panear también desde círculo cuando el ZOOM es de pin: puede que en el nuevo
+    // encuadre entren pocos y corresponda volver a las gotas (o al revés).
+    const alMover = () => { if (modo !== 'circulo' || modoDeZoom() !== 'circulo') dibujar(true) }
+    dibujar(true)
+    map.on('zoomend', alZoom)
+    map.on('moveend', alMover)
+    return () => { map.off('zoomend', alZoom); map.off('moveend', alMover) }
   }, [clients, theme, clientRadius])
 
   // 🩸 `isolation: isolate` (20/07/2026) — NO SACAR.

@@ -6,7 +6,6 @@ import { hoyStr } from '../../lib/format'
 import { precioDe, totalesDeCarrito } from '../../lib/precios'
 import { persistence } from '../../services/persistence'
 import { distanciaMetros } from '../../services/geolocation/geofence'
-import { supabase } from '../../services/supabase'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
 import { useVidriera } from '../vidriera/useVidriera'
 import useFormasPago from '../../hooks/useFormasPago'
@@ -44,7 +43,7 @@ const K_JORNADA = 'lu-jornada-abierta'
  * presentación. Lee el catálogo real para derivar clientes/productos.
  */
 export function useJornada() {
-  const { productos: PRODUCTS, clientes: cartera, loading: catLoading, catalogoMeta } = useCatalog()
+  const { productos: PRODUCTS, clientes: cartera, loading: catLoading, catalogoMeta, updateCliente } = useCatalog()
   // Identidad + posición en vivo para el check-in geolocalizado (Feature C). `pos` es la
   // posición ya adquirida por el watch (sin prompt); id/idEmpresa vienen del perfil real.
   const { pos, id: userId, nombre: nombreUsuario, idEmpresa } = useGps()
@@ -83,11 +82,14 @@ export function useJornada() {
   const toastRef = useRef(null)
   const visitaActualRef = useRef(null) // id de la fila `visitas` en curso (para cerrar en check-out)
   const visitaTsRef = useRef(null)      // epoch del check-in, para reanudar el timer tras una recarga
-  // 🩸 EL CERO FALSO DE LA DISTANCIA. Si el comercio no tenía ubicación, el check-in se la asigna
-  // con las coordenadas de donde está el vendedor (`reclamar_y_ubicar_cliente`). A partir de ahí
-  // "distancia al comercio" da ~0 POR CONSTRUCCIÓN y no prueba absolutamente nada. Cuando pasa,
-  // el pedido se guarda con `distancia_m = null`: no saber es un dato, un 0 inventado es mentira.
+  // 🩸 EL CERO FALSO DE LA DISTANCIA. Si el comercio no tenía ubicación, se la marca en el mapa
+  // justo antes del check-in (`ubicarComercio`, parado en la puerta). A partir de ahí "distancia
+  // al comercio" da ~0 POR CONSTRUCCIÓN y no prueba absolutamente nada. Cuando pasa, el pedido se
+  // guarda con `distancia_m = null`: no saber es un dato, un 0 inventado es mentira.
   const ubicadoEnEstaVisitaRef = useRef(false)
+  // El id que se acaba de ubicar, para que `startVisit` (que resetea el ref de arriba) sepa que
+  // ESTA visita nace con ubicación recién marcada.
+  const ubicadoAntesDeVisitaRef = useRef(null)
   const carritoPrevioRef = useRef(null) // respaldo para el "Deshacer" de vaciar el pedido
   // Hasta que no terminó de leerse lo guardado NO se escribe: el primer render tiene el estado
   // vacío, y guardarlo pisaría la jornada que se está por restaurar. Este es el orden que hace
@@ -149,7 +151,8 @@ export function useJornada() {
     clearInterval(timerRef.current)
     setSeconds(0)
     visitaTsRef.current = Date.now()
-    ubicadoEnEstaVisitaRef.current = false
+    ubicadoEnEstaVisitaRef.current = ubicadoAntesDeVisitaRef.current === id
+    ubicadoAntesDeVisitaRef.current = null
     timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
     setVisit(id); setCart({}); setQuitados({}); setTab('catalogo')
     carritoPrevioRef.current = null
@@ -157,11 +160,34 @@ export function useJornada() {
     registrarCheckIn(id)
   }
 
-  // Persiste el check-in en `visitas` (offline-safe por la write queue) y, si el comercio no
-  // tiene ubicación y hay un fix GPS, la guarda vía la RPC reclamar_y_ubicar_cliente (Feature C).
-  // La RPC (SECURITY DEFINER) reclama el cliente y fija lat/lng en una operación segura; NO se
-  // usa updateCliente() acá porque encolaría un UPDATE de clientes que la RLS rechaza para
-  // comercios sin dueño y taponaría la cola (mismo riesgo que la cola de posiciones).
+  /**
+   * Guarda la ubicación que el vendedor MARCÓ EN EL MAPA para un comercio que no la tenía
+   * (`UbicarComercioSheet`, obligatorio antes del check-in desde el 17/09/2026).
+   *
+   * 🩸 REEMPLAZA AL GUARDADO SILENCIOSO DEL GPS. Hasta hoy `registrarCheckIn` llamaba a la RPC
+   * `reclamar_y_ubicar_cliente` con la posición del teléfono, sin mostrarla ni pedir confirmación.
+   * Con teléfonos que reportan mal (varios en La Unión) eso cargaba ubicaciones falsas que nadie
+   * iba a revisar. Ahora el punto lo elige la persona mirando el mapa.
+   *
+   * Va por `updateCliente` (write queue + merge optimista) y no por la RPC: la policy
+   * `clientes_upd` de la base viva acepta el UPDATE de cualquier vendedor de la empresa desde el
+   * 09/09/2026 (verificado el 17/09), así que el comentario viejo de "la RLS lo rechaza y tapona la
+   * cola" ya no vale. Y el merge local es lo que hace que el comercio aparezca en el mapa de la
+   * Ruta al toque, sin recargar el catálogo — con la RPC la cartera en memoria seguía con
+   * `lat == null` hasta la próxima recarga. Si el comercio no tenía dueño se lo queda quien lo
+   * ubicó, como hacía la RPC.
+   */
+  async function ubicarComercio(idCliente, punto) {
+    const cli = cartera.find((c) => c.id === idCliente)
+    const patch = { lat: punto.lat, lng: punto.lng }
+    if (cli && !cli.idVendedor && userId) patch.id_vendedor = userId
+    await updateCliente(idCliente, patch)
+    ubicadoAntesDeVisitaRef.current = idCliente
+    showToast('Ubicación del comercio guardada')
+  }
+
+  // Persiste el check-in en `visitas` (offline-safe por la write queue). La ubicación del comercio
+  // ya NO se toca acá: la marca la persona en el mapa antes del check-in (`ubicarComercio`).
   async function registrarCheckIn(idCliente) {
     if (!userId || !idEmpresa) return // sesión aún no lista: el check-in local ya quedó registrado
     const vid = uid()
@@ -178,17 +204,6 @@ export function useJornada() {
       })
       flushMutaciones() // subir ya si hay red; si no, queda en cola
     } catch (_) { /* la visita queda en cola igual */ }
-
-    // Ubicar/reclamar el comercio (best-effort, requiere red). El fix igual quedó guardado en
-    // la visita, así que la ubicación no se pierde aunque esto falle offline.
-    const cli = cartera.find((c) => c.id === idCliente)
-    if (p && cli && cli.lat == null) {
-      ubicadoEnEstaVisitaRef.current = true // ver el comentario del ref: invalida la distancia de hoy
-      try {
-        const { error } = await supabase.rpc('reclamar_y_ubicar_cliente', { p_id: idCliente, p_lat: p.lat, p_lng: p.lng })
-        if (!error) showToast('Ubicación del comercio guardada')
-      } catch (_) { /* offline o sin permiso: se puede reintentar en la próxima visita */ }
-    }
   }
 
   // Cierra la visita en curso en `visitas` (check-out): estado + hora de salida + monto.
@@ -284,7 +299,10 @@ export function useJornada() {
   }
 
   // --- clientes (cartera real) + estado de visita del día ---
-  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, formaPagoDefault: c.formaPagoDefault, ...(visitState[c.id] || { status: 'pendiente' }) }))
+  // `dias` y `frecuencia` viajan para el MAPA, que colorea distinto lo que hoy toca visitar
+  // (`lib/diasVisita.js`). La LISTA de esta misma pantalla todavía no filtra por día — es una
+  // inconsistencia conocida y anotada, no un olvido: filtrar la jornada es una decisión del dueño.
+  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, formaPagoDefault: c.formaPagoDefault, dias: c.dias, frecuencia: c.frecuencia, ...(visitState[c.id] || { status: 'pendiente' }) }))
   const nextId = (clients.find((c) => c.status === 'pendiente') || {}).id
   const done = clients.filter((c) => c.status !== 'pendiente').length
   const conPedido = clients.filter((c) => c.status === 'visitado')
@@ -506,6 +524,7 @@ export function useJornada() {
 
   return {
     vid,
+    ubicarComercio,
     tab, setTab,
     visit, seconds, cart, quitados, sheet, setSheet, motivo, setMotivo, ticket, setTicket,
     search, setSearch, catFilter, setCatFilter, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,

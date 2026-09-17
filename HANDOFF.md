@@ -45,6 +45,103 @@
 
 ---
 
+## 🟦 00000. PINES CON CÓDIGO DE ESTADO (17/09/2026) — SIN COMMITEAR, SIN PUBLICAR
+
+Lo que pidió el cliente: que el marcador de los mapas sea un **pin de ubicación** y que el color
+diga en qué estado está cada comercio, **en los tres lugares** donde aparece — vendedor, monitoreo
+(superadmin/admin/encargado) y repartidor.
+
+**El código de colores vive en un solo archivo**, `web/src/lib/estadoComercio.js`, y está explicado
+ahí adentro. Lo único que hay que saber para no deshacerlo por error: **el rojo NO es "hoy no
+toca"** (esa fue la propuesta inicial y se descartó con el cliente: sería media cartera en rojo
+todos los días). El rojo es el **cliente dormido**; lo que hoy no toca se hunde en gris hueco y más
+chico. Cada estado lleva además un **glifo** (`·` `✓` `–` `!`), porque verde/naranja/rojo es el trío
+que peor se distingue con daltonismo — misma regla que `components/charts/paleta.js`.
+
+**Archivos nuevos:** `lib/diasVisita.js` (la única definición de los días de visita; reemplazó tres
+copias) · `lib/estadoComercio.js` · `hooks/useDormidos.js` · `hooks/useVisitasDeHoy.js` ·
+`components/MapaComercios.jsx` (el armazón, sale de `MapaCartera`) · `components/MuestraEstado.jsx` ·
+`features/supervision/useCapaCartera.js` · `features/supervision/components/LeyendaCartera.jsx` ·
+`features/repartidor/MapaEntregas.jsx` (**el repartidor no tenía mapa**: calculaba la ruta óptima y
+sólo la mostraba como lista numerada).
+
+**Dos guardas en `LeafletMap` que no hay que sacar** (regla 50, y las dos salieron de medir, no de
+suponer): los pines son nodos del DOM, así que en los modos DOM sólo se crean los que caen dentro
+de `getBounds().pad(0.25)`; y si aun así quedaran **más de 120** (`MAX_PINES`), la capa vuelve a
+círculos de canvas. Sin el techo, un zoom 15 sobre el centro creaba **680 pines / 2.267 nodos en
+75 ms** y se veía como una mancha ilegible. El modo pin arranca en **zoom 15**; de más lejos se
+sigue dibujando el círculo barato de siempre.
+
+**Monitoreo.** El botón "Clientes" pasó de 2 a 3 posiciones: **apagada → por zona → por estado de
+hoy**. "Por zona" es byte por byte lo de antes (regresión cero, verificado). "Por estado" necesita
+saber a quién visitó **cualquiera del equipo**, y eso sale de `useVisitasDeHoy`; el alcance lo pone
+la RLS, no el hook. En modo estado el mapa muestra la **misma leyenda** que ve el vendedor. El rojo
+no aparece en monitoreo: `clientes_dormidos` se pide por vendedor y topea en 50.
+
+**Verificado contra la base viva el 17/09** (sesión real de superadmin en el Edge de `.pw`):
+`select` sobre `visitas` con `check_in_ts >= hoy` devuelve **13 filas (9 `en_curso`, 2 `visitado`,
+2 `cancelado`)** sin error de policy — o sea que la capa de estado del supervisor lee lo que tiene
+que leer. La leyenda del mapa dijo "2 con pedido · 233 por visitar" sobre 708 comercios ubicados,
+que es exactamente esa consulta cruzada con los días de visita. **1.121 comercios no se pueden
+dibujar porque no tienen ubicación cargada** — más de la mitad de la cartera, y es el número que la
+leyenda ahora dice en voz alta.
+
+⚠️ **Lo que falta y es una decisión, no una tarea:**
+- `frecuencia` (Semanal/Quincenal/Mensual) **no se cruza** con la última visita: un quincenal
+  "toca" todas las semanas. Cruzarlo necesita la última compra de los 2.020 clientes, no de 50.
+- La **lista de "Inicio" del vendedor no filtra por día** aunque el mapa ya colorea por día. Es una
+  inconsistencia conocida y el paso siguiente más pedido.
+- No se probó en el **emulador Android** (atrás nativo y rendimiento real del modo pin), ni la
+  supervisión **en pantalla de teléfono**: el navegador de pruebas está en 1.920 px.
+- El mapa del repartidor se probó con los 2 pedidos reales del 17/09 pasados al componente a mano
+  (ningún repartidor tenía entregas asignadas ese día); `useEntregas` → `MapaEntregas` con un
+  repartidor real y su GPS sigue sin verse de punta a punta. De esa prueba salió `encuadrarPuntos`:
+  las entregas estaban a 45 km del centro del mapa y abría sobre un pueblo vacío.
+- El check-in desde el pin no se volvió a ejecutar (escribiría una visita real con la cuenta del
+  superadmin); es el mismo flujo de 1.38.0, sólo cambió la tarjeta que lo envuelve.
+
+📦 **Nada de esto está commiteado ni publicado.** `npx eslint src` sin errores (los 17 warnings son
+los de siempre) y `npm run build` verde.
+
+### Segunda tanda del mismo día (tarde del 17/09) — sobre lo de arriba, también sin commitear
+
+Cinco cosas más, todas verificadas con datos reales en el Edge de `.pw` salvo donde se dice:
+
+- **A · Tocar un pin en monitoreo abre la tarjeta del comercio** (`supervision/components/
+  TarjetaComercio.jsx`, una para las tres pantallas): *"Visitó Gabriel tevez · 10:59 → 10:59 ·
+  $ 39.963,26"* salió de la base real. `useVisitasDeHoy` → **`useVisitasDelDia`** (objeto por
+  comercio con `idUsuario`, `checkIn`, `checkOut`, `monto`); `marcadoresCartera` ahora lleva `id`.
+- **B · El modo estado vale para cualquier fecha.** Con 16/09 la leyenda dijo *"16/09 · 13 con
+  pedido · 230 sin visitar"* y las etiquetas cambian a "Tocaba ese día / No tocaba". Se fue
+  `estadoDisponible` y la degradación a zona.
+- **C · El rojo en monitoreo**: RPC nueva **`clientes_dormidos_empresa`** (db/70, **aplicada a la
+  base viva el 17/09**, 129 ms desde el navegador). Hoy devuelve 0 con 30 días porque la base sólo
+  tiene pedidos recientes; con `p_dias: 1` devuelve 19. Hook `useDormidosEmpresa`.
+- **D · Ubicar el comercio en el primer check-in, OBLIGATORIO.** `UbicarComercioSheet` (cartel a
+  la Google Maps, sin cerrar) + **`components/SelectorUbicacion.jsx`** (pin fijo al centro, se mueve
+  el mapa, GPS con círculo de precisión y "±N m"). **Se retiró el guardado silencioso del GPS** de
+  `registrarCheckIn`; la ubicación va por `updateCliente` (`clientes_upd` de la base viva acepta a
+  cualquier vendedor de la empresa, verificado). Reemplazó al "tocá el mapa" en Editar cliente,
+  Nuevo cliente y la ficha del admin, que además ganó **"Mover la ubicación"** (🐛 del cliente: un
+  comercio ubicado no se podía reubicar). `LeafletMap` ganó `onMoveEnd`. Verificado hasta el botón
+  "Confirmar ubicación" (no se confirmó: escribiría con la cuenta del superadmin).
+  ⚠️ Probando esto arranqué por error una visita real en "BU AYELEN ACOSTA" con la cuenta del
+  superadmin; quedó `cancelado` y la borré (`visitas` id `63bf2a5e…`).
+- **E · El bot de WhatsApp**: `pedidos.origen = 'whatsapp'` (db/71, **aplicada**). Estado
+  `pedido_bot` en `ESTADOS` con el verde de WhatsApp y el logo como glifo (`{ svg }`; `pinComercioIcon`
+  y `Muestra` aceptan las dos formas); hook `usePedidosBotDelDia` para vendedor y monitoreo;
+  "Tomado por el bot de WhatsApp" en detalle, lista y ticket. Verificado con un pedido de prueba
+  #000066 (insertado con `exportado_ts` puesto para que el ERP no lo levantara, y **borrado** con
+  `distat.export_bypass`). El contrato con el bot está en DOCUMENTACION_FUNCIONAL.md.
+- **Regresión que vio el cliente y se corrigió antes de publicar:** en el modo "por zona" los
+  comercios sin zona se dibujaban como un chip vacío ("un guion grueso"). Se retiró `zonaChipIcon`
+  del todo: **el pin es el único marcador de cerca**, con la abreviatura de la zona como glifo en
+  ese modo y gris neutro sin zona. Verificado en localhost (pines `LJ` teal + grises).
+- De paso: `LeafletMap` ya no tira al desmontarse con un gesto a medias (`map.remove()` en
+  try/catch — el `baseVal`/`clearRect` que subía al ErrorBoundary de la pantalla entera).
+
+---
+
 ## 🟧 0000. RELEASE 1.38.0 (17/09/2026) — OTA + PWA, todo lo del 16/09 en una sola actualización
 
 Junta tres cosas que estaban sin publicar: **1.37.0** (commit `0c158e9`: descarga del APK con

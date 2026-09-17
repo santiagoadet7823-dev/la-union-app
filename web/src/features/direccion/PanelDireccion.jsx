@@ -40,7 +40,9 @@ import InvitarModal from '../../components/InvitarModal'
 // chunk inicial de esta pantalla sigue siendo el pulso del período y nada más.
 import DespachoGestion from '../supervision/components/DespachoGestion'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
-import { marcadoresCartera } from '../../lib/marcadoresCartera'
+import useCapaCartera from '../supervision/useCapaCartera'
+import LeyendaCartera from '../supervision/components/LeyendaCartera'
+import TarjetaComercio from '../supervision/components/TarjetaComercio'
 
 // Modales de alta que abren Clientes y Catálogo. Van por Overlay (--z-modal, 500), o sea por
 // encima del GestionHost (--z-screen, 400) — mismo apilamiento que en SupervisionMovil.
@@ -107,7 +109,6 @@ export default function PanelDireccion() {
   const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [dwellOn, setDwellOn] = useState(true)
   const [dwellSel, setDwellSel] = useState(null)
-  const [showClientes, setShowClientes] = useState(false)
   const [foco, setFoco] = useState(null)      // { id, nonce } — persona enfocada
   const [seguirId, setSeguirId] = useState(null)
   // Sello del ÚLTIMO enganche pedido a mano (ver `alternarSeguir`). Viaja en `seguir.nonce`.
@@ -269,7 +270,9 @@ export default function PanelDireccion() {
     bubble: true, foto: fotos[mv.id], ts: mv.ts,
   })) : []), [esHoy, moversArr, nombres, fotos])
 
-  const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
+  // Capa de cartera: apagada → por zona → por estado de hoy. Ver `supervision/useCapaCartera`.
+  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
+    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha: fechaMapa, isDark })
 
   const dwells = useMemo(
     () => (dwellOn ? calcularDwells(byUser, SIN_FILTRO, cartera) : []),
@@ -618,8 +621,14 @@ export default function PanelDireccion() {
           mapMarkers={mapMarkers}
           moversArr={moversArr}
           clientMarkers={clientMarkers}
-          showClientes={showClientes}
-          setShowClientes={setShowClientes}
+          modoClientes={modoClientes}
+          clientesCount={clientesCount}
+          conteoEstado={conteoEstado}
+          sinUbicarCartera={sinUbicarCartera}
+          comercioSel={comercioSel}
+          elegirComercio={elegirComercio}
+          soltarComercio={soltarComercio}
+          alternarClientes={alternarClientes}
           dwells={dwells}
           inicios={inicios}
           fines={fines}
@@ -712,7 +721,7 @@ function MapaCompleto({ theme, onClose, ...p }) {
         center={p.base}
         trails={p.leafletTrails.length ? p.leafletTrails : null}
         markers={p.mapMarkers}
-        clients={p.showClientes ? p.clientMarkers : []}
+        clients={p.clientMarkers}
         dwells={p.dwells}
         dwellSel={p.dwellSel}
         onDwellClick={(i) => p.setDwellSel((s) => (s === i ? null : i))}
@@ -731,8 +740,28 @@ function MapaCompleto({ theme, onClose, ...p }) {
         // de perfil mide 130 px de ancho, así que una persona encuadrada contra el borde quedaba
         // con su burbuja metida abajo del rail.
         edgePadding={{ top: 16, right: RAIL_W + 24 + 65, bottom: 96, left: 16 }}
-        onMarkerClick={(i) => { const mk = p.moversArr[i]; if (mk) p.onEnfocar(mk.id) }}
+        onMarkerClick={(i) => { const mk = p.moversArr[i]; if (mk) { p.onEnfocar(mk.id); p.soltarComercio() } }}
+        // Tocar un comercio de la capa de cartera: su tarjeta (quién lo visitó y a qué hora).
+        onClientClick={(i) => p.elegirComercio(i)}
       />
+
+      {p.comercioSel && (
+        <TarjetaComercio
+          key={`com-${p.comercioSel.id}`}
+          c={p.comercioSel}
+          modo={p.modoClientes}
+          nombres={p.nombres}
+          esHoy={p.esHoy}
+          isDark={p.isDark}
+          onClose={p.soltarComercio}
+          // Encima de las burbujas del equipo (que van pegadas al borde inferior).
+          style={{ position: 'absolute', left: 12, right: 12 + RAIL_W + 12, maxWidth: 380, bottom: 'calc(14px + 66px + env(safe-area-inset-bottom,0px))', zIndex: 'var(--z-chrome)' }}
+        />
+      )}
+
+      {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida a la derecha
+          del control de zoom de Leaflet. */}
+      <LeyendaCartera modo={p.modoClientes} conteo={p.conteoEstado} sinUbicar={p.sinUbicarCartera} fecha={p.fechaMapa} esHoy={p.esHoy} isDark={p.isDark} />
 
       {/* Cerrar: mismo control y misma esquina que el "salir de pantalla completa" de las dos
           supervisiones (BtnInmersivo), para que el gesto se aprenda una sola vez. */}
@@ -758,9 +787,9 @@ function MapaCompleto({ theme, onClose, ...p }) {
         onSnap={() => p.setSnapOn((v) => !v)}
         dwellOn={p.dwellOn}
         onDwell={() => p.setDwellOn((v) => !v)}
-        showClientes={p.showClientes}
-        clientesCount={p.clientMarkers.length}
-        onClientes={() => p.setShowClientes((v) => !v)}
+        modoClientes={p.modoClientes}
+        clientesCount={p.clientesCount}
+        onClientes={p.alternarClientes}
         seguirActivo={!!p.seguirData}
         puedeSeguir={!!p.objetivoSeguir}
         nombreSeguido={p.objetivoSeguir ? (p.nombres[p.objetivoSeguir.id] || null) : null}

@@ -1,61 +1,41 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
-import { Check, Crosshair, X } from '../../components/icons'
-import LeafletMap from '../../components/LeafletMap'
-import ErrorBoundary from '../../components/ErrorBoundary'
-import BtnInmersivo from '../../components/BtnInmersivo'
+import { fmtPesos, fmtHora, hoyStr } from '../../lib/format'
+import { Check, X } from '../../components/icons'
+import MapaComercios, { LeyendaMapa } from '../../components/MapaComercios'
+import { Conteo } from '../../components/MuestraEstado'
 import { useTheme } from '../../context/ThemeContext'
 import { useGps } from '../../context/GpsContext'
-import { useDevice } from '../../context/DeviceContext'
-import { ROUTE_COLOR, CENTRO } from '../../data/demoGeo'
+import { useAuth } from '../../context/AuthContext'
 import { distanciaMetros } from '../../services/geolocation/geofence'
-import { apilarAtras } from '../../services/atras'
+import { ESTADOS, ORDEN_LEYENDA, ORDEN_LEYENDA_CON_BOT, estadoComercio, pintarComercio } from '../../lib/estadoComercio'
+import useDormidos from '../../hooks/useDormidos'
+import usePedidosBotDelDia from '../../hooks/usePedidosBotDelDia'
 
 /**
- * MAPA DE LA CARTERA DEL VENDEDOR (16/09/2026): los comercios con ubicación, tocables, con
- * check-in desde el pin y pantalla completa. Es la alternativa al buscador de "Inicio" para
- * encontrar un comercio: el vendedor está parado en la esquina y ve cuáles tiene alrededor.
+ * EL MAPA DEL VENDEDOR: su cartera con el estado de cada comercio y check-in desde el pin.
  *
- * 🩸 POR QUÉ LA CAPA `clients` Y NO `markers`. Hasta hoy `RutaTab` dibujaba TODOS los comercios
- * ubicados como `markers` numerados —702 `<div>` con `divIcon` en un mapa de 70 vh— y ninguno se
- * podía tocar. Y la numeración estaba MAL: el `label` salía del índice del array *filtrado*
- * (`clients.filter(lat).map((c, i) => …)`), no de la posición en la cartera, así que el "07" del
- * mapa no era el "07" de la lista. La capa `clients` de `LeafletMap` va a CANVAS (un solo nodo
- * para los 700), ya vive en su propio layerGroup, y desde hoy acepta `onClientClick`. El único
- * pin del DOM que queda es el de la PRÓXIMA parada, que es el único que merece destacarse.
+ * El armazón (mapa, pantalla completa, centrar en mí, ruta, tarjeta flotante) es
+ * `components/MapaComercios`, compartido con el repartidor. Acá vive lo que es DEL VENDEDOR: qué
+ * estado tiene cada comercio, qué dice la leyenda y qué hace la tarjeta.
  *
- * UN SOLO MAPA PARA LOS DOS MODOS. Pantalla completa NO monta un segundo `LeafletMap`: es el
- * mismo contenedor que pasa de `relative` (70 vh dentro del scroll) a cubrir la pantalla, y el
- * `ResizeObserver` de `LeafletMap` hace el `invalidateSize`. Así se conserva el zoom/pan y la
- * ruta por calles no se vuelve a pedir a OSRM. Es el mismo patrón que `SupervisionMovil`.
- *
- * LA CÁMARA NO SALTA SOLA (`fit={false}`): con 700 puntos el encuadre automático mostraría la
- * ciudad entera cada vez que cambia algo. Se enfoca a propósito: al llegar el primer fix GPS, al
- * calcular la ruta óptima, y con el botón de centrar. `live` no entra al encuadre de LeafletMap
- * por diseño (ver el 🩸 en la capa estática), por eso el centrado en "mí" va por `focus`.
+ * 🩸 LA CAPA `clients` Y NO `markers`. Hasta el 16/09 `RutaTab` dibujaba todos los comercios
+ * ubicados como `markers` numerados —702 `<div>` en un mapa de 70 vh— y ninguno se podía tocar. Y
+ * la numeración estaba MAL: el `label` salía del índice del array *filtrado*, no de la posición en
+ * la cartera, así que el "07" del mapa no era el "07" de la lista. La capa `clients` va a canvas
+ * de lejos y a pines del DOM recortados por viewport de cerca (ver `LeafletMap`).
  *
  * props: { j, onCheckIn }
  *   - `onCheckIn(c)` es `alTocarCliente` de `VendedorView`: la MISMA función que usa la tarjeta de
  *     la lista, así el check-in desde el mapa se comporta igual (presencia registrada, hoja de
  *     "corregir o nuevo" si el comercio ya tiene pedido). `startVisit` cambia la pestaña a
- *     "Catálogo", `RutaTab` se desmonta y con él este mapa: la pantalla completa se cierra sola.
+ *     "Catálogo", `RutaTab` se desmonta y con él este mapa.
  */
 
-// Colores por estado, los mismos que llevaba `RutaTab` en sus pines (y que usa la lista).
-const COLORES = {
-  dark:  { proxima: '#2DD4CE', visitado: '#34D399', sin_pedido: '#FBBF24', pendiente: '#5C7370', stroke: '#0B2B2A' },
-  light: { proxima: '#0ABAB5', visitado: '#10B981', sin_pedido: '#F59E0B', pendiente: '#93A9A7', stroke: '#ffffff' },
-}
-
-// Radio del punto de comercio. 4 es el de contexto de las supervisiones; acá el punto ES el
-// target táctil. 8 px de radio son 16 de diámetro: chico para que 700 no se pisen, suficiente para
-// que el toque lo agarre (Leaflet detecta el hit por la forma, no por 44 px).
-const RADIO = 8
-const RADIO_SEL = 11
-
-// Alto reservado abajo para la tarjeta del comercio + el botón, para el encuadre de la ruta.
-const ALTO_TARJETA = 120
+// El COLOR y el GLIFO de cada estado viven en `lib/estadoComercio.js`, que los comparte con la
+// supervisión. Acá sólo queda lo que es de ESTE mapa.
+const STROKE = { dark: '#0B2B2A', light: '#ffffff' }
+const K_LEYENDA = 'lu-mapa-leyenda'
 
 function fmtDistancia(m) {
   if (m == null) return null
@@ -65,149 +45,136 @@ function fmtDistancia(m) {
 
 export default function MapaCartera({ j, onCheckIn }) {
   const { theme } = useTheme()
-  const { isMobile } = useDevice()
   const { pos: livePos } = useGps()
-  const { clients, nextId, pendingCoords, routeCalc, setRutaInfo } = j
-  const col = COLORES[theme] || COLORES.dark
+  const { clients, pend, pendingCoords, routeCalc, rutaInfo, setRutaInfo } = j
+  const { user } = useAuth()
+  const isDark = theme === 'dark'
+  const stroke = STROKE[theme] || STROKE.dark
+  // Los 50 comercios que más dejaban y hace +30 días que no compran: el único rojo del mapa.
+  const dormidos = useDormidos(user?.id || null)
+  // Los pedidos que hoy tomó el bot de WhatsApp en MI cartera (la RLS de `pedidos` ya me limita a
+  // los míos): el pin verde-WhatsApp. Sin bot andando, un Map vacío y ningún cambio.
+  const pedidosBot = usePedidosBotDelDia(null, hoyStr())
 
-  const [abierto, setAbierto] = useState(false)
   const [selId, setSelId] = useState(null)
-  const [focus, setFocus] = useState(null)
-  const enfocar = (points) => setFocus({ points, nonce: Date.now() })
+  // Para cerrar la pantalla completa antes de abrir una hoja (ver el `onCheckIn` de la tarjeta).
+  const mapaRef = useRef(null)
 
   // `j.clients` es un array NUEVO en cada render de `useJornada` (no está memoizado), y acá se
   // renderiza con cada fix del GPS. Memoizar por referencia no serviría: se memoiza por FIRMA
   // (id + estado de los ubicados), que es lo único que cambia lo que se dibuja. Recorrer 2.000
-  // clientes para armar un string cuesta microsegundos; redibujar 700 círculos en canvas cada
-  // 5 segundos, no.
+  // clientes para armar un string cuesta microsegundos; redibujar 700 puntos cada 5 segundos, no.
   const firma = clients.map((c) => (c.lat != null ? c.id + ':' + c.status : '')).join('|')
   const ubicados = useMemo(() => clients.filter((c) => c.lat != null), [firma]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const capaClientes = useMemo(() => ubicados.map((c) => {
+  // El estado de cada comercio, una sola vez: lo consumen la capa del mapa, los contadores y la
+  // tarjeta. `lib/estadoComercio.js` es quien decide; acá no se elige ningún color.
+  const estados = useMemo(() => {
+    const m = new Map()
+    for (const c of ubicados) m.set(c.id, estadoComercio(c, { dormidos, pedidosBot }))
+    return m
+  }, [ubicados, dormidos, pedidosBot])
+
+  /**
+   * Orden de la ruta óptima por id de comercio, para numerar los pines. Existe SÓLO con la ruta
+   * calculada.
+   *
+   * 🔑 `rutaInfo.orden` es `waypoint_index` de OSRM (`services/routing/index.js`): **la posición de
+   * la parada `i` dentro del recorrido**, no "qué parada va en el lugar `i`". Es la lectura al
+   * revés de la intuitiva y hay que respetarla, o los pines quedan numerados con una permutación
+   * que parece plausible y está mal — el mismo tipo de número inventado que se sacó en 1.38.0.
+   *
+   * La lista de entrada se rehace igual que `pendingCoords` en `useJornada` (pendientes, filtrados
+   * por los que tienen coordenada) porque es exactamente lo que se le mandó a OSRM: si esa cuenta
+   * cambia de un lado, los índices de acá dejan de significar algo.
+   */
+  const ordenRuta = useMemo(() => {
+    if (!routeCalc || !rutaInfo?.orden) return null
+    const conCoord = pend.map((x) => x.c).filter((c) => c.lat != null)
+    const m = new Map()
+    rutaInfo.orden.forEach((pos, i) => { const c = conCoord[i]; if (c) m.set(c.id, pos + 1) })
+    return m
+  }, [routeCalc, rutaInfo, pend])
+
+  const puntos = useMemo(() => ubicados.map((c) => {
     const sel = c.id === selId
-    const color = c.id === nextId ? col.proxima : c.status === 'visitado' ? col.visitado : c.status === 'sin_pedido' ? col.sin_pedido : col.pendiente
+    const { color, glifo, hueco } = pintarComercio(estados.get(c.id), {
+      isDark,
+      glifoExtra: ordenRuta?.get(c.id) ?? null,
+    })
     return {
-      lat: c.lat, lng: c.lng, nombre: c.name, color,
-      // El tocado se agranda y lleva el anillo del color primario: en un mapa con 700 puntos
-      // iguales, "cuál toqué" tiene que verse desde lejos.
-      radio: sel ? RADIO_SEL : RADIO,
-      stroke: sel ? col.proxima : col.stroke,
+      id: c.id, lat: c.lat, lng: c.lng, nombre: c.name, color, glifo, hueco, sel,
+      // El tocado se agranda y lleva el anillo del color primario: en un mapa con cientos de
+      // puntos iguales, "cuál toqué" tiene que verse desde lejos.
+      radio: sel ? 11 : hueco ? 6 : 8,
+      stroke: sel ? ESTADOS.hoy[isDark ? 'dark' : 'light'] : stroke,
       peso: sel ? 3 : 1,
     }
-  }), [ubicados, selId, nextId, col])
+  }), [ubicados, selId, estados, ordenRuta, isDark, stroke])
 
-  // La próxima parada es el único pin del DOM: el vendedor la busca a propósito.
-  const marcadores = useMemo(() => {
-    const p = ubicados.find((c) => c.id === nextId)
-    return p ? [{ lat: p.lat, lng: p.lng, label: '', title: p.name, color: col.proxima, selected: true }] : []
-  }, [ubicados, nextId, col])
-
-  // Primer fix GPS: centrar UNA vez en el vendedor. Si el mapa nació sin posición, arrancó en
-  // `CENTRO` (el pueblo) y sin esto se quedaría ahí aunque la persona esté a 30 km.
-  const centradoRef = useRef(false)
-  useEffect(() => {
-    if (!livePos || centradoRef.current) return
-    centradoRef.current = true
-    enfocar([livePos])
-  }, [!!livePos]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ruta calculada: encuadrar las paradas pendientes y a mí. Corre también al montar si la ruta
-  // ya estaba calculada (el estado vive en `useJornada` y sobrevive al cambio de pestaña).
-  useEffect(() => {
-    if (!routeCalc || !pendingCoords.length) return
-    enfocar(livePos ? [...pendingCoords, livePos] : pendingCoords)
-  }, [routeCalc]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // El ATRÁS de Android cierra la pantalla completa en vez de minimizar la app (reglas 26-27).
-  // Mismo patrón que el modo inmersivo de `SupervisionMovil` y del catálogo en `VendedorView`.
-  useEffect(() => {
-    if (!abierto) return
-    return apilarAtras(() => setAbierto(false))
-  }, [abierto])
+  // Contadores del día. Salen de los MISMOS `estados` que pinta el mapa, así que no pueden
+  // discrepar con lo dibujado. `sinUbicar` es el que no estaba en ninguna pantalla: al 17/09 son
+  // 1.321 de 2.023 comercios que este mapa no puede mostrar, y saberlo es la mitad del problema.
+  const conteo = useMemo(() => {
+    const n = { hoy: 0, visitado: 0, pedido_bot: 0, sin_pedido: 0, dormido: 0, no_toca: 0 }
+    for (const e of estados.values()) n[e] = (n[e] || 0) + 1
+    return { ...n, sinUbicar: clients.length - ubicados.length }
+  }, [estados, clients.length, ubicados.length])
 
   const sel = selId ? ubicados.find((c) => c.id === selId) : null
   const distancia = sel && livePos ? distanciaMetros({ lat: livePos.lat, lng: livePos.lng }, { lat: sel.lat, lng: sel.lng }) : null
 
-  // Fuera del mapa, el pie reserva la tarjeta si hay una; en pantalla completa se suma la barra
-  // de gestos del teléfono.
-  const abajo = abierto ? 'calc(14px + env(safe-area-inset-bottom, 0px))' : '12px'
+  const leyenda = (
+    <LeyendaMapa
+      claveMemoria={K_LEYENDA}
+      // El ítem del bot sólo si hoy vendió algo (ver `ORDEN_LEYENDA_CON_BOT`).
+      items={(conteo.pedido_bot > 0 ? ORDEN_LEYENDA_CON_BOT : ORDEN_LEYENDA).map((k) => ({ ...pintarComercio(k, { isDark }), etiqueta: ESTADOS[k].etiqueta }))}
+      resumen={<>
+        <Conteo n={conteo.hoy} etiqueta="hoy" color={pintarComercio('hoy', { isDark }).color} />
+        <Conteo n={conteo.visitado} etiqueta="con pedido" color={pintarComercio('visitado', { isDark }).color} />
+        {conteo.pedido_bot > 0 && <Conteo n={conteo.pedido_bot} etiqueta="por WhatsApp" color={pintarComercio('pedido_bot', { isDark }).color} />}
+        <Conteo n={conteo.sin_pedido} etiqueta="sin pedido" color={pintarComercio('sin_pedido', { isDark }).color} />
+      </>}
+      /* 🩸 EL NÚMERO QUE NO ESTABA EN NINGUNA PANTALLA. Los comercios sin coordenada no se pueden
+         dibujar, así que un mapa que no los nombra hace creer que la cartera es mucho más chica de
+         lo que es: al 17/09 son 1.321 de 2.023. El camino para cargarlos es el de siempre — el
+         lápiz de cada tarjeta en "Inicio". */
+      pie={conteo.sinUbicar > 0
+        ? <><b>{conteo.sinUbicar}</b> comercios sin ubicación no se ven acá. Se cargan con el primer check-in o con el lápiz en Inicio.</>
+        : null}
+    />
+  )
 
   return (
-    // 🩸 UN SOLO CONTENEDOR. En pantalla completa pasa a `fixed` (en escritorio `absolute`, para
-    // quedarse dentro del marco de teléfono — el mismo corte que usa la botonera de `VendedorView`).
-    // `isolation:isolate` confina los z-index de Leaflet (hasta 1000) para que no se escapen sobre
-    // el chrome de la app (regla 28).
-    <div
-      className={abierto ? 'lu-rise' : undefined}
-      style={abierto
-        ? { position: isMobile ? 'fixed' : 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--map-bg)', isolation: 'isolate' }
-        : { position: 'relative', height: '70vh', isolation: 'isolate' }}
+    <MapaComercios
+      abiertoRef={mapaRef}
+      puntos={puntos}
+      selId={selId}
+      onSel={setSelId}
+      live={livePos}
+      ruta={routeCalc ? pendingCoords : null}
+      optimize
+      onRouteInfo={setRutaInfo}
+      leyenda={leyenda}
+      vacio={{ titulo: 'Ningún comercio ubicado', detalle: 'La ubicación se guarda sola con el primer check-in, o con el lápiz de cada comercio.' }}
     >
-      <ErrorBoundary compact message="No se pudo cargar el mapa (revisá tu conexión).">
-        <LeafletMap
-          theme={theme}
-          height="100%"
-          radius={abierto ? 0 : 16}
-          center={livePos || CENTRO}
-          zoom={15}
-          fit={false}
-          focus={focus}
-          clients={capaClientes}
-          clientRadius={RADIO}
-          onClientClick={(i) => { const c = ubicados[i]; if (c) setSelId((s) => (s === c.id ? null : c.id)) }}
-          onMapClick={() => setSelId(null)}
-          markers={marcadores}
-          onMarkerClick={() => { if (nextId) setSelId(nextId) }}
-          live={livePos}
-          route={routeCalc ? pendingCoords : null}
-          routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
-          optimize
-          roundtrip={false}
-          onRouteInfo={setRutaInfo}
-          // Reserva abajo el alto de la tarjeta + el botón, para que el encuadre de la ruta no
-          // meta una parada debajo de lo que flota encima.
-          edgePadding={{ top: 16, right: 16, bottom: (sel ? ALTO_TARJETA : 0) + 72, left: 16 }}
-        />
-      </ErrorBoundary>
-
-      {/* Controles flotantes. El contenedor NO recibe toques (regla 30): solo los botones. */}
-      <div style={{ position: 'absolute', right: 12, bottom: abajo, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 'var(--z-chrome)', pointerEvents: 'none' }}>
-        <button
-          onClick={() => { if (livePos) enfocar([livePos]) }}
-          disabled={!livePos}
-          className="lu-press"
-          aria-label="Centrar en mi ubicación"
-          title={livePos ? 'Centrar en mi ubicación' : 'Sin señal GPS todavía'}
-          style={{ ...sx('width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-md);border:0.5px solid var(--glass-brd);background:var(--glass-bg);box-shadow:var(--shadow-lg);cursor:pointer;pointer-events:auto'), color: livePos ? 'var(--text)' : 'var(--faint)', opacity: livePos ? 1 : 0.6 }}
-        >
-          <Crosshair size={18} />
-        </button>
-        {/* Mismo botón y misma esquina que las supervisiones y el panel del dueño, para que el
-            gesto se aprenda una sola vez. */}
-        <BtnInmersivo activo={abierto} onToggle={() => setAbierto((v) => !v)} style={{ pointerEvents: 'auto' }} />
-      </div>
-
-      {sel && (
+      {(estilo) => sel && (
         <TarjetaComercio
           key={sel.id}
           c={sel}
+          estado={estados.get(sel.id)}
+          pedidoBot={pedidosBot.get(sel.id) || null}
+          isDark={isDark}
           distancia={distancia}
           onCerrar={() => setSelId(null)}
           // Se cierra la pantalla completa ANTES de delegar: un comercio ya visitado abre la hoja
-          // de "corregir o nuevo" (`--z-sheet`, 300), que quedaría DEBAJO de este overlay
+          // de "corregir o nuevo" (`--z-sheet`, 300), que quedaría DEBAJO del overlay del mapa
           // (`--z-screen`, 400). Para uno pendiente da igual: `startVisit` cambia de pestaña.
-          onCheckIn={() => { setAbierto(false); setSelId(null); onCheckIn?.(sel) }}
-          style={{ position: 'absolute', left: 12, right: 12 + 44 + 12, bottom: abajo, zIndex: 'var(--z-chrome)' }}
+          onCheckIn={() => { mapaRef.current?.cerrar(); setSelId(null); onCheckIn?.(sel) }}
+          style={estilo}
         />
       )}
-
-      {!ubicados.length && (
-        <div style={sx('position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:240px;text-align:center;background:var(--glass-strong);border:.5px solid var(--glass-brd);border-radius:var(--r-lg);padding:16px;box-shadow:var(--shadow-lg);pointer-events:none')}>
-          <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14px')}>Ningún comercio ubicado</div>
-          <div style={sx('font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.45')}>La ubicación se guarda sola con el primer check-in, o con el lápiz de cada comercio.</div>
-        </div>
-      )}
-    </div>
+    </MapaComercios>
   )
 }
 
@@ -220,12 +187,18 @@ export default function MapaCartera({ j, onCheckIn }) {
  * si ya fue visitado, "Volver a abrir" — que NO vuelve a registrar la presencia (eso lo decide
  * `alTocarCliente` en `VendedorView`, no esta tarjeta).
  */
-function TarjetaComercio({ c, distancia, onCerrar, onCheckIn, style }) {
+function TarjetaComercio({ c, estado, pedidoBot = null, isDark, distancia, onCerrar, onCheckIn, style }) {
   const pendiente = c.status === 'pendiente'
-  const pill = c.status === 'visitado' ? ['Visitado', 'var(--success)', 'var(--success-tint)']
-    : c.status === 'sin_pedido' ? ['Sin pedido', 'var(--warning)', 'var(--warning-tint)']
-      : ['Pendiente', 'var(--faint)', 'var(--surface2)']
-  const sub = c.status === 'visitado' ? `${c.hora} · ${fmtPesos(c.monto)}` : c.status === 'sin_pedido' ? `${c.hora} · ${c.motivo || ''}` : null
+  // La píldora dice el MISMO estado que pinta el pin — si el mapa lo dibuja hueco porque hoy no
+  // toca, la tarjeta no puede decir "Pendiente" a secas. El color sale del mismo módulo, así que
+  // no hay dos tablas de colores que se puedan desincronizar.
+  const { color } = pintarComercio(estado, { isDark })
+  const pill = [ESTADOS[estado]?.etiqueta || 'Pendiente', color, 'transparent']
+  // Con pedido del bot, el sub dice cuándo y cuánto vendió el bot; el estado de la visita humana
+  // (si la hubo) ya está en la píldora/pin por la precedencia de `estadoComercio`.
+  const sub = estado === 'pedido_bot' && pedidoBot
+    ? `bot de WhatsApp · ${fmtHora(pedidoBot.hora)} · ${fmtPesos(pedidoBot.monto)}`
+    : c.status === 'visitado' ? `${c.hora} · ${fmtPesos(c.monto)}` : c.status === 'sin_pedido' ? `${c.hora} · ${c.motivo || ''}` : null
   const dist = fmtDistancia(distancia)
 
   return (
@@ -238,7 +211,7 @@ function TarjetaComercio({ c, distancia, onCerrar, onCheckIn, style }) {
             {c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span>
           </div>
           <div style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:6px')}>
-            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:10.5px;font-weight:600'), background: pill[2], color: pill[1] }}>
+            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:10.5px;font-weight:600'), border: `1px solid ${pill[1]}`, color: pill[1] }}>
               <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
             </span>
             {sub && <span style={{ ...sx('font-size:11px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: pill[1] }}>{sub}</span>}

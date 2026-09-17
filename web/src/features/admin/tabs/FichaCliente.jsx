@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
+import { DIAS, parseDias, formatDias } from '../../../lib/diasVisita'
 import { codigoOcupado } from '../../../lib/codigoCliente'
 import { useTheme } from '../../../context/ThemeContext'
 import { useCatalog } from '../../../context/CatalogContext'
@@ -8,6 +9,7 @@ import useEmpresaBase from '../../../hooks/useEmpresaBase'
 import useFormasPago from '../../../hooks/useFormasPago'
 import LeafletMap from '../../../components/LeafletMap'
 import ErrorBoundary from '../../../components/ErrorBoundary'
+import SelectorUbicacion from '../../../components/SelectorUbicacion'
 import { fieldLabel } from '../ui'
 
 /**
@@ -28,7 +30,6 @@ import { fieldLabel } from '../ui'
  *
  * props: { cliente, puedeEditar, onToast, onCerrar }
  */
-const DIAS = ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO']
 const FRECUENCIAS = ['Semanal', 'Quincenal', 'Mensual']
 
 export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerrar }) {
@@ -53,10 +54,13 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [zonaEdit, setZonaEdit] = useState(fc.idZona || null)
   const [diasSel, setDiasSel] = useState(() => {
     const ds = {}
-    ;(fc.dias || '').split('·').map((s) => s.trim()).filter(Boolean).forEach((d) => { ds[d] = true })
+    parseDias(fc.dias).forEach((d) => { ds[d] = true })
     return ds
   })
   const [puntoNuevo, setPuntoNuevo] = useState(null)
+  // 🐛 (17/09/2026) Un cliente YA ubicado no se podía reubicar: el mini-mapa era de sólo lectura.
+  // `moviendo` cambia el mini-mapa por el selector, con el pin arrancando donde está hoy.
+  const [moviendo, setMoviendo] = useState(false)
   const [savingLoc, setSavingLoc] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -76,13 +80,14 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
     setSavingLoc(false)
     if (!ok) { onToast('Error: ' + (error?.message || '')); return }
     setPuntoNuevo(null)
+    setMoviendo(false)
     onToast(`${fc.name} ubicado`)
   }
 
   async function guardar() {
     if (puedeEditar && ocupadoPor) { onToast(`El código ${codigoEdit.trim()} ya lo usa ${ocupadoPor.name}`); return }
     setGuardando(true)
-    const dias_visita = DIAS.filter((d) => diasSel[d]).join(' · ')
+    const dias_visita = formatDias(DIAS.filter((d) => diasSel[d]))
     const patch = { geofence_radio: geoRadio, dias_visita: dias_visita || null, frecuencia: freqSel }
     if (puedeEditar) {
       patch.nombre_comercio = nombreEdit.trim() || fc.name
@@ -185,33 +190,49 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
         </div>
       )}
 
-      {fc.lat != null ? (
-        <div style={sx('margin-bottom:8px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line)')}>
-          <ErrorBoundary compact message="No se pudo cargar el mini-mapa.">
-            <LeafletMap theme={theme} height={260} zoom={16}
-              center={{ lat: fc.lat, lng: fc.lng }}
-              markers={[{ lat: fc.lat, lng: fc.lng, color: 'var(--primary)', title: fc.name }]}
-              circle={{ lat: fc.lat, lng: fc.lng, radiusM: geoRadio, color: 'var(--primary)' }}
-            />
-          </ErrorBoundary>
-        </div>
-      ) : (
-        // Cliente importado sin coordenadas: tocá el mapa para ubicarlo.
+      {fc.lat != null && !moviendo ? (
         <div style={sx('margin-bottom:12px')}>
-          <div style={sx('font-size:11.5px;color:var(--warning);font-weight:600;margin-bottom:6px')}>Tocá el mapa para fijar la ubicación del cliente.</div>
           <div style={sx('border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line)')}>
             <ErrorBoundary compact message="No se pudo cargar el mini-mapa.">
-              <LeafletMap theme={theme} height={280} zoom={15}
-                center={puntoNuevo || base}
-                markers={puntoNuevo ? [{ lat: puntoNuevo.lat, lng: puntoNuevo.lng, color: 'var(--primary)', title: fc.name }] : []}
-                onMapClick={(p) => setPuntoNuevo({ lat: p.lat, lng: p.lng })}
+              <LeafletMap theme={theme} height={260} zoom={16}
+                center={{ lat: fc.lat, lng: fc.lng }}
+                markers={[{ lat: fc.lat, lng: fc.lng, color: 'var(--primary)', title: fc.name }]}
+                circle={{ lat: fc.lat, lng: fc.lng, radiusM: geoRadio, color: 'var(--primary)' }}
               />
             </ErrorBoundary>
           </div>
-          <button onClick={guardarUbicacion} disabled={!puntoNuevo || savingLoc} className="lu-press"
-            style={{ ...sx('width:100%;margin-top:8px;min-height:44px;display:grid;place-items:center;border:none;border-radius:var(--r-md);font-weight:600;font-size:13px'), background: puntoNuevo ? 'var(--primary)' : 'var(--line2)', color: puntoNuevo ? 'var(--on-primary)' : 'var(--faint)', cursor: puntoNuevo && !savingLoc ? 'pointer' : 'not-allowed' }}>
-            {savingLoc ? 'Guardando…' : 'Guardar ubicación'}
+          <button onClick={() => { setPuntoNuevo(null); setMoviendo(true) }} className="lu-press"
+            style={sx('width:100%;margin-top:8px;min-height:40px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-weight:600;font-size:13px;cursor:pointer')}>
+            Mover la ubicación
           </button>
+        </div>
+      ) : (
+        // Sin coordenadas (importado) o reubicando: pin fijo al centro, se mueve el mapa. Ver
+        // `SelectorUbicacion`. Sin `inicial` el mapa abre en la base de la empresa y no se emite
+        // nada hasta que se mueve: un centro por defecto no es una ubicación.
+        <div style={sx('margin-bottom:12px')}>
+          <div style={sx('font-size:11.5px;color:var(--warning);font-weight:600;margin-bottom:6px')}>
+            {moviendo ? 'Mové el mapa hasta que el pin quede sobre el comercio.' : 'Este cliente no tiene ubicación: mové el mapa hasta que el pin quede sobre el comercio.'}
+          </div>
+          <SelectorUbicacion
+            inicial={moviendo ? { lat: fc.lat, lng: fc.lng } : null}
+            centroPorDefecto={base}
+            nombre={fc.name}
+            alto={280}
+            onCambio={setPuntoNuevo}
+          />
+          <div style={sx('display:flex;gap:8px;margin-top:8px')}>
+            {moviendo && (
+              <button onClick={() => { setMoviendo(false); setPuntoNuevo(null) }} className="lu-press"
+                style={sx('flex:1;min-height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-weight:600;font-size:13px;cursor:pointer')}>
+                Cancelar
+              </button>
+            )}
+            <button onClick={guardarUbicacion} disabled={!puntoNuevo || savingLoc} className="lu-press"
+              style={{ ...sx('flex:2;min-height:44px;display:grid;place-items:center;border:none;border-radius:var(--r-md);font-weight:600;font-size:13px'), background: puntoNuevo ? 'var(--primary)' : 'var(--line2)', color: puntoNuevo ? 'var(--on-primary)' : 'var(--faint)', cursor: puntoNuevo && !savingLoc ? 'pointer' : 'not-allowed' }}>
+              {savingLoc ? 'Guardando…' : 'Guardar ubicación'}
+            </button>
+          </div>
         </div>
       )}
 

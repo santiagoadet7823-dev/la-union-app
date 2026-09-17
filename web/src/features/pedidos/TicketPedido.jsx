@@ -172,7 +172,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
             mostrador—. El papel tiene que decir quién se hace cargo del pedido. */}
         <div style={sx('padding:9px 0;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted)')}>
           Vendedor responsable: <b style={sx('color:var(--text);font-size:12.5px')}>{vendedor?.nombre || '—'}</b>
-          {pedido?.origen === 'vidriera' ? ' · pedido tomado con la tablet' : ''}
+          {pedido?.origen === 'vidriera' ? ' · pedido tomado con la tablet' : pedido?.origen === 'whatsapp' ? ' · pedido tomado por el bot de WhatsApp' : ''}
         </div>
 
         {/* Las líneas. `descripcion` viene COPIADA del pedido, no del catálogo actual: un ticket de

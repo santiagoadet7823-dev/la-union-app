@@ -143,6 +143,28 @@ era un `div` inerte, así que un comercio ya visitado quedaba **inalcanzable tod
 > **Mejoró mucho** (el 08/08 eran 3, con 18 ubicados; hoy hay 662 ubicados) pero el gate sigue siendo
 > la asignación directa; decidir si el correcto es la ZONA (`clientes.id_zona` → `zonas.id_vendedor`).
 
+#### Ubicar el comercio en el primer check-in — obligatorio (17/09/2026)
+
+Un check-in en un comercio **sin ubicación** ya no arranca la visita: primero sale
+`vendedor/UbicarComercioSheet.jsx` — un cartel a la manera de Google Maps ("Este comercio no tiene
+ubicación · Marcar en el mapa") y después el **selector de ubicación** (`components/
+SelectorUbicacion.jsx`): el pin queda **clavado al centro y se mueve el mapa**, con el punto azul
+del GPS y su círculo de precisión al lado, y un renglón que dice **"GPS ±120 m — poco preciso"**
+cuando lo es. Al confirmar, la ubicación se guarda por `updateCliente` (write queue + merge local:
+el comercio aparece en el mapa de la Ruta al toque) y recién ahí arranca la visita.
+
+> 🩸 **Reemplaza al guardado silencioso.** Hasta 1.38.0 el check-in guardaba la posición GPS del
+> teléfono como ubicación del comercio sin mostrarla ni pedir nada (`reclamar_y_ubicar_cliente`).
+> Decisión del cliente: *"si el GPS del teléfono falla, como es el caso de varios teléfonos de La
+> Unión, va a estar mal cargada la ubicación; como primera vez debería a la fuerza hacer que carguen
+> la ubicación"*. El cartel **no tiene cerrar ni "ahora no"**. La única salida es **sin conexión**
+> (sin teselas no hay dónde marcar): ahí se sigue y el cartel vuelve en la próxima visita; tampoco
+> ahí se guarda el GPS a ciegas.
+
+El mismo selector reemplazó al "tocá el mapa" en **Editar cliente**, **Nuevo cliente** y la **ficha
+del admin**, que además ganó **"Mover la ubicación"** para un cliente ya ubicado (antes el mini-mapa
+era de sólo lectura y no había forma de corregir una ubicación mal cargada).
+
 ### Paso 1-bis · El mapa de la cartera — `vendedor/MapaCartera.jsx` (desde el 16/09/2026)
 
 La pestaña **Ruta** es la otra forma de encontrar un comercio: el mapa dibuja **todos los comercios
@@ -158,6 +180,54 @@ Es **un solo `LeafletMap`** que cambia de tamaño, no dos: la ruta óptima no se
 zoom se conserva. Los comercios van por la capa `clients` (canvas), no por `markers` (DOM): hasta
 ese día `RutaTab` dibujaba 702 pines numerados del DOM, intocables y con la **numeración corrida**
 (salía del índice del array filtrado, no de la posición en la cartera).
+
+#### El código de colores del mapa (17/09/2026)
+
+Vive en **`lib/estadoComercio.js`** y lo usan los tres mapas que dibujan comercios (vendedor,
+supervisión y —con los estados de entrega— repartidor). Cada estado lleva **color y glifo**: el
+glifo es el segundo canal, porque verde/naranja/rojo juntos es el trío que peor se distingue con
+daltonismo (la misma regla que `charts/paleta.js`).
+
+| Estado | Color | Glifo |
+|---|---|---|
+| Toca hoy · pendiente | teal (`--primary`) | `·` |
+| Visitado con pedido | verde (`--success`) | `✓` |
+| Visitado sin pedido | naranja (`--warning`) | `–` |
+| No compra hace +30 d | rojo (`--danger`) | `!` |
+| Hoy no toca | gris hueco, 25 % más chico | — |
+| **Vendió el bot de WhatsApp** | **verde WhatsApp `#25D366`** | **el logo de WhatsApp** |
+
+**"Vendió el bot"** (17/09/2026) es el único estado con el color de una marca y con un glifo que no
+es un carácter — a propósito: es la marca la que le dice al dueño de la empresa que el bot está
+vendiendo. Sale de `pedidos.origen = 'whatsapp'` (ver "Pedidos del bot", abajo). Precedencia: una
+visita humana **con** pedido (`✓`) gana; el bot gana sobre una visita **sin** pedido (el comercio
+compró igual). La leyenda sólo muestra el ítem si ese día el bot vendió algo.
+
+> 🩸 **El rojo NO es "hoy no toca": es el cliente dormido.** La primera versión del pedido pintaba
+> de rojo lo que hoy no hay que visitar y se descartó por tres razones, porque la idea vuelve sola:
+> en esta app el rojo es error o urgencia (GPS apagado, pedido anulado), y "hoy no toca" es la
+> situación normal de media cartera —serían ~400 pines rojos todos los días—; la jerarquía quedaba
+> al revés, con lo que NO hay que hacer gritando y lo accionable en gris; y el trío verde-naranja-
+> rojo es el peor para daltonismo. Lo que no toca **se hunde**: hueco y más chico.
+
+**"Hoy toca" sale de `clientes.dias_visita`** (`"LU · JU"`) vía `lib/diasVisita.js`, que es también
+la única definición de los días — reemplazó tres copias del array en `EditarClienteVendedor`,
+`NuevoCliente` y `FichaCliente`. Dos cosas que hay que saber: **un comercio sin días cargados cuenta
+como "toca hoy"** (son 428 de 2.020 activos, y esconderlos sería decidir por nadie no visitarlos), y
+**v1 mira sólo el día de la semana** — un quincenal "toca" todas las semanas hasta que se cruce con
+la última visita.
+
+**La forma del marcador depende del zoom** (`LeafletMap`): círculo en canvas de lejos, **pin de
+ubicación con la punta sobre la coordenada desde zoom 15**, y de vuelta a círculo si en pantalla
+entran más de 120 — medido el 17/09 con 800 puntos: a zoom 15 sobre una mancha densa entran ~680,
+se tapan entre sí y el mapa queda con 2.267 nodos. Los marcadores del DOM se **recortan por
+viewport**, lo que de paso arregla los 686 chips de zona que la supervisión creaba sin recortar.
+
+**El pin es el único marcador de cerca, en todos los mapas y en todos los modos.** En el modo "por
+zona" de la supervisión el pin toma el color de la zona y lleva la abreviatura adentro (`LJ`); sin
+zona, gris neutro y sin glifo. El chip rectangular de zona que existía hasta el 17/09 se retiró:
+los comercios sin zona quedaban con un chip vacío —una raya gris que el cliente vio en localhost—
+y el mapa cambiaba de lenguaje según el botón.
 
 ### Paso 2 · La visita — `vendedor/tabs/VisitaCatalogo.jsx` (391 LOC)
 
@@ -217,6 +287,25 @@ uno o ubica uno propio.
 
 ---
 
+### Pedidos del bot de WhatsApp — el contrato (17/09/2026)
+
+El bot todavía no existe; la app ya lo reconoce. **Un pedido del bot es una fila de `pedidos` con
+`origen = 'whatsapp'`** (db/71 amplió el CHECK: `celular` · `vidriera` · `whatsapp`) y nada más —
+líneas, exportación al ERP, ticket y reportes son el mismo camino de un pedido normal. Lo que el
+bot tiene que completar:
+
+| Columna | Valor | Por qué |
+|---|---|---|
+| `origen` | `'whatsapp'` | es lo que pinta el pin verde-WhatsApp y el "Tomado por el bot" |
+| `id_vendedor` | `clientes.id_vendedor` del comercio | el vendedor lo ve en SU cartera (y no va a visitar un comercio que ya compró); la comisión y los reportes caen donde corresponde |
+| `id_visita` · `lat` · `lng` | `null` | no hubo visita ni GPS |
+| `id_cliente` · `id_empresa` · `monto_total` · líneas | como siempre | |
+
+Dónde se ve: pin con el logo en los mapas del vendedor y de monitoreo (con tarjeta *"Vendió el bot
+de WhatsApp · 09:14 · $ 12.345"*), *"Tomado por el bot de WhatsApp"* en el detalle del pedido, el
+ícono en la lista de Pedidos y la línea en el ticket. Verificado el 17/09 con un pedido de prueba
+(borrado después).
+
 ## 3. Rol REPARTIDOR — `features/repartidor/RepartidorView.jsx` (448 LOC)
 
 Mismo `GpsGate` que el vendedor.
@@ -225,6 +314,16 @@ Mismo `GpsGate` que el vendedor.
   `services/routing/`, que es el **único punto de swap** del proveedor, por diseño.
 - **Confirmar entrega**: estado + firma de quien recibe.
 - `useEntregas.js` (204 LOC) lee de `pedidos`.
+- **Mapa de entregas** (`repartidor/MapaEntregas.jsx`, 17/09/2026): hasta ese día **este rol no
+  tenía mapa** — calculaba el recorrido óptimo con `obtenerRutaOptimaTSP` y lo usaba sólo para
+  ordenar la lista, así que el repartidor veía "1, 2, 3…" sin poder ver por dónde pasaban. Ahora el
+  recorrido **se dibuja**, cada pin lleva su número de parada (el mismo objeto que ordena la lista)
+  y al tocarlo se abre la hoja de entrega de siempre. Va plegado por defecto y se recuerda: la hoja
+  es la vista principal del rol y el mapa es el complemento.
+  El código de color es de **entrega**, no de visita, y sale de `colorEstadoPedido`: Por entregar
+  teal · En camino celeste · Entregado verde · No entregado naranja. El armazón (pantalla completa,
+  centrar, tarjeta, leyenda) es `components/MapaComercios`, compartido con el vendedor — se extrajo
+  el día que apareció el segundo consumidor, no cuando las copias ya habían divergido (regla 31).
 
 > 🟠 **Deuda abierta:** `firmas_ins` sigue siendo `to authenticated` **sin alcance por empresa**. Hoy
 > no muerde porque casi nadie firma, pero cuando el módulo arranque hay que darle el mismo
@@ -283,6 +382,33 @@ GPS) y "Panel" (auditoría).
 | Usuarios | admin · superadmin |
 | Empresas | **solo superadmin** |
 | Respaldo | admin · superadmin |
+
+> **Monitoreo — la capa de cartera tiene dos modos desde el 17/09/2026.** El botón "Clientes" pasa
+> a ciclar **apagada → por zona → por estado de hoy**. "Por zona" es exactamente lo de siempre
+> (color y abreviatura de la zona); "por estado" usa el código de colores del mapa del vendedor con
+> las visitas del día de todo el equipo (`useVisitasDeHoy`), y **no existe mirando un día pasado** —
+> ahí el ciclo lo saltea y, si ya estaba puesto, cae solo a "por zona" en vez de decir que nadie
+> visitó nada. El alcance lo pone la RLS: un encargado ve las visitas de su gente, no las de toda la
+> empresa.
+>
+> En modo estado el mapa muestra arriba a la izquierda la **misma referencia de colores** que ve el
+> vendedor (`supervision/components/LeyendaCartera.jsx` sobre `LeyendaMapa`), con los contadores del
+> día y cuántos comercios no se pueden dibujar por no tener ubicación cargada — en esta base son más
+> de la mitad. Es plegable y la elección se recuerda.
+>
+> **Tocar un pin abre la tarjeta del comercio** (`supervision/components/TarjetaComercio.jsx`):
+> *"Visitó Gabriel tevez · 10:59 → 11:04 · $ 39.963"*, *"Está Nelson desde las 10:32"*, *"Sin
+> visitar · hoy no tocaba"*, *"Vendió el bot de WhatsApp · 09:14 · $ 12.345"*, y si es dormido, hace
+> cuántos días no compra y cuánto dejó. Es excluyente con la tarjeta del móvil: una sola abajo.
+>
+> **El modo estado vale para cualquier fecha**: mirando el 15/09 la capa muestra las visitas del
+> 15/09 (`useVisitasDelDia`) y "toca" se evalúa contra el día de la semana de esa fecha ("Tocaba
+> ese día" / "No tocaba" en la leyenda). Lo único que sigue siendo *de hoy* es el rojo.
+>
+> **El rojo acá es "dormido para la empresa"**: nadie de la empresa le vende hace +30 días
+> (`clientes_dormidos_empresa`, db/70 — cualquier vendedor, tope 500; el encargado ve sólo los
+> comercios cuya última compra fue de gente a su cargo). No es el mismo dato que el rojo del
+> vendedor, que es *"a quién le vendía yo y ya no"*.
 
 > **Cuándo va un permiso y cuándo un rol nuevo.** `permisos` sirve para SUMARLE algo a alguien que ya
 > es otra cosa: un vendedor con `'catalogo'` sigue siendo vendedor —conserva GPS, jornada y su lugar
@@ -349,7 +475,12 @@ Divide el territorio. 16 zonas, 15 clientes con zona asignada.
 
 ### Cartera — `admin/tabs/ClientesTab.jsx` · `FichaCliente.jsx` · `ImportarClientes.jsx` · `RevisarDuplicados.jsx`
 
-2.016 clientes. **662 con ubicación** (33 %), 38 con vendedor.
+2.016 clientes. **662 con ubicación** (33 %), 38 con vendedor. Al 17/09: 1.830 vigentes, **1.121
+sin ubicación**.
+
+Desde el 17/09 la ficha permite **mover la ubicación** de un cliente ya ubicado (botón bajo el
+mini-mapa → `SelectorUbicacion`, pin fijo al centro). Antes el mini-mapa era de sólo lectura y una
+ubicación mal cargada no se podía corregir desde gestión.
 
 > ⚠️ **Una capa de Leaflet que no está agregada al mapa no puede responder `getBounds()`.** El
 > encuadre del geocerco en la ficha de un cliente reventaba con *"Cannot read properties of undefined

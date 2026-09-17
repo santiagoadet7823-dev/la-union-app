@@ -2,7 +2,7 @@ import { glassBlur } from '../../../lib/glass'
 import { hoyStr } from '../../../lib/format'
 import BtnInmersivo from '../../../components/BtnInmersivo'
 import PistaBoton from '../../../components/PistaBoton'
-import { Calendario, Pin, Refrescar, Reloj } from '../../../components/icons'
+import { Calendario, Check, Pin, Refrescar, Reloj } from '../../../components/icons'
 
 /**
  * Rail vertical de controles del mapa (abajo a la derecha).
@@ -37,7 +37,9 @@ export default function RailMapa({
   // Capas
   hayTrazos = false,
   dwellOn = false, onDwell,
-  showClientes = false, clientesCount = 0, onClientes,
+  // Capa de cartera: 'off' | 'zona' | 'estado'. Sigue aceptando el booleano viejo (`showClientes`)
+  // para no romper a un consumidor que no se haya migrado: true → 'zona'.
+  showClientes = false, clientesCount = 0, onClientes, modoClientes = null,
   // Centrar / seguir
   seguirActivo = false, puedeSeguir = false, onSeguir, nombreSeguido = null,
   // Acciones (no van en compacto)
@@ -132,10 +134,24 @@ export default function RailMapa({
         </PistaBoton>
       )}
 
-      {/* Clientes geolocalizados (capa de contexto). Independiente de los recorridos. */}
+      {/* CAPA DE CARTERA, tres posiciones: apagada → por zona → por estado del día (17/09/2026).
+          Son dos preguntas distintas sobre los mismos puntos ("¿de qué zona es?" / "¿cómo vino el
+          día?") y comparten un solo botón porque comparten la capa: encender dos veces la misma
+          cartera con dos controles sería peor. El ícono y el color dicen en cuál está. El modo
+          estado vale para cualquier fecha: `useVisitasDelDia` trae las visitas del día que se mira. */}
       {onClientes && (
-        <RailBtn on={showClientes} color="var(--primary)" badge={showClientes && clientesCount ? clientesCount : undefined} onClick={onClientes} title={showClientes ? 'Ocultar clientes' : 'Mostrar clientes geolocalizados'}>
-          <Pin size={19} />
+        <RailBtn
+          on={modoClientes ? modoClientes !== 'off' : showClientes}
+          color={modoClientes === 'estado' ? 'var(--success)' : 'var(--primary)'}
+          badge={(modoClientes ? modoClientes !== 'off' : showClientes) && clientesCount ? clientesCount : undefined}
+          onClick={onClientes}
+          title={
+            modoClientes === 'zona' ? (esHoy ? 'Clientes por zona — tocá para ver el estado de hoy' : 'Clientes por zona — tocá para ver cómo vino ese día')
+              : modoClientes === 'estado' ? (esHoy ? 'Clientes por estado de hoy — tocá para ocultar' : 'Clientes por estado de ese día — tocá para ocultar')
+                : 'Mostrar clientes geolocalizados'
+          }
+        >
+          {modoClientes === 'estado' ? <Check size={19} /> : <Pin size={19} />}
         </RailBtn>
       )}
 

@@ -38,7 +38,9 @@ import { APP_VERSION } from '../../version'
 // Las vistas de gestión (Clientes, Zonas, Catálogo, …) se despachan desde un módulo compartido con
 // SupervisionDesktop y PanelDireccion: acá solo se dice CUÁL abrir, no cómo construirla (regla 31).
 import InvitarModal from '../../components/InvitarModal'
-import { marcadoresCartera } from '../../lib/marcadoresCartera'
+import useCapaCartera from './useCapaCartera'
+import LeyendaCartera from './components/LeyendaCartera'
+import TarjetaComercio from './components/TarjetaComercio'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
@@ -113,7 +115,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // que alguien quiera encontrarse mañana. Se limpia solo al cambiar de día o de filtro, porque
   // ahí el índice ya no apunta a la misma parada.
   const [dwellSel, setDwellSel] = useState(null)
-  const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [fitDone, setFitDone] = useState(false)  // encuadrar el mapa solo la 1ª vez
   const [fecha, setFecha] = useState(hoyStr)      // día visualizado en el mapa (default hoy)
   const [gestion, setGestion] = useState(null)   // vista de gestión abierta (Clientes, Zonas, …) o null
@@ -170,7 +171,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada: referencia estable
   // entre ticks para que LeafletMap no la redibuje cada segundo.
   const { clientes: cartera, zonas } = useCatalog()
-  const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
+  // Capa de cartera: apagada → por zona → por estado de hoy. Ver `useCapaCartera`.
+  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
+    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark })
 
   // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
   // `setInterval` de 60 s que la invocaba también mirando días pasados; ahora se pide sólo cuando
@@ -475,7 +478,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           center={base}
           trails={leafletTrails.length ? leafletTrails : null}
           markers={mapMarkers}
-          clients={showClientes ? clientMarkers : []}
+          clients={clientMarkers}
           dwells={dwells}
           dwellSel={dwellSel}
           onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
@@ -498,8 +501,16 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             bottom: 24 + (pin ? (pinK > 1 ? 150 : 84) : 0) + (inmersivo ? 96 : 0),
             left: 16,
           }}
-          onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); setPlusOpen(false); setAcctOpen(false) } }}
+          onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); soltarComercio(); setPlusOpen(false); setAcctOpen(false) } }}
+          // Tocar un comercio de la capa de cartera: su tarjeta reemplaza a la del móvil (una sola
+          // tarjeta abajo, si no se tapa el mapa).
+          onClientClick={(i) => { elegirComercio(i); setPinId(null); setPlusOpen(false); setAcctOpen(false) }}
         />
+
+        {/* Referencia de colores de la capa de cartera (sólo en modo estado). Va DENTRO de la capa
+            del mapa para que se vaya con él en inmersivo, y corrida a la derecha del control de
+            zoom de Leaflet. */}
+        <LeyendaCartera modo={modoClientes} conteo={conteoEstado} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
 
         {/* estado vacío / de ERROR del overlay. Antes un fallo de carga se veía IGUAL que "no hay
             datos" (mapa vacío mudo): ahora se distingue y se puede reintentar. */}
@@ -645,9 +656,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         hayTrazos={trails.length > 0}
         dwellOn={dwellOn}
         onDwell={() => setDwellOn((v) => !v)}
-        showClientes={showClientes}
-        clientesCount={clientMarkers.length}
-        onClientes={() => setShowClientes((v) => !v)}
+        modoClientes={modoClientes}
+        clientesCount={clientesCount}
+        onClientes={alternarClientes}
         seguirActivo={!!seguirId}
         puedeSeguir={!!objetivoSeguir}
         nombreSeguido={objetivoSeguir ? (nombres[objetivoSeguir.id] || null) : null}
@@ -694,6 +705,21 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
             El `key` es el que hace la animación: al cambiar `pinK`, React remonta la tarjeta y
             `lu-rise` se vuelve a ejecutar, o sea que "vuelve a entrar" con su nuevo tamaño. */}
+        {/* TARJETA DEL COMERCIO tocado en la capa de cartera: quién lo visitó y a qué hora. Misma
+            columna y mismo lugar que la del móvil; son excluyentes. */}
+        {comercioSel && !pin && (
+          <TarjetaComercio
+            key={`com-${comercioSel.id}`}
+            c={comercioSel}
+            modo={modoClientes}
+            nombres={nombres}
+            esHoy={esHoy}
+            isDark={isDark}
+            onClose={soltarComercio}
+            style={{ alignSelf: 'stretch', pointerEvents: 'auto' }}
+          />
+        )}
+
         {pin && (
           <TarjetaPin
             key={`pin-${pin.id}-${pinK}`}

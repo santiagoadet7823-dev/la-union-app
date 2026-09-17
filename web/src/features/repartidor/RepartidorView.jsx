@@ -8,6 +8,7 @@ import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
 import { useEntregas, marcarEstado, guardarEntregado, MOTIVO_CHIPS, MOTIVO_POR_DEFECTO } from './useEntregas'
 import { obtenerRutaOptimaTSP } from '../../services/routing'
+import MapaEntregas from './MapaEntregas'
 import { Route } from '../../components/icons'
 
 const ORDER = { pendiente: 0, en_camino: 1, entregado: 2 }
@@ -43,6 +44,19 @@ export default function RepartidorView() {
    */
   const [recorrido, setRecorrido] = useState(null)
   const [calculando, setCalculando] = useState(false)
+  /**
+   * El mapa arranca PLEGADO y se recuerda (17/09/2026). Es un pedido explícito de pantalla: la hoja
+   * de entregas es una lista de trabajo y el repartidor la recorre de arriba abajo; un mapa de
+   * 60 vh fijo arriba le empuja la primera entrega fuera de cuadro todas las mañanas. Desplegado,
+   * es la vista de "por dónde sigo".
+   */
+  const [mapaAbierto, setMapaAbierto] = useState(() => {
+    try { return localStorage.getItem('lu-reparto-mapa') === 'on' } catch (_) { return false }
+  })
+  const alternarMapa = () => setMapaAbierto((v) => {
+    try { localStorage.setItem('lu-reparto-mapa', v ? 'off' : 'on') } catch (_) { /* igual funciona */ }
+    return !v
+  })
 
   // El repartidor emite su ubicación en vivo (GPS del contexto) para que el Admin lo siga.
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
@@ -241,6 +255,28 @@ export default function RepartidorView() {
 
       {/* LISTA */}
       <div style={sx('flex:1;overflow-y:auto;padding:12px 14px 28px')}>
+        {/* EL MAPA DE LAS ENTREGAS. Va DENTRO del scroll y plegado por defecto: la hoja de
+            entregas es la vista principal de este rol y el mapa es el complemento, no al revés.
+            Sólo aparece si hay algo que dibujar — con la cartera sin geolocalizar del todo, un
+            mapa vacío sería una promesa incumplida arriba de la pantalla. */}
+        {deliveries.some((d) => d.lat != null) && (
+          <>
+            <button
+              onClick={alternarMapa}
+              className="lu-press"
+              aria-expanded={mapaAbierto}
+              style={sx('width:100%;margin-bottom:10px;min-height:42px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);color:var(--deep);font-weight:600;font-size:13px;cursor:pointer')}
+            >
+              <Pin size={15} />{mapaAbierto ? 'Ocultar el mapa' : 'Ver las entregas en el mapa'}
+            </button>
+            {mapaAbierto && (
+              <div style={sx('margin-bottom:12px')}>
+                <MapaEntregas entregas={deliveries} recorrido={recorrido} onAbrir={openModal} />
+              </div>
+            )}
+          </>
+        )}
+
         {cargandoEntregas && deliveries.length === 0 && (
           <div style={sx('margin-top:20px;padding:26px;text-align:center;color:var(--faint);font-size:13px')}>Buscando tus entregas de hoy…</div>
         )}

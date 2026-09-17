@@ -29,7 +29,9 @@ import DespachoGestion from './components/DespachoGestion'
 import ThemeToggle from '../../components/ThemeToggle'
 import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
 import { APP_VERSION } from '../../version'
-import { marcadoresCartera } from '../../lib/marcadoresCartera'
+import useCapaCartera from './useCapaCartera'
+import LeyendaCartera from './components/LeyendaCartera'
+import TarjetaComercio from './components/TarjetaComercio'
 
 /**
  * Shell de ESCRITORIO (PWA / .exe) para los roles de supervisión: replica las
@@ -95,7 +97,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
    * Como el botón deja de estar prendido, hay que decir que existe: `RailMapa` muestra una etiqueta
    * al lado que late unos segundos y se va (ver `PistaRail`). */
   const [dwellOn, setDwellOn] = useState(false)
-  const [showClientes, setShowClientes] = useState(false) // capa de clientes geolocalizados (default: apagada)
   const [pinId, setPinId] = useState(null)
   const [foco, setFoco] = useState(null)       // { id, nonce } — usuario a enfocar en el mapa
   const [acctOpen, setAcctOpen] = useState(false)
@@ -138,7 +139,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // Cartera geolocalizada → capa de contexto en el mapa (toggle). Memoizada para que su
   // referencia sea estable entre ticks y LeafletMap no la re-dibuje cada segundo.
   const { clientes: cartera, zonas } = useCatalog()
-  const clientMarkers = useMemo(() => marcadoresCartera(cartera, zonas), [cartera, zonas])
+  // Capa de cartera: apagada → por zona → por estado de hoy. Ver `useCapaCartera`.
+  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
+    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark })
 
   // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
   // `setInterval` de 60 s que la invocaba también mirando días pasados; ahora se pide sólo cuando
@@ -541,10 +544,22 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       </div>
                       </PistaBoton>
                     )}
-                    {/* Toggle "Clientes" (capa de comercios geolocalizados) */}
-                    <div onClick={() => setShowClientes((v) => !v)} title="Muestra los clientes geolocalizados de la cartera como puntos en el mapa." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: showClientes ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${showClientes ? 'transparent' : 'var(--line)'}`, color: showClientes ? '#fff' : 'var(--muted)' }}>
-                      <Pin size={15} />
-                      <span style={{ fontSize: 12, fontWeight: 600 }}>Clientes{showClientes && clientMarkers.length ? ` · ${clientMarkers.length}` : ''}</span>
+                    {/* Capa de cartera, tres posiciones: apagada → por zona → por estado de hoy.
+                        En escritorio el chip tiene lugar para DECIR en cuál está, así que lo dice
+                        con todas las letras en vez de dejarlo en el color como hace el rail. */}
+                    <div
+                      onClick={alternarClientes}
+                      title={
+                        modoClientes === 'zona' ? (esHoy ? 'Cada comercio con el color de su zona. Tocá para ver el estado de hoy.' : 'Cada comercio con el color de su zona. Tocá para ver cómo vino ese día.')
+                          : modoClientes === 'estado' ? (esHoy ? 'Cada comercio según cómo viene hoy: visitado, sin pedido, sin visitar. Tocá para ocultar.' : 'Cada comercio según cómo vino ese día: visitado, sin pedido, sin visitar. Tocá para ocultar.')
+                            : 'Muestra los clientes geolocalizados de la cartera como puntos en el mapa.'
+                      }
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: modoClientes === 'estado' ? 'var(--success)' : modoClientes === 'zona' ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${modoClientes !== 'off' ? 'transparent' : 'var(--line)'}`, color: modoClientes !== 'off' ? '#fff' : 'var(--muted)' }}
+                    >
+                      {modoClientes === 'estado' ? <Check size={15} /> : <Pin size={15} />}
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>
+                        {modoClientes === 'estado' ? (esHoy ? 'Estado de hoy' : 'Estado del día') : 'Clientes'}{modoClientes !== 'off' && clientesCount ? ` · ${clientesCount}` : ''}
+                      </span>
                     </div>
                     {/* Centrar y SEGUIR la última posición. Es el segundo zoom: tocar una burbuja
                         encuadra todo el recorrido; esto va a donde está ahora y se queda pegado.
@@ -592,7 +607,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   )}
 
                   {/* Mapa grande */}
-                  <div style={inmersivo ? { flex: 1, minHeight: 0, position: 'relative' } : { padding: 0 }}>
+                  <div style={inmersivo ? { flex: 1, minHeight: 0, position: 'relative' } : { padding: 0, position: 'relative' }}>
                     <LeafletMap
                       theme={theme}
                       height={inmersivo ? '100%' : (isMobile ? 380 : 'clamp(420px, 58vh, 680px)')}
@@ -608,7 +623,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       // persona recalcularía `calcularDwells` — ~250 ms por persona-día.
                       focoId={foco?.id || null}
                       markers={mapMarkers}
-                      clients={showClientes ? clientMarkers : []}
+                      clients={clientMarkers}
                       fit={!fitDone}
                       focus={focusData}
                       seguir={seguirData}
@@ -617,8 +632,28 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       // burbuja de perfil mide 130 px de ancho, así que una persona encuadrada
                       // contra el borde quedaba con su burbuja abajo del rail.
                       edgePadding={{ top: 28, right: (inmersivo ? 28 + 44 + 16 : 28) + 65, bottom: inmersivo ? 28 + 96 : 28, left: 28 }}
-                      onMarkerClick={(i) => { const m = moversFil[i]; if (m) setPinId(m.id === pinId ? null : m.id) }}
+                      onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id === pinId ? null : m.id); soltarComercio() } }}
+                      // Tocar un comercio de la capa de cartera: abre su tarjeta (quién lo visitó y
+                      // a qué hora) y suelta al móvil tocado.
+                      onClientClick={(i) => { elegirComercio(i); setPinId(null) }}
                     />
+                    {comercioSel && (
+                      <TarjetaComercio
+                        key={`com-${comercioSel.id}`}
+                        c={comercioSel}
+                        modo={modoClientes}
+                        nombres={nombres}
+                        esHoy={esHoy}
+                        isDark={isDark}
+                        onClose={soltarComercio}
+                        // Abajo a la izquierda; en inmersivo por encima de las burbujas y las paradas.
+                        style={{ position: 'absolute', left: 16, maxWidth: 380, bottom: inmersivo ? 132 : 16, zIndex: 'var(--z-chrome)' }}
+                      />
+                    )}
+
+                    {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida
+                        a la derecha del control de zoom de Leaflet. */}
+                    <LeyendaCartera modo={modoClientes} conteo={conteoEstado} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
                     {/* 🩸 ABAJO a la derecha, no arriba (28/07/2026). Estaba en `top:16` y ahí
                         vive el selector de capas de Leaflet ('topright', LeafletMap.jsx): en
                         pantalla completa se superponían y el botón de salir quedaba tapado.
@@ -645,9 +680,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         hayTrazos={trails.length > 0}
                         dwellOn={dwellOn}
                         onDwell={() => setDwellOn((v) => !v)}
-                        showClientes={showClientes}
-                        clientesCount={clientMarkers.length}
-                        onClientes={() => setShowClientes((v) => !v)}
+                        modoClientes={modoClientes}
+                        clientesCount={clientesCount}
+                        onClientes={alternarClientes}
                         seguirActivo={!!seguirId}
                         puedeSeguir={!!objetivoSeguir}
                         nombreSeguido={objetivoSeguir ? (nombres[objetivoSeguir.id] || null) : null}
