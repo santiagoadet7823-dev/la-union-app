@@ -637,20 +637,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       // a qué hora) y suelta al móvil tocado.
                       onClientClick={(i) => { elegirComercio(i); setPinId(null) }}
                     />
-                    {comercioSel && (
-                      <TarjetaComercio
-                        key={`com-${comercioSel.id}`}
-                        c={comercioSel}
-                        modo={modoClientes}
-                        nombres={nombres}
-                        esHoy={esHoy}
-                        isDark={isDark}
-                        onClose={soltarComercio}
-                        // Abajo a la izquierda; en inmersivo por encima de las burbujas y las paradas.
-                        style={{ position: 'absolute', left: 16, maxWidth: 380, bottom: inmersivo ? 132 : 16, zIndex: 'var(--z-chrome)' }}
-                      />
-                    )}
-
                     {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida
                         a la derecha del control de zoom de Leaflet. */}
                     <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
@@ -690,32 +676,71 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       />
                     )}
 
-                    {/* Burbujas del equipo: en inmersivo se oculta la barra de filtros y las
-                        métricas de abajo, así que este es el único acceso al enfoque por
-                        persona. Abajo a la izquierda; la derecha es del botón de salir. */}
-                    {inmersivo && (
-                      <BurbujasEquipo
-                        movers={moversFil}
-                        nombres={nombres}
-                        fotos={fotos}
-                        byUser={byUser}
-                        focoId={foco?.id || null}
-                        onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
-                        style={{ position: 'absolute', left: 16, right: 76, bottom: 16, zIndex: 'var(--z-chrome)' }}
-                      />
-                    )}
-                    {/* Paradas de la persona tocada. Va ARRIBA de la tira de equipo (bottom mayor)
-                        porque es la continuación del gesto: primero elegís a quién, después a dónde.
-                        El componente devuelve null sin foco, así que no hace falta otra condición. */}
-                    {inmersivo && (
-                      <BurbujasParadas
-                        dwells={dwells}
-                        focoId={foco?.id || null}
-                        sel={dwellSel}
-                        onIr={irAParada}
-                        style={{ position: 'absolute', left: 16, right: 76, bottom: 74, zIndex: 'var(--z-chrome)' }}
-                      />
-                    )}
+                    {/* ===== CHROME DE ABAJO A LA IZQUIERDA: UNA SOLA COLUMNA =====
+                        🩸 17/09/2026. Eran TRES piezas absolutas independientes —la tarjeta del
+                        comercio (`bottom:132`), las paradas (`bottom:74`) y las burbujas del equipo
+                        (`bottom:16`)— cada una adivinando la altura de las otras. Pero `BurbujasEquipo`
+                        dibuja ARRIBA de los avatares la tarjeta de la persona tocada ("15.2 km · 22
+                        paradas · última señal"), que queda a ~64 px del piso: justo donde caían los
+                        números de las paradas. El cliente lo vio en la PWA de la computadora. Y con
+                        vendedores Y repartidores la fila de equipo es doble, así que el 74 volvería a
+                        quedar corto.
+
+                        Es el mismo bug que SupervisionMovil arregló el 03/08/2026 y de la misma forma:
+                        una columna, las piezas como hermanas en un flujo, nada puede pisar a nada. El
+                        orden es el del gesto: abajo elegís a quién, arriba a dónde (paradas), y lo que
+                        tocaste en el mapa (el comercio) queda arriba de todo.
+
+                        `right: 76` reserva el rail compacto (44 + 16 + 16); fuera de inmersivo no hay
+                        rail, pero la tarjeta del comercio topea en 380 y no lo nota.
+
+                        `pointerEvents:'none'` en la columna (regla 30): ocupa todo el ancho a esta
+                        altura y sin esto se tragaría los toques del mapa donde no hay contenido.
+                        Cada hija se lo vuelve a encender. */}
+                    <div style={{
+                      position: 'absolute', left: 16, right: 76, bottom: 16,
+                      zIndex: 'var(--z-chrome)', pointerEvents: 'none',
+                      display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start',
+                    }}>
+                      {/* Tarjeta del comercio tocado en la capa de cartera: quién lo visitó y a
+                          qué hora. */}
+                      {comercioSel && (
+                        <TarjetaComercio
+                          key={`com-${comercioSel.id}`}
+                          c={comercioSel}
+                          modo={modoClientes}
+                          nombres={nombres}
+                          esHoy={esHoy}
+                          isDark={isDark}
+                          onClose={soltarComercio}
+                          style={{ maxWidth: 380, pointerEvents: 'auto' }}
+                        />
+                      )}
+                      {/* Paradas de la persona tocada. El componente devuelve null sin foco, así
+                          que no hace falta otra condición. */}
+                      {inmersivo && (
+                        <BurbujasParadas
+                          dwells={dwells}
+                          focoId={foco?.id || null}
+                          sel={dwellSel}
+                          onIr={irAParada}
+                          style={{ alignSelf: 'stretch' }}
+                        />
+                      )}
+                      {/* Burbujas del equipo: en inmersivo se oculta la barra de filtros y las
+                          métricas de abajo, así que este es el único acceso al enfoque por persona. */}
+                      {inmersivo && (
+                        <BurbujasEquipo
+                          movers={moversFil}
+                          nombres={nombres}
+                          fotos={fotos}
+                          byUser={byUser}
+                          focoId={foco?.id || null}
+                          onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
+                          style={{ alignSelf: 'stretch' }}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
