@@ -271,7 +271,7 @@ export default function PanelDireccion() {
   })) : []), [esHoy, moversArr, nombres, fotos])
 
   // Capa de cartera: apagada → por zona → por estado de hoy. Ver `supervision/useCapaCartera`.
-  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
+  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, zonasEnMapa, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
     useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha: fechaMapa, isDark })
 
   const dwells = useMemo(
@@ -624,6 +624,7 @@ export default function PanelDireccion() {
           modoClientes={modoClientes}
           clientesCount={clientesCount}
           conteoEstado={conteoEstado}
+          zonasEnMapa={zonasEnMapa}
           sinUbicarCartera={sinUbicarCartera}
           comercioSel={comercioSel}
           elegirComercio={elegirComercio}
@@ -761,7 +762,7 @@ function MapaCompleto({ theme, onClose, ...p }) {
 
       {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida a la derecha
           del control de zoom de Leaflet. */}
-      <LeyendaCartera modo={p.modoClientes} conteo={p.conteoEstado} sinUbicar={p.sinUbicarCartera} fecha={p.fechaMapa} esHoy={p.esHoy} isDark={p.isDark} />
+      <LeyendaCartera modo={p.modoClientes} conteo={p.conteoEstado} zonasEnMapa={p.zonasEnMapa} sinUbicar={p.sinUbicarCartera} fecha={p.fechaMapa} esHoy={p.esHoy} isDark={p.isDark} />
 
       {/* Cerrar: mismo control y misma esquina que el "salir de pantalla completa" de las dos
           supervisiones (BtnInmersivo), para que el gesto se aprenda una sola vez. */}

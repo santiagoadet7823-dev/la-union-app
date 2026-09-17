@@ -33,10 +33,38 @@ const K_MEMORIA = 'lu-supervision-leyenda-cartera'
 
 const ETIQUETA_PASADO = { hoy: 'Tocaba ese día', no_toca: 'No tocaba' }
 
-export default function LeyendaCartera({ modo, conteo, sinUbicar = 0, fecha, esHoy = true, isDark = false, estilo = null }) {
-  if (modo !== 'estado') return null
-
+export default function LeyendaCartera({ modo, conteo, zonasEnMapa = null, sinUbicar = 0, fecha, esHoy = true, isDark = false, estilo = null }) {
   const pintar = (k) => pintarComercio(k, { isDark })
+
+  // MODO ZONA (17/09/2026, pedido del cliente mirando la PWA): cada pin lleva el color de su zona
+  // y nadie decía cuál era cuál. Mismo recuadro, otra lista: las zonas que se están dibujando, con
+  // su color, su abreviatura (que es lo que va adentro del pin) y cuántos comercios ubicados tiene
+  // cada una; al final, el gris de los que no tienen zona.
+  if (modo === 'zona') {
+    const zonas = zonasEnMapa?.zonas || []
+    const sinZona = zonasEnMapa?.sinZona || 0
+    if (!zonas.length && !sinZona) return null
+    const gris = isDark ? '#94A3B8' : '#475569'
+    return (
+      <LeyendaMapa
+        claveMemoria={K_MEMORIA + '-zona'}
+        estilo={estilo}
+        items={[
+          ...zonas.map((z) => ({ color: z.color || gris, glifo: z.abrev || '', hueco: false, etiqueta: `${z.nombre} · ${z.n}` })),
+          ...(sinZona ? [{ color: gris, glifo: '', hueco: false, etiqueta: `Sin zona · ${sinZona}` }] : []),
+        ]}
+        resumen={<>
+          <span style={{ color: 'var(--text)' }}><b>{zonas.length}</b> zona{zonas.length === 1 ? '' : 's'}</span>
+          {sinZona > 0 && <Conteo n={sinZona} etiqueta="sin zona" color={gris} />}
+        </>}
+        pie={sinUbicar > 0
+          ? <><b>{sinUbicar}</b> comercio(s) sin ubicación cargada no se pueden dibujar.</>
+          : null}
+      />
+    )
+  }
+
+  if (modo !== 'estado') return null
   const etiqueta = (k) => (!esHoy && ETIQUETA_PASADO[k]) || ESTADOS[k].etiqueta
   // '2026-09-15' → '15/09': la píldora dice de qué día es lo que se cuenta.
   const diaCorto = !esHoy && fecha ? fecha.slice(8, 10) + '/' + fecha.slice(5, 7) : null

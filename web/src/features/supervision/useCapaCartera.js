@@ -51,6 +51,22 @@ export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDar
     return n
   }, [marcadores, activo])
 
+  // Las zonas que se están dibujando (para la leyenda del modo zona): color, abreviatura y
+  // nombre, con cuántos comercios ubicados tiene cada una. Sale de los marcadores y no de `zonas`
+  // para no listar zonas sin un solo comercio en el mapa. `sinZona` son los pines grises.
+  const zonasEnMapa = useMemo(() => {
+    if (activo) return { zonas: [], sinZona: 0 }
+    const porNombre = new Map()
+    let sinZona = 0
+    for (const m of marcadores) {
+      if (!m.zona) { sinZona++; continue }
+      const z = porNombre.get(m.zona) || { nombre: m.zona, color: m.color, abrev: m.abrev, n: 0 }
+      z.n++
+      porNombre.set(m.zona, z)
+    }
+    return { zonas: [...porNombre.values()].sort((a, b) => b.n - a.n), sinZona }
+  }, [marcadores, activo])
+
   const alternar = useCallback(() => {
     setComercioSelId(null)
     setModo((m) => (m === 'off' ? 'zona' : m === 'zona' ? 'estado' : 'off'))
@@ -73,6 +89,7 @@ export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDar
     // El conteo del badge sale de la cartera, no de lo dibujado: apagada sigue diciendo cuántos hay.
     clientesCount: marcadores.length,
     conteoEstado,
+    zonasEnMapa,
     // Los que la capa NO puede dibujar. Va a la leyenda porque es el número que explica la
     // diferencia entre el badge del botón y lo que se ve: en esta base son más de la mitad.
     sinUbicar: (cartera?.length || 0) - marcadores.length,

@@ -391,6 +391,10 @@ GPS) y "Panel" (auditoría).
 > visitó nada. El alcance lo pone la RLS: un encargado ve las visitas de su gente, no las de toda la
 > empresa.
 >
+> En modo **zona** el recuadro de arriba a la izquierda lista las zonas que se están dibujando (color,
+> abreviatura —lo que va adentro del pin— y cuántos comercios ubicados tiene cada una) y el gris de
+> los sin zona. Al 17/09: 695 de 709 ubicados no tienen zona, por eso el mapa se ve casi todo gris.
+>
 > En modo estado el mapa muestra arriba a la izquierda la **misma referencia de colores** que ve el
 > vendedor (`supervision/components/LeyendaCartera.jsx` sobre `LeyendaMapa`), con los contadores del
 > día y cuántos comercios no se pueden dibujar por no tener ubicación cargada — en esta base son más

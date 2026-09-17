@@ -140,7 +140,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // referencia sea estable entre ticks y LeafletMap no la re-dibuje cada segundo.
   const { clientes: cartera, zonas } = useCatalog()
   // Capa de cartera: apagada → por zona → por estado de hoy. Ver `useCapaCartera`.
-  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
+  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, zonasEnMapa, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
     useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark })
 
   // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
@@ -653,7 +653,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
                     {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida
                         a la derecha del control de zoom de Leaflet. */}
-                    <LeyendaCartera modo={modoClientes} conteo={conteoEstado} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
+                    <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
                     {/* 🩸 ABAJO a la derecha, no arriba (28/07/2026). Estaba en `top:16` y ahí
                         vive el selector de capas de Leaflet ('topright', LeafletMap.jsx): en
                         pantalla completa se superponían y el botón de salir quedaba tapado.

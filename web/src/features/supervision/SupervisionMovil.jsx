@@ -172,7 +172,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // entre ticks para que LeafletMap no la redibuje cada segundo.
   const { clientes: cartera, zonas } = useCatalog()
   // Capa de cartera: apagada → por zona → por estado de hoy. Ver `useCapaCartera`.
-  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
+  const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, zonasEnMapa, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
     useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark })
 
   // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
@@ -510,7 +510,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         {/* Referencia de colores de la capa de cartera (sólo en modo estado). Va DENTRO de la capa
             del mapa para que se vaya con él en inmersivo, y corrida a la derecha del control de
             zoom de Leaflet. */}
-        <LeyendaCartera modo={modoClientes} conteo={conteoEstado} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
+        <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
 
         {/* estado vacío / de ERROR del overlay. Antes un fallo de carga se veía IGUAL que "no hay
             datos" (mapa vacío mudo): ahora se distingue y se puede reintentar. */}
