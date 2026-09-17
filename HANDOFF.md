@@ -47,10 +47,11 @@
 
 ## 🟦 00000. RELEASE 1.40.0 (17/09/2026) — el login de Google dice POR QUÉ falló
 
-⏳ **Pendiente de publicar** (el `gh release` lo corre el usuario): commit + push a `main` ·
-`bash scripts/ota-release.sh 1.40.0` · `update public.app_config set bundle_version='1.40.0',
-latest_version='1.40.0', bundle_url='https://github.com/santiagoadet7823-dev/la-union-app/releases/download/ota-1.40.0/bundle.zip', updated_at=now();`
-· `min_version` queda en 1.36.0. Todo JS: **no lleva APK nuevo**.
+✅ **Publicado el 17/09 a la noche**: commit `9a1c889` + push a `main` (PWA por el workflow) ·
+`gh release create ota-1.40.0` (pasó a la primera) · descarga verificada (200, 2.215.390 bytes,
+136 archivos, `index-lsZzs1Xd.js` dice 1.40.0 y trae el cartel nuevo) · `app_config` por el MCP:
+`bundle_version = latest_version = 1.40.0`, `bundle_url` al release, **`min_version` sigue en
+1.36.0**. Todo JS: **no lleva APK nuevo**. ⏳ Queda mirar `estado_dispositivo` para cerrarlo.
 
 Un cliente no podía entrar: "No pudimos entrar" y en el detalle `Excepción en el login: Something
 went wrong`. Ese texto **no es de la app ni de Supabase**: lo devuelve Google Play Services a través
