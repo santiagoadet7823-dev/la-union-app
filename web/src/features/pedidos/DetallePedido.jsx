@@ -7,6 +7,8 @@ import { asignarRepartidor } from '../repartidor/useEntregas'
 import { anularPedido, borrarPedido } from './anularPedido'
 import { yaExportado, MSG_EXPORTADO } from './exportado'
 import { textoPapelera, porVencer } from './papelera'
+import { edicionesDePedido } from './editarPedido'
+import { supabase } from '../../services/supabase'
 
 /**
  * UN PEDIDO ABIERTO, con sus líneas y sus acciones.
@@ -25,6 +27,12 @@ import { textoPapelera, porVencer } from './papelera'
  *   La pantalla de arriba la aplica a sus listas; nada relee (ver usePedidos.aplicar).
  */
 
+/** 'YYYY-MM-DD' → 'DD/MM/YYYY' sin pasar por `Date` (es una fecha sin hora; en UTC−3 correría un día). */
+function fmtDia(d) {
+  const [a, m, dd] = String(d).split('-')
+  return `${dd}/${m}/${a}`
+}
+
 /** Fecha + hora corta, en hora local. Compartida por las dos pantallas de pedidos. */
 export function fmtFecha(ts) {
   const d = new Date(ts)
@@ -41,6 +49,9 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
   const equipo = usePerfilesEquipo()
   const repartidores = (equipo || []).filter((u) => u.rol === 'repartidor')
   const [asignando, setAsignando] = useState(false)
+  // Historial de correcciones (`pedido_ediciones`, db/55). Se pide al abrir: `edicionesDePedido`
+  // existía desde db/55 y nadie la llamaba, así que la auditoría se escribía y no se veía nunca.
+  const [ediciones, setEdiciones] = useState(null) // null = cargando · [] = sin correcciones
 
   const pedido = detalle?.pedido || null
   const lineas = detalle?.lineas || []
@@ -123,6 +134,16 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
       onToast?.('No se pudo borrar: ' + (e?.message || 'sin conexión'))
     } finally { setTrabajando(false) }
   }
+
+  useEffect(() => {
+    if (!pedido?.id) { setEdiciones(null); return }
+    let vivo = true
+    setEdiciones(null)
+    edicionesDePedido(supabase, pedido.id)
+      .then((e) => { if (vivo) setEdiciones(e) })
+      .catch(() => { if (vivo) setEdiciones([]) }) // sin historial no es un error para quien mira
+    return () => { vivo = false }
+  }, [pedido?.id])
 
   return (
     <Overlay
@@ -263,6 +284,21 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
             </div>
           </div>
 
+          {/* ── Condiciones (16/09/2026): forma de pago, fecha de entrega y observaciones se
+              capturaban al confirmar (db/62) y sólo se veían en el ticket impreso. */}
+          {(pedido.forma_pago || pedido.fecha_entrega || pedido.observaciones || pedido.exportado_ts) && (
+            <div style={sx('margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2);font-size:12px;line-height:1.6;color:var(--muted)')}>
+              {pedido.forma_pago && <div>Forma de pago: <b style={sx('color:var(--text)')}>{pedido.forma_pago}</b></div>}
+              {pedido.fecha_entrega && <div>Entrega pedida para: <b style={sx('color:var(--text)')}>{fmtDia(pedido.fecha_entrega)}</b></div>}
+              {pedido.observaciones && <div>Observaciones: <span style={sx('color:var(--text)')}>{pedido.observaciones}</span></div>}
+              {pedido.exportado_ts && (
+                <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:2px')}>
+                  Exportado al ERP el {fmtFecha(pedido.exportado_ts)}{pedido.export_lote ? ` · lote ${pedido.export_lote}` : ''}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Reparto ───────────────────────────────────────────────────────────────────────
               No aparece en un pedido anulado: no se reparte lo que no se factura. */}
           {!anulado && (
@@ -307,6 +343,36 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
           {!lineas.length && (
             <div style={sx('padding:16px 0;color:var(--faint);font-size:12px')}>
               Este pedido no tiene líneas guardadas.
+            </div>
+          )}
+
+          {/* ── Correcciones ──────────────────────────────────────────────────────────────────
+              Quién tocó qué y cuándo. Sólo se dibuja si hubo alguna: un pedido sin correcciones
+              no necesita un cartel que diga que no las tuvo. */}
+          {ediciones && ediciones.length > 0 && (
+            <div style={sx('margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
+              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:7px')}>
+                Correcciones · {ediciones.length}
+              </div>
+              {ediciones.map((e) => (
+                <div key={e.id} style={sx('padding:7px 0;border-top:1px solid var(--line);font-size:11.5px;line-height:1.5')}>
+                  <div style={sx('display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap')}>
+                    <b style={sx('color:var(--text)')}>{e.nombre || 'Sin nombre'}</b>
+                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{fmtFecha(e.ts)}</span>
+                  </div>
+                  {(e.cambios || []).map((c, i) => (
+                    <div key={i} style={sx('color:var(--muted)')}>
+                      {c.descripcion || 'Producto'}: <span style={sx('font-family:var(--font-mono)')}>{c.de} → {c.a}</span>
+                      {c.a === 0 ? ' (sacado)' : c.de === 0 ? ' (agregado)' : ''}
+                    </div>
+                  ))}
+                  {e.monto_antes != null && e.monto_despues != null && Number(e.monto_antes) !== Number(e.monto_despues) && (
+                    <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:2px')}>
+                      {fmtPesos(e.monto_antes)} → {fmtPesos(e.monto_despues)}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

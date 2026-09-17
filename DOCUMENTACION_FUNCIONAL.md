@@ -29,9 +29,8 @@ con palabras en vez de dibujar un cero.
 
 | Estado | Módulos |
 |---|---|
-| ✅ **REAL** (lee/escribe Supabase) | Login · Usuarios · Empresas · Zonas · Categorías de rastreo · Importar clientes/productos/fotos · Clientes · Catálogo · Marketing · **Pedidos (alta, edición, anulación, export)** · **Metas y Mi tablero** · Visitas · Reportes · Respaldo · Supervisión móvil y escritorio · Panel de dirección · Vidriera · todo el pipeline GPS y de sincronización |
+| ✅ **REAL** (lee/escribe Supabase) | Login · Usuarios · Empresas · Zonas · Categorías de rastreo · Importar clientes/productos/fotos · Clientes · Catálogo · Marketing · **Pedidos (alta, edición, anulación, export, buscador y filtros)** · **Metas y Mi tablero** · Visitas · Reportes · Respaldo · Supervisión móvil y escritorio · Panel de dirección · **Dashboard con gráficos (ventas + actividad, 16/09/2026)** · **Faltante (desde el 16/09/2026, sobre `pedido_items.cantidad_entregada`)** · Vidriera · todo el pipeline GPS y de sincronización |
 | ⚠️ **REAL pero incompleto** | Entregas del repartidor: los estados y la firma escriben, pero `firmas_ins` sigue sin alcance por empresa · `rutas` está vacía y nunca se usó |
-| 🔶 **VIVO PERO SIEMPRE VACÍO** | **Faltante** — `FaltanteTab.jsx:18` declara `const [faltVacio] = useState(true)` **sin setter**, así que la pantalla se abre desde el menú de gestión y no puede mostrar nada nunca |
 | ⛔ **CÓDIGO MUERTO** (sin ruta de acceso) | `admin/AdminView.jsx` y todo lo que sólo cuelga de él: `RecorridosView`, `MapaOperativo`, `ReplayJornada` · `admin/tabs/RuteoTab.jsx` (no lo importa **nadie**, ni siquiera el padre muerto) · `vendedor/tabs/PerfilTab.jsx` |
 
 > **Nota sobre `PerfilTab`:** sigue muerto, y sigue sin dejar al vendedor sin "Mi cuenta".
@@ -143,6 +142,22 @@ era un `div` inerte, así que un comercio ya visitado quedaba **inalcanzable tod
 > asignado sobre 2.016**, así que para el 98 % de la cartera ningún vendedor ve ese lápiz.
 > **Mejoró mucho** (el 08/08 eran 3, con 18 ubicados; hoy hay 662 ubicados) pero el gate sigue siendo
 > la asignación directa; decidir si el correcto es la ZONA (`clientes.id_zona` → `zonas.id_vendedor`).
+
+### Paso 1-bis · El mapa de la cartera — `vendedor/MapaCartera.jsx` (desde el 16/09/2026)
+
+La pestaña **Ruta** es la otra forma de encontrar un comercio: el mapa dibuja **todos los comercios
+con ubicación** (702 al 16/09) como puntos de color por estado (pendiente / visitado / sin pedido, y
+la próxima parada con pin grande), **se tocan**, y la tarjeta que se abre muestra nombre, localidad,
+código, estado, distancia al GPS del teléfono y el botón **Check-in** — que es la misma función que
+el botón de la lista de Inicio (`alTocarCliente` en `VendedorView`), así que registra la presencia
+igual y ofrece "corregir o nuevo" si el comercio ya tiene pedido. Un comercio ya visitado muestra
+"Volver a abrir". El botón de abajo a la derecha lo lleva a **pantalla completa** (el mismo control
+que las supervisiones; el atrás de Android lo cierra), y el de arriba centra en el vendedor.
+
+Es **un solo `LeafletMap`** que cambia de tamaño, no dos: la ruta óptima no se vuelve a pedir y el
+zoom se conserva. Los comercios van por la capa `clients` (canvas), no por `markers` (DOM): hasta
+ese día `RutaTab` dibujaba 702 pines numerados del DOM, intocables y con la **numeración corrida**
+(salía del índice del array filtrado, no de la posición en la cartera).
 
 ### Paso 2 · La visita — `vendedor/tabs/VisitaCatalogo.jsx` (391 LOC)
 
@@ -263,7 +278,7 @@ GPS) y "Panel" (auditoría).
 | Revisar repetidos | admin · superadmin |
 | Zonas | encargado · admin · superadmin |
 | **Catálogo** | encargado · admin · superadmin · **marketing**, o cualquiera con el permiso `catalogo` |
-| Faltante | encargado · admin · superadmin — ⚠️ **siempre vacía**, ver §0 |
+| Faltante | encargado · admin · superadmin — lo pedido contra lo entregado, por producto, motivo y repartidor (real desde el 16/09/2026; hasta entonces era una maqueta) |
 | Invitar | encargado · admin · superadmin |
 | Usuarios | admin · superadmin |
 | Empresas | **solo superadmin** |
@@ -274,11 +289,39 @@ GPS) y "Panel" (auditoría).
 > en el mapa— y además edita el catálogo. El criterio para un rol nuevo no es "¿qué puede hacer?"
 > sino **"¿la app la tiene que rastrear?"**.
 
-### Panel de dirección — `features/direccion/PanelDireccion.jsx` (836 LOC)
+### Panel de dirección — `features/direccion/PanelDireccion.jsx`
 
 Scroll único que **empieza por los números**, con el mapa como una tarjeta que se abre. Es la
-pantalla que el dueño mira desde su iPhone. Componentes propios: `KpiCard`, `MiniKpi`, `FilaEquipo`,
-`SheetPersona`, `SinDatoBloque` y `titulares.js`.
+pantalla que el dueño mira desde su iPhone. Componentes propios: `MiniKpi`, `FilaEquipo`,
+`SheetPersona`, `SinDatoBloque` y `titulares.js`. Desde el 16/09/2026 monta arriba del mapa el
+**dashboard compartido** (abajo), y el titular pasa a hablar de plata cuando hay pedidos en el
+período ("Van 12 % arriba de una semana normal") — el "horizonte 2" previsto en el diseño v1.3.
+
+### Dashboard con gráficos — `features/dashboard/DashboardEquipo.jsx` (16/09/2026)
+
+Un solo componente para tres pantallas (regla 31): `layout="grid"` en la consola de PC (ítem
+**Dashboard** del sidebar de `SupervisionDesktop`, con selector hoy/semana/mes), `layout="scroll"`
+en `PanelDireccion` y `layout="compacto"` en el sheet "Dashboard" de `SupervisionMovil` (APK).
+
+Qué muestra: cabecera de KPIs (vendido · pedidos · ticket promedio · comercios con compra ·
+efectividad de visita · km · tiempo en movimiento, cada uno con su delta contra el período anterior
+vía `lib/comparar.js`), **ventas por día** con el período anterior punteado, **km por día**,
+**pedidos por estado** (dona), **ventas por rubro/marca** (dona), **efectividad de visita** (dona),
+**ranking de vendedores** por monto con pedidos y km, **ventas apiladas por vendedor** por día y,
+con horizonte "hoy", **pedidos por hora**.
+
+Datos: tres RPC nuevas en `db/68` (`metricas_venta_equipo`, `ventas_por_categoria`,
+`pedidos_por_estado`; scope adentro: rol, `mi_empresa()`, `ids_a_mi_cargo()`, `p_empresa` sólo
+para superadmin) consumidas por `hooks/useMetricasVenta.js` (misma firma y caché que
+`useMetricasActividad`) y `hooks/useDesglosesVenta.js`. Los km salen de `metricas_actividad`, que
+en `db/69` dejó de evaluar `mi_empresa()` por fila (7 días: de > 8 s a ~1 s).
+
+Gráficos: `components/charts/` — `GraficoSerie` (única pieza con librería: **Lightweight Charts**
+de TradingView, Apache 2.0, importada con `import()` en un chunk propio de 64 KB gz, con el logo de
+atribución que exige la licencia), `Dona`, `BarrasH`, `BarrasApiladas` (SVG/divs propios),
+`TarjetaGrafico`, `useTemaGrafico` (tokens CSS → hex para el canvas) y `paleta.js` (categórica
+validada para daltonismo contra las dos superficies de la app; las personas usan `colorPorId`).
+Regla de toda la pantalla: **un día sin registro es un hueco, no un cero.**
 
 ⚠️ Pasa `showDeviceToggle` a `MiCuenta` — sin eso quedaría encerrado por el override pegajoso de
 `lu-device`.
@@ -459,7 +502,6 @@ Otras reglas transversales:
   (Zura en APK 1.21.0, Gabriel en 1.13.0, Nelson y Gustavo en 1.18.0). Nelson y Gustavo **no dan
   señal desde el 21-22/08**. Luis Mendoza tiene un `bundle_encolado` de 1.22.0 con 1.23.0 ya
   aplicado — un encolado más viejo que lo aplicado, huérfano.
-- **"Faltante" es una pantalla viva que nunca puede mostrar nada** (`FaltanteTab.jsx:18`).
 - **`firmas_ins`** sin alcance por empresa.
 - **`empresas.activo`** no gatea nada: la palanca de cobro está desconectada, y el texto de la propia
   interfaz —*"deja sin acceso a todos sus usuarios"*— es falso hoy.

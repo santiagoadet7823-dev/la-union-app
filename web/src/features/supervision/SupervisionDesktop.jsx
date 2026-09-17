@@ -59,6 +59,10 @@ import { marcadoresCartera } from '../../lib/marcadoresCartera'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
+// El dashboard con gráficos (ventas + actividad) es el mismo módulo que monta PanelDireccion en
+// celular y SupervisionMovil en el APK (regla 31). Lazy: sus hooks pegan tres RPC y la librería de
+// gráficos baja aparte; el monitoreo en vivo, que es lo que abre primero, no paga nada de eso.
+const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
 
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
@@ -76,6 +80,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const base = useEmpresaBase(idEmpresaActiva) // dónde abre el mapa (depósito de la empresa)
 
   const [view, setView] = useState('mapa') // 'mapa' | 'dash' | <clave de gestión>
+  // Horizonte del dashboard (hoy / semana / mes). Antes no existía en PC: la vista sólo expandía
+  // las tarjetas del día. Se guarda acá, no adentro del dashboard, para que sobreviva al cambio
+  // de vista (ir a Pedidos y volver no debería resetearlo).
+  const [horizonteDash, setHorizonteDash] = useState('semana')
   const [filter, setFilter] = useState(null) // null | 'v' | 'r'
   /* 🩸 LAS PARADAS ARRANCAN APAGADAS (18/08/2026), y es por velocidad, no por gusto.
    *
@@ -317,8 +325,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   const nombre = perfil?.nombre || user?.email || 'Usuario'
   const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
-  const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard total')
-  const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : 'Indicadores del día')
+  const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard')
+  const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : `Ventas y actividad · ${horizonteDash === 'hoy' ? 'hoy' : horizonteDash === 'semana' ? 'esta semana' : 'este mes'}`)
 
   // Elegir una sección desde el sidebar (cierra el drawer y el menú de cuenta).
   const irA = (k) => { setView(k); setPinId(null); setAcctOpen(false); setDrawerOpen(false) }
@@ -678,6 +686,13 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
               )}
 
               {/* MÉTRICAS DEBAJO del mapa (Monitoreo) / expandidas (Dashboard). */}
+              {view === 'dash' && (
+                <Suspense fallback={<div style={{ padding: 24, color: 'var(--faint)', fontSize: 12.5 }}>Cargando el dashboard…</div>}>
+                  <div style={{ marginBottom: 16 }}>
+                    <DashboardEquipo layout="grid" horizonte={horizonteDash} onHorizonte={setHorizonteDash} nombres={nombres} onAbrirPersona={enfocarUsuario} activo={!!idEmpresaActiva} />
+                  </div>
+                </Suspense>
+              )}
               <Metricas
                 expanded={view === 'dash'}
                 isMobile={isMobile}

@@ -42,6 +42,9 @@ import { marcadoresCartera } from '../../lib/marcadoresCartera'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
+// Pulso de ventas con gráficos (16/09/2026): el mismo módulo que PanelDireccion y la consola de
+// PC, en su layout compacto. Lazy: sólo baja al abrir el sheet, y la librería de gráficos aparte.
+const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
 
 /**
  * Pantalla de SUPERVISIÓN MÓVIL (full-screen, nativa / APK). Implementa el diseño
@@ -805,6 +808,16 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         title="Dashboard"
         subtitle="Jornada en curso"
       >
+      {/* Ventas del período con gráficos: vendido, pedidos, ticket, la serie por día y los estados.
+          Sólo se monta con el sheet abierto: cerrado no consulta nada. */}
+      {section === 'dash' && (
+        <div style={{ marginBottom: 10 }}>
+          <Suspense fallback={<div className="lu-sk" style={{ height: 160, borderRadius: 16, background: 'var(--sk)' }} />}>
+            <DashboardEquipo layout="compacto" horizonte="hoy" nombres={nombres} onAbrirPersona={enfocarUsuario} activo={!!idEmpresaActiva} />
+          </Suspense>
+        </div>
+      )}
+
       {/* Informe: por qué no llega la señal (lo ve también el panel de dirección). Click en una
           persona → cierra el sheet y encuadra su recorrido. */}
       <div style={{ marginBottom: 10 }}><EstadoEquipo onSelectUsuario={enfocarUsuario} /></div>

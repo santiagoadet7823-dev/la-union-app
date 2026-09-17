@@ -4,6 +4,7 @@ import { supabase } from '../../services/supabase'
 import { descargarArchivo } from '../../services/download'
 import { useTenant } from '../../context/TenantContext'
 import { useDevice } from '../../context/DeviceContext'
+import { hoyStr } from '../../lib/format'
 
 /**
  * RESPALDO MENSUAL POR EMPRESA.
@@ -58,6 +59,21 @@ const TABLAS = [
     label: 'Líneas de pedido',
   },
   { tabla: 'alertas_equipo', fecha: 'detectada_ts', empresa: 'id_empresa', label: 'Avisos del equipo' },
+  { tabla: 'pedido_ediciones', fecha: 'ts', empresa: 'id_empresa', label: 'Correcciones de pedidos' },
+  { tabla: 'exportaciones_pedidos', fecha: 'ts', empresa: 'id_empresa', label: 'Exportaciones al ERP (bitácora)' },
+]
+
+// Las tablas MAESTRAS (16/09/2026): no tienen mes, son el estado actual. Un respaldo que traiga
+// posiciones y pedidos pero no la cartera de clientes ni el catálogo no sirve para reconstruir
+// nada: `pedidos.id_cliente` es un uuid que sin `clientes` no dice a quién se le vendió.
+// `perfiles` va con columnas nombradas y sin `email`/`telefono`/`foto_url`: el respaldo lo baja
+// un admin de la distribuidora y los datos de contacto del personal no son parte del negocio.
+const MAESTRAS = [
+  { tabla: 'clientes', empresa: 'id_empresa', orden: 'nombre_comercio', label: 'Clientes (cartera completa, archivados incluidos)' },
+  { tabla: 'productos', empresa: 'id_empresa', orden: 'codigo', label: 'Productos (catálogo)' },
+  { tabla: 'zonas', empresa: 'id_empresa', orden: 'numero', label: 'Zonas' },
+  { tabla: 'perfiles', empresa: 'id_empresa', orden: 'nombre', select: 'id, nombre, rol, activo, nivel, numero, codigo_erp, color_trazo, permisos, id_zona, id_categoria_rastreo, created_at, id_empresa', label: 'Equipo (perfiles, sin datos de contacto)' },
+  { tabla: 'metas', empresa: 'id_empresa', orden: 'id_usuario', label: 'Metas de vendedores' },
 ]
 
 /** Una celda de CSV: comillas dobles siempre, y las internas escapadas. Null → vacío. */
@@ -110,10 +126,12 @@ export default function RespaldoDatos({ onToast }) {
   async function traer(cfg) {
     const filas = []
     for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
-      const q = supabase.from(cfg.tabla).select(cfg.select || '*')
+      let q = supabase.from(cfg.tabla).select(cfg.select || '*')
         // El alcance de empresa va SIEMPRE y explícito, sea columna propia o del padre por join.
         .eq(cfg.empresa, idEmpresaActiva)
-        .gte(cfg.fecha, desde).lt(cfg.fecha, hasta)
+      // Las maestras no tienen mes: van enteras.
+      if (cfg.fecha) q = q.gte(cfg.fecha, desde).lt(cfg.fecha, hasta)
+      q = q
         // El desempate por `id` no es decorativo: sin un orden TOTAL, dos filas con el mismo valor
         // en la columna de orden pueden repartirse entre dos páginas y perderse o duplicarse.
         .order(cfg.orden || cfg.fecha, { ascending: true })
@@ -144,7 +162,7 @@ export default function RespaldoDatos({ onToast }) {
       }
       const nombreEmpresa = (nombreActiva || 'empresa').replace(/[^\w-]+/g, '_')
       await descargarArchivo({
-        filename: `${nombreEmpresa}_${cfg.tabla}_${mes}.csv`,
+        filename: `${nombreEmpresa}_${cfg.tabla}_${cfg.fecha ? mes : hoyStr()}.csv`,
         blob: new Blob(['﻿' + aCsv(filas)], { type: 'text/csv;charset=utf-8' }),
         mime: 'text/csv',
       })
@@ -225,6 +243,36 @@ export default function RespaldoDatos({ onToast }) {
               <span style={sx('font-size:12px;color:var(--muted);font-family:var(--font-mono)')}>
                 {progreso.toLocaleString('es-AR')} filas…
               </span>
+            ) : (
+              <button
+                onClick={() => exportar(cfg)}
+                disabled={!!trabajando || esTodas}
+                className="lu-press"
+                style={{
+                  ...sx('min-height:36px;padding:0 14px;border-radius:10px;border:none;font-size:12.5px;font-weight:600'),
+                  background: trabajando || esTodas ? 'var(--surface2)' : 'var(--primary)',
+                  color: trabajando || esTodas ? 'var(--faint)' : 'var(--on-primary)',
+                  cursor: trabajando || esTodas ? 'default' : 'pointer',
+                }}
+              >Descargar CSV</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={sx('margin:22px 0 8px;font-size:12.5px;color:var(--muted);line-height:1.6')}>
+        <b style={sx('color:var(--text)')}>Tablas maestras.</b> No dependen del mes: son el estado de hoy.
+        Sin ellas, los pedidos y las visitas de arriba son uuids sin nombre.
+      </div>
+      <div style={sx('display:flex;flex-direction:column;gap:8px')}>
+        {MAESTRAS.map((cfg) => (
+          <div key={cfg.tabla} style={sx('display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface)')}>
+            <div style={sx('flex:1;min-width:0')}>
+              <div style={sx('font-size:13px;font-weight:600')}>{cfg.label}</div>
+              <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>{cfg.tabla}</div>
+            </div>
+            {trabajando === cfg.tabla ? (
+              <span style={sx('font-size:12px;color:var(--muted);font-family:var(--font-mono)')}>{progreso.toLocaleString('es-AR')} filas…</span>
             ) : (
               <button
                 onClick={() => exportar(cfg)}

@@ -5,6 +5,7 @@ import { useTheme } from '../../../context/ThemeContext'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useAuth } from '../../../context/AuthContext'
 import useEmpresaBase from '../../../hooks/useEmpresaBase'
+import useFormasPago from '../../../hooks/useFormasPago'
 import LeafletMap from '../../../components/LeafletMap'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 import { fieldLabel } from '../ui'
@@ -34,6 +35,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const { theme } = useTheme()
   const { idEmpresa } = useAuth()
   const base = useEmpresaBase(idEmpresa) // dónde abre el mini-mapa si el cliente no tiene ubicación
+  const formasPago = useFormasPago(idEmpresa) // códigos del ERP, si el cliente los pasó (db/62)
   const { zonas, clientesTodos, updateCliente, deleteCliente } = useCatalog()
 
   // Estado inicializado del cliente. Al remontar por `key`, arranca limpio.
@@ -45,6 +47,9 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [horarioEdit, setHorarioEdit] = useState(fc.horario || '')
   const [telefonoEdit, setTelefonoEdit] = useState(fc.telefono || '')
   const [contactoEdit, setContactoEdit] = useState(fc.contacto || '')
+  // Forma de pago pactada con el comercio (`clientes.forma_pago_default`, db/62). Es el default
+  // que toma el pedido si el vendedor no elige otra. Existía en la base sin forma de cargarlo.
+  const [formaPagoEdit, setFormaPagoEdit] = useState(fc.formaPagoDefault || '')
   const [zonaEdit, setZonaEdit] = useState(fc.idZona || null)
   const [diasSel, setDiasSel] = useState(() => {
     const ds = {}
@@ -86,6 +91,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
       patch.horario = horarioEdit.trim() || null
       patch.telefono = telefonoEdit.trim() || null
       patch.contacto = contactoEdit.trim() || null
+      patch.forma_pago_default = formaPagoEdit.trim() || null
       // Si cambió la zona, heredar el vendedor dueño ("la zona lleva el vendedor").
       if ((zonaEdit || null) !== (fc.idZona || null)) {
         patch.id_zona = zonaEdit || null
@@ -152,6 +158,20 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
             <div>
               <div style={fieldLabel}>Horario</div>
               <input value={horarioEdit} onChange={(e) => setHorarioEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
+            </div>
+            <div>
+              <div style={fieldLabel}>Forma de pago habitual</div>
+              {/* Con la tabla de códigos del ERP cargada es un selector; sin ella, texto libre — el
+                  mismo criterio que la hoja de confirmación del vendedor: no inventar etiquetas. */}
+              {formasPago.length > 0 ? (
+                <select value={formaPagoEdit} onChange={(e) => setFormaPagoEdit(e.target.value)} className="lu-input" style={{ ...inp, cursor: 'pointer' }}>
+                  <option value="">Default de la empresa</option>
+                  {formasPago.map((f) => <option key={f.codigo} value={f.codigo}>{f.etiqueta || f.codigo}</option>)}
+                  {formaPagoEdit && !formasPago.some((f) => f.codigo === formaPagoEdit) && <option value={formaPagoEdit}>{formaPagoEdit}</option>}
+                </select>
+              ) : (
+                <input value={formaPagoEdit} onChange={(e) => setFormaPagoEdit(e.target.value)} placeholder="Código del ERP (opcional)" className="lu-input" style={inp} />
+              )}
             </div>
             <div>
               <div style={fieldLabel}>Zona</div>

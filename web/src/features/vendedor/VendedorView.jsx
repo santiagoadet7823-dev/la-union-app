@@ -166,7 +166,9 @@ export default function VendedorView() {
 
       {j.tab === 'inicio' && <InicioTab j={j} onCheckIn={alTocarCliente} onNuevoCliente={() => setModalCliente(true)} onEditarCliente={setEditCliId} onAbrirCatalogo={() => setCatalogoOpen(true)} />}
       {j.tab === 'catalogo' && <VisitaCatalogo j={j} inmersivo={inmersivo} onToggleInmersivo={() => setInmersivo((v) => !v)} />}
-      {j.tab === 'ruta' && <RutaTab j={j} />}
+      {/* El check-in desde el pin del mapa es la MISMA función que el botón de la lista: presencia
+          registrada una vez, y la hoja de "corregir o nuevo" si el comercio ya tiene pedido. */}
+      {j.tab === 'ruta' && <RutaTab j={j} onCheckIn={alTocarCliente} />}
 
       {j.sheet && <SinPedidoSheet j={j} />}
 

@@ -28,6 +28,9 @@ Documentos complementarios:
   bloqueaba murió en `db/48`). 🔴 Dos cosas que hay que saber antes de tocar un token: **no vencen
   nunca**, y el único es `(id_usuario, proposito)`, así que regenerar con la misma cuenta devuelve
   **el mismo valor** salvo que se fuerce `gen_random_uuid()`.
+- [PROPUESTAS_ADMIN.md](PROPUESTAS_ADMIN.md) — (16/09/2026) qué le falta a la parte administrativa,
+  rankeado por esfuerzo e impacto, con la referencia de código que evidencia cada hueco y qué parte
+  dependería del ERP del cliente. Es la lista de la que se eligen los próximos sprints.
 - [PLAN_SAAS.md](PLAN_SAAS.md) — migración planificada a `corporaciones → empresas`.
 - [PLAN_BACKEND_DEDICADO.md](PLAN_BACKEND_DEDICADO.md) — propuesta: backend Supabase self-hosted
   dedicado para un cliente (viabilidad, guía de puesta en marcha, qué replicar) + diseño de un
@@ -1011,11 +1014,11 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.25.0`** ✅ publicado por OTA (04/09) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
-| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.24.0` ✅ publicado (03/09). **1.25.0 NO lleva APK**: es todo JS | Versión visible del APK |
-| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `39` ✅ publicado → el próximo es **40** | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | **`1.25.0`** ✅ (verificado contra la base viva el 04/09) | Qué bundle OTA deben bajar los teléfonos |
-| `app_config.min_version` + `apk_url` | Supabase | **`1.24.0`** ✅ (subido el 03/09, con la reinstalación automática andando) | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.38.0`** — OTA armada el 17/09 (mapa de cartera + dashboard + 1.37.0); ⏳ **release en GitHub y `app_config` los corre el usuario** (ver HANDOFF §0000) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.37.0` compilada el 16/09 (`versionCode 42`), instalada a mano en el teléfono de Gabriel; ⏳ **sin release `apk-1.37.0` en GitHub**. 1.38.0 NO lleva APK: es todo JS | Versión visible del APK |
+| `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `42` → el próximo es **43** | Entero incremental de Android |
+| `app_config.bundle_version` + `latest_version` | Supabase | **`1.36.0`** (base viva, 17/09) → pasa a `1.38.0` con el `update` del HANDOFF §0000 | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.min_version` + `apk_url` | Supabase | **`1.36.0`** (base viva, 17/09). Subirlo a 1.37.0 es decisión del dueño: reinstala ~22 MB en cada teléfono | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
 > el código que actualiza solo tiene que llegar primero. Los teléfonos en 1.11.0 no podían bajar la

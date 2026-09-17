@@ -45,6 +45,111 @@
 
 ---
 
+## 🟧 0000. RELEASE 1.38.0 (17/09/2026) — OTA + PWA, todo lo del 16/09 en una sola actualización
+
+Junta tres cosas que estaban sin publicar: **1.37.0** (commit `0c158e9`: descarga del APK con
+progreso/cancelar/minimizar — la parte JS; la parte nativa ya está en el APK 1.37.0 que Gabriel
+instaló a mano), el **dashboard con gráficos + Pedidos + Faltante + respaldo** de la sesión del 16/09
+(abajo, §000-bis) y el **mapa de cartera del vendedor** (§000). Todo JS: **no lleva APK nuevo**.
+
+**Hecho en esta máquina:** `APP_VERSION 1.38.0` · `web/bundle.zip` compilado con `CAP_BUILD=1`
+sobre el commit (134 archivos, 2,19 MB — sube ~0,9 MB por el chunk del dashboard con Lightweight
+Charts; verificado que `assets/index-*.js` dice `1.38.0` y que `VendedorView-*.js` y
+`DashboardEquipo-*.js` traen lo nuevo) · commit + push a `main` (la PWA sale sola por el workflow).
+
+⏳ **Lo que corre el usuario** (el clasificador bloquea `gh release create`, igual que el 16/09),
+**en este orden**:
+
+```bash
+cd C:/dev/DisT-At/la-union-app
+gh release create ota-1.38.0 web/bundle.zip --repo santiagoadet7823-dev/la-union-app --title "OTA 1.38.0" --notes "Mapa de cartera del vendedor con check-in desde el pin, dashboard con gráficos, Pedidos con buscador y filtros, Faltante real, respaldo de maestras, descarga del APK con progreso"
+# Opcional, para que exista el APK 1.37.0 en GitHub (es el mismo .apk que se pasó por WhatsApp):
+gh release create apk-1.37.0 "C:/Users/santi/OneDrive/Desktop/DisT-At-1.37.0.apk" --repo santiagoadet7823-dev/la-union-app --title "APK 1.37.0" --notes "Descarga del APK con progreso, cancelar/reintentar y minimizar (nativo)"
+```
+
+Y **después** del release, en Supabase (SQL editor o MCP):
+
+```sql
+update public.app_config
+   set bundle_version = '1.38.0',
+       latest_version = '1.38.0',
+       bundle_url = 'https://github.com/santiagoadet7823-dev/la-union-app/releases/download/ota-1.38.0/bundle.zip',
+       updated_at = now();
+```
+
+⚠️ `min_version` **queda en 1.36.0** a propósito: subirlo a 1.37.0 reinstala ~22 MB en los nueve
+teléfonos (decisión del dueño, como en 1.21.0 y 1.24.0). Si se decide subirlo, va junto con
+`apk_url = …/apk-1.37.0/app-release.apk` y **después** del `gh release create apk-1.37.0`.
+Los tres congelados (Zura 1.21.0, Eduardo Ruiz 1.21.0, Alejandro Mercado 1.27.0) **no reciben esta
+OTA** hasta que instalen el APK: ver la nota del 16/09 en la memoria de sesión.
+
+**Cerrar el release mirando `estado_dispositivo`** (`app_version`, `bundle_aplicado`,
+`bundle_encolado`), no la respuesta del push. El `push-actualizacion` lo dispara el usuario.
+
+## 🟩 000-bis. SESIÓN DEL 16/09 — dashboard con gráficos, Pedidos, Faltante y respaldo
+
+(Esa sesión no dejó bloque en el HANDOFF; esto es el resumen a partir de `PROPUESTAS_ADMIN.md`,
+`DOCUMENTACION_FUNCIONAL.md` y los encabezados de `db/68`-`db/69`.)
+
+- **`features/dashboard/DashboardEquipo.jsx`**: un componente para las tres pantallas (grid en
+  `SupervisionDesktop` → ítem "Dashboard", scroll en `PanelDireccion`, compacto en el sheet de
+  `SupervisionMovil`). KPIs con delta contra el período anterior, ventas por día, km por día, donas
+  de estado/rubro/efectividad, ranking de vendedores, apiladas por vendedor, pedidos por hora.
+- **`components/charts/`**: `GraficoSerie` (Lightweight Charts, chunk propio, logo de atribución),
+  `Dona`, `BarrasH`, `BarrasApiladas`, `useTemaGrafico`, `paleta.js`.
+- **`db/68`** (`metricas_venta_equipo`, `ventas_por_categoria`, `pedidos_por_estado`; scope
+  adentro; ACL verificado sin anon/PUBLIC) y **`db/69`** (`metricas_actividad` con `mi_empresa()`
+  hoisted: 7 días de > 8 s a ~1 s). **Las dos ya están aplicadas en la base viva** (verificado
+  el 17/09: `proacl` = postgres, authenticated, service_role).
+- Hooks: `useMetricasVenta`, `useDesglosesVenta`, `useFormasPago`; `useMetricasActividad` en
+  tramos de 7 días con caché por día.
+- Pedidos: buscador y filtros, estado de entrega y marca ERP en la fila, historial de correcciones
+  y condiciones en el detalle; forma de pago en la ficha del cliente; **Faltante con datos reales**
+  (sobre `pedido_items.cantidad_entregada`); respaldo de las tablas maestras (`RespaldoDatos`).
+- Dependencia nueva: `lightweight-charts ^5.2.1` (Apache 2.0).
+- **`PROPUESTAS_ADMIN.md`**: 20 propuestas para gestión rankeadas por esfuerzo e impacto, con
+  la referencia de código de cada hueco — de ahí salen los próximos sprints.
+
+## 🟩 000. SESIÓN DEL 16/09 — el mapa de la cartera del vendedor, tocable y a pantalla completa
+
+Plan en `~/.claude/plans/pense-en-una-funcion-mutable-mountain.md`. Pedido del usuario: que el
+vendedor vea en el mapa los comercios con ubicación y pueda hacer **check-in desde el pin**, como
+alternativa a buscar en la lista; y un botón de abrir el mapa como tienen las supervisiones.
+
+**Sale por OTA + PWA (JS puro, sin base ni RLS). Sin publicar todavía.**
+- `features/vendedor/MapaCartera.jsx` (nuevo): los 702 comercios ubicados van por la capa `clients`
+  de `LeafletMap` (canvas, un nodo) con color por estado; la próxima parada es el único pin del DOM.
+  Tarjeta al tocar (nombre · loc · código · estado · distancia) con **Check-in** / "Volver a abrir",
+  que llama a la misma `alTocarCliente` de `VendedorView`. Botón de pantalla completa
+  (`BtnInmersivo`, atrás de Android lo cierra) y de centrar en mí. **Un solo mapa** que cambia de
+  tamaño (`fixed` en celular, `absolute` en el marco de PC), no dos.
+- `LeafletMap`: `onClientClick(index)` y `clientRadius` (opt-in; las supervisiones no cambian), y
+  los `markers` con handler frenan la propagación al mapa (si no, `onMapClick` cerraba la tarjeta
+  en el mismo toque que la abría). Las fichas de cliente, que no pasan `onMarkerClick`, siguen igual.
+- 🩸 **Bug que se llevó puesto**: `RutaTab` dibujaba 702 pines numerados con el índice del array
+  FILTRADO (`clients.filter(lat).map((c, i) => …)`), así que el "07" del mapa no era el "07" de la
+  lista. Y ninguno se tocaba.
+
+**Verificado en el navegador** (sesión real, `VendedorView` montado sin `GpsGate` por un módulo
+efímero — regla 51; en la PC no hay GPS, no vale la pena pelearlo): puntos por estado, toque →
+tarjeta con el comercio correcto y el punto resaltado, toque en el mapa la cierra, pantalla completa
+entra y sale, **Check-in desde el mapa** abrió la visita (fila real en `visitas`, `en_curso` →
+`cancelado`, borrada después). Supervisión de escritorio con "Clientes · 703": radio 4, sin cambios.
+
+- ⚠️ **Preexistente, no de esta sesión**: al abrir `PanelDireccion` (superadmin en vista celular)
+  la consola tira `[boot] Uncaught TypeError: Cannot read properties of undefined (reading
+  'clearRect')`. Se confirmó con `git stash` de `LeafletMap.jsx`: pasa igual sin estos cambios. La
+  pantalla se dibuja bien; es el mini-mapa de canvas. Queda para mirar.
+- 🔧 `.pw/driver.mjs` (fuera del repo) ganó la op `geo` (`{"op":"geo","lat":…,"lng":…}`): concede
+  el permiso y re-fija la ubicación cada 10 s, porque Playwright sella el `timestamp` del fix y a
+  los 2 min el `GpsGate` lo da por viejo. No alcanzó: `GpsProvider` mira el rol REAL (superadmin no
+  es móvil) y `pos` nunca llega; por eso el módulo efímero.
+
+**Dos mejoras propuestas, sin implementar** (anexo del plan): (A) filtrar la jornada por
+`dias_visita` — 1.592 de 2.020 activos lo tienen cargado y la app no lo mira: la jornada es la
+cartera entera todos los días; (B) meta diaria por vendedor en `perfiles` — hoy es `900000` a
+mano en `useJornada.js` e `InicioTab.jsx`.
+
 ## 🟩 00. SESIÓN DEL 13/09 — bajar el consumo de Edge Functions y de datos
 
 Plan aprobado en `~/.claude/plans/como-bajamos-el-consumo-curried-gosling.md`. Regla 60 de

@@ -26,10 +26,10 @@ import { apilarAtras } from '../../services/atras'
 import { sx } from '../../lib/sx'
 import { colorPorId } from '../../lib/colors'
 import { hoyStr, initials, fmtDuracion } from '../../lib/format'
-import { compararDia, compararRango, serieParaBarras } from '../../lib/comparar'
+import { compararDia, compararRango } from '../../lib/comparar'
 import { titular as generarTitular, periodoTxt, horizonteInicial } from './titulares'
-import KpiCard from './components/KpiCard'
 import MiniKpi from './components/MiniKpi'
+import useMetricasVenta from '../../hooks/useMetricasVenta'
 import FilaEquipo from './components/FilaEquipo'
 import SinDatoBloque from './components/SinDatoBloque'
 import SheetPersona from './components/SheetPersona'
@@ -46,6 +46,10 @@ import { marcadoresCartera } from '../../lib/marcadoresCartera'
 // encima del GestionHost (--z-screen, 400) — mismo apilamiento que en SupervisionMovil.
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
+// El bloque de ventas con gráficos (16/09/2026): el mismo módulo que la vista "Dashboard" de la
+// consola de PC y la pestaña de métricas del APK. Lazy por el mismo motivo que el despacho: la
+// librería de gráficos baja aparte y el chunk de esta pantalla sigue siendo el pulso del período.
+const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
 
 /**
  * PANEL DE DIRECCIÓN — la pantalla de `admin`/`superadmin` EN CELULAR (web/PWA).
@@ -117,6 +121,9 @@ export default function PanelDireccion() {
   const esHoy = fechaMapa === hoyStr()
 
   const m = useMetricasActividad(horizonte, !!idEmpresa)
+  // Ventas del período: alimentan el titular ("van 12 % arriba de una semana normal") y se le
+  // pasan al dashboard para que no las pida dos veces.
+  const v = useMetricasVenta(horizonte, !!idEmpresa)
   const { filas: diag } = useDiagnosticoEquipo()
   const { movers, nombres, fotos, roles, plantel } = useEquipoEnVivo()
   const { idEmpresaActiva } = useTenant()
@@ -203,10 +210,8 @@ export default function PanelDireccion() {
     const f = horizonte === 'hoy'
       ? (serie) => compararDia(serie, m.hasta)
       : (serie) => compararRango(serie, m.desde, m.hasta)
-    return { km: f(m.serieKm), paradas: f(m.serieParadas), minutos: f(m.serieMinutos) }
-  }, [horizonte, m.serieKm, m.serieParadas, m.serieMinutos, m.desde, m.hasta])
-
-  const barras = useMemo(() => serieParaBarras(m.serieKm, m.hasta, m.barras), [m.serieKm, m.hasta, m.barras])
+    return { km: f(m.serieKm), paradas: f(m.serieParadas), minutos: f(m.serieMinutos), ventas: f(v.serieMonto) }
+  }, [horizonte, m.serieKm, m.serieParadas, m.serieMinutos, m.desde, m.hasta, v.serieMonto])
 
   const { titular, subtitular } = generarTitular({
     horizonte,
@@ -216,6 +221,10 @@ export default function PanelDireccion() {
     unicoNombre: activos.length === 1 ? activos[0].nombre : null,
     ultimoCierreTs: m.ultimoCierreTs,
     km: cmp.km,
+    // Horizonte 2 (previsto desde el diseño v1.3, vivo desde el 16/09/2026): con pedidos en el
+    // período el titular habla de plata. `titular()` sólo lo usa si el porcentaje tiene base.
+    hayVentas: v.activo && !v.loading && v.total.pedidos > 0,
+    ventas: cmp.ventas,
   })
 
   // Frescura del dato: es parte del dato. Si el último punto tiene más de 5 minutos, el chip pasa
@@ -461,15 +470,21 @@ export default function PanelDireccion() {
               </div>
             )}
 
+            {/* Ventas + actividad con gráficos. Va ARRIBA del mapa: el dueño abre esto para
+                saber si el negocio funciona, y eso hoy son pesos antes que kilómetros. Adentro
+                están el KPI de km y su serie por día (antes eran la KpiCard con sparkline de divs). */}
             <div style={sx('margin-top:16px')}>
-              <KpiCard
-                label="Km recorridos"
-                valor={m.total.km.toFixed(1)}
-                unidad="km"
-                comp={cmp.km}
-                barras={barras}
-                barrasLabel={horizonte === 'hoy' ? 'últimos 8 días' : 'día por día'}
-              />
+              <Suspense fallback={<div className="lu-sk" style={sx('height:220px;border-radius:var(--r-card);background:var(--sk)')} />}>
+                <DashboardEquipo
+                  layout="scroll"
+                  horizonte={horizonte}
+                  nombres={nombres}
+                  metricasVenta={v}
+                  metricasActividad={m}
+                  onAbrirPersona={setPersonaSel}
+                  activo={!!idEmpresa}
+                />
+              </Suspense>
             </div>
 
             <div style={sx('margin-top:11px;display:grid;grid-template-columns:1fr 1fr;gap:11px')}>
@@ -527,13 +542,6 @@ export default function PanelDireccion() {
               Ver el informe de la jornada
             </button>
 
-            {/* La explicación de que no hay ventas va acá abajo, chica y al final. NO es un cartel
-                de "PRÓXIMAMENTE" ni una grilla de guiones: la pantalla de hoy está completa con lo
-                que hay, y el bloque de venta entrará arriba cuando existan pedidos. */}
-            <div style={sx('margin-top:20px;padding:13px 15px;border-radius:var(--r-md);background:var(--surface2);border:1px dashed var(--line2);font-size:var(--fs-sm);color:var(--muted);line-height:1.6')}>
-              Todavía no hay pedidos cargados en el sistema, así que no hay números de venta. Cuando el
-              módulo arranque, aparecen como una tarjeta más arriba de estas, sin cambiar nada de lo que ya ves.
-            </div>
           </>
         )}
       </div>

@@ -1,10 +1,7 @@
 import { sx } from '../../../lib/sx'
 import { Route } from '../../../components/icons'
-import LeafletMap from '../../../components/LeafletMap'
-import ErrorBoundary from '../../../components/ErrorBoundary'
-import { useTheme } from '../../../context/ThemeContext'
 import { useGps } from '../../../context/GpsContext'
-import { ROUTE_COLOR, CENTRO } from '../../../data/demoGeo'
+import MapaCartera from '../MapaCartera'
 
 /**
  * Pestaña "Ruta": mapa GRANDE (ocupa casi toda la pantalla) con el botón de ruta óptima y las
@@ -12,37 +9,18 @@ import { ROUTE_COLOR, CENTRO } from '../../../data/demoGeo'
  * vendedor vive dentro del AppShell + PhoneFrame, así que un mapa "pantalla completa" flotante
  * dejaba el botón de ruta fuera de cuadro; con scroll + reserva para la bottom-nav, todo queda
  * siempre alcanzable y el mapa igual es grande (70vh).
+ *
+ * Desde el 16/09/2026 el mapa es `MapaCartera`: los comercios ubicados se tocan, se hace check-in
+ * desde el pin y hay botón de pantalla completa. `onCheckIn` es la misma función que usa la
+ * tarjeta de la lista de "Inicio" (`alTocarCliente` en `VendedorView`).
  */
-export default function RutaTab({ j }) {
-  const { theme } = useTheme()
+export default function RutaTab({ j, onCheckIn }) {
   const { pos: livePos, error: gpsError } = useGps()
-  const { clients, nextId, pend, pendingCoords, routeCalc, setRouteCalc, rutaInfo, setRutaInfo } = j
+  const { nextId, pend, pendingCoords, routeCalc, setRouteCalc, rutaInfo } = j
 
   return (
     <div style={sx('flex:1;overflow-y:auto;padding:10px 10px calc(96px + env(safe-area-inset-bottom))')}>
-      <ErrorBoundary compact message="No se pudo cargar el mapa (revisá tu conexión).">
-        <LeafletMap
-          theme={theme}
-          height="70vh"
-          center={livePos || CENTRO}
-          markers={clients
-            .filter((c) => c.lat != null)
-            .map((c, i) => {
-              const esProxima = c.id === nextId
-              return {
-                lat: c.lat, lng: c.lng, label: String(i + 1).padStart(2, '0'), title: c.name,
-                color: esProxima ? (theme === 'dark' ? '#2DD4CE' : '#0ABAB5') : c.status === 'visitado' ? (theme === 'dark' ? '#34D399' : '#10B981') : c.status === 'sin_pedido' ? (theme === 'dark' ? '#FBBF24' : '#F59E0B') : (theme === 'dark' ? '#5C7370' : '#93A9A7'),
-                labelColor: '#fff', selected: esProxima,
-              }
-            })}
-          live={livePos}
-          route={routeCalc ? pendingCoords : null}
-          routeColor={ROUTE_COLOR[theme] || ROUTE_COLOR.dark}
-          optimize
-          roundtrip={false}
-          onRouteInfo={setRutaInfo}
-        />
-      </ErrorBoundary>
+      <MapaCartera j={j} onCheckIn={onCheckIn} />
 
       {/* Estado real del GPS del dispositivo */}
       <div style={sx('display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>

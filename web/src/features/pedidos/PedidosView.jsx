@@ -10,6 +10,8 @@ import { textoPapelera, porVencer, DIAS_PAPELERA } from './papelera'
 import { exportarPedidosAscii } from './exportarPedidos'
 import { Bajar } from '../../components/icons'
 import AvisoCuarentena from '../../components/AvisoCuarentena'
+import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
+import { normalizar } from '../../lib/texto'
 
 /**
  * REVISAR LOS PEDIDOS. Pantalla de gestión (encargado / admin / superadmin).
@@ -47,6 +49,26 @@ const RANGOS = [
   { key: '30', label: '30 días', dias: 29 },
 ]
 
+/* 🩸 BUSCADOR Y FILTROS EN MEMORIA (16/09/2026). `usePedidos` ya trae todas las filas del rango
+ * (paginadas de a 1.000), así que buscar por número/comercio/persona y filtrar por estado de
+ * entrega, repartidor o "sin exportar" no cuesta una consulta: es un `filter` sobre lo cargado.
+ * Hasta hoy la única forma de encontrar un pedido era recorrer la lista a ojo — con nueve
+ * vendedores y un mes de rango son cientos de filas. El filtro SÍ alcanza a la exportación:
+ * "Exportar para facturar" baja lo que la lista muestra, o sea que ahora se puede filtrar
+ * "Sin exportar" y bajar exactamente eso. */
+const ESTADOS_ENTREGA = ['Pendiente', 'En camino', 'Entregado', 'No entregado']
+
+/** Tono de la pill de estado. Mismos colores que la dona "Pedidos por estado" del dashboard. */
+export function tonoEstado(estado) {
+  switch (estado) {
+    case 'Entregado':    return ['var(--success)', 'var(--success-tint)']
+    case 'En camino':    return ['var(--info)', 'var(--info-tint)']
+    case 'No entregado': return ['var(--warning)', 'var(--warning-tint)']
+    case 'Anulado':      return ['var(--danger)', 'var(--danger-tint)']
+    default:             return ['var(--deep)', 'var(--primary-tint)']
+  }
+}
+
 /** [desde, hasta) en hora LOCAL. Salta es UTC−3: un rango en UTC se comería tres horas del día. */
 function rangoDe(dias) {
   const h = new Date()
@@ -59,6 +81,12 @@ export default function PedidosView({ onToast }) {
   const { user, rol } = useAuth()
   const [rango, setRango] = useState('7')
   const [filtroVendedor, setFiltroVendedor] = useState('')
+  const [busqueda, setBusqueda] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('')         // '' | uno de ESTADOS_ENTREGA
+  const [filtroRepartidor, setFiltroRepartidor] = useState('') // '' | id | 'sin'
+  const [soloSinExportar, setSoloSinExportar] = useState(false)
+  const equipo = usePerfilesEquipo()
+  const repartidores = useMemo(() => (equipo || []).filter((u) => u.rol === 'repartidor'), [equipo])
   const [vista, setVista] = useState('activos')  // 'activos' | 'papelera'
   const [detalle, setDetalle] = useState(null)   // { pedido, lineas } — el pedido abierto
   const [ticket, setTicket] = useState(null)     // { pedido, lineas } — el comprobante
@@ -81,7 +109,25 @@ export default function PedidosView({ onToast }) {
     usePedidos({ desde, hasta, idVendedor: filtroVendedor || null, papelera: true })
 
   const enPapelera = vista === 'papelera'
-  const pedidos = enPapelera ? anulados : activos
+  const pedidosVista = enPapelera ? anulados : activos
+
+  // Lo que se ve: la pestaña, pasada por el buscador y los filtros. Los filtros de estado, de
+  // repartidor y de exportación son de la lista viva; en la papelera sólo aplica el buscador.
+  const hayFiltro = !!(busqueda.trim() || (!enPapelera && (filtroEstado || filtroRepartidor || soloSinExportar)))
+  const pedidos = useMemo(() => {
+    const q = normalizar(busqueda.trim())
+    return pedidosVista.filter((p) => {
+      if (q) {
+        const pajar = normalizar(`${p.numero || ''} ${p.comercio?.name || ''} ${p.comercio?.codigo || ''} ${p.nombreVendedor || ''}`)
+        if (!pajar.includes(q)) return false
+      }
+      if (enPapelera) return true
+      if (filtroEstado && p.estado !== filtroEstado) return false
+      if (filtroRepartidor === 'sin' ? !!p.id_repartidor : (filtroRepartidor && p.id_repartidor !== filtroRepartidor)) return false
+      if (soloSinExportar && p.exportado_ts) return false
+      return true
+    })
+  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, soloSinExportar])
   const cargandoAhora = enPapelera ? cargandoPapelera : cargando
   const errorAhora = enPapelera ? errorPapelera : error
 
@@ -108,7 +154,8 @@ export default function PedidosView({ onToast }) {
   // que seguir estando en el selector — si no, filtrar por esa persona sería imposible justo cuando
   // se la quiere revisar.
   const personas = useMemo(() => vendedoresDe([...activos, ...anulados]), [activos, anulados])
-  const totalVendido = activos.reduce((a, p) => a + Number(p.monto_total || 0), 0)
+  // Sobre lo que se ve: con un filtro puesto, "Vendido" es lo vendido de esa selección.
+  const totalVendido = (enPapelera ? activos : pedidos).reduce((a, p) => a + Number(p.monto_total || 0), 0)
 
   /**
    * Bajar el archivo para facturar en el sistema del cliente, en el formato ASCII de 25 campos que
@@ -128,7 +175,8 @@ export default function PedidosView({ onToast }) {
    * esto es el cinturón además del tirante.
    */
   async function exportar() {
-    const paraExportar = activos.filter((p) => p.estado !== 'Anulado')
+    // `pedidos` ya es la lista viva filtrada (la pestaña de papelera no ofrece el botón).
+    const paraExportar = pedidos.filter((p) => p.estado !== 'Anulado')
     if (!paraExportar.length) { onToast?.('No hay pedidos para exportar en este rango.'); return }
     setExportando(true)
     try {
@@ -186,6 +234,15 @@ export default function PedidosView({ onToast }) {
           {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
 
+        <input
+          type="search"
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar número, comercio o persona"
+          aria-label="Buscar pedidos"
+          style={sx('flex:1;min-width:170px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px')}
+        />
+
         {/* Para facturar en el sistema del cliente. Va con los filtros y no arriba del todo porque
             lo que baja es EXACTAMENTE lo que la lista muestra. No aparece en la papelera: ahí no hay
             nada que facturar, y un botón de exportar sobre pedidos anulados sólo puede terminar mal. */}
@@ -239,12 +296,55 @@ export default function PedidosView({ onToast }) {
         ))}
       </div>
 
+      {/* ── Filtros de la lista viva: estado de entrega · repartidor · sin exportar ─────── */}
+      {!enPapelera && (
+        <div style={sx('display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px')}>
+          {['', ...ESTADOS_ENTREGA].map((e) => {
+            const on = filtroEstado === e
+            const [color, tint] = e ? tonoEstado(e) : ['var(--text)', 'var(--surface2)']
+            return (
+              <button
+                key={e || 'todos'}
+                onClick={() => setFiltroEstado(e)}
+                className="lu-press"
+                style={{
+                  ...sx('padding:5px 11px;border-radius:99px;font-size:11.5px;font-weight:600;cursor:pointer'),
+                  border: `1px solid ${on ? color : 'var(--line2)'}`,
+                  background: on ? tint : 'transparent',
+                  color: on ? color : 'var(--muted)',
+                }}
+              >{e || 'Todos'}</button>
+            )
+          })}
+          <select
+            value={filtroRepartidor}
+            onChange={(e) => setFiltroRepartidor(e.target.value)}
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:11.5px')}
+          >
+            <option value="">Cualquier repartidor</option>
+            <option value="sin">Sin repartidor</option>
+            {repartidores.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+          </select>
+          <label style={sx('display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);cursor:pointer;user-select:none')}>
+            <input type="checkbox" checked={soloSinExportar} onChange={(e) => setSoloSinExportar(e.target.checked)} />
+            Sin exportar
+          </label>
+          {hayFiltro && (
+            <button
+              onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroRepartidor(''); setSoloSinExportar(false) }}
+              className="lu-press"
+              style={sx('margin-left:auto;padding:5px 10px;border:none;background:transparent;color:var(--deep);font-size:11.5px;font-weight:600;cursor:pointer')}
+            >Limpiar filtros</button>
+          )}
+        </div>
+      )}
+
       {/* ── Resumen ─────────────────────────────────────────────────────────────────────── */}
       {!enPapelera ? (
         <div style={sx('display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
           <div>
-            <div style={sx('font-size:10.5px;color:var(--faint)')}>Pedidos</div>
-            <div style={sx('font-size:19px;font-weight:700')}>{activos.length}</div>
+            <div style={sx('font-size:10.5px;color:var(--faint)')}>{hayFiltro ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
+            <div style={sx('font-size:19px;font-weight:700')}>{pedidos.length}{hayFiltro ? <span style={sx('font-size:11px;color:var(--faint);font-weight:400')}> de {activos.length}</span> : null}</div>
           </div>
           <div>
             <div style={sx('font-size:10.5px;color:var(--faint)')}>Vendido</div>
@@ -283,14 +383,21 @@ export default function PedidosView({ onToast }) {
         <div style={sx('padding:26px;text-align:center;color:var(--faint);font-size:13px')}>Cargando pedidos…</div>
       )}
 
-      {!errorAhora && !cargandoAhora && !pedidos.length && enPapelera && (
+      {!errorAhora && !cargandoAhora && !pedidosVista.length && enPapelera && !hayFiltro && (
         <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
           <b>La papelera está vacía.</b><br />
           No se anuló ningún pedido en este rango.
         </div>
       )}
 
-      {!errorAhora && !cargandoAhora && !pedidos.length && !enPapelera && (
+      {!errorAhora && !cargandoAhora && !pedidos.length && hayFiltro && (
+        <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
+          <b>Ningún pedido coincide con la búsqueda o los filtros.</b><br />
+          Hay {pedidosVista.length} en este rango{enPapelera ? ' en la papelera' : ''}.
+        </div>
+      )}
+
+      {!errorAhora && !cargandoAhora && !pedidosVista.length && !enPapelera && !hayFiltro && (
         <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
           <b>No hay pedidos en este rango.</b><br />
           Los pedidos se empezaron a guardar el <b>19/08/2026</b>; antes de esa fecha la app los
@@ -319,12 +426,28 @@ export default function PedidosView({ onToast }) {
                   {p.comercio?.name || 'Comercio dado de baja'}
                 </span>
               </div>
-              <div style={sx('font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--font-mono)')}>
+              <div style={sx('display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--font-mono)')}>
+                {/* Estado de entrega y marca de exportación (16/09/2026): hasta hoy la fila no decía
+                    si el pedido salió, llegó o ya se facturó — había que abrir cada uno. La pill
+                    sólo va en la lista viva; en la papelera el estado es siempre "Anulado" y ya lo
+                    dice la línea roja de abajo. */}
+                {!anulado && (
+                  <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
+                    {p.estado}
+                  </span>
+                )}
+                {p.exportado_ts && (
+                  <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
+                    ERP{p.export_lote ? ` #${p.export_lote}` : ''}
+                  </span>
+                )}
+                <span>
                 {fmtFecha(p.created_at)} · {p.nombreVendedor || '—'}
                 {p.origen === 'vidriera' ? ' · tablet' : ''}
                 {/* La distancia informa; no acusa. Se muestra el número y nada más — el GPS de
                     estos equipos miente hasta 30 m y el comercio puede no tener ubicación. */}
                 {p.distancia_m != null ? ` · ${Math.round(p.distancia_m)} m` : ''}
+                </span>
               </div>
               {anulado && (
                 <div style={sx('font-size:10.5px;color:var(--danger);margin-top:3px')}>

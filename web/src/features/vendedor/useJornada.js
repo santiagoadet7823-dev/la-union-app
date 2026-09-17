@@ -9,6 +9,7 @@ import { distanciaMetros } from '../../services/geolocation/geofence'
 import { supabase } from '../../services/supabase'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
 import { useVidriera } from '../vidriera/useVidriera'
+import useFormasPago from '../../hooks/useFormasPago'
 
 const now = () => {
   const d = new Date()
@@ -48,27 +49,9 @@ export function useJornada() {
   // posición ya adquirida por el watch (sin prompt); id/idEmpresa vienen del perfil real.
   const { pos, id: userId, nombre: nombreUsuario, idEmpresa } = useGps()
 
-  /* LAS FORMAS DE PAGO QUE ACEPTA EL ERP (db/62). Salen de `empresas.export_erp.formas_pago` y no
-   * del código porque todavía NO SABEMOS sus códigos: el campo 7 del archivo del cliente viene `3`
-   * en las 300 filas del ejemplo y que sea la forma de pago es una deducción — los encabezados
-   * nunca llegaron. Mientras esto venga vacío, la hoja de confirmación no muestra el selector (ver
-   * `ConfirmarPedidoSheet`): es preferible no preguntar a que el vendedor cargue con confianza una
-   * etiqueta inventada que viaja a facturación con cara de dato bueno.
-   *
-   * Una consulta de una fila al montar. No va en la caché del catálogo: eso se baja una vez por
-   * jornada y esto tiene que poder corregirse el mismo día que el cliente conteste. */
-  const [formasPago, setFormasPago] = useState([])
-  useEffect(() => {
-    if (!idEmpresa) return
-    let vivo = true
-    ;(async () => {
-      const { data } = await supabase.from('empresas').select('export_erp').eq('id', idEmpresa).maybeSingle()
-      if (!vivo) return
-      const fp = data?.export_erp?.formas_pago
-      setFormasPago(Array.isArray(fp) ? fp : [])
-    })()
-    return () => { vivo = false }
-  }, [idEmpresa])
+  // Las formas de pago que acepta el ERP (db/62). Ver el encabezado de `useFormasPago`: mientras
+  // venga vacío, `ConfirmarPedidoSheet` no muestra el selector, y eso es deliberado.
+  const formasPago = useFormasPago(idEmpresa)
   const [tab, setTab] = useState('inicio')
   const [visit, setVisit] = useState(null)
   const [seconds, setSeconds] = useState(0)

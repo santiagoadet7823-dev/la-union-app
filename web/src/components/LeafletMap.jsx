@@ -14,7 +14,8 @@ import { crearAnimadorPines } from '../features/supervision/animarPin'
  * props: theme, center, zoom, markers[{lat,lng,label,color,labelColor,title,selected}],
  *        depot{lat,lng,title}, live{lat,lng}, route[{lat,lng}], routeColor,
  *        circle{lat,lng,radiusM,color}, dwells[{lat,lng,label,sub,color}], height,
- *        onMarkerClick(index)
+ *        onMarkerClick(index), clients[{lat,lng,nombre,color,abrev,zona}], onClientClick(index),
+ *        clientRadius
  */
 
 // El basemap ya NO depende del tema: lo elige el usuario y es global (services/maps/basemap.js).
@@ -428,7 +429,16 @@ export default function LeafletMap({
   // prende/apaga con un toggle en Supervisión). NO entran al fitBounds (el encuadre lo mandan
   // los recorridos/móviles, no los 2.000 comercios) y viven en su propio layerGroup con efecto
   // propio, para no re-dibujarlos en cada tick de "hace Xs".
+  // Cada uno puede traer `radio`, `stroke` y `peso` propios (el mapa del vendedor resalta así al
+  // comercio tocado); si no vienen, se usan `clientRadius` y el borde por tema.
   clients = [],
+  // Toque sobre un cliente de la capa de contexto: `(index)` dentro de `clients`. Opcional (16/09/2026,
+  // mapa de cartera del vendedor): sin él la capa sigue siendo puramente informativa, como en las
+  // supervisiones. Va por ref igual que `onMarkerClick`, para no redibujar 700 puntos por render.
+  onClientClick,
+  // Radio del puntito de cliente. 4 es el de siempre (contexto detrás de un recorrido); el mapa del
+  // vendedor pasa más, porque ahí el punto es el TARGET TÁCTIL y con 4 px no lo agarra un dedo.
+  clientRadius = 4,
   trail = null,
   trailColor = '#2DD4CE',
   trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
@@ -503,6 +513,8 @@ export default function LeafletMap({
   clickRef.current = onMarkerClick
   const dwellClickRef = useRef(onDwellClick)
   dwellClickRef.current = onDwellClick
+  const clientClickRef = useRef(onClientClick)
+  clientClickRef.current = onClientClick
   const mapClickRef = useRef(onMapClick)
   mapClickRef.current = onMapClick
   const seguirFinRef = useRef(onSeguirCancelado)
@@ -767,7 +779,10 @@ export default function LeafletMap({
         ? bubbleIcon({ foto: mk.foto, iniciales: mk.label, color: mk.color, nombre: mk.title, ts: mk.ts, selected: mk.selected })
         : pinIcon(mk.color, mk.label, mk.labelColor, mk.selected)
       const m = L.marker([mk.lat, mk.lng], { icon, title: mk.title || '' })
-      m.on('click', () => clickRef.current?.(i))
+      // Con handler, el toque es DEL PIN y no llega al mapa: si no, un `onMapClick` que cierra la
+      // tarjeta (mapa del vendedor) la cerraría en el mismo toque que la abre. Sin handler no se
+      // frena nada — las fichas de cliente usan el click del mapa para mover el punto.
+      m.on('click', (e) => { if (!clickRef.current) return; L.DomEvent.stopPropagation(e); clickRef.current(i) })
       m.addTo(layer)
     })
 
@@ -1162,21 +1177,25 @@ export default function LeafletMap({
       if (chip === modoChip) return
       modoChip = chip
       layer.clearLayers()
-      ;(clients || []).forEach((cl) => {
+      const tocable = !!clientClickRef.current
+      ;(clients || []).forEach((cl, i) => {
         if (cl.lat == null || cl.lng == null) return
         const color = cl.color || neutro
         const tip = [cl.abrev, cl.nombre, cl.zona].filter(Boolean).join(' · ')
         const m = chip && cl.abrev
           ? L.marker([cl.lat, cl.lng], { icon: zonaChipIcon({ abrev: cl.abrev, color, stroke }), interactive: true, keyboard: false })
-          : L.circleMarker([cl.lat, cl.lng], { radius: 4, color: stroke, weight: 1, fillColor: color, fillOpacity: 0.95 })
-        if (tip) m.bindTooltip(tip, { direction: 'top', offset: [0, chip ? -8 : -4] })
+          : L.circleMarker([cl.lat, cl.lng], { radius: cl.radio || clientRadius, color: cl.stroke || stroke, weight: cl.peso || 1, fillColor: color, fillOpacity: 0.95 })
+        // Con handler, el tooltip sobra: el toque abre algo más rico que un globito, y en un
+        // teléfono el tooltip aparecería junto con el toque y taparía justo lo que se abrió.
+        if (tip && !tocable) m.bindTooltip(tip, { direction: 'top', offset: [0, chip ? -8 : -4] })
+        if (tocable) m.on('click', (e) => { L.DomEvent.stopPropagation(e); clientClickRef.current?.(i) })
         m.addTo(layer)
       })
     }
     dibujar()
     map.on('zoomend', dibujar)
     return () => { map.off('zoomend', dibujar) }
-  }, [clients, theme])
+  }, [clients, theme, clientRadius])
 
   // 🩸 `isolation: isolate` (20/07/2026) — NO SACAR.
   //

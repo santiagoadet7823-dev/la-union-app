@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { persistence } from '../services/persistence'
 import { useAuth } from '../context/AuthContext'
@@ -32,6 +32,20 @@ const VENTANAS = {
 
 const REFRESH_MS = 60000
 const CACHE_KEY = 'lu-metricas-cache'
+const TRAMO_DIAS = 7   // ~1-1,6 s por tramo desde db/69, lejos de los 8 s de statement_timeout (ver cargarHistorico)
+const DIAS_CACHE = 160 // cubre la ventana de "mes" (150) con margen
+
+/* 🩸 UNA SOLA `metricas_actividad` EN VUELO POR CLIENTE (16/09/2026). La RPC lee ~18.000 filas de
+ * `posiciones` por día de empresa. Lanzadas varias a la vez (StrictMode en dev monta los efectos
+ * dos veces, y en producción el informe de jornada pide 'mes' mientras el dashboard pide 'semana')
+ * se pisan en la base y se acercan al timeout. Por eso todas las llamadas de este hook, de
+ * cualquier instancia, pasan por esta cola a nivel de módulo: se ejecutan de a una, en orden. */
+let cola = Promise.resolve()
+function enCola(fn) {
+  const p = cola.then(fn, fn)
+  cola = p.catch(() => {})
+  return p
+}
 
 /* 🩸 EL HISTÓRICO SE PIDE UNA VEZ; LO QUE SE REFRESCA ES SÓLO HOY (13/09/2026).
  *
@@ -41,12 +55,13 @@ const CACHE_KEY = 'lu-metricas-cache'
  * a 30. O sea que el panel del dueño le pedía a la base recalcular un mes de recorridos cada
  * minuto para mover los números de un solo día — el único que cambia mientras se mira.
  *
- * Ahora son dos consultas: el histórico (`desdeConsulta` → ayer) se pide una vez por día y
- * horizonte y se guarda en `persistence` (SQLite/localStorage), y `hoy` es la única que va al
- * `setInterval`. La respuesta y el `derivado` son los mismos: `filas = histórico ∪ hoy`.
+ * Ahora son dos consultas: el histórico (`desdeConsulta` → ayer) se pide por tramos y se guarda
+ * DÍA POR DÍA en `persistence` (SQLite/localStorage) —ver `cargarHistorico`, 16/09/2026—, y `hoy`
+ * es la única que va al `setInterval`. La respuesta y el `derivado` son los mismos:
+ * `filas = histórico ∪ hoy`.
  *
- * La caché va por usuario además de por día y horizonte: la RPC filtra por `mi_empresa()` y por
- * `ids_a_mi_cargo()`, así que dos personas de la misma empresa pueden ver filas distintas. */
+ * La caché va por usuario: la RPC filtra por `mi_empresa()` y por `ids_a_mi_cargo()`, así que dos
+ * personas de la misma empresa pueden ver filas distintas. */
 
 export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
   const { user } = useAuth()
@@ -56,6 +71,10 @@ export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [updatedAt, setUpdatedAt] = useState(null)
+  // Generación de la carga de histórico: cada llamada la incrementa y, después de cada `await`,
+  // una carga vieja que ve otra generación se retira. Sin esto, cambiar de horizonte (o el doble
+  // montaje de StrictMode) dejaba dos bucles de tramos escribiendo el mismo estado.
+  const genRef = useRef(0)
 
   const cfg = VENTANAS[horizonte] || VENTANAS.hoy
   // `hoyStr()` se llama en cada render a propósito, sin congelarlo en un ref: devuelve un STRING,
@@ -67,7 +86,7 @@ export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
   const desdeConsulta = sumarDias(desde, -cfg.atras)
 
   const rpc = useCallback(async (p_desde, p_hasta) => {
-    const { data, error: e } = await supabase.rpc('metricas_actividad', { p_desde, p_hasta })
+    const { data, error: e } = await enCola(() => supabase.rpc('metricas_actividad', { p_desde, p_hasta }))
     if (e) {
       // El error se MIRA y se PROPAGA. El mismo criterio que `useRecorridosDelDia`: una consulta
       // que falla en silencio deja la pantalla en cero, que es indistinguible de "no trabajó
@@ -90,33 +109,77 @@ export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
   }, [activo, hasta, rpc])
 
   /**
-   * Histórico (desdeConsulta → ayer). `forzar` saltea la caché (botón "reintentar"). Con la caché
-   * vigente no toca la red; si no, pide y guarda.
+   * Histórico (desdeConsulta → ayer). `forzar` saltea la caché (botón "reintentar").
+   *
+   * 🩸 EN TRAMOS DE 7 DÍAS Y CACHEADO POR DÍA (16/09/2026). El rol `authenticated` tiene
+   * `statement_timeout` de 8 s y la RPC, medida desde el navegador, tardaba > 8 s por SEMANA
+   * (`mi_empresa()` se evaluaba por fila; arreglado en db/69: hoy 0,65-1,6 s los 7 días). Aun
+   * así, la ventana de "mes" son 150 días: 20-35 s en una sola llamada. NO ENTRA. Daba 57014
+   * "canceling statement due to statement timeout" y el panel del dueño quedaba en error antes de
+   * las 11, que es justo cuando el default es "semana". Y como la caché iba por `hasta`, cada día
+   * nuevo repetía la ventana entera.
+   *
+   * Ahora la caché es un mapa `{ dia: filas }` por usuario que se acumula: al cargar se calculan
+   * los días del rango que faltan, se piden en tramos de hasta `TRAMO_DIAS` consecutivos (cada
+   * uno bajo el timeout), en serie para no apilar consultas pesadas, y se guardan. Un día pasado
+   * no cambia, así que un día cacheado no se vuelve a pedir nunca. Cambiar de horizonte sólo pide
+   * los días nuevos, y el segundo arranque del día pide UN día: el de ayer.
+   *
+   * El primer "mes" de un usuario nuevo sigue costando ~22 tramos × 1-1,6 s: se pinta lo que hay
+   * a medida que llega (`setHistorico` por tramo), y el skeleton no tapa la pantalla entera.
    */
   const cargarHistorico = useCallback(async (forzar) => {
     if (!activo) return
+    const gen = ++genRef.current
     const ayer = sumarDias(hasta, -1)
-    const clave = `${uid}|${horizonte}|${hasta}`
-    if (!forzar) {
-      const cache = await persistence.get(CACHE_KEY)
-      if (cache && cache.clave === clave && Array.isArray(cache.filas)) {
-        setHistorico(cache.filas)
-        return
-      }
+    const cache = forzar ? null : await persistence.get(CACHE_KEY)
+    if (gen !== genRef.current) return
+    // Caché de otro usuario o del formato viejo (`clave`/`filas`): se descarta.
+    const porDia = cache && cache.uid === uid && cache.porDia && typeof cache.porDia === 'object' ? { ...cache.porDia } : {}
+
+    const entregar = () => {
+      const out = []
+      for (let d = desdeConsulta; d <= ayer; d = sumarDias(d, 1)) if (porDia[d]) out.push(...porDia[d])
+      setHistorico(out)
     }
-    const data = await rpc(desdeConsulta, ayer)
-    if (!data) return
-    setHistorico(data)
-    // Una sola entrada (la clave viaja adentro): cambiar de horizonte o de día la pisa, y el
-    // storage no crece una entrada por cada combinación visitada.
-    persistence.set(CACHE_KEY, { clave, filas: data })
-  }, [activo, hasta, horizonte, uid, desdeConsulta, rpc])
+    entregar()
+
+    // Días que faltan, agrupados en tramos consecutivos de hasta TRAMO_DIAS.
+    const tramos = []
+    let abierto = null
+    for (let d = desdeConsulta; d <= ayer; d = sumarDias(d, 1)) {
+      if (porDia[d]) { abierto = null; continue }
+      if (!abierto || abierto.n >= TRAMO_DIAS) { abierto = { desde: d, hasta: d, n: 1 }; tramos.push(abierto) }
+      else { abierto.hasta = d; abierto.n++ }
+    }
+    if (!tramos.length) return
+
+    for (const t of tramos) {
+      const data = await rpc(t.desde, t.hasta)
+      if (gen !== genRef.current) return // otra carga tomó el relevo
+      if (!data) return // el error ya quedó seteado; lo cargado hasta acá se muestra igual
+      for (let d = t.desde; d <= t.hasta; d = sumarDias(d, 1)) porDia[d] = []
+      for (const f of data) (porDia[f.dia] || (porDia[f.dia] = [])).push(f)
+      entregar()
+      // Se guarda tramo a tramo: un tramo que costó 3 s de base no se vuelve a pedir aunque la
+      // carga se corte a la mitad (cambio de horizonte, pantalla cerrada, error en el siguiente).
+      // Recortado a los últimos DIAS_CACHE para que el storage no crezca sin techo.
+      const piso = sumarDias(hasta, -DIAS_CACHE)
+      for (const d of Object.keys(porDia)) if (d < piso) delete porDia[d]
+      persistence.set(CACHE_KEY, { uid, porDia })
+    }
+  }, [activo, hasta, uid, desdeConsulta, rpc])
 
   const cargar = useCallback(async (silencioso, forzar = false) => {
     if (!activo) return
     if (!silencioso) setLoading(true)
-    await Promise.all([cargarHistorico(forzar), cargarHoy()])
+    // El skeleton se levanta con HOY (una llamada de un día); el histórico sigue llegando por
+    // tramos y se va sumando a la pantalla. Esperarlo entero dejaría un "mes" recién abierto
+    // detrás del skeleton durante ~30 s (22 tramos × 1-1,6 s).
+    const historico = cargarHistorico(forzar)
+    await cargarHoy()
     if (!silencioso) setLoading(false)
+    await historico
   }, [activo, cargarHistorico, cargarHoy])
 
   useEffect(() => { cargar(false) }, [cargar])

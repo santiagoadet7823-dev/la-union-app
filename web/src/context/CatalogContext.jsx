@@ -412,6 +412,7 @@ export function CatalogProvider({ children }) {
     if ('geofence_radio' in patch) vista.geofence = patch.geofence_radio || 75
     if ('telefono' in patch) vista.telefono = patch.telefono || ''
     if ('contacto' in patch) vista.contacto = patch.contacto || ''
+    if ('forma_pago_default' in patch) vista.formaPagoDefault = patch.forma_pago_default || null
     // Ubicar un cliente importado sin coordenadas: reflejar lat/lng en la vista al toque.
     if ('lat' in patch) vista.lat = patch.lat ?? null
     if ('lng' in patch) vista.lng = patch.lng ?? null
