@@ -45,7 +45,15 @@
 
 ---
 
-## 🟦 00000. PINES CON CÓDIGO DE ESTADO (17/09/2026) — SIN COMMITEAR, SIN PUBLICAR
+## 🟦 00000. RELEASE 1.39.0 (17/09/2026) — pines con estado, ubicación obligatoria, bot de WhatsApp
+
+✅ **Publicado el 17/09 por la tarde**: commit `0d78255` + push a `main` (PWA por el workflow) ·
+`gh release create ota-1.39.0` (pasó a la primera) · descarga verificada (200, 2.214.118 bytes,
+136 archivos, `index-c0NpHFms.js` dice 1.39.0) · `app_config` por el MCP: `bundle_version =
+latest_version = 1.39.0`, `bundle_url` al release, **`min_version` sigue en 1.36.0**. db/70 y
+db/71 aplicadas a la base viva. Todo JS: **no lleva APK nuevo**. ⏳ Queda el `push-actualizacion`
+(usuario) y mirar `estado_dispositivo` para cerrarlo. Lo de abajo es el detalle de lo que entró.
+
 
 Lo que pidió el cliente: que el marcador de los mapas sea un **pin de ubicación** y que el color
 diga en qué estado está cada comercio, **en los tres lugares** donde aparece — vendedor, monitoreo
@@ -100,10 +108,9 @@ leyenda ahora dice en voz alta.
 - El check-in desde el pin no se volvió a ejecutar (escribiría una visita real con la cuenta del
   superadmin); es el mismo flujo de 1.38.0, sólo cambió la tarjeta que lo envuelve.
 
-📦 **Nada de esto está commiteado ni publicado.** `npx eslint src` sin errores (los 17 warnings son
-los de siempre) y `npm run build` verde.
+📦 `npx eslint src` sin errores (los 17 warnings son los de siempre) y `npm run build` verde.
 
-### Segunda tanda del mismo día (tarde del 17/09) — sobre lo de arriba, también sin commitear
+### Segunda tanda del mismo día (tarde del 17/09) — sobre lo de arriba, en el mismo release
 
 Cinco cosas más, todas verificadas con datos reales en el Edge de `.pw` salvo donde se dice:
 
