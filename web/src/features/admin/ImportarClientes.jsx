@@ -7,7 +7,7 @@ import { Bajar, ChevronLeft, Subir } from '../../components/icons'
 
 /**
  * Importación masiva de clientes desde una planilla (.xlsx o .csv). Modelo "la zona lleva
- * el vendedor": cada fila de la planilla indica su ZONA (por número, ej. 1) y el cliente
+ * el vendedor": cada fila de la planilla indica su ZONA (N°, abreviatura o nombre) y el cliente
  * hereda automáticamente el vendedor dueño de esa zona. Las coordenadas son opcionales
  * (`lat`/`lng`): sin ellas los clientes se ubican después tocando el mapa en la ficha.
  *
@@ -84,11 +84,25 @@ export default function ImportarClientes({ onClose, onToast }) {
     clientes.forEach((c) => { const k = codigoKey(c.codigo); if (k) m.set(k, c) })
     return m
   }, [clientes])
-  // Zonas por número (para resolver la columna "zona" de la planilla).
-  const zonaPorNumero = useMemo(() => {
-    const m = {}
-    zonas.forEach((z) => { if (z.numero != null) m[z.numero] = z })
-    return m
+  // Resuelve la columna "zona" de la planilla. Hasta el 18/09/2026 sólo por NÚMERO; ahora también
+  // por abreviatura o por nombre, porque la planilla de clientes trae una hoja «Zonas» para copiar
+  // de ahí y pegar, y lo que se copia es lo que resulte cómodo ("LJ1", "LAS LAJITAS 1" o "16").
+  // Un número gana siempre (la celda "1" es la zona 1, no la que se llame "1"); si la celda no es
+  // sólo dígitos se busca por abreviatura y después por nombre, normalizados.
+  const resolverZona = useMemo(() => {
+    const porNumero = {}; const porAbrev = {}; const porNombre = {}
+    zonas.forEach((z) => {
+      if (z.numero != null) porNumero[z.numero] = z
+      if (z.abrev) porAbrev[norm(z.abrev)] = z
+      porNombre[norm(z.nombre)] = z
+    })
+    return (celda) => {
+      const s = String(celda ?? '').trim()
+      if (!s) return null
+      if (/^\d+$/.test(s)) return porNumero[Number(s)] || null
+      const n = norm(s)
+      return porAbrev[n] || porNombre[n] || (soloEnteroZona(s) != null && /^z(ona)?\s*\d+$/.test(n) ? porNumero[soloEnteroZona(s)] : null) || null
+    }
   }, [zonas])
   async function descargarPlantilla() {
     try {
@@ -136,8 +150,8 @@ export default function ImportarClientes({ onClose, onToast }) {
         }
         const codigo = String(campo.codigo ?? '').trim()
         const nombre = String(campo.nombre ?? '').trim()
-        const zonaNum = soloEnteroZona(campo.zona)
-        const zona = zonaNum != null ? zonaPorNumero[zonaNum] : null
+        const zonaTexto = String(campo.zona ?? '').trim()
+        const zona = resolverZona(zonaTexto)
         const codKey = codigoKey(codigo)
         const existente = codKey ? porCodigo.get(codKey) : null
         const archivado = siNo(campo.archivado)
@@ -179,7 +193,7 @@ export default function ImportarClientes({ onClose, onToast }) {
           lat: coord(campo.lat),
           lng: coord(campo.lng),
           archivado, cambioArchivo,
-          zonaNum, zona, estado,
+          zonaTexto, zona, estado,
         }
       })
       setParsed(filas)
@@ -310,7 +324,7 @@ export default function ImportarClientes({ onClose, onToast }) {
         </div>
 
         <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.5')}>
-          Columnas: <b>codigo</b>, <b>nombre</b>, <b>localidad</b>, <b>zona</b> (número, ej. 1), y opcionales <b>dias</b>, <b>frecuencia</b>, <b>horario</b>, <b>telefono</b>, <b>contacto</b>, <b>lat</b>, <b>lng</b> y <b>archivado</b> (si/no).
+          Columnas: <b>codigo</b>, <b>nombre</b>, <b>localidad</b>, <b>zona</b> (el N°, la abreviatura o el nombre: están en la hoja Zonas de la planilla), y opcionales <b>dias</b>, <b>frecuencia</b>, <b>horario</b>, <b>telefono</b>, <b>contacto</b>, <b>lat</b>, <b>lng</b> y <b>archivado</b> (si/no).
           Creá primero las zonas (con su número y vendedor) en la pestaña Zonas.
           <br />Si el <b>código ya existe</b>, el cliente se <b>actualiza</b> solo con los datos que traiga la planilla (las celdas vacías no borran lo que ya tenía). Si no existe, se <b>crea</b>. Un archivado que aparece en la planilla <b>vuelve a la cartera</b>, salvo que traiga <b>archivado = si</b>.
           <br />Para editar la cartera entera: <b>Clientes → Descargar planilla</b>, editala en Excel y volvé a subirla acá con la tilde de <b>cartera completa</b> — las filas que borres se archivan.
@@ -367,7 +381,7 @@ export default function ImportarClientes({ onClose, onToast }) {
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 130px 130px', gap: 8, alignItems: 'center', ...sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)') }}>
                     <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.codigo || '—'}</span>
                     <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.nombre || <span style={sx('color:var(--faint)')}>(fila {f.fila})</span>}</span>
-                    <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.zona ? `Z${f.zona.numero} ${f.zona.abrev ? f.zona.abrev + ' ' : ''}${f.zona.nombre}` : (f.zonaNum != null ? `Z${f.zonaNum}?` : '—')}</span>
+                    <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{f.zona ? `Z${f.zona.numero} ${f.zona.abrev ? f.zona.abrev + ' ' : ''}${f.zona.nombre}` : (f.zonaTexto ? `${f.zonaTexto}?` : '—')}</span>
                     <span>{estadoPill(f.estado, f.cambioArchivo)}</span>
                   </div>
                 ))}

@@ -44,7 +44,7 @@ export const COLORES = {
   hueco: { rgb: 'E4DCF7', nombre: 'Lila', que: 'Código libre: no existe en la app. Es un cliente inhabilitado en el ERP; completá la fila si volvió.' },
   sinCodigo: { rgb: 'FCE4D6', nombre: 'Naranja', que: 'Sin código: no se puede reimportar sobre sí mismo. Asignale el código del ERP.' },
   informativa: { rgb: 'D9D9D9', nombre: 'Gris (encabezado)', que: 'Columna informativa (abrev_zona, vendedor, confirmado): el importador la ignora, editarla no cambia nada.' },
-  sinZona: { rgb: 'E2EFDA', nombre: 'Verde (celda zona)', que: 'Sin zona: poné el número de zona (la zona define el vendedor).' },
+  sinZona: { rgb: 'E2EFDA', nombre: 'Verde (celda zona)', que: 'Sin zona: poné el N°, la abreviatura o el nombre de la zona (están en la hoja Zonas; la zona define el vendedor).' },
   sinUbicacion: { rgb: 'DDEBF7', nombre: 'Celeste (celdas lat/lng)', que: 'Sin ubicación: no aparece en el mapa. Se completa acá o tocando el mapa en la ficha.' },
   archivado: { rgb: 'FFF2CC', nombre: 'Amarillo', que: 'Archivado: fuera de la cartera. Poné archivado = no para que vuelva.' },
 }
@@ -171,6 +171,28 @@ function hojaLeyenda(XLSX, conteos) {
 }
 
 /**
+ * Hoja «Zonas»: las zonas habilitadas para asignar, para copiar de acá y pegar en la columna `zona`
+ * de la hoja Clientes (18/09/2026: "poné en algún lado cuáles son las zonas habilitadas así las
+ * copio y las pego"). El importador acepta en `zona` el N°, la abreviatura o el nombre — las tres
+ * columnas de esta hoja —, así que se pega la que resulte más cómoda. Va sólo en el .xlsx.
+ */
+function hojaZonas(XLSX, zonas, perfiles, clientes) {
+  const nombrePorId = new Map((perfiles || []).map((p) => [p.id, p.nombre]))
+  const n = {}
+  for (const c of clientes || []) if (c.idZona && !c.archivado) n[c.idZona] = (n[c.idZona] || 0) + 1
+  const orden = [...(zonas || [])].sort((a, b) => (a.numero ?? 9999) - (b.numero ?? 9999) || a.nombre.localeCompare(b.nombre))
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['N°', 'Abrev', 'Zona', 'Vendedor dueño', 'Clientes'],
+    ...orden.map((z) => [z.numero ?? '', z.abrev || '', z.nombre, nombrePorId.get(z.id_vendedor) || '', n[z.id] || 0]),
+    [],
+    ['En la hoja Clientes, columna zona, pegá el N°, la abreviatura o el nombre de la zona: el importador entiende los tres.'],
+  ])
+  for (let c = 0; c < 5; c++) pintar(XLSX, ws, 0, c, { font: { bold: true } })
+  ws['!cols'] = [{ wch: 5 }, { wch: 7 }, { wch: 28 }, { wch: 20 }, { wch: 9 }]
+  return ws
+}
+
+/**
  * @param {{ clientes: object[], zonas: object[], perfiles?: object[], formato?: 'xlsx'|'csv', completarHuecos?: boolean, onToast?: (s:string)=>void }} p
  */
 export async function exportarClientes({ clientes, zonas, perfiles, formato = 'xlsx', completarHuecos = true, onToast }) {
@@ -205,6 +227,7 @@ export async function exportarClientes({ clientes, zonas, perfiles, formato = 'x
         sinUbicacion: vigentes.filter((f) => f.lat === '' || f.lng === '').length,
         archivado: archivados,
       }), 'Leyenda')
+      XLSX.utils.book_append_sheet(wb, hojaZonas(XLSX, zonas, perfiles, clientes), 'Zonas')
       const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
       await descargarArchivo({ filename: `${nombre}.xlsx`, blob: new Blob([buf], { type: MIME_XLSX }), mime: MIME_XLSX })
     }
