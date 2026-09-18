@@ -27,7 +27,7 @@
 // ⚠️ `lib/` es una COPIA de `web/src/lib/`. Correr `node scripts/sync-export-pedidos.mjs` antes de
 // desplegar. No editar la copia.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { armarAscii, CFG_POR_DEFECTO } from './lib/asciiPedidos.js'
+import { armarAscii, CFG_POR_DEFECTO, codigoVendedorErp } from './lib/asciiPedidos.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -44,7 +44,7 @@ const LOTE_IDS = 100
 const SELECT_PEDIDOS = `id, numero, id_empresa, created_at, estado, monto_total, forma_pago,
   fecha_entrega, observaciones,
   cliente:clientes!pedidos_id_cliente_fkey ( codigo ),
-  vendedor:perfiles!pedidos_id_vendedor_fkey ( codigo_erp )`
+  vendedor:perfiles!pedidos_id_vendedor_fkey ( codigo_erp, numero )`
 
 const SELECT_ITEMS =
   'id_pedido, codigo_producto, descripcion, cantidad, precio_unitario, producto:productos ( codigo )'
@@ -189,7 +189,8 @@ Deno.serve(async (req) => {
         pedidos.push({
           ...fila,
           comercio: { codigo: fila.cliente?.codigo || '' },
-          codigoVendedor: fila.vendedor?.codigo_erp || null,
+          // `codigo_erp` o `numero` a 3 dígitos (lote 3, 18/09/2026: todo salía como 002).
+          codigoVendedor: codigoVendedorErp(fila.vendedor),
         })
       }
     }

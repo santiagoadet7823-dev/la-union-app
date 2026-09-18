@@ -11,6 +11,8 @@ import { exportarPedidosAscii } from './exportarPedidos'
 import { Bajar, Whatsapp } from '../../components/icons'
 import AvisoCuarentena from '../../components/AvisoCuarentena'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
+import useLotesExport from './useLotesExport'
+import { motivoRetencion, TEXTO_RETENCION } from './exportado'
 import { normalizar } from '../../lib/texto'
 
 /**
@@ -84,7 +86,11 @@ export default function PedidosView({ onToast }) {
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')         // '' | uno de ESTADOS_ENTREGA
   const [filtroRepartidor, setFiltroRepartidor] = useState('') // '' | id | 'sin'
-  const [soloSinExportar, setSoloSinExportar] = useState(false)
+  // Filtro de exportación (18/09/2026): '' todos · 'sin' sin exportar · 'ret' retenidos (db/74) ·
+  // '<n>' un lote concreto. Antes era un checkbox "sin exportar"; la administración pidió ver lo que
+  // ya solicitó POR BAJADA, que es lo que ellos tienen enfrente en su sistema.
+  const [filtroLote, setFiltroLote] = useState('')
+  const lotes = useLotesExport()
   const equipo = usePerfilesEquipo()
   const repartidores = useMemo(() => (equipo || []).filter((u) => u.rol === 'repartidor'), [equipo])
   const [vista, setVista] = useState('activos')  // 'activos' | 'papelera'
@@ -113,7 +119,7 @@ export default function PedidosView({ onToast }) {
 
   // Lo que se ve: la pestaña, pasada por el buscador y los filtros. Los filtros de estado, de
   // repartidor y de exportación son de la lista viva; en la papelera sólo aplica el buscador.
-  const hayFiltro = !!(busqueda.trim() || (!enPapelera && (filtroEstado || filtroRepartidor || soloSinExportar)))
+  const hayFiltro = !!(busqueda.trim() || (!enPapelera && (filtroEstado || filtroRepartidor || filtroLote)))
   const pedidos = useMemo(() => {
     const q = normalizar(busqueda.trim())
     return pedidosVista.filter((p) => {
@@ -124,11 +130,31 @@ export default function PedidosView({ onToast }) {
       if (enPapelera) return true
       if (filtroEstado && p.estado !== filtroEstado) return false
       if (filtroRepartidor === 'sin' ? !!p.id_repartidor : (filtroRepartidor && p.id_repartidor !== filtroRepartidor)) return false
-      if (soloSinExportar && p.exportado_ts) return false
+      if (filtroLote === 'sin' && p.exportado_ts) return false
+      if (filtroLote === 'ret' && !motivoRetencion(p)) return false
+      if (filtroLote && filtroLote !== 'sin' && filtroLote !== 'ret' && String(p.export_lote || '') !== filtroLote) return false
       return true
     })
-  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, soloSinExportar])
+  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, filtroLote])
   const cargandoAhora = enPapelera ? cargandoPapelera : cargando
+
+  /* RETENIDOS (18/09/2026, db/74): pedidos vivos que el canal al ERP NO va a mandar hasta que alguien
+     cargue el código que falta. Se cuentan sobre la lista completa del rango (no la filtrada) y se
+     agrupan por lo que falta, con los nombres: "falta el código de vendedor de Nelson y Javier" es
+     accionable; "3 retenidos" no. Es la contracara de retenerlos en la base — que nadie los pierda. */
+  const retenidos = useMemo(() => activos.filter((p) => motivoRetencion(p)), [activos])
+  const avisoRetenidos = useMemo(() => {
+    if (!retenidos.length) return null
+    const vend = new Set(), cli = new Set()
+    for (const p of retenidos) {
+      if (motivoRetencion(p) === 'vendedor') vend.add(p.nombreVendedor || 'alguien sin nombre')
+      else cli.add(p.comercio?.name || 'un comercio sin nombre')
+    }
+    const partes = []
+    if (vend.size) partes.push(`el código de vendedor de ${[...vend].join(', ')} (Menú → Usuarios → "Código ERP")`)
+    if (cli.size) partes.push(`el código de cliente de ${[...cli].join(', ')} (Menú → Clientes)`)
+    return `${retenidos.length} pedido${retenidos.length === 1 ? '' : 's'} no sale${retenidos.length === 1 ? '' : 'n'} al ERP hasta cargar ${partes.join(' y ')}.`
+  }, [retenidos])
   const errorAhora = enPapelera ? errorPapelera : error
 
   /* Las dos listas se recargan juntas SIEMPRE (botón "Reintentar"). Anular saca una fila de una y la
@@ -325,16 +351,42 @@ export default function PedidosView({ onToast }) {
             <option value="sin">Sin repartidor</option>
             {repartidores.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
           </select>
-          <label style={sx('display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);cursor:pointer;user-select:none')}>
-            <input type="checkbox" checked={soloSinExportar} onChange={(e) => setSoloSinExportar(e.target.checked)} />
-            Sin exportar
-          </label>
+          {/* Lote ERP: "lo que administración ya solicitó", por bajada. Los lotes los ve el admin
+              (policy db/62); "sin exportar" y "retenidos" salen de la fila y los ve cualquiera. */}
+          <select
+            value={filtroLote}
+            onChange={(e) => {
+              const v = e.target.value
+              setFiltroLote(v)
+              // Un lote más viejo que el rango mostraría una lista vacía sin explicación: el rango
+              // se abre solo a 30 días (más atrás no hay rango; el lote igual queda en el select).
+              const l = lotes.find((x) => String(x.lote) === v)
+              if (l && l.ts < desde) setRango('30')
+            }}
+            title="Exportación al sistema de gestión (ERP)"
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:11.5px')}
+          >
+            <option value="">ERP: todos</option>
+            <option value="sin">Sin exportar</option>
+            {retenidos.length > 0 && <option value="ret">Retenidos · {retenidos.length}</option>}
+            {lotes.map((l) => <option key={l.lote} value={String(l.lote)}>Lote #{l.lote} · {fmtFecha(l.ts)} · {l.pedidos}</option>)}
+          </select>
           {hayFiltro && (
             <button
-              onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroRepartidor(''); setSoloSinExportar(false) }}
+              onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroRepartidor(''); setFiltroLote('') }}
               className="lu-press"
               style={sx('margin-left:auto;padding:5px 10px;border:none;background:transparent;color:var(--deep);font-size:11.5px;font-weight:600;cursor:pointer')}
             >Limpiar filtros</button>
+          )}
+        </div>
+      )}
+
+      {/* ── Retenidos ───────────────────────────────────────────────────────────────────── */}
+      {!enPapelera && avisoRetenidos && (
+        <div role="status" style={sx('display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 13px;background:var(--warning-tint);border:1px solid var(--warning);border-radius:var(--r-lg);margin-bottom:12px;font-size:12px;color:var(--text);line-height:1.5')}>
+          <span style={sx('flex:1;min-width:200px')}><b>Retenidos.</b> {avisoRetenidos}</span>
+          {filtroLote !== 'ret' && (
+            <button onClick={() => setFiltroLote('ret')} className="lu-press" style={sx('padding:5px 10px;border:1px solid var(--warning);border-radius:99px;background:transparent;color:var(--warning);font-size:11.5px;font-weight:700;cursor:pointer')}>Ver cuáles</button>
           )}
         </div>
       )}
@@ -439,6 +491,12 @@ export default function PedidosView({ onToast }) {
                 {p.exportado_ts && (
                   <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
                     ERP{p.export_lote ? ` #${p.export_lote}` : ''}
+                  </span>
+                )}
+                {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta. */}
+                {motivoRetencion(p) && (
+                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
+                    Retenido · {TEXTO_RETENCION[motivoRetencion(p)]}
                   </span>
                 )}
                 <span>

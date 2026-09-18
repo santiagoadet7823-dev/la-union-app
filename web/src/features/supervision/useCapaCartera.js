@@ -25,7 +25,7 @@ import usePedidosBotDelDia from '../../hooks/usePedidosBotDelDia'
  * evalúa contra el día de la semana de ESA fecha. Lo único que sigue siendo de hoy son los
  * dormidos (ver el hook).
  */
-export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDark = true }) {
+export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDark = true, focoId = null }) {
   const [modo, setModo] = useState('off')
   const [comercioSelId, setComercioSelId] = useState(null)
 
@@ -36,9 +36,31 @@ export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDar
   // El código LU…DO de la fecha mirada: para "tocaba ese día" en vez de "toca hoy".
   const dia = useMemo(() => diaDeHoy(fechaLocal(fecha)), [fecha])
 
+  // 🩸 CON UNA PERSONA ENFOCADA, LA CAPA ES SU CARTERA Y NO LA DE TODA LA EMPRESA (18/09/2026).
+  //
+  // Tocar la burbuja de Agustín y seguirlo dejaba en el mapa los 700 comercios de todos, y la
+  // leyenda listaba todas las zonas: justo cuando la pregunta es "qué le toca a ÉL", el mapa
+  // contestaba por el equipo entero. `focoId` es el mismo foco que encuadra su recorrido; sin él
+  // (o si el llamador decide no filtrar —un repartidor no tiene cartera—) se dibuja todo.
+  //
+  // "Ser de alguien" tiene DOS formas en el modelo y se toman las dos: el dueño directo del cliente
+  // (`clientes.id_vendedor`, lo que la RLS le muestra al vendedor en su teléfono) O el dueño de su
+  // zona (`zonas.id_vendedor`, "Vendedor dueño de la zona" en el menú Zonas). Con una sola, un
+  // comercio metido en la zona de Agustín pero sin dueño propio —lo normal al armar zonas— no
+  // aparecería como suyo. Sin filtro por día de visita: en modo estado el "hoy no toca" ya se ve
+  // hueco, y en modo zona la pregunta es "qué zonas tiene", no "cuáles le tocan hoy".
+  //
+  // Todo lo de abajo (marcadores, badge, leyenda, sin ubicar) sale de ESTA cartera: la leyenda
+  // cuenta lo que se dibuja, y con el foco puesto lo que se dibuja es lo de la persona.
+  const carteraVisible = useMemo(() => {
+    if (!focoId) return cartera || []
+    const zonaDe = new Map((zonas || []).map((z) => [z.id, z.id_vendedor || null]))
+    return (cartera || []).filter((c) => c.idVendedor === focoId || (c.idZona && zonaDe.get(c.idZona) === focoId))
+  }, [cartera, zonas, focoId])
+
   const marcadores = useMemo(
-    () => marcadoresCartera(cartera, zonas, { modo: activo ? 'estado' : 'zona', visitas, dia, dormidos: activo ? dormidos : null, pedidosBot: activo ? pedidosBot : null, isDark }),
-    [cartera, zonas, activo, visitas, dia, dormidos, pedidosBot, isDark]
+    () => marcadoresCartera(carteraVisible, zonas, { modo: activo ? 'estado' : 'zona', visitas, dia, dormidos: activo ? dormidos : null, pedidosBot: activo ? pedidosBot : null, isDark }),
+    [carteraVisible, zonas, activo, visitas, dia, dormidos, pedidosBot, isDark]
   )
 
   // Cuántos hay de cada estado, contado sobre LOS MISMOS marcadores que se dibujan. La leyenda de
@@ -92,7 +114,7 @@ export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDar
     zonasEnMapa,
     // Los que la capa NO puede dibujar. Va a la leyenda porque es el número que explica la
     // diferencia entre el badge del botón y lo que se ve: en esta base son más de la mitad.
-    sinUbicar: (cartera?.length || 0) - marcadores.length,
+    sinUbicar: carteraVisible.length - marcadores.length,
     // El tocado y cómo elegirlo: `onClientClick(i)` de LeafletMap da el índice dentro de
     // `clientMarkers`; tocar el mismo lo suelta.
     comercioSel,

@@ -11,7 +11,8 @@ export const miniLbl = { ...sx('color:var(--faint);font-size:10px;text-transform
 export const fieldLabel = { ...sx('font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px') }
 
 export const asignGrid = { display: 'grid', gridTemplateColumns: '40px 110px 1.5fr 1fr 80px 110px 120px', gap: 10 }
-export const cliGrid = { display: 'grid', gridTemplateColumns: '90px 1.6fr 1fr 150px 110px 90px', gap: 10 }
+// 7 columnas desde el 18/09/2026: Zona entre Localidad y Días (en el teléfono la tarjeta ya la mostraba; en PC no había dónde verla).
+export const cliGrid = { display: 'grid', gridTemplateColumns: '90px 1.6fr 1fr 150px 150px 110px 90px', gap: 10 }
 export const catGrid = { display: 'grid', gridTemplateColumns: '100px 1.8fr 1fr 120px 90px', gap: 10 }
 export const faltGrid = { display: 'grid', gridTemplateColumns: '1.6fr 80px 80px 80px 120px', gap: 10 }
 

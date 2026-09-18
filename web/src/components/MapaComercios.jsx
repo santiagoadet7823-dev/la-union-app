@@ -226,14 +226,23 @@ export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo =
         {resumen}
       </button>
 
-      {abierta && (
-        <div className="lu-rise" style={sx('display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:var(--r-md);border:.5px solid var(--glass-brd);background:var(--glass-strong);box-shadow:var(--shadow-lg);pointer-events:none')}>
-          {items.map((it) => (
-            <div key={it.etiqueta} style={sx('display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--text);white-space:nowrap')}>
-              <Muestra color={it.color} glifo={it.glifo} hueco={it.hueco} />
-              {it.etiqueta}
-            </div>
-          ))}
+      {abierta && (items.length > 0 || pie) && (
+        <div className="lu-rise" style={sx('display:flex;flex-direction:column;padding:8px 10px;border-radius:var(--r-md);border:.5px solid var(--glass-brd);background:var(--glass-strong);box-shadow:var(--shadow-lg);pointer-events:none')}>
+          {/* 🩸 LA LISTA TIENE TOPE Y SCROLL (18/09/2026). En el modo zona del monitoreo hay un
+              renglón por zona, y con la cartera zonificada eran veinte renglones que tapaban el
+              mapa. Siete entran (~176 px); el resto se desliza. Este recuadro SÍ toma los eventos
+              —es la única forma de que se pueda scrollear— y no viola la regla 30: es opaco y mide
+              exactamente lo que se ve, así que no se come ningún toque destinado al mapa. Además
+              es hermano del `LeafletMap`, no hijo del contenedor de Leaflet, así que la rueda acá
+              no llega al zoom. `pie` queda afuera del scroll: siempre visible. */}
+          <div style={sx('display:flex;flex-direction:column;gap:4px;max-height:176px;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto')}>
+            {items.map((it) => (
+              <div key={it.etiqueta} style={sx('display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--text);white-space:nowrap;flex:none')}>
+                <Muestra color={it.color} glifo={it.glifo} hueco={it.hueco} />
+                {it.etiqueta}
+              </div>
+            ))}
+          </div>
           {pie && (
             <div style={sx('margin-top:4px;padding-top:6px;border-top:1px solid var(--line);font-size:10px;color:var(--muted);max-width:190px;line-height:1.4;white-space:normal')}>
               {pie}

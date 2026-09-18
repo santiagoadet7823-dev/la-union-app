@@ -62,14 +62,17 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   const listaMostrada = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     const base = [...cartera].sort((a, b) => (a.activo === b.activo ? a.name.localeCompare(b.name) : a.activo ? 1 : -1))
+    // Por zona también (18/09/2026): escribir "burela" o "LJ1" lista los comercios de esa zona.
+    const zonaTxt = new Map(zonas.map((z) => [z.id, `${z.nombre} ${z.abrev || ''}`.toLowerCase()]))
     return base.filter((c) => {
       if (soloSinUbicar && c.lat != null) return false
       if (!q) return true
       return (c.name || '').toLowerCase().includes(q)
         || (c.codigo || '').toLowerCase().includes(q)
         || (c.loc || '').toLowerCase().includes(q)
+        || (c.idZona && (zonaTxt.get(c.idZona) || '').includes(q))
     })
-  }, [cartera, busqueda, soloSinUbicar])
+  }, [cartera, zonas, busqueda, soloSinUbicar])
 
   const sinUbicar = cartera.filter((c) => c.lat == null).length
   const porConfirmar = cartera.filter((c) => !c.activo).length
@@ -136,7 +139,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
     </span>
   )
 
-  // `overflow-x:auto` solo en PC: la tabla tiene 440px de columnas fijas (cliGrid) y en
+  // `overflow-x:auto` solo en PC: la tabla tiene 590px de columnas fijas (cliGrid) y en
   // una ventana angosta necesita scroll PROPIO. Sin eso el desborde se va al documento y
   // scrollea la página entera de costado. En teléfono son tarjetas, que no desbordan.
   return (
@@ -210,7 +213,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             {...propsBusqueda}
-            placeholder="Buscar por nombre, código o localidad…"
+            placeholder="Buscar por nombre, código, localidad o zona…"
             style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}
           />
           {busqueda && (
@@ -317,17 +320,18 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                   de las filas cuando el modo selección está activo. */}
               {seleccionando && <span style={{ width: 20, flex: 'none' }} />}
               <div style={{ ...cliGrid, ...sx('flex:1;min-width:0') }}>
-                <span>Código</span><span>Razón social</span><span>Localidad</span><span>Días de visita</span><span>Frecuencia</span><span>Estado</span>
+                <span>Código</span><span>Razón social</span><span>Localidad</span><span>Zona</span><span>Días de visita</span><span>Frecuencia</span><span>Estado</span>
               </div>
             </div>
             {listaMostrada.map((c) => {
               const abierto = c.id === selCli
+              const z = zonas.find((x) => x.id === c.idZona)
               return (
                 <div key={c.id}>
                   <div onClick={() => (seleccionando ? alternarSel(c.id) : alternar(c.id))} role="button" aria-expanded={seleccionando ? undefined : abierto}
                     style={{
-                      // La casilla va FUERA de la grilla de 6 columnas (`cliGrid`): meterla adentro
-                      // como séptimo hijo desalinearía todos los encabezados.
+                      // La casilla va FUERA de la grilla de 7 columnas (`cliGrid`): meterla adentro
+                      // como octavo hijo desalinearía todos los encabezados.
                       display: 'flex', alignItems: 'center', gap: 10,
                       ...sx('padding:10px;font-size:12.5px;cursor:pointer'),
                       background: sel.has(c.id) ? 'var(--primary-tint)' : abierto ? 'var(--primary-tint)' : 'transparent',
@@ -341,6 +345,11 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                     <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--deep);font-weight:600')}>{c.codigo || '—'}</span>
                     <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</span>
                     <span style={sx('color:var(--muted)')}>{c.loc || '—'}</span>
+                    {/* Zona (18/09/2026): mismo texto y color que la tarjeta del teléfono. */}
+                    <span style={{ ...sx('display:flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: z?.color || 'var(--muted)' }} title={z ? `${z.nombre}${z.numero != null ? ` · zona #${z.numero}` : ''}` : 'Sin zona asignada'}>
+                      <span style={{ width: 9, height: 9, borderRadius: 99, flex: 'none', background: z?.color || 'var(--line2)' }} />
+                      <span style={sx('overflow:hidden;text-overflow:ellipsis')}>{z ? `${z.abrev ? z.abrev + ' · ' : ''}${z.nombre}` : '—'}</span>
+                    </span>
                     <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.04em')}>{c.dias || '—'}</span>
                     <span style={sx('color:var(--muted);font-size:12px')}>{c.frecuencia || '—'}</span>
                     <span onClick={(e) => e.stopPropagation()}>{chipEstado(c)}</span>

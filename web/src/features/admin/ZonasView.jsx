@@ -5,7 +5,7 @@ import { useDevice } from '../../context/DeviceContext'
 import { useTenant } from '../../context/TenantContext'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import { normalizar } from '../../lib/texto'
-import { abrevOcupada, limpiarAbrev, numeroOcupado, primerNumeroLibre, sugerirAbrev } from '../../lib/zonaAbrev'
+import { ABREV_MAX, ABREV_MIN, abrevOcupada, limpiarAbrev, numeroOcupado, primerNumeroLibre, sugerirAbrev } from '../../lib/zonaAbrev'
 import { Basura, Editar } from '../../components/icons'
 import AvisoScopeCatalogo from '../../components/AvisoScopeCatalogo'
 
@@ -17,7 +17,7 @@ import AvisoScopeCatalogo from '../../components/AvisoScopeCatalogo'
  * Dos datos de la zona importan más de lo que parece:
  * - El NÚMERO: el importador de clientes parea la columna `zona` de la planilla por número. Una
  *   zona sin número no la encuentra nadie; por eso la pill roja "sin N°".
- * - La ABREVIATURA (2 letras): es lo que el mapa de monitoreo pinta sobre cada comercio para
+ * - La ABREVIATURA (de 2 a 4 letras o dígitos, "LJ1"): es lo que el mapa de monitoreo pinta sobre cada comercio para
  *   distinguir a simple vista de qué zona es.
  */
 const COLORES = ['#0ABAB5', '#6366F1', '#F59E0B', '#EF4444', '#10B981', '#EC4899', '#0EA5E9', '#8B5CF6']
@@ -69,10 +69,9 @@ export default function ZonasView({ onToast }) {
   // Vendedores/encargados de la empresa (posibles dueños de cliente). RLS limita al tenant.
   const vendedores = usePerfilesEquipo()
 
-  // Estado por fila: edición, confirmación de borrado, confirmación de "pasar clientes".
+  // Estado por fila: edición y confirmación de borrado.
   const [editando, setEditando] = useState(null)      // { id, numero, abrev, nombre, color, id_vendedor }
   const [borrando, setBorrando] = useState(null)      // { id, moverA }
-  const [pasarVendedor, setPasarVendedor] = useState(null) // { id, id_vendedor }
 
   const zonasOrdenadas = useMemo(() => [...zonas].sort(ordenZonas), [zonas])
   const sugeridoNumero = useMemo(() => primerNumeroLibre(zonas), [zonas])
@@ -114,7 +113,7 @@ export default function ZonasView({ onToast }) {
     const zn = numeroOcupado(n, zonas, excluirId)
     if (zn) return `El N° ${n} ya lo usa "${zn.nombre}"`
     const a = limpiarAbrev(ab)
-    if (ab && a.length !== 2) return 'La abreviatura son 2 letras o números'
+    if (ab && (a.length < ABREV_MIN || a.length > ABREV_MAX)) return `La abreviatura son de ${ABREV_MIN} a ${ABREV_MAX} letras o números`
     const za = abrevOcupada(a, zonas, excluirId)
     if (za) return `La abreviatura ${a} ya la usa "${za.nombre}"`
     return null
@@ -133,7 +132,7 @@ export default function ZonasView({ onToast }) {
   }
 
   function empezarEdicion(z) {
-    setBorrando(null); setPasarVendedor(null)
+    setBorrando(null)
     setEditando({ id: z.id, numero: z.numero ?? '', abrev: z.abrev || '', nombre: z.nombre, color: z.color || COLORES[0], id_vendedor: z.id_vendedor || '' })
   }
 
@@ -154,34 +153,25 @@ export default function ZonasView({ onToast }) {
     const cambiaVendedor = vend !== (z.id_vendedor || null)
     if (cambiaVendedor) patch.id_vendedor = vend
     if (!Object.keys(patch).length) { setEditando(null); return }
-    const n = (conteo[z.id]?.vigentes || 0) + (conteo[z.id]?.archivados || 0)
-    if (cambiaVendedor && n > 0) {
-      // El resto del patch se guarda ya; el vendedor espera la respuesta de "¿pasar clientes?".
-      const { id_vendedor, ...resto } = patch
-      if (Object.keys(resto).length) await updateZona(z.id, resto)
-      setEditando(null)
-      setPasarVendedor({ id: z.id, id_vendedor })
-      return
-    }
-    const { ok, error } = await updateZona(z.id, patch)
+    const { ok, error, movidos } = await updateZona(z.id, patch)
     setEditando(null)
     if (!ok) { onToast?.('Error: ' + (error?.message || '')); return }
-    onToast?.(`Zona "${patch.nombre || z.nombre}" guardada`)
+    const pasados = cambiaVendedor && movidos ? ` · ${movidos} clientes pasados a ${nombreVendedor[vend] || 'el vendedor nuevo'}` : ''
+    onToast?.(`Zona "${patch.nombre || z.nombre}" guardada${pasados}`)
   }
 
-  /** Cambio de vendedor desde el select de la fila: si hay clientes, pregunta si los pasa. */
-  function cambiarVendedor(z, idVendedor) {
-    const n = (conteo[z.id]?.vigentes || 0) + (conteo[z.id]?.archivados || 0)
-    if (n > 0) { setBorrando(null); setEditando(null); setPasarVendedor({ id: z.id, id_vendedor: idVendedor || null }); return }
-    confirmarVendedor(z, idVendedor || null, false)
-  }
-
-  async function confirmarVendedor(z, idVendedor, propagar) {
-    setPasarVendedor(null)
-    const { ok, error, movidos } = await updateZona(z.id, { id_vendedor: idVendedor }, { propagarVendedor: propagar })
+  /* Cambio de vendedor desde el select de la fila. 🩸 YA NO PREGUNTA "¿pasar también los clientes?"
+   * (18/09/2026, db/75): la zona lleva el vendedor, siempre — la base lo hace con un trigger y la
+   * app lo refleja al toque (`updateZona`). El botón "Sólo la zona" dejó a BURELA con un dueño y a
+   * sus 29 comercios con otro; una pregunta cuya respuesta correcta es siempre la misma no es una
+   * pregunta. El toast dice cuántos pasaron. */
+  async function cambiarVendedor(z, idVendedorRaw) {
+    const idVendedor = idVendedorRaw || null
+    setBorrando(null); setEditando(null)
+    const { ok, error, movidos } = await updateZona(z.id, { id_vendedor: idVendedor })
     if (!ok) { onToast?.('Error: ' + (error?.message || '')); return }
     const quien = idVendedor ? (nombreVendedor[idVendedor] || 'el vendedor nuevo') : 'sin vendedor'
-    onToast?.(propagar && movidos ? `"${z.nombre}" → ${quien} · ${movidos} clientes pasados` : (idVendedor ? `Vendedor de "${z.nombre}": ${quien}` : `"${z.nombre}" sin vendedor`))
+    onToast?.(movidos ? `"${z.nombre}" → ${quien} · ${movidos} clientes pasados` : (idVendedor ? `Vendedor de "${z.nombre}": ${quien}` : `"${z.nombre}" sin vendedor (sus clientes conservan el suyo)`))
   }
 
   async function confirmarBorrado() {
@@ -204,11 +194,11 @@ export default function ZonasView({ onToast }) {
       {/* Crear + listar zonas */}
       <div style={panel}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Zonas</div>
-        <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Cada zona lleva un número (la planilla de clientes la busca por ese número), una abreviatura de 2 letras (la que el mapa pinta sobre cada comercio) y un vendedor dueño. Los clientes que se importen a esa zona heredan el vendedor.</div>
+        <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Cada zona lleva un número (la planilla de clientes la busca por ese número), una abreviatura de 2 a 4 letras o números (la que el mapa pinta sobre cada comercio, «LJ1») y un vendedor dueño. Los clientes que se importen a esa zona heredan el vendedor.</div>
 
         <div style={sx('display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px')}>
           <input type="number" min="0" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder={String(sugeridoNumero)} className="lu-input" style={{ ...inp, width: 64, flex: 'none' }} title={`Número de zona (el próximo libre es ${sugeridoNumero})`} />
-          <input value={abrev} onChange={(e) => { setAbrevTocada(true); setAbrev(limpiarAbrev(e.target.value)) }} placeholder="AB" maxLength={2} className="lu-input" style={{ ...inp, width: 48, flex: 'none', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', textAlign: 'center' }} title="Abreviatura de 2 letras para el mapa" />
+          <input value={abrev} onChange={(e) => { setAbrevTocada(true); setAbrev(limpiarAbrev(e.target.value)) }} placeholder="ABC" maxLength={ABREV_MAX} className="lu-input" style={{ ...inp, width: 64, flex: 'none', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', textAlign: 'center' }} title="Abreviatura de 2 a 4 letras o números para el mapa" />
           <input value={nombre} onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crearZona()} placeholder="Nueva zona (ej. Centro)" className="lu-input" style={{ ...inp, flex: 1, minWidth: 140 }} />
           <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} disabled={esOverride} style={{ ...selectStyle, width: 'auto', minWidth: 150, flex: 'none' }} title={tituloVendedor}>
             <option value="">— Vendedor dueño —</option>
@@ -229,13 +219,12 @@ export default function ZonasView({ onToast }) {
               const total = n.vigentes + n.archivados
               const enEdicion = editando?.id === z.id
               const enBorrado = borrando?.id === z.id
-              const enPasar = pasarVendedor?.id === z.id
               return (
-                <div key={z.id} style={{ ...sx('display:flex;flex-direction:column;gap:8px;padding:9px 11px;border-radius:12px;background:var(--surface2)'), border: `1px solid ${enEdicion || enBorrado || enPasar ? 'var(--primary)' : 'var(--line)'}` }}>
+                <div key={z.id} style={{ ...sx('display:flex;flex-direction:column;gap:8px;padding:9px 11px;border-radius:12px;background:var(--surface2)'), border: `1px solid ${enEdicion || enBorrado ? 'var(--primary)' : 'var(--line)'}` }}>
                   {enEdicion ? (
                     <div style={sx('display:flex;gap:8px;flex-wrap:wrap;align-items:center')}>
                       <input type="number" min="0" value={editando.numero} onChange={(e) => setEditando({ ...editando, numero: e.target.value })} placeholder="N°" className="lu-input" style={{ ...inp, width: 64, flex: 'none' }} title="Número de zona" />
-                      <input value={editando.abrev} onChange={(e) => setEditando({ ...editando, abrev: limpiarAbrev(e.target.value) })} placeholder="AB" maxLength={2} className="lu-input" style={{ ...inp, width: 48, flex: 'none', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', textAlign: 'center' }} title="Abreviatura para el mapa" />
+                      <input value={editando.abrev} onChange={(e) => setEditando({ ...editando, abrev: limpiarAbrev(e.target.value) })} placeholder="ABC" maxLength={ABREV_MAX} className="lu-input" style={{ ...inp, width: 64, flex: 'none', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', textAlign: 'center' }} title="Abreviatura para el mapa" />
                       <input value={editando.nombre} onChange={(e) => setEditando({ ...editando, nombre: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') guardarEdicion(); if (e.key === 'Escape') setEditando(null) }} className="lu-input" style={{ ...inp, flex: 1, minWidth: 140 }} autoFocus />
                       <select value={editando.id_vendedor} onChange={(e) => setEditando({ ...editando, id_vendedor: e.target.value })} disabled={esOverride} style={{ ...selectStyle, width: 'auto', minWidth: 150, flex: 'none' }} title={tituloVendedor}>
                         <option value="">— Sin vendedor —</option>
@@ -253,7 +242,7 @@ export default function ZonasView({ onToast }) {
                         : <span style={pill('var(--danger)', 'var(--danger-tint)')} title="La planilla de clientes parea la zona por número: sin número no la encuentra">sin N°</span>}
                       <ChipAbrev z={z} />
                       <span style={{ ...sx('font-weight:600;font-size:13px'), flex: 1, minWidth: 100 }}>{z.nombre}</span>
-                      <select value={z.id_vendedor || ''} onChange={(e) => cambiarVendedor(z, e.target.value)} disabled={esOverride || enPasar} style={{ ...selectStyle, width: 'auto', minWidth: 150, flex: 'none' }} title={tituloVendedor}>
+                      <select value={z.id_vendedor || ''} onChange={(e) => cambiarVendedor(z, e.target.value)} disabled={esOverride} style={{ ...selectStyle, width: 'auto', minWidth: 150, flex: 'none' }} title={tituloVendedor}>
                         <option value="">— Sin vendedor —</option>
                         {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre} · {v.rol}</option>)}
                       </select>
@@ -261,21 +250,7 @@ export default function ZonasView({ onToast }) {
                         {n.vigentes} cli. · {n.geo} con ubicación
                       </span>
                       <button onClick={() => empezarEdicion(z)} className="lu-press" style={btnIcono} title="Editar zona" aria-label={`Editar ${z.nombre}`}><Editar size={14} /></button>
-                      <button onClick={() => { setEditando(null); setPasarVendedor(null); setBorrando({ id: z.id, moverA: '' }) }} className="lu-press" style={{ ...btnIcono, color: 'var(--danger)' }} title="Borrar zona" aria-label={`Borrar ${z.nombre}`}><Basura size={14} /></button>
-                    </div>
-                  )}
-
-                  {enPasar && (
-                    /* Confirmación inline (en todo el repo no hay un solo window.confirm). */
-                    <div style={sx('display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed var(--line)')}>
-                      <span style={sx('font-size:12px;color:var(--muted)')}>
-                        {pasarVendedor.id_vendedor
-                          ? <>¿Pasar también los <b>{total}</b> clientes de «{z.nombre}» a <b>{nombreVendedor[pasarVendedor.id_vendedor] || 'ese vendedor'}</b>?</>
-                          : <>¿Dejar también <b>sin vendedor</b> a los <b>{total}</b> clientes de «{z.nombre}»?</>}
-                      </span>
-                      <button onClick={() => confirmarVendedor(z, pasarVendedor.id_vendedor, true)} className="lu-press" style={btnPrimario}>Sí, pasar {total}</button>
-                      <button onClick={() => confirmarVendedor(z, pasarVendedor.id_vendedor, false)} className="lu-press" style={{ ...btnSuave, color: 'var(--text)' }}>Sólo la zona</button>
-                      <button onClick={() => setPasarVendedor(null)} className="lu-press" style={btnSuave}>Cancelar</button>
+                      <button onClick={() => { setEditando(null); setBorrando({ id: z.id, moverA: '' }) }} className="lu-press" style={{ ...btnIcono, color: 'var(--danger)' }} title="Borrar zona" aria-label={`Borrar ${z.nombre}`}><Basura size={14} /></button>
                     </div>
                   )}
 
@@ -308,13 +283,18 @@ export default function ZonasView({ onToast }) {
   )
 }
 
-/** Tope de filas dibujadas: 2.021 filas con dos selects de 17 opciones cada una son ~70.000 nodos. */
-const MAX_FILAS = 300
-
 /**
  * Asignación cliente → zona / vendedor. Componente APARTE y memoizado: con la cartera real son
- * 2.021 filas × 2 selects, y cada tecla en el formulario de alta de zona re-dibujaba todo eso.
- * Sólo se vuelve a renderizar cuando cambia la cartera, las zonas o los vendedores.
+ * ~1.830 filas, y cada tecla en el formulario de alta de zona re-dibujaba todo eso. Sólo se vuelve
+ * a renderizar cuando cambia la cartera, las zonas o los vendedores.
+ *
+ * 🩸 SIN TOPE DE FILAS (18/09/2026). Hasta hoy cortaba en 300 ("Mostrando 300 de 1830 — afiná la
+ * búsqueda") y el cliente lo leyó como "el menú Zonas no carga todos los clientes". El tope existía
+ * porque cada fila llevaba DOS `<select>` de ~17 opciones: 1.830 filas eran ~70.000 nodos y la
+ * pantalla se clavaba. La salida no es paginar —la persona quiere recorrer la cartera entera para
+ * zonificarla— sino hacer barata la fila: los selects son `SelectPerezoso` (un chip de texto hasta
+ * que se lo toca), y cada fila lleva `content-visibility:auto` para que el navegador ni siquiera
+ * haga layout de las que están fuera de pantalla. Una fila pasa de ~40 nodos a ~6.
  */
 const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, zonaColor, vendedores, esOverride, isMobile, updateCliente, onToast }) {
   const [busca, setBusca] = useState('')
@@ -329,7 +309,17 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
       return normalizar(c.name).includes(q) || normalizar(c.codigo).includes(q) || normalizar(c.loc).includes(q)
     })
   }, [clientes, busca, filtroZona])
-  const visibles = filtrados.length > MAX_FILAS ? filtrados.slice(0, MAX_FILAS) : filtrados
+
+  // Las opciones se arman UNA vez por cambio de zonas/vendedores, no por fila: son las mismas 1.830
+  // veces. `label` es lo que muestra el chip cerrado.
+  const opcionesZona = useMemo(() => [
+    { value: '', label: '— Sin zona —' },
+    ...zonas.map((z) => ({ value: z.id, label: etiquetaZona(z) })),
+  ], [zonas])
+  const opcionesVendedor = useMemo(() => [
+    { value: '', label: '— Sin dueño (todos lo ven) —' },
+    ...vendedores.map((v) => ({ value: v.id, label: `${v.nombre} · ${v.rol}` })),
+  ], [vendedores])
 
   const grid = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.6fr 1fr 1fr 90px', gap: 10, alignItems: 'center' }
   const cambiar = async (id, patch) => { const { ok, error } = await updateCliente(id, patch); if (!ok) onToast?.('Error: ' + (error?.message || '')) }
@@ -346,7 +336,7 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
           {zonas.map((z) => <option key={z.id} value={z.id}>{etiquetaZona(z)}</option>)}
         </select>
         <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);white-space:nowrap')}>
-          {visibles.length < filtrados.length ? `Mostrando ${visibles.length} de ${filtrados.length} (afiná la búsqueda)` : `Mostrando ${filtrados.length} de ${clientes.length}`}
+          Mostrando {filtrados.length} de {clientes.length}
         </span>
       </div>
       {clientes.length === 0 ? (
@@ -360,20 +350,18 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
               <span>Cliente</span><span>Zona</span><span>Vendedor dueño</span><span />
             </div>
           )}
-          {visibles.map((c) => (
-            <div key={c.id} style={{ ...grid, ...sx('padding:10px;border-bottom:1px solid var(--line);font-size:12.5px') }}>
+          {filtrados.map((c) => (
+            // `contentVisibility:auto` + `containIntrinsicSize`: las filas fuera de pantalla no se
+            // maquetan ni se pintan hasta que el scroll las acerca; el alto estimado evita que la
+            // barra de scroll salte. En un navegador que no lo soporte se ignora y sólo cuesta el
+            // layout — sigue sin tope.
+            <div key={c.id} style={{ ...grid, ...sx('padding:10px;border-bottom:1px solid var(--line);font-size:12.5px'), contentVisibility: 'auto', containIntrinsicSize: isMobile ? 'auto 132px' : 'auto 54px' }}>
               <span style={sx('display:flex;align-items:center;gap:8px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
                 <span style={{ width: 9, height: 9, borderRadius: 99, flex: 'none', background: c.idZona ? zonaColor[c.idZona] : 'var(--line2)' }} />
                 {c.name}
               </span>
-              <select value={c.idZona || ''} onChange={(e) => cambiar(c.id, { id_zona: e.target.value || null })} style={selectStyle}>
-                <option value="">— Sin zona —</option>
-                {zonas.map((z) => <option key={z.id} value={z.id}>{etiquetaZona(z)}</option>)}
-              </select>
-              <select value={c.idVendedor || ''} onChange={(e) => cambiar(c.id, { id_vendedor: e.target.value || null })} disabled={esOverride} title={tituloVendedor} style={selectStyle}>
-                <option value="">— Sin dueño (todos lo ven) —</option>
-                {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre} · {v.rol}</option>)}
-              </select>
+              <SelectPerezoso value={c.idZona || ''} opciones={opcionesZona} onChange={(v) => cambiar(c.id, { id_zona: v || null })} />
+              <SelectPerezoso value={c.idVendedor || ''} opciones={opcionesVendedor} onChange={(v) => cambiar(c.id, { id_vendedor: v || null })} disabled={esOverride} title={tituloVendedor} />
               <span style={sx('font-family:var(--font-mono);font-size:10px;color:var(--faint);text-align:right')}>{c.codigo || ''}</span>
             </div>
           ))}
@@ -382,3 +370,43 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
     </div>
   )
 })
+
+/**
+ * Un `<select>` que no existe hasta que se lo toca. Cerrado es un botón con el mismo aspecto
+ * (`selectStyle`) y el texto de la opción elegida; al tocarlo se monta el `<select>` real, toma el
+ * foco y se abre solo (`showPicker()`, permitido porque viene de un gesto; donde no exista, el
+ * segundo toque lo abre). Al elegir o al perder el foco vuelve a ser botón.
+ *
+ * Existe por `AsignacionClientes`: 1.830 filas × 2 selects × 17 `<option>` eran ~70.000 nodos.
+ * Así hay UN `<select>` montado en toda la lista, y sólo mientras alguien lo está usando.
+ */
+function SelectPerezoso({ value, opciones, onChange, disabled = false, title }) {
+  const [abierto, setAbierto] = useState(false)
+  const actual = opciones.find((o) => o.value === value) || opciones[0]
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        disabled={disabled}
+        title={title}
+        style={{ ...selectStyle, ...sx('text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: value ? 'var(--text)' : 'var(--muted)', opacity: disabled ? 0.6 : 1, cursor: disabled ? 'default' : 'pointer' }}
+      >
+        {actual?.label}
+      </button>
+    )
+  }
+  return (
+    <select
+      autoFocus
+      value={value}
+      title={title}
+      style={selectStyle}
+      ref={(el) => { try { if (el && typeof el.showPicker === 'function') el.showPicker() } catch { /* sin gesto válido: el toque siguiente lo abre */ } }}
+      onChange={(e) => { setAbierto(false); onChange(e.target.value) }}
+      onBlur={() => setAbierto(false)}
+    >
+      {opciones.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  )
+}

@@ -29,3 +29,30 @@ export function yaExportado(pedido) {
 export function frenarSiExportado(pedido) {
   if (yaExportado(pedido)) throw new Error(MSG_EXPORTADO)
 }
+
+/**
+ * POR QUÉ UN PEDIDO VIVO TODAVÍA NO SALIÓ AL ERP: `'cliente'` (el comercio no tiene código),
+ * `'vendedor'` (quien lo tomó no tiene código de vendedor) o `null` (va a salir en el próximo lote,
+ * o ya salió). Espejo exacto de `pedido_exportable` en db/74, que es lo que la RPC del canal mira
+ * para dejarlo afuera: si esto y aquello dijeran cosas distintas, la lista marcaría "retenido" un
+ * pedido que sí salió, o al revés.
+ *
+ * 🔴 EXISTE POR EL LOTE 3 (18/09/2026): 19 pedidos salieron con vendedor `002` (ningún perfil tenía
+ * código) y uno sin cliente. Desde db/74 esos pedidos no se mandan; esto es lo que hace visible que
+ * quedaron esperando, y qué dato hay que cargar para que salgan (Usuarios → "Código ERP", o el
+ * código del comercio en Clientes).
+ *
+ * @param {object} pedido  fila de la lista (`comercio.codigo`, `codigoVendedor`, `exportado_ts`, `estado`)
+ * @returns {'cliente'|'vendedor'|null}
+ */
+export function motivoRetencion(pedido) {
+  if (!pedido || pedido.exportado_ts || pedido.estado === 'Anulado') return null
+  if (!String(pedido.comercio?.codigo || '').trim()) return 'cliente'
+  if (!pedido.codigoVendedor) return 'vendedor'
+  return null
+}
+
+export const TEXTO_RETENCION = {
+  cliente: 'sin código de cliente',
+  vendedor: 'sin código de vendedor',
+}

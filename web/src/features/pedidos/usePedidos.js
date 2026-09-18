@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../services/supabase'
 import { useTenant } from '../../context/TenantContext'
 import { EVENTO_CUARENTENA } from '../../services/sync/writeQueue'
+import { codigoVendedorErp } from '../../lib/asciiPedidos'
 
 /**
  * LOS PEDIDOS, PARA REVISARLOS.
@@ -45,7 +46,7 @@ const SELECT = `
   created_at, lat, lng, accuracy, distancia_m, origen, motivo_anulacion, anulado_por, anulado_ts,
   anulado_srv_ts, forma_pago, fecha_entrega, observaciones, exportado_ts, export_lote,
   cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng, telefono, contacto ),
-  vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre, codigo_erp )
+  vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre, codigo_erp, numero )
 `
 
 /** Fila de `clientes` → la forma que ya consumen `TicketPedido` y el resto de las vistas. */
@@ -63,9 +64,10 @@ function mapPedido(p) {
     ...p,
     comercio: mapComercio(p.cliente),
     nombreVendedor: p.vendedor?.nombre || null,
-    // El código con el que el ERP conoce a este vendedor (campo 3 del archivo, db/62). Puede venir
-    // vacío: si nadie lo cargó, el exportador cae en la constante de la empresa.
-    codigoVendedor: p.vendedor?.codigo_erp || null,
+    // El código con el que el ERP conoce a este vendedor (campo 3 del archivo): `codigo_erp` o el
+    // "Código de vendedor" de Usuarios a 3 dígitos. `null` = el pedido queda retenido (db/74) y la
+    // lista lo dice; ver `codigoVendedorErp`.
+    codigoVendedor: codigoVendedorErp(p.vendedor),
   }
 }
 

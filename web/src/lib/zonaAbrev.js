@@ -8,12 +8,18 @@ import { normalizar } from './texto'
  * la cola y va a cuarentena sin que la persona lo vea — por eso se bloquea ACÁ, antes de encolar.
  */
 
-/** Dos caracteres, mayúscula o dígito. Es lo que pide `zonas_abrev_chk`. */
-export const ABREV_RE = /^[A-Z0-9]{2}$/
+/**
+ * De 2 a 4 caracteres, mayúscula o dígito. Es lo que pide `zonas_abrev_chk` (db/73). Eran
+ * exactamente 2 hasta el 18/09/2026: "Las Lajitas 1" y "Las Lajitas 2" no se podían distinguir con
+ * "LJ", y el cliente pidió "LJ1". El tope de 4 es lo que entra en la cabeza del pin del mapa.
+ */
+export const ABREV_MIN = 2
+export const ABREV_MAX = 4
+export const ABREV_RE = /^[A-Z0-9]{2,4}$/
 
-/** Normaliza lo tipeado: mayúsculas, sin acentos, sólo letras/dígitos, máximo 2. */
+/** Normaliza lo tipeado: mayúsculas, sin acentos, sólo letras/dígitos, máximo `ABREV_MAX`. */
 export function limpiarAbrev(s) {
-  return normalizar(s).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 2)
+  return normalizar(s).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ABREV_MAX)
 }
 
 /** Zona que ya usa esa abreviatura (ignorando `excluirId`), o null. */

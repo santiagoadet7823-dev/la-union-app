@@ -120,6 +120,33 @@ export function celda(v) {
   return String(v).replace(/[\t\r\n]+/g, ' ').trim()
 }
 
+/**
+ * El código con el que el ERP conoce a un vendedor: campo 3 del archivo.
+ *
+ * 🔴 POR QUÉ EXISTE (18/09/2026, lote 3). Los 19 pedidos del lote salieron con `002` en el campo 3
+ * —la constante `campo_3` de la empresa— porque NINGÚN perfil tenía `codigo_erp`, y el ERP se los
+ * atribuyó todos al vendedor que ellos habían creado con ese código. La constante era un relleno
+ * para arrancar, no un dato: un pedido con el vendedor equivocado se factura y se comisiona mal.
+ *
+ * El dato vive en DOS columnas de `perfiles`: `numero` (el "Código de vendedor" que Usuarios deja
+ * cargar desde siempre, entero) y `codigo_erp` (texto, db/62, sin pantalla). Se toma `codigo_erp` si
+ * alguien lo cargó a mano y, si no, `numero` con ceros a 3 dígitos (`2` → `002`, el formato del
+ * archivo real). Sin ninguno de los dos devuelve `null`: `tomar_lote_pedidos` (db/74) NO deja salir
+ * ese pedido y la lista lo marca "Retenido", que es la contracara de no inventar un vendedor.
+ *
+ * @param {{ codigo_erp?: string|null, numero?: number|string|null } | null} perfil
+ * @returns {string|null}
+ */
+export function codigoVendedorErp(perfil) {
+  if (!perfil) return null
+  const erp = String(perfil.codigo_erp ?? '').trim()
+  if (erp) return erp
+  if (perfil.numero === null || perfil.numero === undefined || perfil.numero === '') return null
+  const n = Number(perfil.numero)
+  if (!Number.isFinite(n)) return null
+  return String(Math.trunc(n)).padStart(3, '0')
+}
+
 /** Las constantes del layout, si la empresa todavía no tiene `export_erp` cargado (db/62). */
 export const CFG_POR_DEFECTO = {
   campo_2: '1', campo_3: '002', campo_5: '0', campo_8: '1',
@@ -153,8 +180,10 @@ export const CAMPOS = [
     : String(new Date(p.created_at).getTime() || ''))],
   // 2 — constante, significado desconocido
   ['c2', (_p, _l, _i, cfg) => cfg.campo_2],
-  // 3 — `002` en todo el archivo: vendedor o sucursal, sin confirmar. Si alguien cargó el código
-  // ERP del vendedor (`perfiles.codigo_erp`), gana ése; si no, la constante de la empresa.
+  // 3 — el código del vendedor en el ERP (`codigoVendedorErp`: `perfiles.codigo_erp` o `numero` a
+  // 3 dígitos). `campo_3` de la empresa es el ÚLTIMO recurso y no debería ocurrir: db/74 no deja
+  // salir un pedido sin código de vendedor. Se conserva sólo para `?probar=1` y el botón de la app,
+  // que emiten sin pasar por la RPC — y ahí "002" es mejor que una columna vacía que corra el layout.
   ['vendedor_erp', (p, _l, _i, cfg) => p.codigoVendedor || cfg.campo_3],
   // 4 — código del cliente.
   // 🔑 CRUDO, nunca `codigo_norm`: esa columna generada (db/48) le quita los ceros a la izquierda y

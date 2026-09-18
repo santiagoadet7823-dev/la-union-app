@@ -395,7 +395,17 @@ export function CatalogProvider({ children }) {
   }, [idEmpresa])
 
   /** Edición parcial de cliente (ficha admin). patch en columnas de DB. Offline-first. */
-  const updateCliente = useCallback(async (id, patch) => {
+  const updateCliente = useCallback(async (id, patchEntrante) => {
+    // 🩸 LA ZONA LLEVA EL VENDEDOR, también acá (18/09/2026, db/75). Cambiar la zona de un cliente
+    // le pone el dueño de esa zona, salvo que el patch ya traiga un vendedor explícito. La base lo
+    // garantiza con un trigger; esto es para que la vista y el modo offline muestren AHORA lo que la
+    // base va a decir cuando drene la cola — antes el select de zona del menú Zonas dejaba 25
+    // clientes de BURELA sin vendedor hasta que alguien se diera cuenta.
+    let patch = patchEntrante
+    if ('id_zona' in patch && !('id_vendedor' in patch) && patch.id_zona) {
+      const z = zonas.find((x) => x.id === patch.id_zona)
+      if (z?.id_vendedor) patch = { ...patch, id_vendedor: z.id_vendedor }
+    }
     // Merge optimista: mapea las columnas DB del patch a la forma de vista.
     const vista = {}
     if ('id_zona' in patch) vista.idZona = patch.id_zona || null
@@ -420,7 +430,7 @@ export function CatalogProvider({ children }) {
     await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'update', id, payload: patch })
     flushMutaciones()
     return { ok: true }
-  }, [])
+  }, [zonas])
 
   /**
    * Baja de cliente (solo gestión: admin/encargado/superadmin — la RLS `clientes_del` lo
@@ -648,18 +658,22 @@ export function CatalogProvider({ children }) {
   /**
    * Edición de zona (número, abreviatura, nombre, color, vendedor), offline-first.
    *
-   * `propagarVendedor`: "la zona lleva el vendedor" — pero hasta el 13/09/2026 cambiar el dueño de
-   * una zona sólo tocaba la fila de `zonas`, y los clientes que YA estaban en ella quedaban con el
-   * vendedor viejo (sólo heredaban los importados después). Con esta opción los clientes de la zona
-   * —vigentes y archivados, para que uno que vuelva no quede con dueño viejo— pasan al vendedor
-   * nuevo en UN `updateMany` (regla de writeQueue: nunca un `for` de updates para un lote).
+   * "La zona lleva el vendedor": cambiar el dueño de una zona pasa a ese vendedor TODOS sus clientes
+   * —vigentes y archivados, para que uno que vuelva no quede con dueño viejo— en UN `updateMany`
+   * (regla de writeQueue: nunca un `for` de updates para un lote).
+   *
+   * 🩸 YA NO ES OPCIONAL (18/09/2026, db/75). Hasta el 13/09 no propagaba nada; desde entonces
+   * preguntaba "¿pasar también los clientes?" con un botón "Sólo la zona", y el cliente eligió mal
+   * una vez y vio la zona con un dueño y sus comercios con otro. La base ahora lo hace sola con un
+   * trigger AFTER UPDATE en `zonas`; acá se repite para que la vista y el modo offline lo muestren
+   * al toque. Dejar la zona SIN dueño no desasigna a nadie: mismo criterio que el trigger.
    */
-  const updateZona = useCallback(async (id, patch, { propagarVendedor = false } = {}) => {
+  const updateZona = useCallback(async (id, patch) => {
     setZonas((prev) => prev.map((z) => (z.id === id ? { ...z, ...patch } : z)).sort((a, b) => a.nombre.localeCompare(b.nombre)))
     await enqueueMutacion({ op_uid: uid(), table: 'zonas', op: 'update', id, payload: patch })
     let movidos = 0
-    if (propagarVendedor && 'id_vendedor' in patch) {
-      const idVendedor = patch.id_vendedor || null
+    if ('id_vendedor' in patch && patch.id_vendedor) {
+      const idVendedor = patch.id_vendedor
       const ids = clientes.filter((c) => c.idZona === id && (c.idVendedor || null) !== idVendedor).map((c) => c.id)
       if (ids.length) {
         const set = new Set(ids)

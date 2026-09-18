@@ -179,7 +179,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
     </>
   )
   const inpNumero = (
-    <input type="number" min="0" placeholder="—" value={ed.numero ?? (u.numero ?? '')} onChange={(e) => setEdit(u.id, { numero: e.target.value })} style={selectStyle} className="lu-input" title="Código de vendedor (ej. 1 = Zona 1)" />
+    <input type="number" min="0" placeholder="—" value={ed.numero ?? (u.numero ?? '')} onChange={(e) => setEdit(u.id, { numero: e.target.value })} style={selectStyle} className="lu-input" title="Código del vendedor en el sistema de gestión (ERP). Es el campo 3 del archivo de pedidos: 2 sale como 002. Sin esto, sus pedidos NO salen a facturar (quedan retenidos)." />
   )
   const celdaEmpresa = esSuper ? (
     <select value={ed.id_empresa || u.id_empresa || idEmpresa || ''} onChange={(e) => setEdit(u.id, { id_empresa: e.target.value })} style={selectStyle} className="lu-input">
@@ -215,7 +215,7 @@ function Fila({ u, esPendiente, ed, setEdit, esSuper, empresas, empresaNombre, c
         { label: 'Email', contenido: u.email, estilo: sx('color:var(--muted);font-family:var(--font-mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
         { label: 'Teléfono', contenido: u.telefono || '—', estilo: sx('color:var(--muted);font-family:var(--font-mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
         { label: 'Rol', contenido: selRol },
-        { label: 'Código', contenido: inpNumero },
+        { label: 'Código ERP', contenido: inpNumero },
         { label: 'Empresa', contenido: celdaEmpresa },
         { label: 'Estado', contenido: u.activo && u.rol ? rolPill(u.rol, u.nivel) : <span style={sx('font-size:10.5px;color:var(--warning);font-weight:600')}>Pendiente</span> },
       ]}
@@ -322,8 +322,8 @@ function CrearUsuarioModal({ open, onClose, esSuper, empresas, idEmpresa, rolesD
           </Field>
         </div>
         <div style={sx('width:110px')}>
-          <Field label="Código">
-            <input type="number" min="0" value={f.numero} onChange={(e) => set({ numero: e.target.value })} style={inputStyle} className="lu-input" placeholder="—" title="Código de vendedor (opcional)" />
+          <Field label="Código ERP">
+            <input type="number" min="0" value={f.numero} onChange={(e) => set({ numero: e.target.value })} style={inputStyle} className="lu-input" placeholder="—" title="Código del vendedor en el sistema de gestión (ERP). Es el campo 3 del archivo de pedidos: 2 sale como 002. Sin esto, sus pedidos NO salen a facturar (quedan retenidos)." />
           </Field>
         </div>
       </div>
@@ -750,7 +750,7 @@ export default function UsuariosView({ onToast }) {
         ) : (
           <>
             <CabeceraTabla grid={grid} isMobile={isMobile} columnas={[
-              'Nombre', 'Email', 'Teléfono', 'Rol', 'Código', 'Empresa', 'Estado',
+              'Nombre', 'Email', 'Teléfono', 'Rol', 'Código ERP', 'Empresa', 'Estado',
               { label: 'Acción', align: 'right' },
             ]} />
 
