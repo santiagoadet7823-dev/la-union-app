@@ -239,7 +239,7 @@ export default function ZonasView({ onToast }) {
             onClick={bajarOrganizacion}
             disabled={bajando}
             className="lu-press"
-            title="Equipo, zonas, clientes por zona, sin zona, sin ubicación y qué falta cargar (.xlsx). Es para leer; para editar y reimportar usá Clientes → Descargar planilla."
+            title="Equipo, zonas, clientes por zona, sin zona, sin ubicación y qué falta cargar (.xlsx). La hoja Zonas se edita y vuelve a subir con «Cargar planilla»; la cartera se edita con Clientes → Descargar planilla."
             style={sx('display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:9px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap')}
           >
             <Bajar size={13} />{bajando ? 'Generando…' : 'Planilla de organización'}

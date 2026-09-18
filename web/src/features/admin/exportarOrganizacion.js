@@ -13,10 +13,12 @@ import { COLORES, fill, pintar } from './exportarClientes'
  * que diga los encargados, vendedores, zonas, los clientes por zona, los sin zona, sin ubicación y
  * demás datos que le falten cargar".
  *
- * ES PARA LEER, NO PARA REIMPORTAR. `exportarClientes.js` baja UNA hoja plana con los encabezados
+ * ES PARA LEER, SALVO LA HOJA ZONAS. `exportarClientes.js` baja UNA hoja plana con los encabezados
  * que `ImportarClientes` entiende, para editar y volver a subir. Ésta son SEIS hojas agrupadas con
- * un resumen: si alguien la sube al importador, el importador no la reconoce (los encabezados no
- * son los suyos) y no pasa nada. La hoja Resumen lo dice en su última fila.
+ * un resumen: si alguien la sube al importador de clientes, no la reconoce (los encabezados no
+ * son los suyos) y no pasa nada. La excepción (18/09/2026) es la hoja **Zonas**: con el "Vendedor
+ * dueño" editado se sube en Zonas → "Cargar planilla" (`ImportarZonas`). La hoja Resumen lo dice
+ * en su última fila.
  *
  * Vive en Menú → Zonas y no en un menú propio: es la pantalla desde donde se organiza la cartera.
  *
@@ -167,7 +169,7 @@ export function armarOrganizacion(clientes, zonas, perfiles) {
     ['Sin teléfono', n((b) => vacio(b.c.telefono))],
     ['Completos (nada que cargar)', n((b) => !b.falta)],
     ['', ''],
-    ['Esta planilla es para leer. Para editar la cartera y volver a subirla usá Clientes → Descargar planilla.', ''],
+    ['Para asignar vendedores a zonas: editá «Vendedor dueño» en la hoja Zonas y subila en Zonas → Cargar planilla. Para editar la cartera: Clientes → Descargar planilla.', ''],
   ]
 
   return { resumen, hojaEquipo, hojaZonas, porZona, hojaSinZona, hojaSinUbic, conteos: { zonas: zonasOrd.length, conZona: conZona.length, sinZona: sinZona.length, sinUbic: sinUbic.length } }
