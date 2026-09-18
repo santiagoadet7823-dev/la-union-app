@@ -10,6 +10,7 @@ import { Bajar, Basura, Editar } from '../../components/icons'
 import { supabase } from '../../services/supabase'
 import { exportarOrganizacion } from './exportarOrganizacion'
 import AvisoScopeCatalogo from '../../components/AvisoScopeCatalogo'
+import AvisoCuarentena from '../../components/AvisoCuarentena'
 
 /**
  * Zonas: crear, editar y borrar zonas (número, abreviatura, color, vendedor dueño) y asignar a
@@ -212,6 +213,7 @@ export default function ZonasView({ onToast }) {
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto'), padding: isMobile ? 12 : 20 }}>
       <AvisoScopeCatalogo />
+      <AvisoCuarentena />
 
       {/* Crear + listar zonas */}
       <div style={panel}>

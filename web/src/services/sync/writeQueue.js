@@ -106,9 +106,25 @@ const CODIGOS_PERMANENTES = new Set([
  */
 const MAX_INTENTOS = 20
 
+/** Nombre del evento que se emite en `window` cuando una mutación NO se pudo ni anotar. */
+export const EVENTO_ESCRITURA_PERDIDA = 'lu-write-perdida'
+
 async function read() { return (await persistence.get(KEY, [])) || [] }
+/**
+ * 🔴 SI LA COLA NO SE PUDO GUARDAR, SE DICE (18/09/2026). `persistence.set` devolvía `undefined`
+ * pasara lo que pasara, y el 18/09 el `localStorage` de la PC de la oficina se llenó con las
+ * cachés: cada asignación de zona desde las 11:25 quedó en pantalla y no llegó a la base — ni
+ * request, ni error, ni cuarentena. `persistence` ahora desaloja cachés antes de fallar; si aun
+ * así no entra, esto lanza, y la pantalla que encoló recibe el error en vez de un `ok: true`.
+ */
 async function write(arr) {
-  await persistence.set(KEY, arr.length > MAX ? arr.slice(-MAX) : arr)
+  const ok = await persistence.set(KEY, arr.length > MAX ? arr.slice(-MAX) : arr)
+  if (ok === false) {
+    try { window.dispatchEvent(new CustomEvent(EVENTO_ESCRITURA_PERDIDA, { detail: { pendientes: arr.length } })) } catch (_) { /* sin window */ }
+    const e = new Error('No hay espacio en el navegador para guardar el cambio. Cerrá otras pestañas de la app o borrá los datos del sitio y volvé a intentar.')
+    e.code = 'almacenamiento-lleno'
+    throw e
+  }
 }
 
 async function leerCuarentena() { return (await persistence.get(QKEY, [])) || [] }

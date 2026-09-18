@@ -8,6 +8,8 @@ const REFRESH_MS = 60000
 const CACHE_KEY = 'lu-recorridos-cache'
 // La caché se escribe como mucho cada tanto (ver el efecto de persistencia, abajo).
 const PERSISTIR_CADA_MS = 5 * 60000
+// Más que esto no se persiste (ver el efecto de persistencia): ~600 KB de JSON, un cuarto del tope.
+const CACHE_MAX_CHARS = 600_000
 
 /**
  * Carga las posiciones del día (todas las de la empresa, agrupadas por
@@ -290,6 +292,17 @@ export default function useRecorridosDelDia(fecha, idEmpresa, conRol = false) {
     if (!idEmpresa || lastIdRef.current == null) return
     if (!Object.keys(byUser).length) return
     const snap = { fecha, idEmpresa, conRol, byUser, lastId: lastIdRef.current, lastTs: lastTsRef.current }
+    /* 🔴 CON TOPE (18/09/2026). En la PWA esto va a `localStorage` (~5 MB por origen) junto con la
+       caché del catálogo (1,3 MB) y la cola de escrituras. A la tarde la jornada entera son ~1 MB
+       y creciendo, y el 18/09 llenó el almacenamiento de la PC de la oficina: la cola de escrituras
+       ya no pudo anotar nada y las asignaciones de zona se perdieron en silencio. Esta caché es
+       prescindible (se rehace de la red en la próxima apertura); la cola no. Pasado el tope se deja
+       de persistir y se suelta lo que había. `persistence` además la desaloja si hace falta. */
+    if (JSON.stringify(snap).length > CACHE_MAX_CHARS) {
+      pendienteRef.current = null
+      persistence.remove(CACHE_KEY)
+      return
+    }
     const ahora = Date.now()
     if (ahora - ultimaPersistRef.current >= PERSISTIR_CADA_MS) {
       ultimaPersistRef.current = ahora

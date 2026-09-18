@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { sx } from '../lib/sx'
-import { cuarentenaMutaciones } from '../services/sync/writeQueue'
+import { cuarentenaMutaciones, EVENTO_ESCRITURA_PERDIDA } from '../services/sync/writeQueue'
 
 /**
  * LO QUE LA COLA NO PUDO SUBIR, DICHO EN LA PANTALLA DONDE IMPORTA.
@@ -24,6 +24,14 @@ import { cuarentenaMutaciones } from '../services/sync/writeQueue'
 export default function AvisoCuarentena({ tabla = null }) {
   const [items, setItems] = useState([])
   const [abierto, setAbierto] = useState(false)
+  // Cambios que NO se pudieron ni anotar (almacenamiento lleno, 18/09/2026): no hay cuarentena que
+  // leer porque no entraron en ningún lado; se cuentan los eventos desde que la pantalla se abrió.
+  const [perdidos, setPerdidos] = useState(0)
+  useEffect(() => {
+    const onPerdida = () => setPerdidos((n) => n + 1)
+    window.addEventListener(EVENTO_ESCRITURA_PERDIDA, onPerdida)
+    return () => window.removeEventListener(EVENTO_ESCRITURA_PERDIDA, onPerdida)
+  }, [])
 
   const releer = useCallback(() => {
     cuarentenaMutaciones()
@@ -43,7 +51,21 @@ export default function AvisoCuarentena({ tabla = null }) {
     }
   }, [releer])
 
-  if (!items.length) return null
+  if (!items.length && !perdidos) return null
+
+  if (!items.length) {
+    return (
+      <div role="alert" style={sx('margin-bottom:12px;padding:11px 13px;border:1px solid var(--danger);border-radius:var(--r-lg);background:var(--danger-tint);font-size:12.5px;line-height:1.55')}>
+        <div style={sx('color:var(--danger);font-weight:700;margin-bottom:3px')}>
+          {perdidos === 1 ? 'El último cambio NO se guardó' : `Los últimos ${perdidos} cambios NO se guardaron`}
+        </div>
+        <div style={sx('color:var(--text)')}>
+          El navegador no tiene espacio para anotarlos. Lo que se ve en pantalla <b>no está en la base</b>.
+          Recargá la página (F5) y volvé a hacerlos; si vuelve a pasar, borrá los datos del sitio desde el navegador.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
