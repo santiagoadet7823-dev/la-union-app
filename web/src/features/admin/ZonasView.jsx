@@ -6,7 +6,9 @@ import { useTenant } from '../../context/TenantContext'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import { normalizar } from '../../lib/texto'
 import { ABREV_MAX, ABREV_MIN, abrevOcupada, limpiarAbrev, numeroOcupado, primerNumeroLibre, sugerirAbrev } from '../../lib/zonaAbrev'
-import { Basura, Editar } from '../../components/icons'
+import { Bajar, Basura, Editar } from '../../components/icons'
+import { supabase } from '../../services/supabase'
+import { exportarOrganizacion } from './exportarOrganizacion'
 import AvisoScopeCatalogo from '../../components/AvisoScopeCatalogo'
 
 /**
@@ -58,7 +60,7 @@ export default function ZonasView({ onToast }) {
   const { isMobile } = useDevice()
   // Mirando otra empresa: `usePerfilesEquipo` sigue al scope y listaría vendedores de ESA empresa
   // como dueños de zonas de la propia. Se deshabilitan los selects de vendedor.
-  const { esOverride } = useTenant()
+  const { esOverride, idEmpresaActiva } = useTenant()
   const [nombre, setNombre] = useState('')
   const [numero, setNumero] = useState('')
   const [abrev, setAbrev] = useState('')
@@ -66,6 +68,7 @@ export default function ZonasView({ onToast }) {
   const [vendedorId, setVendedorId] = useState('')
   const [color, setColor] = useState(COLORES[0])
   const [saving, setSaving] = useState(false)
+  const [bajando, setBajando] = useState(false) // "Planilla de organización"
   // Vendedores/encargados de la empresa (posibles dueños de cliente). RLS limita al tenant.
   const vendedores = usePerfilesEquipo()
 
@@ -187,6 +190,25 @@ export default function ZonasView({ onToast }) {
 
   const tituloVendedor = esOverride ? 'Volvé a tu empresa para asignar vendedores' : 'Vendedor dueño de la zona'
 
+  /* PLANILLA DE ORGANIZACIÓN (18/09/2026): equipo, zonas, clientes por zona, sin zona, sin
+   * ubicación y qué falta cargar. Los perfiles se piden acá y no a `usePerfilesEquipo` porque ese
+   * hook no trae `numero`/`codigo_erp` (el código ERP es uno de los "falta cargar"). Ver
+   * exportarOrganizacion.js para por qué vive en esta pantalla y no en un menú propio. */
+  async function bajarOrganizacion() {
+    setBajando(true)
+    try {
+      let q = supabase.from('perfiles').select('id, nombre, rol, numero, codigo_erp, activo').in('rol', ['vendedor', 'encargado'])
+      if (idEmpresaActiva && idEmpresaActiva !== '*') q = q.eq('id_empresa', idEmpresaActiva)
+      const { data: perfiles, error } = await q
+      if (error) throw error
+      await exportarOrganizacion({ clientes: clientesTodos, zonas, perfiles: perfiles || [], onToast })
+    } catch (e) {
+      onToast?.('No se pudo generar la planilla: ' + (e?.message || ''))
+    } finally {
+      setBajando(false)
+    }
+  }
+
   return (
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto'), padding: isMobile ? 12 : 20 }}>
       <AvisoScopeCatalogo />
@@ -207,6 +229,15 @@ export default function ZonasView({ onToast }) {
           <Paleta valor={color} onChange={setColor} />
           <button disabled={saving || !nombre.trim()} onClick={crearZona} style={sx('padding:9px 16px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             + Crear zona
+          </button>
+          <button
+            onClick={bajarOrganizacion}
+            disabled={bajando}
+            className="lu-press"
+            title="Equipo, zonas, clientes por zona, sin zona, sin ubicación y qué falta cargar (.xlsx). Es para leer; para editar y reimportar usá Clientes → Descargar planilla."
+            style={sx('display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:9px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap')}
+          >
+            <Bajar size={13} />{bajando ? 'Generando…' : 'Planilla de organización'}
           </button>
         </div>
 

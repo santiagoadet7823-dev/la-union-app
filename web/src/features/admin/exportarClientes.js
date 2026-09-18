@@ -123,11 +123,12 @@ export function ordenarPlanilla(filas, { completarHuecos = true } = {}) {
   return { filas: salida, huecos, sinCodigo, archivados, huecosOmitidos }
 }
 
-const fill = (rgb) => ({ fill: { patternType: 'solid', fgColor: { rgb } } })
+// Exportados (18/09/2026) para `exportarOrganizacion.js`, que pinta con los mismos colores.
+export const fill = (rgb) => ({ fill: { patternType: 'solid', fgColor: { rgb } } })
 
 // Pinta una celda; si `json_to_sheet` no la creó (valor vacío), la crea vacía para que el relleno
 // se vea igual. Sin esto las filas lila saldrían con sólo la celda del código pintada.
-function pintar(XLSX, ws, r, c, estilo) {
+export function pintar(XLSX, ws, r, c, estilo) {
   const ref = XLSX.utils.encode_cell({ r, c })
   if (!ws[ref]) ws[ref] = { t: 's', v: '' }
   ws[ref].s = { ...(ws[ref].s || {}), ...estilo }
