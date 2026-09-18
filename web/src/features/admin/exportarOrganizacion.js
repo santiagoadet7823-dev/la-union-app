@@ -13,12 +13,12 @@ import { COLORES, fill, pintar } from './exportarClientes'
  * que diga los encargados, vendedores, zonas, los clientes por zona, los sin zona, sin ubicación y
  * demás datos que le falten cargar".
  *
- * ES PARA LEER, SALVO LA HOJA ZONAS. `exportarClientes.js` baja UNA hoja plana con los encabezados
- * que `ImportarClientes` entiende, para editar y volver a subir. Ésta son SEIS hojas agrupadas con
- * un resumen: si alguien la sube al importador de clientes, no la reconoce (los encabezados no
- * son los suyos) y no pasa nada. La excepción (18/09/2026) es la hoja **Zonas**: con el "Vendedor
- * dueño" editado se sube en Zonas → "Cargar planilla" (`ImportarZonas`). La hoja Resumen lo dice
- * en su última fila.
+ * ES PARA LEER, SALVO LAS HOJAS ZONAS Y EQUIPO. `exportarClientes.js` baja UNA hoja plana con los
+ * encabezados que `ImportarClientes` entiende, para editar y volver a subir. Ésta son SEIS hojas
+ * agrupadas con un resumen: si alguien la sube al importador de clientes, no la reconoce (los
+ * encabezados no son los suyos) y no pasa nada. Las excepciones (18/09/2026) son la hoja **Zonas**
+ * ("Vendedor dueño") y la hoja **Equipo** ("Código ERP"): editadas, se suben en Zonas → "Cargar
+ * planilla" (`ImportarOrganizacion`). La hoja Resumen lo dice en su última fila.
  *
  * Vive en Menú → Zonas y no en un menú propio: es la pantalla desde donde se organiza la cartera.
  *
@@ -169,7 +169,7 @@ export function armarOrganizacion(clientes, zonas, perfiles) {
     ['Sin teléfono', n((b) => vacio(b.c.telefono))],
     ['Completos (nada que cargar)', n((b) => !b.falta)],
     ['', ''],
-    ['Para asignar vendedores a zonas: editá «Vendedor dueño» en la hoja Zonas y subila en Zonas → Cargar planilla. Para editar la cartera: Clientes → Descargar planilla.', ''],
+    ['Para cargar de una vez: editá «Vendedor dueño» en la hoja Zonas y «Código ERP» en la hoja Equipo, y subí este archivo en Zonas → Cargar planilla. Para editar la cartera: Clientes → Descargar planilla.', ''],
   ]
 
   return { resumen, hojaEquipo, hojaZonas, porZona, hojaSinZona, hojaSinUbic, conteos: { zonas: zonasOrd.length, conZona: conZona.length, sinZona: sinZona.length, sinUbic: sinUbic.length } }

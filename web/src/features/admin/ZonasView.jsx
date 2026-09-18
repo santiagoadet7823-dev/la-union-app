@@ -7,9 +7,8 @@ import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import { normalizar } from '../../lib/texto'
 import { ABREV_MAX, ABREV_MIN, abrevOcupada, limpiarAbrev, numeroOcupado, primerNumeroLibre, sugerirAbrev } from '../../lib/zonaAbrev'
 import { Bajar, Basura, Editar, Subir } from '../../components/icons'
-import { supabase } from '../../services/supabase'
 import { exportarOrganizacion } from './exportarOrganizacion'
-import ImportarZonas from './ImportarZonas'
+import ImportarOrganizacion, { cargarEquipoConCodigo } from './ImportarOrganizacion'
 import AvisoScopeCatalogo from '../../components/AvisoScopeCatalogo'
 import AvisoCuarentena from '../../components/AvisoCuarentena'
 
@@ -71,7 +70,7 @@ export default function ZonasView({ onToast }) {
   const [color, setColor] = useState(COLORES[0])
   const [saving, setSaving] = useState(false)
   const [bajando, setBajando] = useState(false) // "Planilla de organización"
-  const [cargando, setCargando] = useState(false) // "Cargar planilla" (ImportarZonas) abierto
+  const [cargando, setCargando] = useState(false) // "Cargar planilla" (ImportarOrganizacion) abierto
   // Vendedores/encargados de la empresa (posibles dueños de cliente). RLS limita al tenant.
   const vendedores = usePerfilesEquipo()
 
@@ -200,11 +199,8 @@ export default function ZonasView({ onToast }) {
   async function bajarOrganizacion() {
     setBajando(true)
     try {
-      let q = supabase.from('perfiles').select('id, nombre, rol, numero, codigo_erp, activo').in('rol', ['vendedor', 'encargado'])
-      if (idEmpresaActiva && idEmpresaActiva !== '*') q = q.eq('id_empresa', idEmpresaActiva)
-      const { data: perfiles, error } = await q
-      if (error) throw error
-      await exportarOrganizacion({ clientes: clientesTodos, zonas, perfiles: perfiles || [], onToast })
+      const perfiles = await cargarEquipoConCodigo(idEmpresaActiva)
+      await exportarOrganizacion({ clientes: clientesTodos, zonas, perfiles, onToast })
     } catch (e) {
       onToast?.('No se pudo generar la planilla: ' + (e?.message || ''))
     } finally {
@@ -216,7 +212,7 @@ export default function ZonasView({ onToast }) {
     <div className="lu-tabs" style={{ ...sx('flex:1;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-x:auto'), padding: isMobile ? 12 : 20 }}>
       <AvisoScopeCatalogo />
       <AvisoCuarentena />
-      {cargando && <ImportarZonas equipo={vendedores} onClose={() => setCargando(false)} onToast={onToast} />}
+      {cargando && <ImportarOrganizacion idEmpresaActiva={idEmpresaActiva} onClose={() => setCargando(false)} onToast={onToast} />}
 
       {/* Crear + listar zonas */}
       <div style={panel}>
@@ -239,7 +235,7 @@ export default function ZonasView({ onToast }) {
             onClick={bajarOrganizacion}
             disabled={bajando}
             className="lu-press"
-            title="Equipo, zonas, clientes por zona, sin zona, sin ubicación y qué falta cargar (.xlsx). La hoja Zonas se edita y vuelve a subir con «Cargar planilla»; la cartera se edita con Clientes → Descargar planilla."
+            title="Equipo, zonas, clientes por zona, sin zona, sin ubicación y qué falta cargar (.xlsx). Las hojas Zonas (vendedor dueño) y Equipo (código ERP) se editan y vuelven a subir con «Cargar planilla»; la cartera se edita con Clientes → Descargar planilla."
             style={sx('display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:9px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap')}
           >
             <Bajar size={13} />{bajando ? 'Generando…' : 'Planilla de organización'}
@@ -250,7 +246,7 @@ export default function ZonasView({ onToast }) {
             onClick={() => setCargando(true)}
             disabled={esOverride}
             className="lu-press"
-            title={esOverride ? 'Volvé a tu empresa para cargar zonas' : 'Subí la hoja «Zonas» de la planilla de organización con el vendedor dueño de cada zona'}
+            title={esOverride ? 'Volvé a tu empresa para cargar la planilla' : 'Subí la planilla de organización editada: hoja Zonas (vendedor dueño por zona) y hoja Equipo (código ERP por vendedor)'}
             style={sx('display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap')}
           >
             <Subir size={13} />Cargar planilla
