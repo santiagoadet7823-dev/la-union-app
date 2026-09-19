@@ -4,15 +4,17 @@ import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useCatalog } from '../../context/CatalogContext'
-import { colorPorId } from '../../lib/colors'
+import { colorPorId, tintaTransporte } from '../../lib/colors'
+import useTramosTransporte from '../../hooks/useTramosTransporte'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import useSnapConectores from './useSnapConectores'
 import MetricasEquipo from './MetricasEquipo'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
-import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
+import useRecorridosDelDia, { textoDeErrorRecorridos } from '../../hooks/useRecorridosDelDia'
+import HaceSegundos from '../../components/HaceSegundos'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
 import AlertasEquipo from '../../components/AlertasEquipo'
@@ -125,7 +127,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (misma lógica que la vista móvil). ----
-  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError, updatedAt: recorridosAt } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
 
   // 🩸 El recorrido se limpia UNA vez y de acá salen trazos, km y paradas — ver ./trazos.js. Sobre
   // los puntos crudos, el 29/07/2026 un vendedor figuraba con 524,8 km (cuatro fixes falsos lo
@@ -140,8 +142,11 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // referencia sea estable entre ticks y LeafletMap no la re-dibuje cada segundo.
   const { clientes: cartera, zonas } = useCatalog()
   // Capa de cartera: apagada → por zona → por estado de hoy. Ver `useCapaCartera`.
+  // Con una persona enfocada la capa es SU cartera (18/09/2026) — salvo un repartidor, que no tiene
+  // cartera: seguirlo con la capa vacía sería un bug nuevo, así que para él se sigue dibujando todo.
+  const focoCartera = foco?.id && roles[foco.id] !== 'repartidor' ? foco.id : null
   const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, zonasEnMapa, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
-    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark })
+    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark, focoId: focoCartera })
 
   // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
   // `setInterval` de 60 s que la invocaba también mirando días pasados; ahora se pide sólo cuando
@@ -310,10 +315,15 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   // copia y ya había divergido (le faltó `simplificarTrazo` del 26/07 hasta el 28/07, y era una
   // IIFE suelta que se recalculaba una vez por segundo con el tick de "hace Xs"). El `useMemo`
   // sigue siendo obligatorio por ese mismo tick.
+  // Tramos de TRANSPORTE del día (17/09/2026, db/72): el lapso en que cada persona declaró estar
+  // en ruta se pinta en tinta y lleva hitos de hora con la velocidad media. Ver trazos.js.
+  const { porUsuario: tramos, abiertos: transporteAbierto } = useTramosTransporte(fecha, idEmpresaActiva)
+  const tinta = tintaTransporte(theme)
   const leafletTrails = useMemo(
-    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null }),
-    [trails, snapped, foco]
+    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null, tramos, tinta }),
+    [trails, snapped, foco, tramos, tinta]
   )
+  const hitos = useMemo(() => construirHitosTransporte(trails, tramos, tinta), [trails, tramos, tinta])
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, el MISMO que usa Movil). El
   // `useMemo` es obligatorio por el tick de "hace Xs", que re-renderiza esto una vez por segundo.
   const inicios = useMemo(() => construirInicios(trails), [trails])
@@ -597,14 +607,22 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   )}
 
                   {/* Aviso si la carga de ubicaciones falló: antes un error dejaba el mapa vacío y
-                      MUDO (no se distinguía de "no hay datos"). Ahora se ve y se puede reintentar. */}
-                  {recorridosError && (
+                      MUDO (no se distinguía de "no hay datos"). Ahora se ve y se puede reintentar.
+                      Con puntos YA en pantalla (falló un tick de 60 s, no la carga) el aviso es chico y
+                      ámbar: el mapa está bien, sólo no se actualizó. El rojo queda para el mapa vacío. */}
+                  {recorridosError && (Object.keys(byUserCrudo).length ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 14px 12px', background: 'var(--warning-tint)', border: '1px solid var(--warning)', color: 'var(--text)', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, fontWeight: 600 }}>
+                      <AlertaCirculo size={16} color="var(--warning)" style={{ flex: 'none' }} />
+                      <span style={{ flex: 1 }}>Ubicaciones sin actualizar{recorridosAt ? <> (<HaceSegundos ts={recorridosAt} />)</> : ''}. {textoDeErrorRecorridos(recorridosError)}</span>
+                      <button onClick={doSync} style={{ flex: 'none', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--line2)', background: 'transparent', color: 'var(--deep)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
+                    </div>
+                  ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 14px 12px', background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, fontWeight: 600 }}>
                       <AlertaCirculo size={16} style={{ flex: 'none' }} />
-                      <span style={{ flex: 1 }}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {recorridosError.message || 'Error de red o sesión.'}</span>
+                      <span style={{ flex: 1 }}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {textoDeErrorRecorridos(recorridosError)}</span>
                       <button onClick={doSync} style={{ flex: 'none', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
                     </div>
-                  )}
+                  ))}
 
                   {/* Mapa grande */}
                   <div style={inmersivo ? { flex: 1, minHeight: 0, position: 'relative' } : { padding: 0, position: 'relative' }}>
@@ -619,6 +637,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
                       inicios={inicios}
                       fines={fines}
+                      hitos={hitos}
                       // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una
                       // persona recalcularía `calcularDwells` — ~250 ms por persona-día.
                       focoId={foco?.id || null}
@@ -639,7 +658,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     />
                     {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida
                         a la derecha del control de zoom de Leaflet. */}
-                    <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
+                    <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} conTransporte={Object.keys(tramos).length > 0} deQuien={focoCartera ? nombres[focoCartera] : null} />
                     {/* 🩸 ABAJO a la derecha, no arriba (28/07/2026). Estaba en `top:16` y ahí
                         vive el selector de capas de Leaflet ('topright', LeafletMap.jsx): en
                         pantalla completa se superponían y el botón de salir quedaba tapado.
@@ -735,6 +754,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                           nombres={nombres}
                           fotos={fotos}
                           byUser={byUser}
+                          transporte={transporteAbierto}
                           focoId={foco?.id || null}
                           onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
                           style={{ alignSelf: 'stretch' }}

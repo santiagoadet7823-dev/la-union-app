@@ -119,9 +119,30 @@ function PanelAvisos({ alertas, nombres, onEnfocar, onMarcarVista, onClose }) {
   )
 }
 
+/**
+ * Cómo se muestra cada TIPO de aviso. Hasta el 17/09/2026 esto era "si no es `sin_reportar` es
+ * `quieto`", y con el tercer tipo (`transporte_sin_declarar`, db/72) esa resta dejó de valer: un
+ * tipo nuevo se agrega ACÁ y en el CHECK de `alertas_equipo.tipo`, y en ningún otro lado. Un tipo
+ * que la base conozca y esta tabla no, cae a la fila de "quieto" a propósito (nunca a nada).
+ */
+const TIPOS = {
+  sin_reportar: {
+    etiqueta: 'sin reportar', color: 'var(--danger)', tinte: 'var(--danger-tint)',
+    texto: (a, cuanto) => <>Hace <b>{cuanto}</b> que no manda ubicación · última señal {fmtHora(a.desde)}</>,
+  },
+  quieto: {
+    etiqueta: 'quieto', color: 'var(--warning)', tinte: 'var(--surface)',
+    texto: (a, cuanto) => <>Lleva <b>{cuanto}</b> en el mismo lugar · desde las {fmtHora(a.desde)}</>,
+  },
+  transporte_sin_declarar: {
+    etiqueta: 'en ruta sin declarar', color: 'var(--info)', tinte: 'var(--info-tint)',
+    texto: (a) => <>Va a velocidad de ruta desde las {fmtHora(a.desde)} sin iniciar la jornada de transporte</>,
+  },
+}
+
 function FilaAviso({ alerta, nombre, onClick }) {
   const c = colorPorId(alerta.id_usuario)
-  const esSilencio = alerta.tipo === 'sin_reportar'
+  const tipo = TIPOS[alerta.tipo] || TIPOS.quieto
   const cuanto = fmtDuracion((alerta.minutos || 0) * 60000)
   const puedeEnfocar = alerta.lat != null && alerta.lng != null
 
@@ -151,17 +172,15 @@ function FilaAviso({ alerta, nombre, onClick }) {
           <span style={{
             flex: 'none', padding: '1px 7px', borderRadius: 'var(--r-pill)',
             fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.02em',
-            background: esSilencio ? 'var(--danger-tint)' : 'var(--surface)',
-            color: esSilencio ? 'var(--danger)' : 'var(--warning)',
-            border: `1px solid ${esSilencio ? 'var(--danger)' : 'var(--warning)'}`,
+            background: tipo.tinte,
+            color: tipo.color,
+            border: `1px solid ${tipo.color}`,
           }}>
-            {esSilencio ? 'sin reportar' : 'quieto'}
+            {tipo.etiqueta}
           </span>
         </div>
         <div style={{ marginTop: 3, fontSize: 'var(--fs-xs)', color: 'var(--muted)', lineHeight: 1.5 }}>
-          {esSilencio
-            ? <>Hace <b>{cuanto}</b> que no manda ubicación · última señal {fmtHora(alerta.desde)}</>
-            : <>Lleva <b>{cuanto}</b> en el mismo lugar · desde las {fmtHora(alerta.desde)}</>}
+          {tipo.texto(alerta, cuanto)}
         </div>
         {/* El MOTIVO solo aparece cuando el teléfono lo pudo contar (APK 1.7.0+, y recién cuando
             recupera la red). Si no sabemos, no se inventa nada: mejor un aviso sin explicación. */}

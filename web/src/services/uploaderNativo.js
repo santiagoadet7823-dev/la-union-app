@@ -6,9 +6,10 @@ import {
   MIN_MOVE_M, STATIONARY_KEEPALIVE_MS, NEAR_LIVE_MS, NEAR_LIVE_RAPIDO_MS, VEL_UMBRAL_MPS, VEL_HIST_MS,
   ACCURACY_MAX_M, ACCURACY_CAPTURA_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS,
   MIN_MOVE_URBANO_M, MIN_MOVE_RUTA_M, VEL_RUTA_MPS, NEAR_LIVE_QUIETO_MS,
-  ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS, LOTE_SUBIDA_MS,
+  ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS, LOTE_SUBIDA_MS, NEAR_LIVE_TRANSPORTE_MS,
 } from './gpsConfig'
 import { paramsDePerfil } from './gpsPerfil'
+import { abierto as transporteAbierto } from './transporte'
 
 /**
  * Bridge al uploader GPS NATIVO (Opción B, 24/07/2026). El servicio nativo (UploaderGpsService) captura
@@ -136,6 +137,15 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       // Va último: pisa `intervaloMs` / `intervaloRapidoMs` / `intervaloQuietoMs` / `minMoveM` para
       // las personas en prueba, y no existe para el resto. Ver `paramsDePerfil`.
       ...(perfilGps || {}),
+      // Y DESPUÉS del perfil, la jornada de transporte (17/09/2026): con un tramo abierto las tres
+      // cadencias se igualan a `NEAR_LIVE_TRANSPORTE_MS` — es `fijar_cadencia` por evento, y pisa
+      // incluso a un perfil "ahorro" porque el tramo es una decisión de la persona, hoy, y el
+      // perfil una prueba del panel. `usePublishPosition` reempuja esto al abrir/cerrar (evento
+      // `EVENTO_TRANSPORTE`); el nativo lo lee en la próxima transición de velocidad/actividad. Sólo
+      // cadencias: el guardado (`minMove*`, keepalive) y `loteMs` no cambian. Ver `transporte.js`.
+      ...(transporteAbierto()
+        ? { intervaloMs: NEAR_LIVE_TRANSPORTE_MS, intervaloRapidoMs: NEAR_LIVE_TRANSPORTE_MS, intervaloQuietoMs: NEAR_LIVE_TRANSPORTE_MS }
+        : {}),
     })
     await UploaderGps.iniciar()
     iniciado = true

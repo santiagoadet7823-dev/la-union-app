@@ -12,11 +12,21 @@
 // abierto por persona y por tipo, este cron puede correr cada 10 minutos sin mandar 6 avisos por
 // hora. No agregar lógica de "ya avisé" acá: se duplicaría el criterio en dos lugares.
 //
-// Los DOS tipos de aviso, y por qué son dos y no tres:
+// Los TRES tipos de aviso:
 //   · sin_reportar — hace N minutos que no llega una posición, DENTRO de su ventana de rastreo.
 //   · quieto       — sigue reportando, pero no se movió del mismo lugar (radio de 40 m).
-// "Sin internet" NO es un tercer tipo: es el MOTIVO de un silencio y viaja en `alertas_equipo.motivo`.
+//   · transporte_sin_declarar — (17/09/2026, db/72) va a velocidad de RUTA (≥ 40 km/h sostenidos,
+//     ≥ N km netos en M minutos) sin haber abierto su "jornada de transporte" (`tramos_transporte`).
+//     Lo mide `vigilancia_transporte`; `en_ventana` lo sigue diciendo `vigilancia_equipo` y acá se
+//     cruzan las dos filas por `id_usuario` (la ventana ya está implementada tres veces, regla 36:
+//     no va una cuarta). Se cierra solo cuando la persona abre el tramo o cuando deja de moverse.
+// "Sin internet" NO es un tipo: es el MOTIVO de un silencio y viaja en `alertas_equipo.motivo`.
 // Dos push por el mismo hecho serían ruido.
+//
+// Y de paso, este cron es quien CIERRA los tramos de transporte que quedaron abiertos: al salir
+// de la ventana de rastreo (`cierre = 'ventana'`) y, por seguridad, a las 14 h (`'cron'`). La
+// ventana sigue mandando: el nativo se pausa fuera de horario aunque el tramo esté abierto, así
+// que acá sólo se cierra el dato.
 //
 // 🩸 QUÉ MERECE INTERRUMPIR A ALGUIEN (04/08/2026). Medido sobre el 03/08: a las 08:00, apertura de
 // la ventana de rastreo, se abrieron **6 incidentes de golpe** —todos los que tenían el teléfono
@@ -70,6 +80,30 @@ interface FilaVigilancia {
   apagado_ts: string | null
 }
 
+/** Una fila de `vigilancia_transporte` (db/72). Los números ya vienen redondeados del SQL. */
+interface FilaTransporte {
+  id_usuario: string
+  id_empresa: string
+  nombre: string | null
+  rol: string
+  km_neto: number
+  km_recorrido: number
+  min_a_ruta: number
+  kmh_max: number
+  desde_ts: string | null
+  ultimo_ts: string | null
+  lat: number | null
+  lng: number | null
+  en_transporte: boolean
+  tramo_id: string | null
+  tramo_desde: string | null
+  sospecha: boolean
+}
+
+const TIPO_TRANSPORTE = 'transporte_sin_declarar'
+/** Un tramo abierto hace más que esto se cierra solo: nadie maneja 14 horas seguidas. */
+const TRAMO_MAX_H = 14
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -122,6 +156,12 @@ function motivoDe(f: FilaVigilancia, desde: string): string | null {
     return `el teléfono se apagó a las ${hhmm(f.apagado_ts)}`
   }
   return null
+}
+
+/** "83 km/h · 7,3 km en 15 min" — lo medido, para que el supervisor juzgue solo si es ruta. */
+function motivoTransporte(t: FilaTransporte, ventanaMin: number): string {
+  const km = String(Number(t.km_neto).toFixed(1)).replace('.', ',')
+  return `${Math.round(t.kmh_max)} km/h · ${km} km en ${ventanaMin} min`
 }
 
 /**
@@ -178,13 +218,15 @@ Deno.serve(async (req) => {
     // ---- 1) Umbrales. Viven en app_config, al lado de la ventana de rastreo.
     const { data: cfg } = await supabase
       .from('app_config')
-      .select('alertas_activas, alerta_silencio_min, alerta_quieto_min')
+      .select('alertas_activas, alerta_silencio_min, alerta_quieto_min, alerta_transporte_km, alerta_transporte_min')
       .maybeSingle()
     if (cfg?.alertas_activas === false) {
       return json({ motivo: 'alertas apagadas', abiertas: 0, cerradas: 0, enviados: 0 })
     }
     const minSil = cfg?.alerta_silencio_min ?? 30
     const minQui = cfg?.alerta_quieto_min ?? 120
+    const kmTrans = Number(cfg?.alerta_transporte_km ?? 5)
+    const minTrans = cfg?.alerta_transporte_min ?? 15
 
     // ---- 2) Detección (toda en SQL).
     const { data: filas, error: errVig } = await supabase.rpc('vigilancia_equipo', {
@@ -193,6 +235,19 @@ Deno.serve(async (req) => {
     })
     if (errVig) return json({ error: 'vigilancia_equipo: ' + errVig.message }, 500)
     const vig = (filas || []) as FilaVigilancia[]
+
+    // La segunda RPC mide movimiento por ruta + tramo abierto. Calibrada el 17/09/2026 sobre 7 días
+    // guardados: con 5 km / 3 min a ≥ 40 km/h dispara sólo en viajes entre pueblos (Zura, Eduardo,
+    // Javier, Gabriel) y en ningún bloque urbano. Si alguna vez suena de más, primero correr la RPC
+    // a mano y mirar `km_neto`/`min_a_ruta` de ese día antes de mover un umbral (regla 49).
+    const { data: filasT, error: errTr } = await supabase.rpc('vigilancia_transporte', {
+      p_min: minTrans,
+      p_km: kmTrans,
+    })
+    if (errTr) return json({ error: 'vigilancia_transporte: ' + errTr.message }, 500)
+    const trans = new Map<string, FilaTransporte>(
+      ((filasT || []) as FilaTransporte[]).map((t) => [t.id_usuario, t]),
+    )
 
     // ---- 3) Destinatarios: supervisores con token, y la JERARQUÍA.
     //
@@ -346,6 +401,11 @@ Deno.serve(async (req) => {
     // `quieto` exige que la persona SIGA reportando. Si dejó de hacerlo también está trivialmente
     // quieta, y ese caso ya lo cubre `sin_reportar`: sin esta condición saldrían dos avisos por el
     // mismo hecho.
+    //
+    // `transporte_sin_declarar` no compite con los otros dos: quien va a 80 km/h ni está quieto ni
+    // dejó de reportar (la RPC sólo cuenta hops con puntos de los últimos minutos). La decisión
+    // (`sospecha`) vive en el SQL para poder verificarla con un `select`; acá sólo se le suma la
+    // ventana.
     const corresponde = new Map<string, Set<string>>()
     const porUsuario = new Map<string, FilaVigilancia>()
     for (const f of vig) {
@@ -354,8 +414,34 @@ Deno.serve(async (req) => {
       if (f.en_ventana) {
         if (f.minutos_silencio >= minSil) tipos.add('sin_reportar')
         else if (f.minutos_quieto >= minQui) tipos.add('quieto')
+        if (trans.get(f.id_usuario)?.sospecha) tipos.add(TIPO_TRANSPORTE)
       }
       corresponde.set(f.id_usuario, tipos)
+    }
+
+    // ---- 4-bis) Cerrar los tramos de transporte que ya no corresponden (ver encabezado). Va antes
+    // de abrir incidentes para que un tramo vencido no siga tapando la alerta de mañana.
+    const tramosVentana = vig
+      .filter((f) => !f.en_ventana && trans.get(f.id_usuario)?.tramo_id)
+      .map((f) => trans.get(f.id_usuario)!.tramo_id as string)
+    let tramosCerrados = 0
+    if (tramosVentana.length) {
+      const { data } = await supabase
+        .from('tramos_transporte')
+        .update({ fin_ts: new Date().toISOString(), cierre: 'ventana' })
+        .in('id', tramosVentana)
+        .is('fin_ts', null)
+        .select('id')
+      tramosCerrados += (data || []).length
+    }
+    {
+      const { data } = await supabase
+        .from('tramos_transporte')
+        .update({ fin_ts: new Date().toISOString(), cierre: 'cron' })
+        .is('fin_ts', null)
+        .lt('inicio_ts', new Date(Date.now() - TRAMO_MAX_H * 3600 * 1000).toISOString())
+        .select('id')
+      tramosCerrados += (data || []).length
     }
 
     // ---- 5) Qué hay abierto.
@@ -368,12 +454,39 @@ Deno.serve(async (req) => {
     const clave = (u: string, t: string) => `${u}|${t}`
     const yaAbierto = new Map(abiertas.map((a) => [clave(a.id_usuario, a.tipo), a]))
 
+    // Histéresis del cierre de `transporte_sin_declarar`: entre dos pueblos se atraviesa uno a
+    // 30 km/h y `sospecha` cae a falso durante una ventana; sin esto el aviso se cerraría ("dejó la
+    // ruta") y se reabriría diez minutos después, dos push por nada. Abierto se queda abierto
+    // mientras la persona siga moviéndose (≥ 1 km neto en la ventana) y no haya declarado el tramo.
+    // Se cierra de verdad cuando para o cuando abre el tramo.
+    for (const [uid, tipos] of corresponde) {
+      if (tipos.has(TIPO_TRANSPORTE) || !yaAbierto.has(clave(uid, TIPO_TRANSPORTE))) continue
+      const t = trans.get(uid)
+      if (porUsuario.get(uid)?.en_ventana && t && !t.en_transporte && Number(t.km_neto) >= 1) {
+        tipos.add(TIPO_TRANSPORTE)
+      }
+    }
+
     // ---- 6) Abrir lo que falta.
     const aAbrir: Record<string, unknown>[] = []
     for (const [uid, tipos] of corresponde) {
       const f = porUsuario.get(uid)!
       for (const tipo of tipos) {
         if (yaAbierto.has(clave(uid, tipo))) continue
+        if (tipo === TIPO_TRANSPORTE) {
+          const t = trans.get(uid)!
+          aAbrir.push({
+            id_empresa: f.id_empresa,
+            id_usuario: uid,
+            tipo,
+            desde: t.desde_ts || new Date(Date.now() - minTrans * 60000).toISOString(),
+            minutos: Math.round(t.min_a_ruta),
+            lat: t.lat,
+            lng: t.lng,
+            motivo: motivoTransporte(t, minTrans),
+          })
+          continue
+        }
         const desde = tipo === 'sin_reportar'
           ? (f.ultimo_ts || new Date(Date.now() - f.minutos_silencio * 60000).toISOString())
           : (f.quieto_desde || new Date(Date.now() - f.minutos_quieto * 60000).toISOString())
@@ -416,8 +529,18 @@ Deno.serve(async (req) => {
       if (aCerrar.includes(a)) continue
       const f = porUsuario.get(a.id_usuario)
       if (!f) continue
-      const min = a.tipo === 'sin_reportar' ? f.minutos_silencio : f.minutos_quieto
-      const mot = motivoDe(f, a.desde)
+      let min: number, mot: string | null
+      if (a.tipo === TIPO_TRANSPORTE) {
+        const t = trans.get(a.id_usuario)
+        if (!t) continue
+        // Los minutos a ruta se ACUMULAN entre pasadas: la RPC sólo mira la última ventana, y el
+        // panel quiere "hace cuánto viene así", no "cuánto de los últimos 15 min".
+        min = Math.max(a.minutos ?? 0, Math.round(t.min_a_ruta))
+        mot = motivoTransporte(t, minTrans)
+      } else {
+        min = a.tipo === 'sin_reportar' ? f.minutos_silencio : f.minutos_quieto
+        mot = motivoDe(f, a.desde)
+      }
       if (min === a.minutos && mot === a.motivo) continue
       await supabase.from('alertas_equipo').update({ minutos: min, motivo: mot }).eq('id', a.id)
     }
@@ -435,7 +558,7 @@ Deno.serve(async (req) => {
     if (!pushables.length && !cierresAvisables.length) {
       return json({
         evaluados: vig.length, abiertas: nuevas.length, sin_push: nuevas.length - pushables.length,
-        cerradas: aCerrar.length, enviados: 0, fallidos: 0, omitidos: 0,
+        cerradas: aCerrar.length, tramos_cerrados: tramosCerrados, enviados: 0, fallidos: 0, omitidos: 0,
       })
     }
     if (!hayFcm) {
@@ -467,11 +590,18 @@ Deno.serve(async (req) => {
         const f = porUsuario.get(a.id_usuario)
         const quien = f?.nombre || 'Un móvil'
         const min = a.minutos ?? 0
-        const titulo = a.tipo === 'sin_reportar' ? `Sin reportar · ${quien}` : `Quieto ${dur(min)} · ${quien}`
-        let cuerpo = a.tipo === 'sin_reportar'
-          ? `Hace ${dur(min)} que no manda ubicación. Última señal ${hhmm(a.desde)}.`
-          : `Sigue reportando pero no se movió desde las ${hhmm(a.desde)}.`
-        if (a.motivo) cuerpo += ` (${a.motivo})`
+        let titulo: string, cuerpo: string
+        if (a.tipo === TIPO_TRANSPORTE) {
+          titulo = `En ruta sin declarar · ${quien}`
+          cuerpo = `Va a velocidad de ruta desde las ${hhmm(a.desde)} sin iniciar la jornada de transporte.`
+          if (a.motivo) cuerpo += ` (${a.motivo})`
+        } else {
+          titulo = a.tipo === 'sin_reportar' ? `Sin reportar · ${quien}` : `Quieto ${dur(min)} · ${quien}`
+          cuerpo = a.tipo === 'sin_reportar'
+            ? `Hace ${dur(min)} que no manda ubicación. Última señal ${hhmm(a.desde)}.`
+            : `Sigue reportando pero no se movió desde las ${hhmm(a.desde)}.`
+          if (a.motivo) cuerpo += ` (${a.motivo})`
+        }
         await enviarA([d], titulo, cuerpo, `lu-alerta-${a.id_usuario}-${a.tipo}`,
           { clase: a.tipo, id_usuario: a.id_usuario, alerta_id: a.id })
         continue
@@ -480,7 +610,14 @@ Deno.serve(async (req) => {
       // El detalle está en el panel y en el resumen.
       const nombres = lista.slice(0, 3).map((a) => corto(porUsuario.get(a.id_usuario)?.nombre ?? null))
       if (lista.length > 3) nombres.push(`y ${lista.length - 3} más`)
-      await enviarA([d], `${lista.length} móviles sin reportar`,
+      // Con tres tipos el título "sin reportar" mentiría cuando la tanda es mixta: se nombra el
+      // hecho sólo si todos son del mismo tipo.
+      const tiposTanda = new Set(lista.map((a) => a.tipo as string))
+      const queHecho = tiposTanda.size > 1 ? 'avisos del equipo'
+        : tiposTanda.has(TIPO_TRANSPORTE) ? 'móviles en ruta sin declarar'
+        : tiposTanda.has('quieto') ? 'móviles quietos'
+        : 'móviles sin reportar'
+      await enviarA([d], `${lista.length} ${queHecho}`,
         `${nombres.join(', ')}. Miralos en el panel del equipo.`,
         'lu-alerta-grupo', { clase: 'grupo' })
     }
@@ -494,10 +631,21 @@ Deno.serve(async (req) => {
     for (const a of cierresAvisables) {
       const f = porUsuario.get(a.id_usuario)
       const quien = f?.nombre || 'Un móvil'
-      const titulo = a.tipo === 'sin_reportar' ? `Volvió a reportar · ${quien}` : `Se movió · ${quien}`
-      const cuerpo = a.tipo === 'sin_reportar'
-        ? `Estuvo ${dur(a.minutos ?? 0)} sin mandar ubicación.`
-        : `Estuvo ${dur(a.minutos ?? 0)} en el mismo lugar.`
+      let titulo: string, cuerpo: string
+      if (a.tipo === TIPO_TRANSPORTE) {
+        // Dos cierres distintos y el supervisor quiere saber cuál: declaró el transporte (la
+        // persona hizo lo que se le pedía) o simplemente dejó de moverse por ruta.
+        const declaro = !!trans.get(a.id_usuario)?.en_transporte
+        titulo = declaro ? `Declaró transporte · ${quien}` : `Dejó la ruta · ${quien}`
+        cuerpo = declaro
+          ? `Inició la jornada de transporte a las ${hhmm(trans.get(a.id_usuario)?.tramo_desde ?? null)}.`
+          : `Ya no va a velocidad de ruta. Estuvo ${dur(a.minutos ?? 0)} sin declararlo.`
+      } else {
+        titulo = a.tipo === 'sin_reportar' ? `Volvió a reportar · ${quien}` : `Se movió · ${quien}`
+        cuerpo = a.tipo === 'sin_reportar'
+          ? `Estuvo ${dur(a.minutos ?? 0)} sin mandar ubicación.`
+          : `Estuvo ${dur(a.minutos ?? 0)} en el mismo lugar.`
+      }
       await enviarA(destinatariosDe(a.id_usuario, a.id_empresa), titulo, cuerpo, `lu-alerta-${a.id_usuario}-${a.tipo}`,
         { clase: 'resuelta', id_usuario: a.id_usuario })
     }
@@ -514,6 +662,7 @@ Deno.serve(async (req) => {
       abiertas: nuevas.length,
       sin_push: nuevas.length - pushables.length,
       cerradas: aCerrar.length,
+      tramos_cerrados: tramosCerrados,
       enviados,
       fallidos,
       omitidos,

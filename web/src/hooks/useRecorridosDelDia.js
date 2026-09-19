@@ -12,6 +12,19 @@ const PERSISTIR_CADA_MS = 5 * 60000
 const CACHE_MAX_CHARS = 600_000
 
 /**
+ * Texto del error para la persona. Un 401 / `PGRST301` («JWT expired») no es la red: es la sesión, y
+ * lo accionable es volver a entrar — el cartel decía «Error de red o sesión» y mandaba a reintentar,
+ * que con un token muerto no sirve de nada. Cualquier otro caso muestra el mensaje crudo (fecha,
+ * timeout, «Failed to fetch»…), que es lo que después se busca en la consola.
+ */
+export function textoDeErrorRecorridos(error) {
+  if (!error) return ''
+  const m = error.message || ''
+  if (error.code === 'PGRST301' || error.status === 401 || /jwt expired|jwt/i.test(m)) return 'La sesión venció: cerrá sesión y volvé a entrar.'
+  return m || 'Error de red o sesión.'
+}
+
+/**
  * Carga las posiciones del día (todas las de la empresa, agrupadas por
  * id_usuario) y se refresca sola cada 60s de forma INCREMENTAL si `fecha` es hoy
  * (solo trae los puntos nuevos, para no gastar egress). Antes esta lógica estaba

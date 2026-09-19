@@ -4,6 +4,7 @@ import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Check, Editar, Mas, Pin, Search } from '../../../components/icons'
 import Logo from '../../../components/Logo'
+import BotonTransporte from '../../../components/BotonTransporte'
 import { useGps } from '../../../context/GpsContext'
 import { useAuth } from '../../../context/AuthContext'
 import { card, Stat } from '../ui'
@@ -27,6 +28,8 @@ const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day
  * el repo no usa ninguna y esto no lo justifica.
  */
 const POR_TANDA = 50
+// Tope del bloque "Sin dueño" del buscador: el mismo que corta `sinDuenoBuscados` en `useJornada`.
+const SIN_DUENO_TOPE = 30
 
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
 export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
@@ -41,7 +44,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
   // 🩸 La lista que se DIBUJA sale filtrada de `useJornada`, pero los contadores de arriba
   // (Paradas, barra de progreso) siguen saliendo de `clients` ENTERO: el avance de la jornada es
   // sobre la cartera real, no sobre lo que el vendedor esté buscando en este momento.
-  const { clientsFiltrados: lista, buscaCli, setBuscaCli, soloPendientes, setSoloPendientes } = j
+  const { clientsFiltrados: lista, buscaCli, setBuscaCli, soloPendientes, setSoloPendientes, sinDuenoBuscados, misCoberturas, zonaPorId, soltarCobertura } = j
 
   // Tope de tarjetas dibujadas (ver POR_TANDA). Vive acá y NO en `useJornada` a propósito: es
   // estado de PRESENTACIÓN, y que se reinicie al volver a la pestaña es lo correcto — nadie espera
@@ -97,6 +100,11 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
         </div>
       )}
 
+      {/* Jornada de transporte (17/09/2026): al salir a la ruta entre pueblos. Fija la cadencia del
+          GPS mientras dura y el panel pinta ese tramo aparte. Va debajo del estado del GPS porque es
+          la segunda decisión del día, después de prender la ubicación. */}
+      <BotonTransporte style={{ marginBottom: 14 }} />
+
       <div style={card}>
         <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px')}>
           <div style={sx('font-size:12px;color:var(--muted);font-weight:500')}>Resumen del día · {nombre}</div>
@@ -134,6 +142,25 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
           <Mas size={12} w={2.5} />Nuevo
         </button>
       </div>
+
+      {/* Las zonas que hoy cubro por otro (db/76): se ven y se sueltan desde acá. Soltarla saca sus
+          comercios de la lista; lo ya visitado queda registrado igual, es de quien lo visitó. */}
+      {misCoberturas.length > 0 && (
+        <div style={sx('display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 2px 10px;font-size:11px;color:var(--muted)')}>
+          Hoy cubrís:
+          {misCoberturas.map((k) => {
+            const z = zonaPorId.get(k.id_zona)
+            if (!z) return null
+            return (
+              <span key={k.id} style={{ ...sx('display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:3px 4px 3px 9px;font-size:11px;font-weight:600;color:#fff'), background: z.color || 'var(--muted)' }}>
+                {z.abrev ? `${z.abrev} · ` : ''}{z.nombre}
+                <button type="button" onClick={() => soltarCobertura(k.id)} aria-label={`Dejar de cubrir ${z.nombre}`}
+                  style={sx('width:20px;height:20px;border-radius:99px;border:none;background:rgba(255,255,255,.25);color:#fff;display:grid;place-items:center;font-size:11px;cursor:pointer')}>✕</button>
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {catLoading || clients.length === 0 ? null : (
         <div style={sx('margin-bottom:10px')}>
@@ -182,86 +209,29 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
       ) : lista.length === 0 ? (
         <div style={{ ...card, textAlign: 'center', padding: '26px 18px' }}>
           <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>
-            Ningún comercio coincide con <b>{buscaCli || 'el filtro'}</b>.
+            {sinDuenoBuscados.length > 0 ? <>Ninguno de <b>tus</b> comercios coincide con <b>{buscaCli}</b>.</> : <>Ningún comercio coincide con <b>{buscaCli || 'el filtro'}</b>.</>}
           </div>
         </div>
       ) : (
-        lista.slice(0, tope).map((c) => {
-          const i = c.idx
-          const isNext = c.id === nextId
-          const pill = c.status === 'visitado' ? ['Visitado', 'var(--success)', 'var(--success-tint)']
-            : c.status === 'sin_pedido' ? ['Sin pedido', 'var(--warning)', 'var(--warning-tint)']
-              : ['Pendiente', 'var(--faint)', 'var(--surface2)']
-          const nBg = c.status === 'visitado' ? 'var(--success-tint)' : c.status === 'sin_pedido' ? 'var(--warning-tint)' : isNext ? 'var(--primary-tint)' : 'var(--surface2)'
-          const nColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
-          const subColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
-          const sub = c.status === 'visitado' ? `${c.hora} · ${fmtPesos(c.monto)}` : c.status === 'sin_pedido' ? `${c.hora} · ${c.motivo || ''}` : isNext ? 'Próxima parada' : 'Pendiente'
-          return (
-            <div key={c.id} style={{ ...sx('display:flex;gap:10px;align-items:center;background:var(--surface);border-radius:16px;padding:12px;margin-bottom:8px;box-shadow:var(--shadow)'), border: `1px solid ${isNext ? 'var(--primary)' : 'var(--line)'}` }}>
-              <div style={{ ...sx('width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600'), background: nBg, color: nColor }}>{String(i + 1).padStart(2, '0')}</div>
-              <div style={sx('flex:1;min-width:0')}>
-                <div style={sx('display:flex;align-items:center;gap:6px')}>
-                  {/* 🩸 11/08/2026 — el nombre va en UNA línea con ellipsis, y así se queda. El
-                      10/08 se probó dejarlo envolver para que entrara completo: con nombres de
-                      hasta 43 caracteres la tarjeta se estiraba a varios renglones y la lista se
-                      volvía ilegible. El espacio para el nombre se gana ACHICANDO EL BOTÓN (ver
-                      abajo), no dejando crecer la tarjeta. */}
-                  <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
-                  {!c.activo && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
-                </div>
-                <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
-                <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
-              </div>
-              <div style={sx('flex:none;display:flex;align-items:center;gap:6px')}>
-                {/* 🩸 08/08/2026 — SIN GATE DE ASIGNACIÓN. Este botón es el ÚNICO camino por el que
-                    un vendedor ubica un comercio, y estaba condicionado a `c.idVendedor === user.id`.
-                    Medido ese día: de 1998 clientes, 3 tenían vendedor asignado. O sea que para el
-                    99,8 % de la cartera el lápiz no se dibujaba nunca y la geolocalización no podía
-                    avanzar — 1980 comercios sin coordenadas, y el camino para cargarlas cerrado.
-                    Decisión del encargado: cada vendedor es responsable de lo que toca. La RLS
-                    acompaña (`clientes_upd` acepta al rol vendedor dentro de su empresa); el alcance
-                    por EMPRESA sigue intacto, y BORRAR sigue sin estar permitido. */}
-                <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
-                  <Editar size={15} />
-                </button>
-                {/* 🩸 11/08/2026 — CHECK-IN SIN LA PALABRA, y el motivo es aritmética, no estética.
-                    Un vendedor reportó que no le entraba el nombre del comercio. A 375 px la columna
-                    del nombre mide ~170 px: la tarjeta son 375 menos 24 de padding, 30 del número,
-                    36 del lápiz, 26 de gaps y ~90 que se llevaba este botón con la palabra adentro.
-                    Achicarle el padding devolvía 8 px, o sea UN carácter — no servía de nada.
-                    Con solo el ícono el botón baja a 44 px y devuelve ~46: entran 6-7 caracteres
-                    más. Medido contra la cartera: 1.803 clientes, 18 caracteres de nombre en
-                    promedio y máximo 43; con esto se leen enteros los de hasta ~31, que son 1.758
-                    (97,5 %). El área táctil se mantiene en 44×44, igual que el lápiz de al lado.
-                    Sin texto visible, el nombre accesible tiene que vivir en `title` y `aria-label`
-                    o el botón queda mudo para un lector de pantalla. */}
-                {c.status === 'pendiente' ? (
-                  <button onClick={() => alTocar(c)} title="Check-in" aria-label={`Check-in en ${c.name}`} style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;cursor:pointer;border:none')}>
-                    <Check size={20} />
-                  </button>
-                ) : (
-                  /* 🩸 EL PILL VUELVE A SER TOCABLE (04/09/2026). Era un `div` inerte: una vez
-                     visitado el comercio, no había forma de volver a entrar en toda la jornada — y
-                     ése es justo el caso que reportó el vendedor, "cerré el ticket y el comerciante
-                     me agregó dos cajones". Ahora abre la misma hoja que el check-in, que ofrece
-                     corregir el pedido o abrir uno nuevo.
-                     NO vuelve a hacer check-in: la presencia ya quedó registrada, y una segunda
-                     visita a los diez minutos ensuciaría los reportes con una parada que no existió.
-                     Se mantiene el área táctil de 44 px de alto, igual que el botón que reemplaza. */
-                  <button
-                    onClick={() => alTocar(c)}
-                    title={`Volver a ${c.name}`}
-                    aria-label={`Abrir de nuevo ${c.name}`}
-                    className="lu-press"
-                    style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;min-height:44px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600;border:none;cursor:pointer'), background: pill[2], color: pill[1] }}
-                  >
-                    <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })
+        lista.slice(0, tope).map((c) => <TarjetaCliente key={c.id} c={c} i={c.idx} isNext={c.id === nextId} alTocar={alTocar} onEditarCliente={onEditarCliente} />)
+      )}
+
+      {/* Los SIN DUEÑO no están en "Mis clientes" (ver `lib/carteraDe.js`): sólo aparecen buscados.
+          Al tocar uno pasa lo de siempre (ubicar → check-in) y desde ese momento es del vendedor. */}
+      {sinDuenoBuscados.length > 0 && (
+        <div style={sx('margin-top:14px')}>
+          <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 8px')}>
+            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px')}>Sin dueño</div>
+            <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{sinDuenoBuscados.length > SIN_DUENO_TOPE ? `más de ${SIN_DUENO_TOPE}` : sinDuenoBuscados.length}</div>
+          </div>
+          <div style={sx('font-size:11px;color:var(--faint);line-height:1.5;margin:0 2px 8px')}>
+            Comercios de la empresa que no son de nadie. El que atiendas queda en tu cartera.
+          </div>
+          {sinDuenoBuscados.slice(0, SIN_DUENO_TOPE).map((c) => <TarjetaCliente key={c.id} c={c} i={null} isNext={false} alTocar={alTocar} onEditarCliente={onEditarCliente} />)}
+          {sinDuenoBuscados.length > SIN_DUENO_TOPE && (
+            <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);text-align:center;padding:6px')}>Afiná la búsqueda para ver el resto.</div>
+          )}
+        </div>
       )}
 
       {lista.length > tope && (
@@ -280,6 +250,88 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * La tarjeta de UN comercio. Es la misma para "Mis clientes" y para el bloque "Sin dueño" del
+ * buscador (18/09/2026): lo único que cambia es el número (los sin dueño no están en la jornada,
+ * no llevan) y los chips — la abreviatura de la zona si es una zona que hoy cubro, o "SIN DUEÑO".
+ */
+function TarjetaCliente({ c, i, isNext, alTocar, onEditarCliente }) {
+  const pill = c.status === 'visitado' ? ['Visitado', 'var(--success)', 'var(--success-tint)']
+    : c.status === 'sin_pedido' ? ['Sin pedido', 'var(--warning)', 'var(--warning-tint)']
+      : ['Pendiente', 'var(--faint)', 'var(--surface2)']
+  const nBg = c.status === 'visitado' ? 'var(--success-tint)' : c.status === 'sin_pedido' ? 'var(--warning-tint)' : isNext ? 'var(--primary-tint)' : 'var(--surface2)'
+  const nColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
+  const subColor = c.status === 'visitado' ? 'var(--success)' : c.status === 'sin_pedido' ? 'var(--warning)' : isNext ? 'var(--deep)' : 'var(--faint)'
+  const sub = c.status === 'visitado' ? `${c.hora} · ${fmtPesos(c.monto)}` : c.status === 'sin_pedido' ? `${c.hora} · ${c.motivo || ''}` : isNext ? 'Próxima parada' : 'Pendiente'
+  return (
+    <div style={{ ...sx('display:flex;gap:10px;align-items:center;background:var(--surface);border-radius:16px;padding:12px;margin-bottom:8px;box-shadow:var(--shadow)'), border: `1px solid ${isNext ? 'var(--primary)' : 'var(--line)'}` }}>
+      <div style={{ ...sx('width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-family:var(--font-mono);font-size:12px;font-weight:600'), background: nBg, color: nColor }}>{i == null ? '?' : String(i + 1).padStart(2, '0')}</div>
+      <div style={sx('flex:1;min-width:0')}>
+        <div style={sx('display:flex;align-items:center;gap:6px')}>
+          {/* 🩸 11/08/2026 — el nombre va en UNA línea con ellipsis, y así se queda. El
+              10/08 se probó dejarlo envolver para que entrara completo: con nombres de
+              hasta 43 caracteres la tarjeta se estiraba a varios renglones y la lista se
+              volvía ilegible. El espacio para el nombre se gana ACHICANDO EL BOTÓN (ver
+              abajo), no dejando crecer la tarjeta. */}
+          <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
+          {!c.activo && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
+          {c.cubierta && c.zonaAbrev && <span style={{ ...sx('flex:none;font-size:9px;font-weight:700;color:#fff;border-radius:99px;padding:2px 6px;font-family:var(--font-mono)'), background: c.zonaColor || 'var(--muted)' }} title="Zona que cubrís hoy">{c.zonaAbrev}</span>}
+          {c.sinDueno && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:99px;padding:2px 6px')}>SIN DUEÑO</span>}
+        </div>
+        <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
+        <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
+      </div>
+      <div style={sx('flex:none;display:flex;align-items:center;gap:6px')}>
+        {/* 🩸 08/08/2026 — SIN GATE DE ASIGNACIÓN. Este botón es el ÚNICO camino por el que
+            un vendedor ubica un comercio, y estaba condicionado a `c.idVendedor === user.id`.
+            Medido ese día: de 1998 clientes, 3 tenían vendedor asignado. O sea que para el
+            99,8 % de la cartera el lápiz no se dibujaba nunca y la geolocalización no podía
+            avanzar — 1980 comercios sin coordenadas, y el camino para cargarlas cerrado.
+            Decisión del encargado: cada vendedor es responsable de lo que toca. La RLS
+            acompaña (`clientes_upd` acepta al rol vendedor dentro de su empresa); el alcance
+            por EMPRESA sigue intacto, y BORRAR sigue sin estar permitido. */}
+        <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
+          <Editar size={15} />
+        </button>
+        {/* 🩸 11/08/2026 — CHECK-IN SIN LA PALABRA, y el motivo es aritmética, no estética.
+            Un vendedor reportó que no le entraba el nombre del comercio. A 375 px la columna
+            del nombre mide ~170 px: la tarjeta son 375 menos 24 de padding, 30 del número,
+            36 del lápiz, 26 de gaps y ~90 que se llevaba este botón con la palabra adentro.
+            Achicarle el padding devolvía 8 px, o sea UN carácter — no servía de nada.
+            Con solo el ícono el botón baja a 44 px y devuelve ~46: entran 6-7 caracteres
+            más. Medido contra la cartera: 1.803 clientes, 18 caracteres de nombre en
+            promedio y máximo 43; con esto se leen enteros los de hasta ~31, que son 1.758
+            (97,5 %). El área táctil se mantiene en 44×44, igual que el lápiz de al lado.
+            Sin texto visible, el nombre accesible tiene que vivir en `title` y `aria-label`
+            o el botón queda mudo para un lector de pantalla. */}
+        {c.status === 'pendiente' ? (
+          <button onClick={() => alTocar(c)} title="Check-in" aria-label={`Check-in en ${c.name}`} style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;cursor:pointer;border:none')}>
+            <Check size={20} />
+          </button>
+        ) : (
+          /* 🩸 EL PILL VUELVE A SER TOCABLE (04/09/2026). Era un `div` inerte: una vez
+             visitado el comercio, no había forma de volver a entrar en toda la jornada — y
+             ése es justo el caso que reportó el vendedor, "cerré el ticket y el comerciante
+             me agregó dos cajones". Ahora abre la misma hoja que el check-in, que ofrece
+             corregir el pedido o abrir uno nuevo.
+             NO vuelve a hacer check-in: la presencia ya quedó registrada, y una segunda
+             visita a los diez minutos ensuciaría los reportes con una parada que no existió.
+             Se mantiene el área táctil de 44 px de alto, igual que el botón que reemplaza. */
+          <button
+            onClick={() => alTocar(c)}
+            title={`Volver a ${c.name}`}
+            aria-label={`Abrir de nuevo ${c.name}`}
+            className="lu-press"
+            style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;min-height:44px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600;border:none;cursor:pointer'), background: pill[2], color: pill[1] }}
+          >
+            <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

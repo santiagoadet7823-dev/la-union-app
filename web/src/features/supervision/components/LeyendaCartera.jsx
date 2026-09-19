@@ -1,4 +1,5 @@
 import { LeyendaMapa } from '../../../components/MapaComercios'
+import { tintaTransporte } from '../../../lib/colors'
 import { Conteo } from '../../../components/MuestraEstado'
 import { ESTADOS, ORDEN_LEYENDA, ORDEN_LEYENDA_CON_BOT, pintarComercio } from '../../../lib/estadoComercio'
 
@@ -33,8 +34,20 @@ const K_MEMORIA = 'lu-supervision-leyenda-cartera'
 
 const ETIQUETA_PASADO = { hoy: 'Tocaba ese día', no_toca: 'No tocaba' }
 
-export default function LeyendaCartera({ modo, conteo, zonasEnMapa = null, sinUbicar = 0, fecha, esHoy = true, isDark = false, estilo = null }) {
+export default function LeyendaCartera({ modo, conteo, zonasEnMapa = null, sinUbicar = 0, fecha, esHoy = true, isDark = false, estilo = null, conTransporte = false, deQuien = null }) {
   const pintar = (k) => pintarComercio(k, { isDark })
+  // DE QUIÉN es lo que se cuenta (18/09/2026): con una persona enfocada la capa muestra SU cartera
+  // (`useCapaCartera.focoId`), y la leyenda tiene que decirlo — "3 zonas" a secas se lee como "la
+  // empresa tiene 3 zonas" cuando lo que hay en el mapa es lo de Agustín. Nombre de pila solo: la
+  // píldora es angosta y el apellido no distingue a nadie en un equipo de nueve.
+  const quien = deQuien ? String(deQuien).trim().split(/\s+/)[0] : null
+  const deQuienTxt = quien ? <span style={{ color: 'var(--primary)' }}>{quien}</span> : null
+  // Tramos de TRANSPORTE del día (17/09/2026, db/72): si alguien declaró estar en ruta, el trazo de
+  // ese lapso va en tinta y la leyenda lo dice. Primero de la lista, con la muestra en tinta y sin
+  // glifo: no es un estado de comercio, es un tramo del recorrido. Mismo color que `construirLeaflet`.
+  const itemTransporte = conTransporte
+    ? [{ color: tintaTransporte(isDark ? 'dark' : 'light'), glifo: '', hueco: false, etiqueta: 'Tramo de transporte' }]
+    : []
 
   // MODO ZONA (17/09/2026, pedido del cliente mirando la PWA): cada pin lleva el color de su zona
   // y nadie decía cuál era cuál. Mismo recuadro, otra lista: las zonas que se están dibujando, con
@@ -43,17 +56,29 @@ export default function LeyendaCartera({ modo, conteo, zonasEnMapa = null, sinUb
   if (modo === 'zona') {
     const zonas = zonasEnMapa?.zonas || []
     const sinZona = zonasEnMapa?.sinZona || 0
-    if (!zonas.length && !sinZona) return null
     const gris = isDark ? '#94A3B8' : '#475569'
+    // Sin nada que dibujar: sin foco no hay leyenda (no hay cartera ubicada, el botón ya lo dice);
+    // con foco SÍ, porque el mapa quedó vacío por la persona y eso hay que explicarlo en el lugar.
+    if (!zonas.length && !sinZona) {
+      if (!quien) return null
+      return <LeyendaMapa claveMemoria={K_MEMORIA + '-zona'} estilo={estilo} items={[]} resumen={<span style={{ color: 'var(--muted)' }}>Sin comercios ubicados de {deQuienTxt}</span>} />
+    }
     return (
       <LeyendaMapa
         claveMemoria={K_MEMORIA + '-zona'}
         estilo={estilo}
         items={[
-          ...zonas.map((z) => ({ color: z.color || gris, glifo: z.abrev || '', hueco: false, etiqueta: `${z.nombre} · ${z.n}` })),
+          ...itemTransporte,
+          // La abreviatura va DENTRO de la muestra sólo si son 2 letras (como en el pin); con 3-4
+          // (18/09/2026, `LJ1`) no entra en 14 px y pasa a la etiqueta, delante del nombre.
+          ...zonas.map((z) => {
+            const larga = (z.abrev || '').length > 2
+            return { color: z.color || gris, glifo: larga ? '' : (z.abrev || ''), hueco: false, etiqueta: `${larga ? z.abrev + ' · ' : ''}${z.nombre} · ${z.n}` }
+          }),
           ...(sinZona ? [{ color: gris, glifo: '', hueco: false, etiqueta: `Sin zona · ${sinZona}` }] : []),
         ]}
         resumen={<>
+          {deQuienTxt}
           <span style={{ color: 'var(--text)' }}><b>{zonas.length}</b> zona{zonas.length === 1 ? '' : 's'}</span>
           {sinZona > 0 && <Conteo n={sinZona} etiqueta="sin zona" color={gris} />}
         </>}
@@ -74,8 +99,9 @@ export default function LeyendaCartera({ modo, conteo, zonasEnMapa = null, sinUb
       claveMemoria={K_MEMORIA}
       estilo={estilo}
       // El ítem del bot de WhatsApp sólo si ese día vendió algo: ver `ORDEN_LEYENDA_CON_BOT`.
-      items={(conteo?.pedido_bot > 0 ? ORDEN_LEYENDA_CON_BOT : ORDEN_LEYENDA).map((k) => ({ ...pintar(k), etiqueta: etiqueta(k) }))}
+      items={[...itemTransporte, ...(conteo?.pedido_bot > 0 ? ORDEN_LEYENDA_CON_BOT : ORDEN_LEYENDA).map((k) => ({ ...pintar(k), etiqueta: etiqueta(k) }))]}
       resumen={<>
+        {deQuienTxt}
         {diaCorto && <span style={{ color: 'var(--primary)' }}>{diaCorto}</span>}
         <Conteo n={conteo?.visitado || 0} etiqueta="con pedido" color={pintar('visitado').color} />
         {conteo?.pedido_bot > 0 && <Conteo n={conteo.pedido_bot} etiqueta="por WhatsApp" color={pintar('pedido_bot').color} />}

@@ -365,6 +365,18 @@ const inicioIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_INICIO })
 const finIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_FIN })
 
 /**
+ * Hito de TRANSPORTE (17/09/2026): la misma píldora que inicio/fin, con un punto como glifo y
+ * "10:42 · 78 km/h" como texto. Sale de `construirHitosTransporte` (features/supervision/trazos.js)
+ * cada 10 minutos de tramo, y la velocidad es la MEDIA desde el hito anterior — para leerla, no
+ * para calcularla a ojo entre dos horas. Sin velocidad (primer hito, o hueco) va la hora sola.
+ */
+const GLIFO_HITO = '<span style="width:5px;height:5px;background:#fff;border-radius:50%"></span>'
+const hitoTransporteIcon = ({ hora, kmh, color, atenuado }) =>
+  hitoIcon({ hora: kmh != null ? `${hora} · ${kmh} km/h` : hora, color, glifo: GLIFO_HITO, atenuado })
+/** Por debajo de este zoom los hitos no se dibujan: son nodos del DOM y de lejos sólo se encimarían. */
+const ZOOM_HITOS = 12
+
+/**
  * Zoom desde el cual la capa de clientes dibuja un PIN DE UBICACIÓN en vez del puntito (17/09/2026).
  *
  * Es 15 y no 14 a propósito: a 14 todavía se ve el pueblo entero y 700 pines de 26 px serían una
@@ -425,8 +437,14 @@ const MAX_PINES = 120
 // para los pedidos del bot (`lib/estadoComercio`). El SVG viene de una constante del repo, nunca
 // de datos, por eso se inserta sin escapar.
 const glifoHtml = (g) => (g && typeof g === 'object' && g.svg ? g.svg : esc(g || ''))
-// Un carácter entra a 11 px en la cabeza de 25; la abreviatura de zona (2-3 letras) a 8,5 px.
-const tamGlifo = (g, w) => (typeof g === 'string' && g.length > 1 ? (w >= 25 ? 8.5 : 7) : (w >= 25 ? 11 : 9))
+// Un carácter entra a 11 px en la cabeza de 25; la abreviatura de zona a 8,5 px si son 2-3 letras
+// y a 7 px si son 4 (db/73, "LJ1": a 8,5 px de mono, 4 caracteres miden ~20 px y la cabeza libre
+// entre bordes son ~22 — entra, pero pegado; a 7 px quedan ~17 y respira).
+const tamGlifo = (g, w) => {
+  if (typeof g !== 'string' || g.length <= 1) return w >= 25 ? 11 : 9
+  if (g.length >= 4) return w >= 25 ? 7 : 6
+  return w >= 25 ? 8.5 : 7
+}
 
 function pinComercioIcon({ color, glifo, hueco, sel, stroke }) {
   // Todas las medidas salen de `w`, como en `dwellIcon`: no hay dos versiones del pin que se puedan
@@ -492,6 +510,10 @@ export default function LeafletMap({
   // Si el teléfono se quedó sin batería a las 14:10, el marcador dice 14:10 — por eso el title
   // habla de "último punto" y no de "fin".
   fines = [],
+  // Hitos de HORA sobre los tramos de transporte: [{id,lat,lng,hora,kmh,color}]
+  // (→ construirHitosTransporte). Misma forma que `inicios` más `kmh`. Sólo se dibujan desde
+  // `ZOOM_HITOS`; opcional, con [] el mapa no cambia.
+  hitos = [],
   // Persona ENFOCADA, o null. Va como prop suelta por el mismo motivo que `dwellSel` (ver arriba):
   // `dwells` sale de `calcularDwells`, que cuesta ~250 ms por persona-día, y las vistas lo memoizan
   // a propósito SIN el foco en las dependencias. Si la atenuación se resolviera dentro de cada
@@ -595,6 +617,7 @@ export default function LeafletMap({
   const dwellsLayerRef = useRef(null)
   const iniciosLayerRef = useRef(null)
   const finesLayerRef = useRef(null)
+  const hitosLayerRef = useRef(null)
   const moversLayerRef = useRef(null)
   const clientsLayerRef = useRef(null)
   const clickRef = useRef(onMarkerClick)
@@ -689,6 +712,7 @@ export default function LeafletMap({
     // los inicios cambian con la fecha y los carteles con el toggle de paradas.
     iniciosLayerRef.current = L.layerGroup().addTo(map)
     finesLayerRef.current = L.layerGroup().addTo(map)
+    hitosLayerRef.current = L.layerGroup().addTo(map)
     map.on('click', (e) => mapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }))
     map.on('moveend', () => { if (moveEndRef.current) { const c = map.getCenter(); moveEndRef.current({ lat: c.lat, lng: c.lng }) } })
     // Arrastrar el mapa desengancha el seguimiento. Va acá (una sola vez, en el init) y no en el
@@ -783,6 +807,7 @@ export default function LeafletMap({
   const kDwells = useMemo(() => firmaDwells(dwells), [dwells])
   const kInicios = useMemo(() => firmaHitos(inicios), [inicios])
   const kFines = useMemo(() => firmaHitos(fines), [fines])
+  const kHitos = useMemo(() => firmaHitos(hitos) + (hitos || []).map((h) => h.kmh ?? '').join(','), [hitos])
 
   // ---- Capa ESTÁTICA: depósito, punto en vivo, círculo, rastro suelto y ruta por calles ----
   useEffect(() => {
@@ -1112,6 +1137,40 @@ export default function LeafletMap({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kFines, focoId])
+
+  // ---- Capa de HITOS DE TRANSPORTE ("• 10:42 · 78 km/h") --------------------------------------
+  // Igual que inicios/fines (pane `luDwells`, `interactive:false`, fuera del fitBounds), con una
+  // diferencia: son varios por persona y por eso llevan ZOOM MÍNIMO. De lejos, 48 píldoras sobre
+  // 200 km de ruta se enciman en una mancha ilegible (misma lección que `MAX_PINES`, 1.39.0); a
+  // partir de `ZOOM_HITOS` cada una tiene lugar. Se vacía y se vuelve a dibujar al cruzar el zoom.
+  useEffect(() => {
+    const map = mapRef.current
+    const layer = hitosLayerRef.current
+    if (!map || !layer) return
+    let dibujado = null
+    const dibujar = () => {
+      const visible = (map.getZoom() || 0) >= ZOOM_HITOS && (hitos || []).length > 0
+      if (visible === dibujado) return
+      dibujado = visible
+      layer.clearLayers()
+      if (!visible) return
+      ;(hitos || []).forEach((h) => {
+        const atenuado = !!focoId && !!h.id && h.id !== focoId
+        L.marker([h.lat, h.lng], {
+          icon: hitoTransporteIcon({ hora: h.hora, kmh: h.kmh, color: h.color, atenuado }),
+          pane: 'luDwells',
+          interactive: false,
+          keyboard: false,
+          zIndexOffset: atenuado ? Z_ATENUADO : 0,
+          title: h.kmh != null ? `Transporte ${h.hora} · ${h.kmh} km/h` : `Transporte ${h.hora}`,
+        }).addTo(layer)
+      })
+    }
+    dibujar()
+    map.on('zoomend', dibujar)
+    return () => { map.off('zoomend', dibujar); layer.clearLayers() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kHitos, focoId])
 
   // ---- ENCUADRE ------------------------------------------------------------------------------
   // El encuadre necesita ver TODAS las geometrías juntas, así que no puede vivir dentro de

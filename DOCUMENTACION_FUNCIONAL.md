@@ -349,7 +349,17 @@ GPS) y "Panel" (auditoría).
 - **Reportes**: `ReportesView.jsx` (504 LOC) + 6 componentes — recorrido, paradas, curva de batería,
   línea de tiempo, pedidos del día, salud del dato. Exporta a Excel y PDF.
 - **Avisos del equipo**: push cuando alguien deja de reportar o queda quieto. 799 avisos históricos,
-  8 abiertos al 08/09.
+  8 abiertos al 08/09. Desde el 17/09 hay un tercer tipo, **`transporte_sin_declarar`**: la persona
+  va a velocidad de ruta (≥ 40 km/h sostenidos, ≥ 5 km netos en 15 min, editable en Empresas) sin
+  haber abierto su jornada de transporte. Lo mide `vigilancia_transporte` (db/72).
+- **Jornada de transporte** (17/09/2026, db/72): un tramo `inicio_ts–fin_ts` por persona en
+  `tramos_transporte`. Lo abre el vendedor con el botón "Iniciar jornada de transporte" (Inicio) y el
+  repartidor solo al marcar el primer "En camino" (o al confirmar una entrega); se cierra a mano o lo
+  cierra el cron de avisos al terminar la ventana de rastreo (14 h como tope). Mientras está
+  abierto, el GPS del teléfono queda a cadencia fija de 2 s (`NEAR_LIVE_TRANSPORTE_MS`) y en el
+  mapa de las tres supervisiones ese lapso del trazo se pinta en tinta, con un hito cada 10 minutos
+  que dice la hora y la velocidad media ("18:13 · 92 km/h", visibles desde zoom 12). La tarjeta del
+  pin y la burbuja dicen "en transporte desde las HH:MM".
 
 > 🩸 **Las dos supervisiones NO comparten una línea de código y ya divergieron dos veces.** Lo que
 > las dos muestran igual va en un módulo compartido, nunca copiado: `supervision/dwells.js`,

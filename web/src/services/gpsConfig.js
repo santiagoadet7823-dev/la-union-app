@@ -255,6 +255,19 @@ export const VEL_RUTA_MPS = 11        // ~40 km/h: desde acá se considera "ruta
 // el marcador lo mantiene vivo STATIONARY_KEEPALIVE_MS. Se deshace con el primer fix que se mueva.
 export const NEAR_LIVE_QUIETO_MS = 30000
 
+// ── 17/09/2026 · Jornada de transporte ───────────────────────────────────────────────────────────
+// Mientras la persona tiene un tramo de transporte abierto (`services/transporte.js`), las TRES
+// cadencias (base / rápida / quieto) se igualan a este valor — es `fijar_cadencia` de `gpsPerfil.js`
+// aplicado por evento en vez de por perfil. Lo que se busca no es "más frecuencia" (en movimiento ya
+// se captura a 2 s): es que NO BAJE. Con la cadencia adaptativa, parado descargando Activity
+// Recognition dice "quieto" → 30 s, y al arrancar el primer fix tarda hasta 30 s más el piso
+// anti-churn de 60 s (`REPEDIDO_MIN_MS`): a 30 km/h son 250-750 m sin un punto, que es el "salto en
+// el mapa" del repartidor. Con las tres iguales ese camino no se recorre nunca.
+// El guardado no cambia (`MIN_MOVE_*` y el keepalive de 30 s siguen): parado se guarda lo mismo de
+// siempre; lo que sube es la batería, porque el chip no descansa. Si en un vehículo sin cargador
+// pesa, 4 s sigue eliminando el salto. `loteMs` NO se toca (regla 60).
+export const NEAR_LIVE_TRANSPORTE_MS = 2000
+
 // ── 1.9.0 · Triangulación por red durante un silencio ────────────────────────────────────────────
 // Si el GPS no entrega nada por más de SILENCIO_MS, el teléfono pide ubicación por antenas y WiFi
 // para no dejar el hueco vacío. Esos puntos valen para "por acá anduvo" y para nada más: entran con

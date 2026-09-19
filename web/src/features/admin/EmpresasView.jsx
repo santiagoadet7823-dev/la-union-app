@@ -29,7 +29,7 @@ export default function EmpresasView({ onToast }) {
   const [savingTrack, setSavingTrack] = useState(false)
   // Umbrales de los avisos al supervisor. Van al lado del horario porque SOLO tienen sentido dentro
   // de él: la ventana de rastreo es la que define qué es un silencio y qué es "terminó de trabajar".
-  const [alertas, setAlertas] = useState({ activas: true, silencio: 30, quieto: 120 })
+  const [alertas, setAlertas] = useState({ activas: true, silencio: 30, quieto: 120, transporteKm: 5, transporteMin: 15 })
   const [savingAlertas, setSavingAlertas] = useState(false)
   // Edición manual de la coordenada base (depósito) por empresa: id -> { lat, lng } como strings.
   const [baseEdit, setBaseEdit] = useState({})
@@ -45,7 +45,7 @@ export default function EmpresasView({ onToast }) {
 
   useEffect(() => {
     supabase.from('app_config')
-      .select('track_enabled, track_start, track_end, track_days, alertas_activas, alerta_silencio_min, alerta_quieto_min')
+      .select('track_enabled, track_start, track_end, track_days, alertas_activas, alerta_silencio_min, alerta_quieto_min, alerta_transporte_km, alerta_transporte_min')
       .maybeSingle()
       .then(({ data }) => {
         if (!data) return
@@ -59,6 +59,8 @@ export default function EmpresasView({ onToast }) {
           activas: data.alertas_activas ?? true,
           silencio: data.alerta_silencio_min ?? 30,
           quieto: data.alerta_quieto_min ?? 120,
+          transporteKm: data.alerta_transporte_km ?? 5,
+          transporteMin: data.alerta_transporte_min ?? 15,
         })
       })
   }, [])
@@ -82,15 +84,21 @@ export default function EmpresasView({ onToast }) {
     // permanencia, cualquier almuerzo sería un incidente.
     const silencio = Math.max(10, Number(alertas.silencio) || 30)
     const quieto = Math.max(15, Number(alertas.quieto) || 120)
+    // "En ruta sin declarar" (17/09/2026, db/72): km NETOS en una ventana de N minutos. El piso de
+    // 2 km evita que una vuelta por el pueblo dispare; el de 10 min es la cadencia del cron.
+    const transporteKm = Math.max(2, Number(alertas.transporteKm) || 5)
+    const transporteMin = Math.max(10, Number(alertas.transporteMin) || 15)
     const { error } = await supabase.from('app_config')
       .update({
         alertas_activas: alertas.activas,
         alerta_silencio_min: silencio,
         alerta_quieto_min: quieto,
+        alerta_transporte_km: transporteKm,
+        alerta_transporte_min: transporteMin,
         updated_at: new Date().toISOString(),
       })
       .eq('id', true)
-    setAlertas((a) => ({ ...a, silencio, quieto }))
+    setAlertas((a) => ({ ...a, silencio, quieto, transporteKm, transporteMin }))
     setSavingAlertas(false)
     onToast?.(error ? 'Error: ' + error.message : 'Avisos guardados')
   }
@@ -284,6 +292,28 @@ export default function EmpresasView({ onToast }) {
               type="number" min="15" max="600" step="15" inputMode="numeric"
               value={alertas.quieto}
               onChange={(e) => setAlertas((a) => ({ ...a, quieto: e.target.value }))}
+              disabled={!alertas.activas}
+              className="lu-input" style={{ ...inpTime, width: 92 }}
+            />
+          </div>
+          {/* "En ruta sin declarar": velocidad de ruta sostenida (≥ 40 km/h) y estos km netos en
+              estos minutos, sin jornada de transporte abierta. Calibrado el 17/09 sobre 7 días. */}
+          <div>
+            <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>En ruta sin declarar (km)</div>
+            <input
+              type="number" min="2" max="50" step="1" inputMode="numeric"
+              value={alertas.transporteKm ?? 5}
+              onChange={(e) => setAlertas((a) => ({ ...a, transporteKm: e.target.value }))}
+              disabled={!alertas.activas}
+              className="lu-input" style={{ ...inpTime, width: 92 }}
+            />
+          </div>
+          <div>
+            <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>… en (min)</div>
+            <input
+              type="number" min="10" max="60" step="5" inputMode="numeric"
+              value={alertas.transporteMin ?? 15}
+              onChange={(e) => setAlertas((a) => ({ ...a, transporteMin: e.target.value }))}
               disabled={!alertas.activas}
               className="lu-input" style={{ ...inpTime, width: 92 }}
             />

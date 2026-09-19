@@ -7,6 +7,7 @@ import { iniciarUploaderNativo, detenerUploaderNativo } from '../services/upload
 import { reprogramarAlarm } from '../services/alarm'
 import { WATCHDOG_MIN, ARRANQUE_MARGEN_MS } from '../services/gpsConfig'
 import { isNative } from '../services/platform'
+import { EVENTO_TRANSPORTE } from '../services/transporte'
 
 /**
  * GPS en vivo + publicación en tiempo real. Lo usan Vendedor y Repartidor: cada
@@ -99,7 +100,17 @@ export function usePublishPosition({ enabled, id, rol, idEmpresa }) {
     const load = () => getTrackConfig(id).then((c) => { if (alive) aplicar(c) }).catch(() => {})
     load()
     const iv = setInterval(load, 10 * 60000) // mismo TTL que services/tracking.js
-    return () => { alive = false; clearInterval(iv); clearTimeout(boundaryTimer) }
+    // Jornada de transporte (17/09/2026): al abrir o cerrar un tramo hay que reempujar las prefs al
+    // nativo AHORA, no en el próximo refresco de 10 min — el tramo existe para cambiar la cadencia
+    // en ese momento. `aplicar` con la config que ya tenemos alcanza: `iniciarUploaderNativo` lee
+    // `transporte.abierto()` al armar el objeto. Sin config todavía (arranque en frío) no hay nada
+    // que reempujar; el `load()` que viene ya va a salir con el tramo puesto.
+    const alCambiarTransporte = () => { if (alive && cfgRef.current) aplicar(cfgRef.current) }
+    window.addEventListener(EVENTO_TRANSPORTE, alCambiarTransporte)
+    return () => {
+      alive = false; clearInterval(iv); clearTimeout(boundaryTimer)
+      window.removeEventListener(EVENTO_TRANSPORTE, alCambiarTransporte)
+    }
   }, [enabled, id])
 
   // Uploader GPS NATIVO (Opción B): corre EN PARALELO al pipeline JS de arriba. El servicio nativo

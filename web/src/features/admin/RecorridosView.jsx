@@ -9,7 +9,7 @@ import { colorPorId } from '../../lib/colors'
 import { limpiarPorUsuario } from '../supervision/trazos'
 import useSnapConectores from '../supervision/useSnapConectores'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
-import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
+import useRecorridosDelDia, { textoDeErrorRecorridos } from '../../hooks/useRecorridosDelDia'
 import LeafletMap from '../../components/LeafletMap'
 
 /**
@@ -94,7 +94,7 @@ export default function RecorridosView() {
         {error && (
           <div style={sx('display:flex;align-items:center;gap:10px;background:var(--danger-tint);border:1px solid var(--danger);color:var(--danger);border-radius:12px;padding:10px 14px;font-size:12.5px;font-weight:600')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
-            <span style={sx('flex:1')}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {error.message || 'Error de red o sesión.'}</span>
+            <span style={sx('flex:1')}>No se pudieron cargar las ubicaciones{esHoy ? ' de hoy' : ''}. {textoDeErrorRecorridos(error)}</span>
             <button onClick={reload} style={sx('flex:none;padding:6px 12px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:12px;font-weight:700;cursor:pointer')}>Reintentar</button>
           </div>
         )}

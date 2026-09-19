@@ -1,5 +1,5 @@
 import { colorPorId } from '../../../lib/colors'
-import { fmtDuracion, initials } from '../../../lib/format'
+import { fmtDuracion, fmtHora, initials } from '../../../lib/format'
 import HaceSegundos from '../../../components/HaceSegundos'
 
 /**
@@ -20,9 +20,11 @@ import HaceSegundos from '../../../components/HaceSegundos'
  * anotada) — cuando se la agregue, va a ser esta misma y no una copia que se desincronice, que es
  * exactamente lo que ya pasó con los carteles de parada y con los trazos.
  *
- * props: { pin, nombre, bateria, resumen, k, onToggle, onClose, style }
+ * props: { pin, nombre, bateria, resumen, transporte, k, onToggle, onClose, style }
+ *   `transporte`: `{desde}` (epoch ms) si la persona tiene un tramo de transporte abierto
+ *   (`useTramosTransporte().abiertos[id]`, db/72), o null.
  */
-export default function TarjetaPin({ pin, nombre, bateria = null, resumen = null, k = 1, onToggle, onClose, style }) {
+export default function TarjetaPin({ pin, nombre, bateria = null, resumen = null, transporte = null, k = 1, onToggle, onClose, style }) {
   if (!pin) return null
   const px = (n) => n * k  // sin redondear: en 1× devuelve el valor exacto de siempre
   const grande = k > 1
@@ -59,6 +61,13 @@ export default function TarjetaPin({ pin, nombre, bateria = null, resumen = null
               que se salga. */}
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: px(7), marginTop: 1 }}>
             <span style={{ fontSize: px(11), color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{pin.rol} · en vivo</span>
+            {/* Jornada de transporte abierta (17/09/2026): en tinta, el mismo color con que el mapa
+                pinta ese tramo — así la tarjeta y el trazo dicen lo mismo con el mismo hilo. */}
+            {transporte && (
+              <span style={{ fontSize: px(11), fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)' }}>
+                🚚 en transporte desde {fmtHora(transporte.desde)}
+              </span>
+            )}
             {/* Batería: solo si el dispositivo la reporta (bundles viejos mandan null). */}
             {bateria !== null && (
               <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: px(11), fontFamily: 'var(--font-mono)', fontWeight: 600, color: bateria <= 20 ? 'var(--danger)' : 'var(--muted)' }}>

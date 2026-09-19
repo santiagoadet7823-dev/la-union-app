@@ -206,14 +206,60 @@ function cubreElRecorrido(segs, segmentosCrudos) {
  *
  * **No cambia ni un pixel de lo que se dibuja**: son exactamente las mismas líneas, agrupadas.
  */
+/**
+ * ¿El punto cae dentro de algún tramo de transporte de la persona? `ts` de `posiciones` es ISO;
+ * los tramos vienen en epoch ms de `useTramosTransporte`. Un tramo abierto (`hasta` null) llega
+ * hasta el final del día.
+ */
+const enTramo = (tramos, ts) => {
+  const t = typeof ts === 'number' ? ts : new Date(ts).getTime()
+  for (const r of tramos) if (t >= r.desde && (r.hasta == null || t <= r.hasta)) return true
+  return false
+}
+
+/**
+ * Parte un segmento en corridas "normal" / "transporte" según el ts de cada punto. El punto
+ * bisagra pertenece a las DOS corridas —igual que en `splitModo` de `segmentar.ts`— para que las
+ * líneas se toquen y no quede un hueco de un hop justo donde cambia el color.
+ *
+ * @returns {{ normales: Array<Array>, transporte: Array<Array> }}
+ */
+export function partirPorTramos(segmento, tramos) {
+  if (!tramos?.length || !segmento?.length) return { normales: [segmento], transporte: [] }
+  const normales = [], transporte = []
+  let corrida = [segmento[0]]
+  let dentro = enTramo(tramos, segmento[0].ts)
+  for (let i = 1; i < segmento.length; i++) {
+    const p = segmento[i]
+    const d = enTramo(tramos, p.ts)
+    if (d !== dentro) {
+      corrida.push(p) // bisagra
+      ;(dentro ? transporte : normales).push(corrida)
+      corrida = [p]
+      dentro = d
+    } else {
+      corrida.push(p)
+    }
+  }
+  ;(dentro ? transporte : normales).push(corrida)
+  return { normales, transporte }
+}
+
 // `snapOn` ya no se recibe: el pegado de tramos se retiró y los conectores van siempre. Se deja el
 // parámetro fuera a propósito y no como ignorado, para que un llamador que todavía lo pase falle en
 // la revisión en vez de creer que sigue teniendo un interruptor.
-export function construirLeaflet({ trails, snapped = {}, focoId = null }) {
+//
+// `tramos` / `tinta` (17/09/2026, db/72): los tramos de transporte por persona
+// (`useTramosTransporte().porUsuario`) y el color con que se pintan (`tintaTransporte(theme)`,
+// lib/colors.js). Lo que cae dentro de un tramo sale como pieza aparte en tinta —mismo grosor, misma
+// opacidad—, y el resto de la persona conserva su color. Los conectores de hueco y los aproximados
+// NO se recolorean: un hueco no afirma nada, y los triangulados menos.
+export function construirLeaflet({ trails, snapped = {}, focoId = null, tramos = null, tinta = null }) {
   const out = trails.flatMap((t) => {
     const enfocado = focoId && t.id === focoId
     const opacity = !focoId ? 0.85 : (enfocado ? 0.95 : 0.12)
     const weight = enfocado ? 5 : 4
+    const misTramos = tinta && tramos?.[t.id]?.length ? tramos[t.id] : null
     // 🩸 EL SNAP NO PUEDE BORRAR RECORRIDO (12/08/2026) — invariante, no optimización.
     //
     // La geometría pegada REEMPLAZA a la cruda, así que cualquier tramo que la Edge Function decida
@@ -255,7 +301,24 @@ export function construirLeaflet({ trails, snapped = {}, focoId = null }) {
     // segundo argumento y ahí sería `epsilonM`, o sea una tolerancia distinta por segmento.
     const lineas = (t.segmentos || []).map((s) => simplificarTrazo(s)).filter((s) => s.length >= 2)
     const piezas = []
-    if (lineas.length) piezas.push({ id: t.id, color: t.color, opacity, weight, lineas })
+    if (misTramos) {
+      // Se parte ANTES de simplificar: `simplificarTrazo` tira vértices y con ellos el `ts` que
+      // decide el color. Las corridas normales y las de transporte se simplifican por separado.
+      const normales = [], transporte = []
+      for (const seg of t.segmentos || []) {
+        const r = partirPorTramos(seg, misTramos)
+        normales.push(...r.normales)
+        transporte.push(...r.transporte)
+      }
+      const ln = normales.map((s) => simplificarTrazo(s)).filter((s) => s.length >= 2)
+      const lt = transporte.map((s) => simplificarTrazo(s)).filter((s) => s.length >= 2)
+      if (ln.length) piezas.push({ id: t.id, color: t.color, opacity, weight, lineas: ln })
+      // El `id` con sufijo entra en `firmaTrails` (LeafletMap) junto con el color: dos piezas de la
+      // misma persona con colores distintos no se confunden entre sí al decidir si redibujar.
+      if (lt.length) piezas.push({ id: t.id + ':transporte', color: tinta, opacity, weight, lineas: lt })
+    } else if (lineas.length) {
+      piezas.push({ id: t.id, color: t.color, opacity, weight, lineas })
+    }
     // 🩸 TRAMOS APROXIMADOS (1.9.0): lo que el teléfono triangula por antenas y WiFi cuando el GPS
     // se calla. Van SIEMPRE punteados y finos, también con el snap prendido — porque no son un
     // trazo peor, son otra cosa: "por acá anduvo, con ±80 m". Dibujarlos como línea llena sería
@@ -322,5 +385,51 @@ export function construirLeaflet({ trails, snapped = {}, focoId = null }) {
     return piezas
   })
   if (focoId) out.sort((a, b) => (a.id === focoId ? 1 : 0) - (b.id === focoId ? 1 : 0))
+  return out
+}
+
+/**
+ * HITOS DE HORA sobre el transporte (17/09/2026). Pedido textual: *"que tenga cada cierto tiempo en
+ * el renderizado la opción de ver qué hora era de esa ubicación para saber más o menos a qué
+ * velocidad van en ruta"*. Un hito cada `cadaMs` (10 min) sobre los puntos que caen dentro de un
+ * tramo, con la hora y la velocidad MEDIA desde el hito anterior — así la velocidad se lee, en vez
+ * de calcularse a ojo entre dos relojes. La media sale de `kmDePuntos` sobre los puntos limpios del
+ * intervalo (mismo helper que los km del día), no de la recta entre hitos.
+ *
+ * Tope por persona (`MAX_HITOS`): con 8 h de ruta son 48 pastillas, que ya es mucho; si hay más se
+ * ralea a un múltiplo de `cadaMs`. El zoom mínimo lo aplica `LeafletMap` (son nodos del DOM, misma
+ * regla que los pines de comercios de 1.39.0).
+ *
+ * @returns {Array<{id:string, lat:number, lng:number, ts:number, hora:string, kmh:number|null, color:string}>}
+ */
+const MAX_HITOS = 60
+export function construirHitosTransporte(trails, tramos, tinta, { cadaMs = 10 * 60000 } = {}) {
+  if (!tramos || !tinta) return []
+  const out = []
+  for (const t of trails) {
+    const mios = tramos[t.id]
+    if (!mios?.length) continue
+    const pts = (t.points || []).filter((p) => enTramo(mios, p.ts))
+    if (pts.length < 2) continue
+    const t0 = new Date(pts[0].ts).getTime()
+    const t1 = new Date(pts[pts.length - 1].ts).getTime()
+    let paso = cadaMs
+    if ((t1 - t0) / paso > MAX_HITOS) paso = Math.ceil((t1 - t0) / MAX_HITOS / cadaMs) * cadaMs
+    let proximo = t0 + paso
+    let desdeIdx = 0
+    for (let i = 1; i < pts.length; i++) {
+      const ts = new Date(pts[i].ts).getTime()
+      if (ts < proximo) continue
+      // Un hueco de captura más largo que el paso (el teléfono se calló) no fabrica un hito por
+      // cada intervalo perdido: se marca el primer punto que vuelve y se sigue desde ahí.
+      const tramoPts = pts.slice(desdeIdx, i + 1)
+      const dtH = (ts - new Date(pts[desdeIdx].ts).getTime()) / 3600000
+      const km = kmDePuntos(tramoPts)
+      const kmh = dtH > 0 && km > 0.05 ? Math.round(km / dtH) : null
+      out.push({ id: t.id, lat: pts[i].lat, lng: pts[i].lng, ts, hora: fmtHora(ts), kmh, color: tinta })
+      desdeIdx = i
+      proximo = ts + paso
+    }
+  }
   return out
 }

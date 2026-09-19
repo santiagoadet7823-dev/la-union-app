@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo } from 'react'
 import { colorPorId } from '../../../lib/colors'
-import { initials } from '../../../lib/format'
+import { fmtHora, initials } from '../../../lib/format'
 import HaceSegundos from '../../../components/HaceSegundos'
 import { kmDeTrazo, metricasParadas } from '../MetricasEquipo'
 
@@ -32,7 +32,7 @@ import { kmDeTrazo, metricasParadas } from '../MetricasEquipo'
  *
  * props: { movers, nombres, fotos, byUser, focoId, onSelect, style }
  */
-export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, byUser = {}, focoId = null, onSelect, style }) {
+export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, byUser = {}, transporte = {}, focoId = null, onSelect, style }) {
   // 🩸 Las métricas se calculan SOLO para la burbuja abierta (29/07/2026).
   //
   // Antes esto recorría todo `byUser` y corría el detector de paradas para CADA persona, aunque
@@ -159,6 +159,10 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
         <span style={{ fontSize: 10.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>sin recorrido todavía</span>
       )}
       <Dato valor={<HaceSegundos ts={abierta.ts} />} etiqueta="última señal" />
+      {/* Tramo de transporte abierto (17/09/2026, `useTramosTransporte().abiertos`). */}
+      {transporte?.[abierta.id] && (
+        <Dato valor={`🚚 ${fmtHora(transporte[abierta.id].desde)}`} etiqueta="en transporte desde" />
+      )}
     </div>
   )
 

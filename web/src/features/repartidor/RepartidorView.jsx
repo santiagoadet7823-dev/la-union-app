@@ -4,6 +4,8 @@ import { fmtPesos, kgFmt, horaActual } from '../../lib/format'
 import { Truck, Check, Pin } from '../../components/icons'
 import Logo from '../../components/Logo'
 import Overlay from '../../components/Overlay'
+import BotonTransporte from '../../components/BotonTransporte'
+import { useTransporte } from '../../hooks/useTransporte'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
 import { useEntregas, marcarEstado, guardarEntregado, MOTIVO_CHIPS, MOTIVO_POR_DEFECTO } from './useEntregas'
@@ -26,6 +28,14 @@ export default function RepartidorView() {
    */
   const { perfil: perfilAuth } = useAuth()
   const { entregas, cargando: cargandoEntregas, error: errorEntregas, recargar } = useEntregas(perfilAuth?.id)
+  /**
+   * Jornada de transporte del REPARTIDOR (17/09/2026, decidido con el cliente): se abre sola con el
+   * primer "En camino" del día y, por si nunca lo marcó, también al confirmar una entrega. Con el
+   * tramo abierto el GPS queda a cadencia fija y desaparece el salto en el mapa al arrancar después
+   * de descargar (ver `NEAR_LIVE_TRANSPORTE_MS`). `abrir` es idempotente: si ya está, no hace nada.
+   * El botón de abajo muestra el estado y deja terminarlo (o abrirlo a mano si sale sin pedidos).
+   */
+  const { abrir: abrirTransporte } = useTransporte()
   const [deliveries, setDeliveries] = useState([])
   useEffect(() => { setDeliveries(entregas) }, [entregas])
   const [modal, setModal] = useState(null) // id
@@ -223,6 +233,8 @@ export default function RepartidorView() {
           </div>
         )}
 
+        <BotonTransporte style={{ marginTop: 12 }} />
+
         {/* El recorrido óptimo. Va en el header y no flotando sobre la lista: es una decisión que se
             toma UNA vez al arrancar el reparto, no algo que se toque todo el tiempo. */}
         {deliveries.filter((d) => d.status !== 'entregado' && d.lat != null).length >= 2 && (
@@ -321,7 +333,7 @@ export default function RepartidorView() {
                 {d.entregado && <span style={sx('color:var(--success)')}>Entregado {d.entregado}</span>}
               </div>
               {d.status === 'pendiente' && (
-                <button onClick={() => { setStatus(d.id, 'en_camino'); marcarEstado(d, 'en_camino').catch(() => showToast('Se guardó local: sube al volver la señal')); showToast(`${d.numero} marcado en camino`) }} style={sx('width:100%;margin-top:10px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--info-tint);border:1px solid var(--info);color:var(--info);border-radius:12px;font-weight:600;font-size:15px;cursor:pointer')}>
+                <button onClick={() => { setStatus(d.id, 'en_camino'); abrirTransporte('reparto').catch(() => {}); marcarEstado(d, 'en_camino').catch(() => showToast('Se guardó local: sube al volver la señal')); showToast(`${d.numero} marcado en camino`) }} style={sx('width:100%;margin-top:10px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--info-tint);border:1px solid var(--info);color:var(--info);border-radius:12px;font-weight:600;font-size:15px;cursor:pointer')}>
                   <Truck />Marcar en camino
                 </button>
               )}
@@ -390,6 +402,9 @@ export default function RepartidorView() {
                 const faltantes = md.items.reduce((a, it, i) => { const k = it.idLinea ?? i; return a + (it.gen - (qty[k] ?? it.gen)) }, 0)
                 setStatus(md.id, 'entregado', { entregado: horaActual(), firma })
                 setModal(null)
+                // Red por si nunca marcó "en camino": desde acá arranca hacia la próxima entrega, y es
+                // justo el arranque después de descargar el que dejaba el salto en el mapa.
+                abrirTransporte('reparto').catch(() => {})
                 // Primero el estado y después las líneas: la cola es FIFO y corta al primer fallo, así
                 // que si una línea rebota el pedido igual queda cerrado y el faltante se reintenta solo.
                 marcarEstado(md, 'entregado')

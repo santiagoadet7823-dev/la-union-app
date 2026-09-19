@@ -3,17 +3,18 @@ import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useCatalog } from '../../context/CatalogContext'
-import { colorPorId } from '../../lib/colors'
+import { colorPorId, tintaTransporte } from '../../lib/colors'
+import useTramosTransporte from '../../hooks/useTramosTransporte'
 import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
 import useSnapConectores from './useSnapConectores'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { apilarAtras } from '../../services/atras'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
-import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
+import useRecorridosDelDia, { textoDeErrorRecorridos } from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
 import AlertasEquipo from '../../components/AlertasEquipo'
@@ -148,7 +149,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (trazos por persona). Auto-refresh incremental solo si es hoy. ----
-  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError, updatedAt: recorridosAt } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
 
   // 🩸 EL RECORRIDO SE LIMPIA UNA SOLA VEZ Y DE ACÁ SALE TODO (30/07/2026): trazos, km, paradas y
   // el resumen del pin. Si alguna de esas cuatro leyera `byUserCrudo`, contaría un recorrido que
@@ -172,8 +173,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // entre ticks para que LeafletMap no la redibuje cada segundo.
   const { clientes: cartera, zonas } = useCatalog()
   // Capa de cartera: apagada → por zona → por estado de hoy. Ver `useCapaCartera`.
+  // Con una persona enfocada la capa es SU cartera (18/09/2026) — salvo un repartidor, que no tiene
+  // cartera: seguirlo con la capa vacía sería un bug nuevo, así que para él se sigue dibujando todo.
+  const focoCartera = foco?.id && roles[foco.id] !== 'repartidor' ? foco.id : null
   const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, zonasEnMapa, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
-    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark })
+    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha, isDark, focoId: focoCartera })
 
   // Conectores de hueco largo (Edge Function `snap-recorridos`). Hasta el 13/09/2026 esto era un
   // `setInterval` de 60 s que la invocaba también mirando días pasados; ahora se pide sólo cuando
@@ -347,10 +351,15 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // Geometría final del mapa (simplificación, snap, foco y conectores de hueco): ./trazos.
   // Memoizado: sin esto se rehace en cada render, y el padre re-renderiza con cada posición que
   // llega por Realtime.
+  // Tramos de TRANSPORTE del día (17/09/2026, db/72): el lapso en que cada persona declaró estar
+  // en ruta se pinta en tinta y lleva hitos de hora con la velocidad media. Ver trazos.js.
+  const { porUsuario: tramos, abiertos: transporteAbierto } = useTramosTransporte(fecha, idEmpresaActiva)
+  const tinta = tintaTransporte(theme)
   const leafletTrails = useMemo(
-    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null }),
-    [trails, snapped, foco]
+    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null, tramos, tinta }),
+    [trails, snapped, foco, tramos, tinta]
   )
+  const hitos = useMemo(() => construirHitosTransporte(trails, tramos, tinta), [trails, tramos, tinta])
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, compartido con Desktop). Sale de
   // `trails`, así que ya viene filtrado por chip y con los puntos limpios. Barato (una entrada por
   // persona), pero memoizado igual: el padre re-renderiza con cada posición que llega por Realtime.
@@ -484,6 +493,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           onDwellClick={(i) => setDwellSel((s) => (s === i ? null : i))}
           inicios={inicios}
           fines={fines}
+          hitos={hitos}
           // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una persona
           // recalcularía `calcularDwells` — ~250 ms por persona-día. Ver el 🩸 en LeafletMap.
           focoId={foco?.id || null}
@@ -510,15 +520,22 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         {/* Referencia de colores de la capa de cartera (sólo en modo estado). Va DENTRO de la capa
             del mapa para que se vaya con él en inmersivo, y corrida a la derecha del control de
             zoom de Leaflet. */}
-        <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} />
+        <LeyendaCartera modo={modoClientes} conteo={conteoEstado} zonasEnMapa={zonasEnMapa} sinUbicar={sinUbicarCartera} fecha={fecha} esHoy={esHoy} isDark={isDark} conTransporte={Object.keys(tramos).length > 0} deQuien={focoCartera ? nombres[focoCartera] : null} />
 
         {/* estado vacío / de ERROR del overlay. Antes un fallo de carga se veía IGUAL que "no hay
             datos" (mapa vacío mudo): ahora se distingue y se puede reintentar. */}
-        {recorridosError ? (
+        {/* Con puntos YA en pantalla (falló un tick de 60 s, no la carga) el aviso es una píldora ámbar
+            arriba, que no tapa el recorrido: el mapa está bien, sólo no se actualizó. */}
+        {recorridosError && Object.keys(byUserCrudo).length ? (
+          <div onClick={() => recargarPosiciones()} style={{ position: 'absolute', left: '50%', top: 10, transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--warning)', borderRadius: 999, padding: '7px 12px', boxShadow: 'var(--shadow-lg)', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <AlertaCirculo size={14} color="var(--warning)" style={{ flex: 'none' }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Sin actualizar{recorridosAt ? <> · <HaceSegundos ts={recorridosAt} /></> : ''} · tocá para reintentar</span>
+          </div>
+        ) : recorridosError ? (
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 250, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--danger)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
             <AlertaCirculo size={34} w={1.5} color="var(--danger)" style={{ marginBottom: 8 }} />
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, color: 'var(--danger)' }}>No se pudieron cargar las ubicaciones</div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{recorridosError.message || 'Error de red o de sesión.'}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{textoDeErrorRecorridos(recorridosError)}</div>
             <button onClick={() => recargarPosiciones()} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 10, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
           </div>
         ) : !mapMarkers.length && !trails.length && (
@@ -727,6 +744,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             nombre={nombres[pin.id]}
             bateria={pinBateria}
             resumen={pinResumen}
+            transporte={transporteAbierto[pin.id] || null}
             k={pinK}
             onToggle={togglePinK}
             onClose={() => setPinId(null)}
@@ -763,6 +781,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             nombres={nombres}
             fotos={fotos}
             byUser={byUser}
+            transporte={transporteAbierto}
             focoId={foco?.id || null}
             onSelect={(id) => (foco?.id === id ? setFoco(null) : enfocarUsuario(id))}
             style={{ alignSelf: 'stretch' }}

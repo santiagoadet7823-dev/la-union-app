@@ -27,7 +27,10 @@ import { conTimeout } from '../../lib/conTimeout'
  */
 const CACHES_DESALOJABLES = ['lu-recorridos-cache', /^lu-catalogo-cache-/]
 
-function desalojarCaches(exceptoKey) {
+// Se exporta para el storage de auth de `services/supabase.js`: la sesión de supabase-js es la
+// otra escritura que no puede perderse, y auth-js la guarda con `localStorage.setItem` crudo.
+
+export function desalojarCaches(exceptoKey) {
   let liberado = 0
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {

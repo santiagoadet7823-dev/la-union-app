@@ -15,7 +15,7 @@ import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
-import { construirFines, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario } from '../supervision/trazos'
+import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario } from '../supervision/trazos'
 import { calcularDwells } from '../supervision/dwells'
 import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
@@ -24,7 +24,8 @@ import { Check, ChevronRight, Menu } from '../../components/icons'
 import useSnapConectores from '../supervision/useSnapConectores'
 import { apilarAtras } from '../../services/atras'
 import { sx } from '../../lib/sx'
-import { colorPorId } from '../../lib/colors'
+import { colorPorId, tintaTransporte } from '../../lib/colors'
+import useTramosTransporte from '../../hooks/useTramosTransporte'
 import { hoyStr, initials, fmtDuracion } from '../../lib/format'
 import { compararDia, compararRango } from '../../lib/comparar'
 import { titular as generarTitular, periodoTxt, horizonteInicial } from './titulares'
@@ -244,10 +245,15 @@ export default function PanelDireccion() {
   // `snapOn` ya no viaja a `construirLeaflet`: el pegado de tramos se retiró el 18/08/2026 y la
   // función dejó de aceptar el parámetro (ver trazos.js). El toggle sigue en la UI hasta que se
   // decida sacarlo, pero no cambia nada de lo que se dibuja.
+  // Tramos de TRANSPORTE del día (17/09/2026, db/72): el lapso en que cada persona declaró estar
+  // en ruta se pinta en tinta y lleva hitos de hora con la velocidad media. Ver trazos.js.
+  const { porUsuario: tramos, abiertos: transporteAbierto } = useTramosTransporte(fechaMapa, idEmpresaActiva)
+  const tinta = tintaTransporte(theme)
   const leafletTrails = useMemo(
-    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null }),
-    [trails, snapped, foco]
+    () => construirLeaflet({ trails, snapped, focoId: foco?.id || null, tramos, tinta }),
+    [trails, snapped, foco, tramos, tinta]
   )
+  const hitos = useMemo(() => construirHitosTransporte(trails, tramos, tinta), [trails, tramos, tinta])
   // Hitos "▶ 08:47" y "■ 17:20". Las dos supervisiones ya los mostraban y acá faltaban: era una
   // omisión y no una decisión, así que el dueño veía el mismo trazo sin saber a qué hora empezó ni
   // cuándo dejó de reportar — que es justo lo que un dueño mira. ⚠️ El fin es el último punto
@@ -271,8 +277,11 @@ export default function PanelDireccion() {
   })) : []), [esHoy, moversArr, nombres, fotos])
 
   // Capa de cartera: apagada → por zona → por estado de hoy. Ver `supervision/useCapaCartera`.
+  // Con una persona enfocada la capa es SU cartera (18/09/2026) — salvo un repartidor, que no tiene
+  // cartera: seguirlo con la capa vacía sería un bug nuevo, así que para él se sigue dibujando todo.
+  const focoCartera = foco?.id && roles[foco.id] !== 'repartidor' ? foco.id : null
   const { modoClientes, alternarClientes, clientMarkers, clientesCount, conteoEstado, zonasEnMapa, sinUbicar: sinUbicarCartera, comercioSel, elegirComercio, soltarComercio } =
-    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha: fechaMapa, isDark })
+    useCapaCartera({ cartera, zonas, idEmpresa: idEmpresaActiva, fecha: fechaMapa, isDark, focoId: focoCartera })
 
   const dwells = useMemo(
     () => (dwellOn ? calcularDwells(byUser, SIN_FILTRO, cartera) : []),
@@ -626,6 +635,7 @@ export default function PanelDireccion() {
           conteoEstado={conteoEstado}
           zonasEnMapa={zonasEnMapa}
           sinUbicarCartera={sinUbicarCartera}
+          leyendaDeQuien={focoCartera ? nombres[focoCartera] : null}
           comercioSel={comercioSel}
           elegirComercio={elegirComercio}
           soltarComercio={soltarComercio}
@@ -633,6 +643,9 @@ export default function PanelDireccion() {
           dwells={dwells}
           inicios={inicios}
           fines={fines}
+          hitos={hitos}
+          transporteAbierto={transporteAbierto}
+          conTransporte={Object.keys(tramos).length > 0}
           dwellOn={dwellOn}
           setDwellOn={setDwellOn}
           dwellSel={dwellSel}
@@ -728,6 +741,7 @@ function MapaCompleto({ theme, onClose, ...p }) {
         onDwellClick={(i) => p.setDwellSel((s) => (s === i ? null : i))}
         inicios={p.inicios}
         fines={p.fines}
+        hitos={p.hitos}
         // Prop suelta (no dentro de `dwells`): con el foco adentro, cada toque en una persona
         // recalcularía `calcularDwells` — ~250 ms por persona-día. Ver el 🩸 en LeafletMap.
         focoId={p.foco?.id || null}
@@ -762,7 +776,7 @@ function MapaCompleto({ theme, onClose, ...p }) {
 
       {/* Referencia de colores de la capa de cartera (sólo en modo estado), corrida a la derecha
           del control de zoom de Leaflet. */}
-      <LeyendaCartera modo={p.modoClientes} conteo={p.conteoEstado} zonasEnMapa={p.zonasEnMapa} sinUbicar={p.sinUbicarCartera} fecha={p.fechaMapa} esHoy={p.esHoy} isDark={p.isDark} />
+      <LeyendaCartera modo={p.modoClientes} conteo={p.conteoEstado} zonasEnMapa={p.zonasEnMapa} sinUbicar={p.sinUbicarCartera} fecha={p.fechaMapa} esHoy={p.esHoy} isDark={p.isDark} conTransporte={p.conTransporte} deQuien={p.leyendaDeQuien} />
 
       {/* Cerrar: mismo control y misma esquina que el "salir de pantalla completa" de las dos
           supervisiones (BtnInmersivo), para que el gesto se aprenda una sola vez. */}
@@ -804,6 +818,7 @@ function MapaCompleto({ theme, onClose, ...p }) {
         nombres={p.nombres}
         fotos={p.fotos}
         byUser={p.byUser}
+        transporte={p.transporteAbierto}
         focoId={p.foco?.id || null}
         onSelect={(id) => (p.foco?.id === id ? p.onEnfocar(null) : p.onEnfocar(id))}
         style={{ position: 'absolute', left: 12, right: 12 + RAIL_W + 12, bottom: 'calc(14px + env(safe-area-inset-bottom,0px))', zIndex: 'var(--z-chrome)' }}

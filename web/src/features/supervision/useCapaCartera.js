@@ -4,6 +4,8 @@ import { diaDeHoy, fechaLocal } from '../../lib/diasVisita'
 import useVisitasDelDia from '../../hooks/useVisitasDelDia'
 import useDormidosEmpresa from '../../hooks/useDormidosEmpresa'
 import usePedidosBotDelDia from '../../hooks/usePedidosBotDelDia'
+import useCoberturasZona from '../../hooks/useCoberturasZona'
+import { duenoDe } from '../../lib/carteraDe'
 
 /**
  * La capa de cartera del mapa de supervisión: en qué modo está, qué marcadores dibuja, cuál está
@@ -52,11 +54,17 @@ export default function useCapaCartera({ cartera, zonas, idEmpresa, fecha, isDar
   //
   // Todo lo de abajo (marcadores, badge, leyenda, sin ubicar) sale de ESTA cartera: la leyenda
   // cuenta lo que se dibuja, y con el foco puesto lo que se dibuja es lo de la persona.
+  //
+  // Y LO QUE CUBRE ESE DÍA (db/76): si Agustín tomó BURELA por esta jornada, BURELA se dibuja
+  // como suya y la leyenda la cuenta — es cómo el supervisor ve el reemplazo sin pantalla nueva.
+  // El criterio de dueño es `duenoDe`, el mismo que usa el teléfono del vendedor.
+  const { coberturas } = useCoberturasZona({ idEmpresa, fecha, activo: !!focoId })
   const carteraVisible = useMemo(() => {
     if (!focoId) return cartera || []
-    const zonaDe = new Map((zonas || []).map((z) => [z.id, z.id_vendedor || null]))
-    return (cartera || []).filter((c) => c.idVendedor === focoId || (c.idZona && zonaDe.get(c.idZona) === focoId))
-  }, [cartera, zonas, focoId])
+    const zonaPorId = new Map((zonas || []).map((z) => [z.id, z]))
+    const cubiertas = new Set(coberturas.filter((k) => k.id_usuario === focoId).map((k) => k.id_zona))
+    return (cartera || []).filter((c) => duenoDe(c, zonaPorId) === focoId || (c.idZona && cubiertas.has(c.idZona)))
+  }, [cartera, zonas, focoId, coberturas])
 
   const marcadores = useMemo(
     () => marcadoresCartera(carteraVisible, zonas, { modo: activo ? 'estado' : 'zona', visitas, dia, dormidos: activo ? dormidos : null, pedidosBot: activo ? pedidosBot : null, isDark }),

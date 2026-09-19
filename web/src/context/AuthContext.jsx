@@ -7,6 +7,7 @@ import { supabase, hasSupabase } from '../services/supabase'
 import { persistence } from '../services/persistence'
 import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil, actualizarMiPerfil as actualizarMiPerfilSvc } from '../services/data/perfiles'
 import { cerrarSesionUploader } from '../services/uploaderNativo'
+import { resetTransporte } from '../services/transporte'
 
 // Espejo de la sesión para el auto-login OFFLINE. El access token dura 1 h y, al reabrir la app
 // sin internet pasada esa hora, getSession() intenta refrescar contra la red, falla y devuelve
@@ -122,6 +123,9 @@ export function AuthProvider({ children }) {
   const [authEpoch, setAuthEpoch] = useState(0)
   // El access_token con el que se abrió en modo degradado, o null si el arranque fue sano.
   const tokenDegradadoRef = useRef(null)
+  // El access_token del espejo con el que YA se abrió la app (safety de 6 s o restaurarDesdeEspejo),
+  // para no repetir el `setSession` + `cargarPerfil` cuando los dos caminos llegan al mismo espejo.
+  const sesionAbiertaConRef = useRef(null)
 
   // Carga el perfil con timeout + reintentos, sin colgar la app: si la red está
   // lenta/cortada (ahorro de energía), no deja "Cargando…" para siempre.
@@ -175,6 +179,7 @@ export function AuthProvider({ children }) {
       const cached = await leerCacheSesion()
       if (active && !sesionResuelta && cached) {
         tokenDegradadoRef.current = cached.access_token
+        sesionAbiertaConRef.current = cached.access_token
         setSession(cached)
         cargarPerfil(cached.user?.id)
       }
@@ -188,13 +193,6 @@ export function AuthProvider({ children }) {
     const restaurarDesdeEspejo = async () => {
       const cached = await leerCacheSesion()
       if (!cached || !active) return null
-      // Si el safety de los 6 s ya abrió con este mismo espejo, no repetir el trío: sería otra
-      // lectura de SQLite y otros tres intentos de fetchPerfil sin red. Lo que sigue (setSession de
-      // supabase-js y la decisión de rechazo) sí corre siempre.
-      if (tokenDegradadoRef.current !== cached.access_token) {
-        setSession(cached)
-        cargarPerfil(cached.user?.id)
-      }
       // 🩸 EL `await` NO ES COSMÉTICO (18/08/2026). Hasta hoy este `setSession` salía sin esperar y
       // con el error tragado, así que el Gate dejaba pasar a la app con el token VENCIDO del
       // espejo. Todas las pantallas montan y disparan sus consultas en ese instante — perfiles,
@@ -205,15 +203,27 @@ export function AuthProvider({ children }) {
       // Ése era el "después de una actualización o de terminar la jornada no aparecen las
       // ubicaciones": los dos casos son una REAPERTURA con el token ya vencido.
       // Esperarlo hace que la app arranque con el token bueno cuando hay red.
-      tokenDegradadoRef.current = cached.access_token
+      //
+      // 🩸 Y EL VEREDICTO VA ANTES DE ABRIR (18/09/2026). Hasta hoy el `setSession(cached)` de React
+      // iba ARRIBA de este await: el Gate abría con el espejo, todas las vistas disparaban sus
+      // consultas con el token muerto (ráfaga de 401 y de 200 vacíos, cartel rojo de «no se
+      // pudieron cargar las ubicaciones») y recién después llegaba el 400 y la app saltaba al
+      // Login. Medido el 18/09 en `localhost` con una sesión revocada desde otro dispositivo. Ahora
+      // se le pregunta primero al servidor: sesión nueva → se abre con ella; rechazo → Login directo
+      // sin montar nada; sin red → recién ahí se abre con el espejo (modo sin conexión).
       try {
         const { data, error } = await supabase.auth.setSession({
           access_token: cached.access_token, refresh_token: cached.refresh_token,
         })
-        if (!error && data?.session?.access_token && data.session.access_token !== cached.access_token) {
-          tokenDegradadoRef.current = null
-          if (active) { escribirCacheSesion(data.session); setSession(data.session) }
-        } else if (error && esRechazoDelServidor(error)) {
+        if (!error && data?.session?.access_token) {
+          if (data.session.access_token !== cached.access_token) {
+            tokenDegradadoRef.current = null
+            if (active) escribirCacheSesion(data.session)
+          }
+          if (active) { setSession(data.session); cargarPerfil(data.session.user?.id) }
+          return data.session
+        }
+        if (error && esRechazoDelServidor(error)) {
           // 🩸 Y ACÁ ESTÁ LA PARTE QUE HACÍA EL BUG INVISIBLE. Si el servidor CONTESTA que el
           // refresh token ya no vale (400/401/403), la sesión está muerta y no hay nada que
           // esperar: sin esto, la app seguía abierta con un token vencido y **las consultas salían
@@ -224,10 +234,20 @@ export function AuthProvider({ children }) {
           // El espejo se borra SOLO en este caso. Un fallo de red (o un 5xx de Supabase) sigue
           // conservándolo: ése es todo el motivo por el que el espejo existe (auto-login offline).
           await borrarCacheSesion()
+          tokenDegradadoRef.current = null
           if (active) { setSession(null); setPerfil(null) }
           return null
         }
       } catch (_) { /* offline: se abre igual, en modo sin conexión (es el motivo del espejo) */ }
+      // Sin veredicto (sin red, 5xx, timeout): modo sin conexión con el espejo. Si el safety de los
+      // 6 s ya abrió con este mismo espejo, no repetir el trío (otra lectura de SQLite y otros tres
+      // intentos de fetchPerfil sin red); el `session` de React ya es este.
+      tokenDegradadoRef.current = cached.access_token
+      if (active && sesionAbiertaConRef.current !== cached.access_token) {
+        sesionAbiertaConRef.current = cached.access_token
+        setSession(cached)
+        cargarPerfil(cached.user?.id)
+      }
       return cached
     }
 
@@ -440,6 +460,10 @@ export function AuthProvider({ children }) {
     // AlarmReceiver volvía a levantar el servicio cada 30 min, así que el teléfono seguía subiendo
     // posiciones de esta persona mientras había OTRA logueada. Ver services/uploaderNativo.js.
     try { await cerrarSesionUploader() } catch (_) { /* nunca bloquear el logout */ }
+    // Y olvidar el tramo de transporte LOCAL (17/09/2026): la clave es del dispositivo, y la próxima
+    // cuenta no tiene por qué heredar "en transporte desde las 10:30" de la anterior. La fila de la
+    // base no se toca desde acá (ya no hay sesión para la RLS): la cierra el cron de alertas-equipo.
+    try { await resetTransporte() } catch (_) { /* idem */ }
     // En nativo, cerrar también la sesión de Google borra la cuenta cacheada (así
     // el próximo ingreso deja elegir otra cuenta). OJO: el plugin no inicializa el
     // cliente solo; si no se llamó signIn en esta sesión, signOut() crashea (cliente
@@ -461,7 +485,13 @@ export function AuthProvider({ children }) {
     setPerfil(null)
     setAuthStatus(null)
     setAuthError(null)
-    await supabase.auth.signOut()
+    // 🩸 `scope: 'local'` (18/09/2026). El default de supabase-js es `'global'`: revoca TODAS las
+    // sesiones de la cuenta, en todos los dispositivos. Con una misma cuenta abierta en la PC de la
+    // oficina, en esta PC y en teléfonos, un «Cerrar sesión» en cualquiera mataba al resto sin
+    // aviso: PostgREST seguía aceptando el JWT hasta su vencimiento (8 h) y recién ahí el refresh
+    // caía con 400 y la app abría con una ráfaga de 401/vacíos antes de ir al Login. Medido el 18/09:
+    // `/auth/v1/user` → 403 `session_not_found` con un JWT todavía vigente.
+    await supabase.auth.signOut({ scope: 'local' })
   }
 
   const value = {

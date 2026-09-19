@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { Capacitor } from '@capacitor/core'
+import { desalojarCaches } from './persistence'
 
 /**
  * Cliente único de Supabase (backend de producción: datos, realtime, auth, storage).
@@ -73,13 +74,43 @@ const esStorage = (input) => {
 const fetchConTimeout = (input, init = {}) => {
   const ms = esStorage(input) ? TIMEOUT_STORAGE_MS : TIMEOUT_MS
   const ctrl = new AbortController()
-  const reloj = setTimeout(() => ctrl.abort(new Error(`timeout ${ms}ms`)), ms)
+  // `AbortError` y no un `Error` cualquiera (18/09/2026): postgrest-js ≥ 2.110 reintenta los GET
+  // tres veces (1/2/4 s) ante cualquier fallo de red que NO sea un abort. Con `new Error(...)` el
+  // timeout contaba como fallo de red y una página colgada tardaba ~47 s en fallar, contra el
+  // «NO se reintenta acá» de arriba. Con el nombre correcto lo respeta y falla a los 10 s.
+  const reloj = setTimeout(() => ctrl.abort(new DOMException(`timeout ${ms}ms`, 'AbortError')), ms)
   const ajeno = init.signal
   if (ajeno) {
     if (ajeno.aborted) ctrl.abort(ajeno.reason)
     else ajeno.addEventListener('abort', () => ctrl.abort(ajeno.reason), { once: true })
   }
   return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(reloj))
+}
+
+/**
+ * 🔴 LA SESIÓN NO SE PIERDE POR FALTA DE ESPACIO (18/09/2026). auth-js guarda la sesión con
+ * `localStorage.setItem` crudo, sin `try/catch` (`helpers.js` → `setItemAsync`). Con el storage
+ * lleno —el caso del 18/09 en la PC de la oficina— un refresh que no puede guardarse pierde el
+ * refresh token ya ROTADO en el servidor: la sesión queda muerta en el próximo intento y la app
+ * abre con 401/vacíos. Es la única escritura de la app que no pasaba por `persistence`, que sí
+ * desaloja las cachés (recorridos, catálogo) antes que perder algo que no se rehace de la red.
+ * Mismo criterio acá: si no entra, se tiran las cachés y se reintenta; si aun así no entra, se
+ * avisa fuerte (auth-js no tiene nada útil que hacer con la excepción: el resultado es el mismo).
+ */
+const authStorage = {
+  getItem: (k) => { try { return localStorage.getItem(k) } catch { return null } },
+  setItem: (k, v) => {
+    try { localStorage.setItem(k, v); return } catch (e) {
+      const liberado = desalojarCaches(k)
+      try {
+        localStorage.setItem(k, v)
+        console.warn('[auth] almacenamiento lleno: se desalojaron', Math.round(liberado / 1024), 'KB de caché para guardar la sesión')
+      } catch (e2) {
+        console.error('[auth] NO SE PUDO GUARDAR LA SESIÓN · almacenamiento lleno o bloqueado:', e2?.message || e?.message)
+      }
+    }
+  },
+  removeItem: (k) => { try { localStorage.removeItem(k) } catch { /* nada */ } },
 }
 
 export const supabase = hasSupabase
@@ -90,6 +121,7 @@ export const supabase = hasSupabase
         flowType: 'pkce',
         detectSessionInUrl: !isNative,
         lock: noHangLock,
+        storage: authStorage,
       },
       global: { fetch: fetchConTimeout },
     })
