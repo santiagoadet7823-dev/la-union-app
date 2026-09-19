@@ -45,6 +45,131 @@
 
 ---
 
+## 🟦 00000. RELEASE 1.41.0 (19/09/2026) — el vendedor ve SÓLO lo suyo + "Cubrir otra zona" + jornada de transporte
+
+Plan en `~/.claude/plans/pense-en-una-funcion-mutable-mountain.md` (revisado el 18/09 con el dueño).
+
+**Qué se cerró, y por qué era urgente.** `db/76` abrió `clientes_sel` a toda la empresa (para poder
+cubrir la zona de otro), pero `useJornada` seguía tomando la cartera entera como "mía": desde ese
+momento, en cada arranque, **cada teléfono listaba los 2.042 comercios como propios**. Ahora "mío" lo
+decide `lib/carteraDe.js` (dueño directo, dueño de la zona, o zona cubierta hoy) — el mismo criterio
+que la capa de cartera del monitoreo. Por vendedor: Alejandro 307 (53 ubicados), Nelson 236 (78),
+Orlando 202 (170), Agustín 148 (66), Gabriel 84 (61), Javier 57 (23), Luis 49 (24), Eduardo 29 (5).
+
+**Decisiones del dueño (18/09):**
+- **Sin dueño (930, 249 ubicados) ocultos por defecto.** Hasta hoy "de nadie" era "de todos" y cada
+  lista cargaba 930 comercios ajenos. Se llegan a mano: el buscador de Inicio (bloque "Sin dueño",
+  tope 30, con 2+ letras) o el interruptor "Mostrar sin dueño" en la leyenda del mapa (puntitos
+  grises con `?`). Quien hace check-in en uno **se lo queda** (`startVisit`; antes sólo `ubicarComercio`
+  lo hacía — y `ubicarComercio` ahora usa `duenoDe`, así que ubicar un comercio de una zona cubierta ya
+  no se lo regala al que cubre).
+- **"Cubrir otra zona" se elige de una lista**, no tocando pines ajenos en el mapa (la primera versión
+  del plan dibujaba los 729 comercios de la empresa en el mapa del vendedor; con teléfonos baratos y
+  gente poco técnica es ruido y carga por nada). Botón en Ruta → `CubrirZonaSheet` (zonas ajenas con
+  color, abreviatura, N comercios / ubicados; sin el nombre del dueño: la RLS de `perfiles` no deja al
+  vendedor leer a sus compañeros) → "Cubrir hoy" → confirmación en la fila → `coberturas_zona`. Los
+  comercios entran a lista y mapa con la abreviatura de la zona; en Inicio, chips "Hoy cubrís: BR ·
+  BURELA ✕" para soltarla. Vence sola a medianoche (la `fecha` la manda la app con `hoyStr()`).
+
+**Archivos**: `lib/carteraDe.js`, `hooks/useCoberturasZona.js`, `features/vendedor/useJornada.js`
+(`clients` memoizado y filtrado; `sinDuenoBuscados`; `cubrirZona`/`soltarCobertura`; `visitC` cae a la
+cartera mientras el merge optimista hace mío al recién tocado), `MapaCartera.jsx` (glifo de zona
+cubierta, interruptor y tarjeta "Sin dueño"), `tabs/RutaTab.jsx`, `CubrirZonaSheet.jsx` (nuevo),
+`tabs/InicioTab.jsx` (la tarjeta es `TarjetaCliente`, compartida con el bloque "Sin dueño"),
+`db/76_cobertura_zona.sql`, `useCapaCartera.js` (el monitoreo pinta la zona cubierta como del que cubre).
+
+**Verificado**: `carteraDe` con 7 casos en Node · policies simulando a Agustín por SQL (lee 2.042;
+inserta su cobertura; NO puede insertar una a nombre de Eduardo; todo con rollback) · `npx eslint src`
+0 errores · `npm run build` verde · deploy de la PWA verde. **NO verificado en pantalla**: la vista de
+vendedor no se abre con la sesión de superadmin y no se tipean credenciales — lo prueba el cliente en
+un teléfono con la 1.41.0, o con una cuenta de vendedor en la PWA.
+
+**Pendiente que NO es de esta release**: `ingest-precios` desplegado (v10, 10/09) difiere del repo —
+tiene el canal de vuelta de db/59 (`?solo_config=1`, `ingesta_tokens.config`, que no está commiteado en
+ningún lado) pero no la bitácora `ingestas_emisor` de db/60. Fusionar y redesplegar necesita el OK
+explícito del dueño: es el endpoint que el ERP golpea cada hora.
+
+---
+
+## 🟦 00000. JORNADA DE TRANSPORTE (17/09/2026, noche) — publicado el 19/09 en 1.41.0
+
+Plan aprobado en `~/.claude/plans/1-en-el-perfil-warm-wall.md`. Pedido del usuario: botón "Iniciar
+jornada de transporte" para el vendedor con cadencia "más en vivo", alerta si se mueve por ruta sin
+tocarlo, el tramo pintado de negro con marcas de hora para leer la velocidad; qué horario darle al
+repartidor y cómo sacar el salto del mapa al arrancar después de descargar; y la deuda que destapa.
+
+**Lo que ya existía y cambió el enfoque**: la cadencia adaptativa YA captura a 4 s / 2 s en
+movimiento y 30 s con AR "quieto" (`gpsConfig.js`). Lo que faltaba era el estado "transporte" como
+DATO; y el salto del repartidor es el camino "AR quieto → 30 s + piso anti-churn de 60 s"
+(`UploaderGpsService.java:876-884`), que con las tres cadencias iguales no se recorre nunca.
+
+**Decidido con el usuario**: la alerta dispara con velocidad de RUTA sostenida (≥ 40 km/h, ≥ 5 km
+netos en 15 min), no con cualquier movimiento en vehículo; el repartidor abre el tramo solo al
+marcar el primer "En camino". Y **no** rastrear al repartidor 24 h: categoría "Reparto" 06–20 desde
+`CategoriasRastreo` (el keepalive guarda un punto cada 30 s parado → ~1.900 filas/noche de un
+camión estacionado; `sin_reportar` sonaría de madrugada; `ACCESS_BACKGROUND_LOCATION` sin términos
+publicados).
+
+**En la base (aplicado, `db/72`)**: tabla `tramos_transporte` (RLS calcada de `visitas`, índice
+único parcial = un tramo abierto por persona), CHECK de `alertas_equipo.tipo` con
+`transporte_sin_declarar`, `app_config.alerta_transporte_km/min` (5 / 15), RPC
+`vigilancia_transporte` (sólo `service_role`, `proacl` verificado). **Calibrada contra 7 días
+reales antes de fijar el umbral** (regla 49): con 5 km / 3 min a ≥ 40 km/h dispara sólo en viajes
+entre pueblos —Zura 11 y 12/09 con máximos de 130-150 km/h, Eduardo 16/09 08:30, Javier 16 y 17/09,
+Gabriel 12/09— y en ningún bloque urbano.
+
+**Edge Function `alertas-equipo` (desplegada, v5)**: tercer tipo con push propio ("En ruta sin
+declarar · Zura", cierre "Declaró transporte" / "Dejó la ruta"), histéresis del cierre (sigue abierta
+mientras se mueva ≥ 1 km neto: cruzar un pueblo a 30 km/h no la cierra y reabre), título del push
+agrupado por tipo, y **cierre automático de tramos** al salir de la ventana (`cierre='ventana'`) o
+a las 14 h (`'cron'`). `en_ventana` lo sigue diciendo `vigilancia_equipo` (no hay 4.ª implementación
+de la ventana, regla 36). El cron ya corrió la v5: `200` con `tramos_cerrados: 0`.
+
+**Teléfono (OTA + PWA, sin APK)**: `services/transporte.js` (módulo con estado, como `tracker.js`;
+persistido en `lu-transporte`, atado a la cuenta y al día; escribe por `writeQueue` con `id` del
+cliente), `hooks/useTransporte.js`, `components/BotonTransporte.jsx` (uno para las dos vistas),
+`NEAR_LIVE_TRANSPORTE_MS = 2000` en `gpsConfig.js` → `uploaderNativo.js` iguala las tres cadencias
+DESPUÉS del `gps_perfil`; `usePublishPosition` reempuja las prefs al abrir/cerrar (evento
+`lu-transporte`). `signOut` olvida el tramo local. Repartidor: `abrirTransporte('reparto')` en
+"Marcar en camino" y en "Confirmar entrega".
+⚠️ Honesto: el 2 s entra en la **próxima transición** de velocidad/AR, no al toque (no hay comando
+JS→nativo de cadencia; deuda D1, APK). Y la OTA alcanza sólo a los ≥ `min_version` (7 de 12).
+
+**Panel**: `hooks/useTramosTransporte.js` (polling 60 s), `trazos.js` → `partirPorTramos` +
+`construirLeaflet({tramos, tinta})` + `construirHitosTransporte` (cada 10 min, velocidad MEDIA con
+`kmDePuntos`, tope 60 por persona); `LeafletMap` prop `hitos` (pane `luDwells`, zoom ≥ 12);
+`tintaTransporte(theme)` en `lib/colors.js` (`#0B2B2A` claro / `#ECF5F4` oscuro — negro sobre el
+basemap oscuro no se ve); `TarjetaPin` y `BurbujasEquipo` dicen "en transporte desde las HH:MM";
+`AlertasEquipo` pasó de "si no es X es Y" a un mapa por tipo; `LeyendaCartera` gana el ítem "Tramo
+de transporte"; `EmpresasView` edita los dos umbrales.
+
+**Verificado (17/09, noche)**: funciones puras con traza sintética (corridas, bisagra compartida,
+piezas, hitos) · **panel real** en el Edge de `.pw` con un tramo de prueba sobre la jornada de Zura
+del 12/09: el lapso 15:00–20:45 en tinta y el resto en su rojo, hitos "18:13 · 92 km/h" desde zoom
+12 y ninguno a zoom 8, campanita con la píldora azul "en ruta sin declarar" y el motivo ·
+**app del vendedor** (módulo efímero, regla 51): tocar el botón → chip "En transporte desde las
+23:22 · Terminar" → fila en `tramos_transporte` con la cuenta real (RLS `tramos_ins` OK) →
+Terminar → confirmación → `fin_ts`/`cierre='manual'` en la base. `RepartidorView` monta con el botón.
+Datos de prueba borrados. `npx eslint src` 0 errores (17 warnings de siempre), `npm run build` verde.
+
+**NO verificado**: el flujo "En camino" → tramo del repartidor (no hay pedidos asignados a la cuenta
+de prueba y asignar uno escribiría datos reales); la cadencia de 2 s en la calle (regla 43: se mide
+con la consulta de `dt_p50` de §1611 restringida al tramo, y `estado_dispositivo.gps_intervalo_ms`
+= 2000 con el tramo abierto); el emulador (atrás de Android en el diálogo de Terminar).
+
+✅ **Publicado el 19/09/2026 como 1.41.0** (OTA + PWA), junto con la cobertura de zonas: ver la
+entrada de arriba, que tiene el detalle del release. Falta el push de aviso (`push-actualizacion`,
+necesita `service_role`: lo dispara el usuario) y cerrar mirando `estado_dispositivo`.
+
+**Deuda que destapó (del plan, §6)**: D1 sin comando JS→nativo de cadencia · D2 `posiciones` sin
+`speed`/`heading` (la velocidad se deriva de hops ≥ 50 m) · D4 ventana ×3 (el tramo se subordina,
+no la reimplementa) · D5 presets de `estados.js` al revés y watcher JS en paralelo al nativo · D6
+defaults del plugin Java ≠ producción · D7 `writeQueue` trata 23505 como permanente (un "abrir"
+duplicado va a cuarentena aunque el tramo exista) · D8 umbrales en `app_config` global, no por
+empresa.
+
+---
+
 ## 🟦 00000. RELEASE 1.40.0 (17/09/2026) — el login de Google dice POR QUÉ falló
 
 ✅ **Publicado el 17/09 a la noche**: commit `9a1c889` + push a `main` (PWA por el workflow) ·
