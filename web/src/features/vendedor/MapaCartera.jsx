@@ -1,12 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, fmtHora, hoyStr } from '../../lib/format'
+import { duenoDe } from '../../lib/carteraDe'
 import { Check, X } from '../../components/icons'
 import MapaComercios, { LeyendaMapa } from '../../components/MapaComercios'
 import { Conteo } from '../../components/MuestraEstado'
 import { useTheme } from '../../context/ThemeContext'
 import { useGps } from '../../context/GpsContext'
 import { useAuth } from '../../context/AuthContext'
+import { useCatalog } from '../../context/CatalogContext'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { ESTADOS, ORDEN_LEYENDA, ORDEN_LEYENDA_CON_BOT, estadoComercio, pintarComercio } from '../../lib/estadoComercio'
 import useDormidos from '../../hooks/useDormidos'
@@ -36,6 +38,9 @@ import usePedidosBotDelDia from '../../hooks/usePedidosBotDelDia'
 // supervisión. Acá sólo queda lo que es de ESTE mapa.
 const STROKE = { dark: '#0B2B2A', light: '#ffffff' }
 const K_LEYENDA = 'lu-mapa-leyenda'
+// El interruptor "Mostrar sin dueño" se recuerda; apagado por defecto (ver `lib/carteraDe.js`).
+const K_SIN_DUENO = 'lu-mapa-sin-dueno'
+const GRIS = { dark: '#5C7370', light: '#93A9A7' }
 
 function fmtDistancia(m) {
   if (m == null) return null
@@ -46,8 +51,22 @@ function fmtDistancia(m) {
 export default function MapaCartera({ j, onCheckIn }) {
   const { theme } = useTheme()
   const { pos: livePos } = useGps()
-  const { clients, pend, pendingCoords, routeCalc, rutaInfo, setRutaInfo } = j
+  const { clients, pend, pendingCoords, routeCalc, rutaInfo, setRutaInfo, misCoberturas, zonaPorId } = j
   const { user } = useAuth()
+  const { clientes: cartera } = useCatalog()
+  // Los SIN DUEÑO no están en `clients` (18/09/2026, `lib/carteraDe.js`): se dibujan sólo si el
+  // vendedor prende el interruptor de la leyenda, como puntitos grises huecos. Es la puerta del
+  // mapa para reclamar uno: tocarlo y hacer check-in se lo da (`startVisit`).
+  const [verSinDueno, setVerSinDueno] = useState(() => {
+    try { return localStorage.getItem(K_SIN_DUENO) === 'on' } catch (_) { return false }
+  })
+  const alternarSinDueno = () => setVerSinDueno((v) => {
+    try { localStorage.setItem(K_SIN_DUENO, v ? 'off' : 'on') } catch (_) { /* sin persistir, igual funciona */ }
+    return !v
+  })
+  const sinDueno = useMemo(() => cartera
+    .filter((c) => c.lat != null && !duenoDe(c, zonaPorId))
+    .map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, idVendedor: null, idZona: c.idZona || null, sinDueno: true, status: 'pendiente' })), [cartera, zonaPorId])
   const isDark = theme === 'dark'
   const stroke = STROKE[theme] || STROKE.dark
   // Los 50 comercios que más dejaban y hace +30 días que no compran: el único rojo del mapa.
@@ -96,21 +115,32 @@ export default function MapaCartera({ j, onCheckIn }) {
     return m
   }, [routeCalc, rutaInfo, pend])
 
-  const puntos = useMemo(() => ubicados.map((c) => {
-    const sel = c.id === selId
-    const { color, glifo, hueco } = pintarComercio(estados.get(c.id), {
-      isDark,
-      glifoExtra: ordenRuta?.get(c.id) ?? null,
+  const puntos = useMemo(() => {
+    const anillo = ESTADOS.hoy[isDark ? 'dark' : 'light']
+    const mios = ubicados.map((c) => {
+      const sel = c.id === selId
+      const orden = ordenRuta?.get(c.id) ?? null
+      const { color, glifo, hueco } = pintarComercio(estados.get(c.id), { isDark, glifoExtra: orden })
+      return {
+        id: c.id, lat: c.lat, lng: c.lng, nombre: c.name, color, hueco, sel,
+        // En una zona CUBIERTA hoy el pin lleva la abreviatura de la zona (con el color del
+        // estado, que sigue mandando): es lo que la distingue de lo propio. El número de la ruta
+        // gana, si lo hay.
+        glifo: orden == null && c.cubierta && c.zonaAbrev ? c.zonaAbrev : glifo,
+        // El tocado se agranda y lleva el anillo del color primario: en un mapa con cientos de
+        // puntos iguales, "cuál toqué" tiene que verse desde lejos.
+        radio: sel ? 11 : hueco ? 6 : 8,
+        stroke: sel ? anillo : stroke,
+        peso: sel ? 3 : 1,
+      }
     })
-    return {
-      id: c.id, lat: c.lat, lng: c.lng, nombre: c.name, color, glifo, hueco, sel,
-      // El tocado se agranda y lleva el anillo del color primario: en un mapa con cientos de
-      // puntos iguales, "cuál toqué" tiene que verse desde lejos.
-      radio: sel ? 11 : hueco ? 6 : 8,
-      stroke: sel ? ESTADOS.hoy[isDark ? 'dark' : 'light'] : stroke,
-      peso: sel ? 3 : 1,
-    }
-  }), [ubicados, selId, estados, ordenRuta, isDark, stroke])
+    if (!verSinDueno) return mios
+    const gris = GRIS[isDark ? 'dark' : 'light']
+    return mios.concat(sinDueno.map((c) => {
+      const sel = c.id === selId
+      return { id: c.id, lat: c.lat, lng: c.lng, nombre: c.name, color: gris, glifo: '?', hueco: true, sel, radio: sel ? 11 : 5, stroke: sel ? anillo : stroke, peso: sel ? 3 : 1 }
+    }))
+  }, [ubicados, selId, estados, ordenRuta, isDark, stroke, verSinDueno, sinDueno])
 
   // Contadores del día. Salen de los MISMOS `estados` que pinta el mapa, así que no pueden
   // discrepar con lo dibujado. `sinUbicar` es el que no estaba en ninguna pantalla: al 17/09 son
@@ -121,14 +151,21 @@ export default function MapaCartera({ j, onCheckIn }) {
     return { ...n, sinUbicar: clients.length - ubicados.length }
   }, [estados, clients.length, ubicados.length])
 
-  const sel = selId ? ubicados.find((c) => c.id === selId) : null
+  const sel = selId ? (ubicados.find((c) => c.id === selId) || (verSinDueno ? sinDueno.find((c) => c.id === selId) : null) || null) : null
+  // Las zonas que cubro hoy, para el renglón de la leyenda (la muestra es la primera: es un
+  // renglón, no un inventario).
+  const cubiertas = (misCoberturas || []).map((k) => zonaPorId.get(k.id_zona)).filter(Boolean)
   const distancia = sel && livePos ? distanciaMetros({ lat: livePos.lat, lng: livePos.lng }, { lat: sel.lat, lng: sel.lng }) : null
 
   const leyenda = (
     <LeyendaMapa
       claveMemoria={K_LEYENDA}
       // El ítem del bot sólo si hoy vendió algo (ver `ORDEN_LEYENDA_CON_BOT`).
-      items={(conteo.pedido_bot > 0 ? ORDEN_LEYENDA_CON_BOT : ORDEN_LEYENDA).map((k) => ({ ...pintarComercio(k, { isDark }), etiqueta: ESTADOS[k].etiqueta }))}
+      items={[
+        ...(conteo.pedido_bot > 0 ? ORDEN_LEYENDA_CON_BOT : ORDEN_LEYENDA).map((k) => ({ ...pintarComercio(k, { isDark }), etiqueta: ESTADOS[k].etiqueta })),
+        ...(cubiertas.length ? [{ color: cubiertas[0].color || GRIS[isDark ? 'dark' : 'light'], glifo: cubiertas[0].abrev || '', hueco: false, etiqueta: `Zona que cubrís hoy · ${cubiertas.map((z) => z.abrev || z.nombre).join(', ')}` }] : []),
+        ...(verSinDueno ? [{ color: GRIS[isDark ? 'dark' : 'light'], glifo: '?', hueco: true, etiqueta: 'Sin dueño: tocá y hacé check-in para quedártelo' }] : []),
+      ]}
       resumen={<>
         <Conteo n={conteo.hoy} etiqueta="hoy" color={pintarComercio('hoy', { isDark }).color} />
         <Conteo n={conteo.visitado} etiqueta="con pedido" color={pintarComercio('visitado', { isDark }).color} />
@@ -139,9 +176,17 @@ export default function MapaCartera({ j, onCheckIn }) {
          dibujar, así que un mapa que no los nombra hace creer que la cartera es mucho más chica de
          lo que es: al 17/09 son 1.321 de 2.023. El camino para cargarlos es el de siempre — el
          lápiz de cada tarjeta en "Inicio". */
-      pie={conteo.sinUbicar > 0
-        ? <><b>{conteo.sinUbicar}</b> comercios sin ubicación no se ven acá. Se cargan con el primer check-in o con el lápiz en Inicio.</>
-        : null}
+      pie={<>
+        {conteo.sinUbicar > 0 && <div><b>{conteo.sinUbicar}</b> comercios sin ubicación no se ven acá. Se cargan con el primer check-in o con el lápiz en Inicio.</div>}
+        {/* El recuadro del pie no toma eventos (regla 30): sólo este botón los recibe. */}
+        {sinDueno.length > 0 && (
+          <button type="button" onClick={alternarSinDueno} aria-pressed={verSinDueno} className="lu-press"
+            style={{ ...sx('display:flex;align-items:center;gap:6px;margin-top:4px;min-height:28px;padding:0 8px;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--surface);font-size:10px;font-weight:600;cursor:pointer;pointer-events:auto'), color: verSinDueno ? 'var(--primary)' : 'var(--muted)' }}>
+            <span style={{ ...sx('width:8px;height:8px;border-radius:99px;border:1.5px solid currentColor'), background: verSinDueno ? 'currentColor' : 'transparent' }} />
+            {verSinDueno ? 'Ocultar' : 'Mostrar'} sin dueño ({sinDueno.length})
+          </button>
+        )}
+      </>}
     />
   )
 
@@ -162,7 +207,7 @@ export default function MapaCartera({ j, onCheckIn }) {
         <TarjetaComercio
           key={sel.id}
           c={sel}
-          estado={estados.get(sel.id)}
+          estado={sel.sinDueno ? 'sin_dueno' : estados.get(sel.id)}
           pedidoBot={pedidosBot.get(sel.id) || null}
           isDark={isDark}
           distancia={distancia}
@@ -192,8 +237,11 @@ function TarjetaComercio({ c, estado, pedidoBot = null, isDark, distancia, onCer
   // La píldora dice el MISMO estado que pinta el pin — si el mapa lo dibuja hueco porque hoy no
   // toca, la tarjeta no puede decir "Pendiente" a secas. El color sale del mismo módulo, así que
   // no hay dos tablas de colores que se puedan desincronizar.
-  const { color } = pintarComercio(estado, { isDark })
-  const pill = [ESTADOS[estado]?.etiqueta || 'Pendiente', color, 'transparent']
+  // "Sin dueño" no es un estado de visita (`lib/estadoComercio.js`): es de quién es. Se dibuja
+  // gris, como su punto, y el botón dice lo que va a pasar al tocarlo.
+  const sinDueno = estado === 'sin_dueno'
+  const { color } = sinDueno ? { color: GRIS[isDark ? 'dark' : 'light'] } : pintarComercio(estado, { isDark })
+  const pill = [sinDueno ? 'Sin dueño' : ESTADOS[estado]?.etiqueta || 'Pendiente', color, 'transparent']
   // Con pedido del bot, el sub dice cuándo y cuánto vendió el bot; el estado de la visita humana
   // (si la hubo) ya está en la píldora/pin por la precedencia de `estadoComercio`.
   const sub = estado === 'pedido_bot' && pedidoBot
@@ -226,7 +274,7 @@ function TarjetaComercio({ c, estado, pedidoBot = null, isDark, distancia, onCer
       {pendiente ? (
         <button onClick={onCheckIn} className="lu-press" aria-label={`Check-in en ${c.name}`}
           style={sx('width:100%;margin-top:10px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer')}>
-          <Check size={18} />Check-in
+          <Check size={18} />{sinDueno ? 'Check-in · queda en mi cartera' : 'Check-in'}
         </button>
       ) : (
         <button onClick={onCheckIn} className="lu-press" aria-label={`Abrir de nuevo ${c.name}`}

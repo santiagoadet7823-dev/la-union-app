@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { sx } from '../../../lib/sx'
-import { Route } from '../../../components/icons'
+import { Route, Mapa } from '../../../components/icons'
 import { useGps } from '../../../context/GpsContext'
 import MapaCartera from '../MapaCartera'
+import CubrirZonaSheet from '../CubrirZonaSheet'
 
 /**
  * Pestaña "Ruta": mapa GRANDE (ocupa casi toda la pantalla) con el botón de ruta óptima y las
@@ -16,11 +18,22 @@ import MapaCartera from '../MapaCartera'
  */
 export default function RutaTab({ j, onCheckIn }) {
   const { pos: livePos, error: gpsError } = useGps()
-  const { nextId, pend, pendingCoords, routeCalc, setRouteCalc, rutaInfo } = j
+  const { nextId, pend, pendingCoords, routeCalc, setRouteCalc, rutaInfo, misCoberturas, zonaPorId } = j
+  const [cubriendo, setCubriendo] = useState(false)
+  // Las zonas que hoy cubro, por abreviatura, para que el botón lo diga sin abrir nada.
+  const abrevs = misCoberturas.map((k) => zonaPorId.get(k.id_zona)?.abrev).filter(Boolean)
 
   return (
     <div style={sx('flex:1;overflow-y:auto;padding:10px 10px calc(96px + env(safe-area-inset-bottom))')}>
       <MapaCartera j={j} onCheckIn={onCheckIn} />
+
+      {/* El mapa y la lista traen SÓLO lo del vendedor (`lib/carteraDe.js`). Para hacer la zona de
+          otro por una jornada se elige de una lista, no tocando pines ajenos: ver `CubrirZonaSheet`. */}
+      <button onClick={() => setCubriendo(true)} className="lu-press"
+        style={sx('width:100%;margin-top:10px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;font-weight:600;font-size:13px;cursor:pointer;background:var(--surface);color:var(--deep)')}>
+        <Mapa size={16} />{abrevs.length ? `Hoy cubrís: ${abrevs.join(', ')} · cambiar` : 'Cubrir otra zona'}
+      </button>
+      {cubriendo && <CubrirZonaSheet j={j} onClose={() => setCubriendo(false)} />}
 
       {/* Estado real del GPS del dispositivo */}
       <div style={sx('display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>

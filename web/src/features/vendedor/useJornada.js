@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCatalog } from '../../context/CatalogContext'
 import { useGps } from '../../context/GpsContext'
 import { uid } from '../../lib/uid'
 import { hoyStr } from '../../lib/format'
 import { precioDe, totalesDeCarrito } from '../../lib/precios'
+import { duenoDe, esMiComercio } from '../../lib/carteraDe'
 import { persistence } from '../../services/persistence'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
 import { useVidriera } from '../vidriera/useVidriera'
 import useFormasPago from '../../hooks/useFormasPago'
+import useCoberturasZona from '../../hooks/useCoberturasZona'
 
 const now = () => {
   const d = new Date()
@@ -35,6 +37,8 @@ const estadoVisita = (status) => (['visitado', 'sin_pedido', 'cancelado'].includ
  * restaura, porque `visitState` es "lo hecho HOY" y resucitarlo mentiría sobre el día en curso.
  */
 const K_JORNADA = 'lu-jornada-abierta'
+// Tope de comercios SIN DUEÑO que devuelve el buscador de Inicio (ver `sinDuenoBuscados`).
+const SIN_DUENO_TOPE = 30
 
 /**
  * Máquina de estado de la jornada del vendedor: navegación por tabs, visita en curso
@@ -43,10 +47,17 @@ const K_JORNADA = 'lu-jornada-abierta'
  * presentación. Lee el catálogo real para derivar clientes/productos.
  */
 export function useJornada() {
-  const { productos: PRODUCTS, clientes: cartera, loading: catLoading, catalogoMeta, updateCliente } = useCatalog()
+  const { productos: PRODUCTS, clientes: cartera, zonas, loading: catLoading, catalogoMeta, updateCliente } = useCatalog()
   // Identidad + posición en vivo para el check-in geolocalizado (Feature C). `pos` es la
   // posición ya adquirida por el watch (sin prompt); id/idEmpresa vienen del perfil real.
   const { pos, id: userId, nombre: nombreUsuario, idEmpresa } = useGps()
+
+  // Las zonas que cubro HOY (db/76): el reemplazo temporal. Se leen todas las de la empresa (la
+  // supervisión usa el mismo hook) y acá se quedan las mías.
+  const { coberturas, cubrir, soltar } = useCoberturasZona({ idEmpresa, fecha: hoyStr() })
+  const misCoberturas = useMemo(() => coberturas.filter((k) => k.id_usuario === userId), [coberturas, userId])
+  const zonasCubiertas = useMemo(() => new Set(misCoberturas.map((k) => k.id_zona)), [misCoberturas])
+  const zonaPorId = useMemo(() => new Map((zonas || []).map((z) => [z.id, z])), [zonas])
 
   // Las formas de pago que acepta el ERP (db/62). Ver el encabezado de `useFormasPago`: mientras
   // venga vacío, `ConfirmarPedidoSheet` no muestra el selector, y eso es deliberado.
@@ -158,6 +169,12 @@ export function useJornada() {
     carritoPrevioRef.current = null
     showToast('Check-in registrado en el comercio')
     registrarCheckIn(id)
+    // Un comercio SIN DUEÑO que se visita queda de quien lo visitó: la misma regla que
+    // `ubicarComercio`, y lo que hace que entre a `clients` (ya no es "de nadie"). Es la única
+    // puerta para los 930 que no están en ninguna zona: se lo busca en Inicio, se lo atiende, y
+    // desde ahí es suyo.
+    const cli = cartera.find((c) => c.id === id)
+    if (cli && userId && !duenoDe(cli, zonaPorId)) updateCliente(id, { id_vendedor: userId }).catch(() => {})
   }
 
   /**
@@ -180,7 +197,10 @@ export function useJornada() {
   async function ubicarComercio(idCliente, punto) {
     const cli = cartera.find((c) => c.id === idCliente)
     const patch = { lat: punto.lat, lng: punto.lng }
-    if (cli && !cli.idVendedor && userId) patch.id_vendedor = userId
+    // "Sin dueño" con el criterio de `carteraDe`: un comercio de una zona AJENA que estoy
+    // cubriendo hoy tiene dueño (el de la zona) aunque `idVendedor` esté vacío, y ubicarlo no me
+    // lo puede regalar para siempre.
+    if (cli && userId && !duenoDe(cli, zonaPorId)) patch.id_vendedor = userId
     await updateCliente(idCliente, patch)
     ubicadoAntesDeVisitaRef.current = idCliente
     showToast('Ubicación del comercio guardada')
@@ -302,12 +322,38 @@ export function useJornada() {
   // `dias` y `frecuencia` viajan para el MAPA, que colorea distinto lo que hoy toca visitar
   // (`lib/diasVisita.js`). La LISTA de esta misma pantalla todavía no filtra por día — es una
   // inconsistencia conocida y anotada, no un olvido: filtrar la jornada es una decisión del dueño.
-  const clients = cartera.map((c) => ({ id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, formaPagoDefault: c.formaPagoDefault, dias: c.dias, frecuencia: c.frecuencia, ...(visitState[c.id] || { status: 'pendiente' }) }))
+  //
+  // 🩸 "MÍOS" LO DECIDE LA APP, NO LA RLS (18/09/2026, db/76). Hasta hoy esta línea tomaba la
+  // cartera entera: la base ya mandaba sólo lo del vendedor. Con la lectura abierta a toda la
+  // empresa (para poder cubrir la zona de otro), sin este filtro cada teléfono listaba los 2.042
+  // comercios como propios. El criterio es `esMiComercio` —el mismo de la supervisión— y los sin
+  // dueño quedan afuera a propósito (ver el encabezado de `lib/carteraDe.js`). Memoizado: con la
+  // cartera entera adentro, rehacerlo por cada fix del GPS ya se notaba.
+  // La forma que consumen las pestañas, a partir de la fila del catálogo. `cubierta`, `zonaAbrev`
+  // y `zonaColor` sólo importan cuando la zona es cubierta hoy: la tarjeta y el pin llevan la
+  // abreviatura para distinguirla de lo propio. En una zona propia no hace falta decir nada.
+  const aVista = (c) => {
+    const z = c.idZona ? zonaPorId.get(c.idZona) : null
+    return {
+      id: c.id, name: c.name, loc: c.loc, codigo: c.codigo, lat: c.lat, lng: c.lng, activo: c.activo, idVendedor: c.idVendedor, formaPagoDefault: c.formaPagoDefault, dias: c.dias, frecuencia: c.frecuencia,
+      idZona: c.idZona || null,
+      cubierta: !!(c.idZona && zonasCubiertas.has(c.idZona)),
+      zonaAbrev: z?.abrev || null, zonaColor: z?.color || null,
+      sinDueno: !duenoDe(c, zonaPorId),
+      ...(visitState[c.id] || { status: 'pendiente' }),
+    }
+  }
+  const clients = useMemo(
+    () => cartera.filter((c) => esMiComercio(c, { userId, zonaPorId, zonasCubiertas })).map(aVista),
+    [cartera, visitState, userId, zonaPorId, zonasCubiertas], // eslint-disable-line react-hooks/exhaustive-deps
+  )
   const nextId = (clients.find((c) => c.status === 'pendiente') || {}).id
   const done = clients.filter((c) => c.status !== 'pendiente').length
   const conPedido = clients.filter((c) => c.status === 'visitado')
   const montoHoy = conPedido.reduce((a, c) => a + (c.monto || 0), 0)
-  const visitC = clients.find((c) => c.id === visit)
+  // El visitado puede no estar (todavía) en `clients`: un sin dueño recién tocado desde el
+  // buscador, mientras el merge optimista de `startVisit` lo hace mío. Se busca en la cartera.
+  const visitC = clients.find((c) => c.id === visit) || (visit ? [cartera.find((c) => c.id === visit)].filter(Boolean).map(aVista)[0] : undefined)
 
   /**
    * 🩸 LA LISTA QUE SE DIBUJA, FILTRADA (11/08/2026). No es un extra: son **1.803 clientes
@@ -338,6 +384,41 @@ export function useJornada() {
           || (c.loc || '').toLowerCase().includes(q)
       })
   })()
+
+  /**
+   * Los SIN DUEÑO que matchean el buscador. No están en `clients` (ver `carteraDe.js`): la única
+   * puerta es escribir 2+ letras en Inicio. Tope de 30 para que "la" no dibuje 900 tarjetas; la
+   * pestaña avisa que afine. Al ubicar uno, `ubicarComercio` se lo da al vendedor y pasa a
+   * `clients` solo.
+   */
+  const sinDuenoBuscados = useMemo(() => {
+    const q = buscaCli.trim().toLowerCase()
+    if (q.length < 2) return []
+    const out = []
+    for (const c of cartera) {
+      if (duenoDe(c, zonaPorId)) continue
+      if (!((c.name || '').toLowerCase().includes(q) || (c.codigo || '').toLowerCase().includes(q) || (c.loc || '').toLowerCase().includes(q))) continue
+      out.push(aVista(c))
+      // Uno de más, para que la pestaña sepa que hay que afinar sin contar los 930.
+      if (out.length > SIN_DUENO_TOPE) break
+    }
+    return out
+  }, [buscaCli, cartera, zonaPorId, visitState]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Cubrir una zona ajena por hoy (db/76). Online: sin red no se encola, se avisa. */
+  async function cubrirZona(idZona) {
+    const z = zonaPorId.get(idZona)
+    const r = await cubrir(idZona, userId)
+    if (!r.ok) { showToast('Sin conexión, probá de nuevo'); return false }
+    const n = cartera.filter((c) => c.idZona === idZona).length
+    showToast(`Hoy también cubrís ${z?.nombre || 'la zona'} · ${n} comercios en Inicio`)
+    return true
+  }
+  async function soltarCobertura(id) {
+    const r = await soltar(id)
+    if (!r.ok) { showToast('Sin conexión, probá de nuevo'); return false }
+    return true
+  }
 
   // --- carrito ---
   const prodById = (id) => PRODUCTS.find((p) => p.id === id)
@@ -530,6 +611,7 @@ export function useJornada() {
     search, setSearch, catFilter, setCatFilter, routeCalc, setRouteCalc, rutaInfo, setRutaInfo,
     catLoading, PRODUCTS,
     clients, clientsFiltrados, buscaCli, setBuscaCli, soloPendientes, setSoloPendientes,
+    zonas, zonaPorId, misCoberturas, zonasCubiertas, cubrirZona, soltarCobertura, sinDuenoBuscados,
     nextId, done, conPedido, montoHoy, visitC,
     cartCount, cartKg, cartTotal, cartAhorro, timer,
     pend, pendingCoords, meta, efect,
