@@ -45,7 +45,7 @@
 
 ---
 
-## 🟨 00000000. SESIÓN DEL 24/09 (noche) — menú USUARIOS v1.5 IMPLEMENTADO. Backend EN PRODUCCIÓN, front SIN PUBLICAR
+## 🟦 00000000. RELEASE 1.42.0 (24/09/2026, noche) — menú USUARIOS v1.5. OTA + PWA PUBLICADAS, sin APK
 
 Plan en `~/.claude/plans/revisa-el-archivo-handoff-enchanted-chipmunk.md`. La entrega del diseñador
 llegó a `C:\dev\DisT-At\trabajo diseñador 24-9\Usuarios v1.5 - Descarga\`. Son prototipos `.dc.html`,
@@ -106,7 +106,14 @@ no Figma. Cubre el §8 Prioridad 1 completo en escritorio.
   nada de lo que la guarda bloquea al admin, y un superadmin sigue pudiendo todo menos dejar el
   sistema sin superadmin o tocar su propia cuenta.
 
-### ⏳ SIN PUBLICAR: el front (JS puro → OTA + PWA, sin APK)
+### ✅ PUBLICADO: el front (JS puro → OTA + PWA, sin APK) como 1.42.0
+
+OTA `ota-1.42.0`: bundle de 2,3 MB, descarga verificada con 200. `app_config` tiene `bundle_version` y
+`latest_version` en 1.42.0 y `min_version` sigue en 1.36.0. La PWA sale por push a `main`. El aviso a
+los teléfonos lo manda el cron `push-actualizacion-1h`. **Para cerrar el release, mirar
+`estado_dispositivo`** (`app_version`, `bundle_aplicado`, `bundle_encolado`) al día siguiente, no la
+respuesta del push (precedente de 1.19.0). Antes de publicar se verificó que el bundle `CAP_BUILD=1`
+arranca y muestra el login con "v1.42.0" en Edge headless.
 
 **Archivos nuevos:**
 - `web/src/features/admin/usuarios/`:
@@ -151,12 +158,11 @@ no Figma. Cubre el §8 Prioridad 1 completo en escritorio.
 - En el emulador. La regla 48 obliga a hacerlo antes de la OTA.
 - El guardado contra la RPC real desde la UI.
 
-**Cómo se publica cuando el dueño lo diga:**
-1. `APP_VERSION` a 1.42.0.
-2. Verificar en el emulador.
-3. OTA con `CAP_BUILD=1` y `app_config`.
-4. Push a `main` (PWA).
-5. Actualizar la tabla de CLAUDE.md §6.
+**Lo primero de la próxima sesión:** probar con la cuenta real de superadmin en la PWA:
+- editar a 2 o 3 personas
+- revisar
+- guardar
+Confirmar que llega a la base. Eliminar y purgar, con una cuenta de prueba creada para eso.
 
 **Límites conocidos, dichos en la pantalla:**
 - `metricas_actividad` solo calcula para `mi_empresa()`. Un superadmin mirando a alguien de otra

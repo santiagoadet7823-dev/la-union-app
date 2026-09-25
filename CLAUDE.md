@@ -1024,10 +1024,10 @@ Hay varios números que conviven. **1.15.0** sale por APK **y** OTA: es un cambi
 
 | Número | Dónde | Valor actual | Para qué |
 |---|---|---|---|
-| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.40.0`** ✅ publicada por OTA el 17/09 a la noche (el login de Google muestra el código de Play Services y ofrece entrar con email; HANDOFF §00000) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
+| `APP_VERSION` | [src/version.js](web/src/version.js) | **`1.42.0`** ✅ publicada por OTA + PWA el 24/09 (menú Usuarios v1.5 + db/77; HANDOFF §00000000) | Se compara con `app_config.latest_version`; se reporta en `estado_dispositivo.app_version` |
 | `versionName` | [android/app/build.gradle](web/android/app/build.gradle) | `1.37.0` compilada el 16/09 (`versionCode 42`), instalada a mano en el teléfono de Gabriel; ⏳ **sin release `apk-1.37.0` en GitHub**. 1.38.0 NO lleva APK: es todo JS | Versión visible del APK |
 | `versionCode` | [android/app/build.gradle](web/android/app/build.gradle) | `42` → el próximo es **43** | Entero incremental de Android |
-| `app_config.bundle_version` + `latest_version` | Supabase | **`1.40.0`** ✅ (actualizado por el MCP el 17/09 a la noche) | Qué bundle OTA deben bajar los teléfonos |
+| `app_config.bundle_version` + `latest_version` | Supabase | **`1.42.0`** ✅ (actualizado por el MCP el 24/09 a la noche; bundle `ota-1.42.0`, 2,3 MB, descarga verificada con 200) | Qué bundle OTA deben bajar los teléfonos |
 | `app_config.min_version` + `apk_url` | Supabase | **`1.36.0`** (base viva, 17/09). Subirlo a 1.37.0 es decisión del dueño: reinstala ~22 MB en cada teléfono | Piso de reinstalación del APK + URL del `.apk`. Si un equipo tiene versión < `min_version`, la app baja el APK y lanza el instalador. **Ya está activo** (se prendió el 02/08). Ver [GUIA_ACTUALIZACION_APK.md](GUIA_ACTUALIZACION_APK.md) |
 
 > 🩸 **1.12.1 es puro JS, y aun así se publicó como APK. La razón es la trampa que hay que recordar:**
