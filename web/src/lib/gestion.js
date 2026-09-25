@@ -28,7 +28,10 @@ export const GESTION_ITEMS = [
   { key: 'catalogo', label: 'Catálogo', roles: ['encargado', 'admin', 'superadmin', 'marketing'], permiso: 'catalogo' },
   { key: 'faltante', label: 'Faltante', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'invitar', label: 'Invitar', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'usuarios', label: 'Usuarios', roles: ['admin', 'superadmin'] },
+  // El encargado entra desde v1.5 (24/09/2026) en SOLO LECTURA: ve la ficha de su equipo sin un
+  // solo control. Qué personas ve lo decide `perfiles_sel` (db/40, su nivel); que no pueda escribir
+  // lo garantizan la RLS de `perfiles` y la guarda de db/77, no esta tabla.
+  { key: 'usuarios', label: 'Usuarios', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'empresas', label: 'Empresas', roles: ['superadmin'] },
   // Respaldo mensual: los recorridos se purgan a los 45 días (db/42) y esto es la ÚNICA salida
   // del historial fuera de Supabase. Solo admin y superadmin — exporta la empresa entera.

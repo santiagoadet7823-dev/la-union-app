@@ -63,7 +63,10 @@ export async function historialPosiciones(idUsuario, desdeISO, hastaISO, idEmpre
   for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
     const { data, error } = await supabase
       .from('posiciones')
-      .select('lat,lng,ts')
+      // `accuracy` (24/09/2026): sin ella `limpiarTrazo` no puede separar los puntos triangulados
+      // (regla 40) y los dibujaría como GPS y los sumaría a los km. La ficha de Usuarios la necesita;
+      // la reproducción de jornada la ignora.
+      .select('lat,lng,ts,accuracy')
       .eq('id_empresa', idEmpresa)
       .eq('id_usuario', idUsuario)
       .gte('ts', desdeISO)

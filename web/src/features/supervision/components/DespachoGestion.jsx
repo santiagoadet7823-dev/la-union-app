@@ -28,6 +28,10 @@ import { Suspense, lazy } from 'react'
  *   - invitarInline    true SOLO en escritorio: ahí 'invitar' se dibuja dentro del área central.
  *                      En las vistas móviles el InvitarModal es una ventana flotante aparte.
  *   - onCerrarInvitar  solo con `invitarInline`
+ *   - onIrA            (clave) => void — abre OTRA pantalla de gestión desde adentro de una. Lo usa
+ *                      Usuarios para "Asignar en Zonas ↗" y "Informe de jornada" (brief v1.5 P10:
+ *                      la zona se muestra en Usuarios pero se asigna en Zonas). Opcional: sin él,
+ *                      esos accesos no se dibujan.
  */
 const ReportesView = lazy(() => import('../../reportes/ReportesView'))
 const ClientesTab = lazy(() => import('../../admin/tabs/ClientesTab'))
@@ -58,6 +62,7 @@ export default function DespachoGestion({
   onEditarProducto,
   invitarInline = false,
   onCerrarInvitar,
+  onIrA,
 }) {
   if (!vista) return null
 
@@ -78,7 +83,7 @@ export default function DespachoGestion({
       {vista === 'faltante' && <FaltanteTab />}
       {/* Invitar: ventana flotante con el QR de descarga; en escritorio el panel de atrás queda vacío. */}
       {invitarInline && vista === 'invitar' && <InvitarModal open onClose={onCerrarInvitar} onToast={onToast} />}
-      {vista === 'usuarios' && <UsuariosView onToast={onToast} />}
+      {vista === 'usuarios' && <UsuariosView onToast={onToast} onIrA={onIrA} onVerEnMapa={reportes?.onVerEnMapa} />}
       {vista === 'empresas' && <EmpresasView onToast={onToast} />}
       {vista === 'respaldo' && <RespaldoDatos onToast={onToast} />}
     </Suspense>

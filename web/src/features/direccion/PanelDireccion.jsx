@@ -599,6 +599,7 @@ export default function PanelDireccion() {
             onNuevoCliente={() => setModalCliente(true)}
             onNuevoProducto={() => setModalProducto(true)}
             onEditarProducto={(p) => setModalProducto(p)}
+            onIrA={setGestion}
           />
         </GestionHost>
       )}

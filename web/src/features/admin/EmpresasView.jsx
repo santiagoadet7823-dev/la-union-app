@@ -109,8 +109,9 @@ export default function EmpresasView({ onToast }) {
       .from('empresas')
       .select('id, nombre, activo, created_at, base_lat, base_lng, telefono_soporte')
       .order('created_at', { ascending: true })
-    // conteo de usuarios por empresa
-    const { data: perf } = await supabase.from('perfiles').select('id_empresa')
+    // conteo de usuarios por empresa. Sin el perfil "Usuario eliminado" (db/77): no es una persona,
+    // es el que hereda los pedidos y recorridos de las cuentas eliminadas.
+    const { data: perf } = await supabase.from('perfiles').select('id_empresa').eq('sistema', false)
     const conteo = {}
     ;(perf || []).forEach((p) => { if (p.id_empresa) conteo[p.id_empresa] = (conteo[p.id_empresa] || 0) + 1 })
     setEmpresas((data || []).map((e) => ({ ...e, usuarios: conteo[e.id] || 0 })))

@@ -19,6 +19,16 @@ Documentos complementarios:
   impecable que se vea el `dumpsys`.
 - [INFORME_AUDITORIA.md](INFORME_AUDITORIA.md) — arquitectura, deuda técnica y riesgos (rev. 3,
   04/08/2026, sobre 1.10.0).
+- [AUDITORIA_CODIGO_2026-09.md](AUDITORIA_CODIGO_2026-09.md) — (19/09/2026, sobre 1.41.0) qué está
+  **muerto** (nadie lo alcanza) y qué está **tipeado pero no hace nada** (se ejecuta sin efecto, o
+  promete lo que no cumple), capa por capa: React, nativo, Edge Functions, base viva, deps, docs.
+  Con veredicto y evidencia por ítem y un plan de bajas por tanda **sin ejecutar**. Es la lista
+  contra la que se borra; antes de tirar algo "que parece muerto", buscarlo acá.
+- [ESTUDIO_AWS_DESCARGA_DATOS.md](ESTUDIO_AWS_DESCARGA_DATOS.md) — (19/09/2026) por qué los
+  teléfonos se saturan a la tarde, medido en cuatro causas (volumen crudo de posiciones, `localStorage`
+  de la PWA, Realtime fila entera, policies fila a fila), y la evaluación de AWS opción por opción con
+  costos. 🔴 **Leer antes de proponer "mover algo a AWS"**: el veredicto es que como transporte no
+  resuelve ninguna de las cuatro; el Plan A (sin AWS) sí, y el Plan B (S3+CloudFront) sólo encima del A.
 - [ESTRUCTURA_PROYECTO.md](ESTRUCTURA_PROYECTO.md) — qué es cada archivo de la carpeta, y qué es
   esencial vs. archivable.
 - [DOCUMENTACION_FUNCIONAL.md](DOCUMENTACION_FUNCIONAL.md) — qué hace cada función y de qué rol es.

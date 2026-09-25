@@ -26,13 +26,23 @@ const TICK_MS = 350
 
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-export default function ReplayJornada({ onToast }) {
+/**
+ * props (24/09/2026, al rescatarla para la ficha del menú Usuarios — auditoría 19/09 §2.2):
+ *   - userId, fecha   persona y día con los que abre. Con `userId` carga sola al montar.
+ *   - idEmpresa       la empresa DE ESA PERSONA. Hace falta para el superadmin mirando a alguien
+ *                     de otra empresa: `historialPosiciones` filtra por empresa, y con la de su
+ *                     identidad no traería ni un punto.
+ *   - nombre          para la opción del selector cuando la persona no está en `usePerfilesEquipo`
+ *                     (que sigue el scope del tenant).
+ */
+export default function ReplayJornada({ onToast, userId: userIdInicial = '', fecha: fechaInicial = null, idEmpresa: idEmpresaPersona = null, nombre: nombreInicial = '' }) {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
-  const { idEmpresa } = useAuth()
+  const { idEmpresa: idEmpresaIdentidad } = useAuth()
+  const idEmpresa = idEmpresaPersona || idEmpresaIdentidad
   const users = usePerfilesEquipo()
-  const [userId, setUserId] = useState('')
-  const [fecha, setFecha] = useState(hoyStr)
+  const [userId, setUserId] = useState(userIdInicial)
+  const [fecha, setFecha] = useState(() => fechaInicial || hoyStr())
   const [pts, setPts] = useState([])
   const [loading, setLoading] = useState(false)
   const [idx, setIdx] = useState(0)
@@ -62,6 +72,15 @@ export default function ReplayJornada({ onToast }) {
     setLoading(false)
     if (!data.length) onToast?.('No hay recorrido grabado para ese día')
   }, [userId, fecha, onToast, idEmpresa])
+
+  // Abierta desde una ficha: carga sola la primera vez (el botón "Cargar recorrido" sigue estando
+  // para cambiar de día).
+  const autoCargado = useRef(false)
+  useEffect(() => {
+    if (autoCargado.current || !userIdInicial) return
+    autoCargado.current = true
+    cargar()
+  }, [userIdInicial, cargar])
 
   // Motor de reproducción.
   useEffect(() => {
@@ -110,7 +129,7 @@ export default function ReplayJornada({ onToast }) {
     setExporting(true)
     try {
       const u = users.find((x) => x.id === userId)
-      const nombre = u?.nombre || 'Vendedor'
+      const nombre = u?.nombre || (userId === userIdInicial && nombreInicial) || 'Vendedor'
       // Preferimos el rastro pegado a calles (aplanando los segmentos); si no, el crudo.
       const coords = snapped && snapped.length ? snapped.flat() : pts.map((p) => ({ lat: p.lat, lng: p.lng }))
       await exportarRutaPng({
@@ -144,6 +163,7 @@ export default function ReplayJornada({ onToast }) {
             <div style={label10}>Usuario</div>
             <select value={userId} onChange={(e) => setUserId(e.target.value)} style={selectStyle}>
               <option value="">Elegir…</option>
+              {userIdInicial && !users.some((u) => u.id === userIdInicial) && <option value={userIdInicial}>{nombreInicial || 'Persona elegida'}</option>}
               {users.map((u) => <option key={u.id} value={u.id}>{u.nombre} · {u.rol}</option>)}
             </select>
           </div>

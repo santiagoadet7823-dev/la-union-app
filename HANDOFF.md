@@ -45,6 +45,257 @@
 
 ---
 
+## 🟨 00000000. SESIÓN DEL 24/09 (noche) — menú USUARIOS v1.5 IMPLEMENTADO. Backend EN PRODUCCIÓN, front SIN PUBLICAR
+
+Plan en `~/.claude/plans/revisa-el-archivo-handoff-enchanted-chipmunk.md`. La entrega del diseñador
+llegó a `C:\dev\DisT-At\trabajo diseñador 24-9\Usuarios v1.5 - Descarga\`. Son prototipos `.dc.html`,
+no Figma. Cubre el §8 Prioridad 1 completo en escritorio.
+
+**Faltas de la entrega**, que se completaron en código:
+- En celular:
+  - el guardado parcial o con error
+  - "Descartar" en la barra
+  - el alta
+- El filtro por zona.
+
+**Errores de la entrega**, que se corrigieron en código:
+- El admin podía degradar o desactivar al superadmin.
+- Valores de GPS inventados. Se usan los de `gpsPerfil.js`.
+- Alertas que no existen. Pasaron a avisos del bloque Teléfono.
+- El rótulo "clientes visitados" mostraba el conteo de visitas.
+- Animaciones infinitas y transiciones de `background`.
+- Hex sueltos.
+- Áreas táctiles de menos de 44 px.
+
+**Decisiones del usuario** (respuestas a las 4 preguntas abiertas del diseñador):
+- La contraseña del alta la genera el sistema y se puede editar ("Generar otra").
+- La meta que muestra la ficha es la mensual de monto; si no hay, se muestra Efectividad.
+- El encargado no cancela coberturas: todo en solo lectura.
+- Las zonas se editan en Zonas, con un acceso directo ("Asignar en Zonas ↗").
+
+### ✅ Ya en la base viva (MCP, 24/09) — NO necesita release
+
+- **`db/77_usuarios_v15.sql`**
+  - Columna `perfiles.sistema`.
+  - Trigger `perfiles_guarda_cambios` (BEFORE UPDATE).
+  - RPC `guardar_usuarios_lote(jsonb)`. Es SECURITY INVOKER: devuelve el resultado por campo y
+    permite guardado parcial.
+  - `_eliminar_usuario(uuid, bool, uuid)`. Solo service_role, `statement_timeout` de 300 s.
+  - ACL verificado con `proacl`.
+- 🔴 **Cerró un hueco de escalada que estaba abierto.** `perfiles_upd` no miraba el rol de la fila,
+  así que cualquier admin podía hacer `update perfiles set rol='superadmin'` sobre sí mismo desde la
+  consola. Ahora la guarda lo rechaza. Verificado como admin (`bab0bb87…`, en una transacción):
+  - la escalada sobre sí mismo da `propia-cuenta`
+  - tocar al superadmin da `sin-permiso-superadmin`
+  - el color de trazo da `solo-superadmin`
+  - otra empresa da `sin-permiso`
+  - nivel y ERP propios pasan
+- **Edge Function `eliminar-usuario` v1** desplegada, con `verify_jwt` en true, igual que `crear-usuario`.
+  - Crea el marcador "Usuario eliminado" por empresa la primera vez que hace falta: email `.invalid`
+    y contraseña aleatoria.
+  - A un pendiente sin empresa lo borra directo.
+- **`_eliminar_usuario` probado contra la base viva** con usuarios de prueba en "Prueba SaaS".
+  Se hizo dentro de un `DO … raise exception`, así que todo quedó revertido; verificado que no quedó
+  nada.
+  - Eliminar reasigna posiciones y pedidos al marcador, incluido un pedido ya exportado (bypass
+    `distat.export_bypass`), deja la zona sin dueño, borra `estado_dispositivo` y borra la cuenta.
+  - Purgar además borra las posiciones.
+  - Los pedidos se conservan siempre.
+  - Al marcador no se lo puede eliminar.
+- ⚠️ **La guarda ya corre para el front VIEJO (1.41.0).** No lo rompe: la vista vieja nunca ofreció
+  nada de lo que la guarda bloquea al admin, y un superadmin sigue pudiendo todo menos dejar el
+  sistema sin superadmin o tocar su propia cuenta.
+
+### ⏳ SIN PUBLICAR: el front (JS puro → OTA + PWA, sin APK)
+
+**Archivos nuevos:**
+- `web/src/features/admin/usuarios/`:
+  - `modelo.js`
+  - `useUsuariosDatos.js`
+  - `useBorrador.js`
+  - `guardarLote.js`
+  - `useFichaPersona.js`
+  - `ui.jsx`
+  - `Arbol.jsx`
+  - `Ficha.jsx`
+  - `FichaBloques.jsx`
+  - `ResumenEmpresa.jsx`
+  - `Dialogos.jsx`
+- `UsuariosView.jsx`, reescrito entero como orquestador.
+
+**Cambios chicos:**
+- `gestion.js`: el encargado entra a Usuarios.
+- `DespachoGestion` y los 3 hosts: prop `onIrA`.
+- `useMetricasActividad`: horizonte `bimestre` y devuelve `filas`.
+- `historialPosiciones`: ahora trae `accuracy`. Sin eso `limpiarTrazo` no separaba los puntos
+  triangulados.
+- `ReplayJornada`: props `userId`, `fecha`, `idEmpresa`, `nombre`. Se rescata colgada de la ficha.
+- `EmpresasView`: no cuenta al marcador.
+
+**Verificado:**
+- `eslint` limpio. El único aviso ya existía en ReplayJornada.
+- `npm run build` verde.
+- Render real en **Edge headless** con un arnés efímero:
+  - contextos y `supabase` mockeados, datos ficticios
+  - arnés en el scratchpad de la sesión, fuera del repo, **no versionado**
+  - superadmin en escritorio, en claro y oscuro: árbol, resumen de empresa, ficha en 3 columnas,
+    borrador, revisión, guardado parcial con panel, diálogo de purgar con nombre y tilde, alta al
+    borrador
+  - admin
+  - encargado en celular: lista con contadores, ficha con pestañas, sin "Ajustes"
+  - superadmin en celular: Ajustes
+  - cero errores de consola
+
+**NO verificado:**
+- Con una sesión real.
+- En el emulador. La regla 48 obliga a hacerlo antes de la OTA.
+- El guardado contra la RPC real desde la UI.
+
+**Cómo se publica cuando el dueño lo diga:**
+1. `APP_VERSION` a 1.42.0.
+2. Verificar en el emulador.
+3. OTA con `CAP_BUILD=1` y `app_config`.
+4. Push a `main` (PWA).
+5. Actualizar la tabla de CLAUDE.md §6.
+
+**Límites conocidos, dichos en la pantalla:**
+- `metricas_actividad` solo calcula para `mi_empresa()`. Un superadmin mirando a alguien de otra
+  empresa ve "La actividad GPS se calcula para tu empresa" y sí ve las ventas.
+- El selector Crudo/Calles del diseño no está: el snap vive en la supervisión, adonde lleva el botón
+  de expandir.
+- "Sin conexión" no bloquea Guardar (regla 12): avisa y deja intentar.
+
+---
+
+## 🎨 0000000. SESIÓN DEL 24/09 — brief + prototipo del menú USUARIOS para el diseñador. ✅ ENTREGA RECIBIDA E IMPLEMENTADA (ver arriba)
+
+Plan en `~/.claude/plans/tenemos-un-archivode-auditoria-calm-pie.md`. **No se tocó código, ni la
+base, ni se publicó ninguna versión de la app.** Solo documentos para el diseñador.
+
+### Qué se pidió
+
+Rediseñar el menú **Usuarios** para **encargado, admin y superadmin**, en PWA y APK, siguiendo la
+imagen de referencia del cliente (un panel médico con la ficha de una doctora). Lo que se busca:
+
+- **Ficha por persona con métricas:** horarios de rastreo, empresa, zonas, recorridos, clientes
+  visitados, ventas, pedidos anulados, km y estado del teléfono.
+- **Superadmin:** poder **eliminar usuarios del backend** y ver los usuarios **ordenados por empresa**
+  en jerarquía, no en una lista larga.
+- **Trabajo local:** se hacen varios cambios y se mandan todos juntos con **un solo botón "Guardar"**.
+
+### Decisiones tomadas con el usuario (el diseño las da por cerradas)
+
+1. **Eliminar tiene dos niveles**, solo para superadmin:
+   - *Eliminar*: borra la cuenta y lo saca de las listas. Pedidos, recorridos y visitas quedan a
+     nombre de "Usuario eliminado".
+   - *Purgar definitivo*: además borra recorridos y visitas. **Los pedidos no se borran nunca.**
+2. **El encargado entra en solo lectura**, y ve únicamente al equipo que tiene a cargo según su nivel
+   (`ids_a_mi_cargo()`).
+3. **Estética:** se copia el *layout* de la referencia con los **tokens de DisT-At** (no la paleta
+   beige de la referencia).
+4. **Jerarquía:** árbol **Empresa → Rol → Persona**. El nivel Corporación queda dibujado como
+   "horizonte 2" (ver [PLAN_SAAS.md](PLAN_SAAS.md)).
+5. **Zonas** (se sumaron en la misma sesión):
+   - varias zonas por vendedor
+   - la cobertura del día (`coberturas_zona`) se ve en la ficha del que cubre y en la del dueño
+   - cartera total y la métrica "cartera visitada"
+   - filtro por zona y agrupación por rol o por zona
+   - aviso de zonas sin vendedor activo
+   - la zona se **muestra** en Usuarios pero se **asigna** desde el menú Zonas
+
+### Qué se entregó (todo en la raíz del workspace `C:\dev\DisT-At\`, FUERA de este git)
+
+| Archivo | Qué es |
+|---|---|
+| `BRIEF_DISENO_v1.5_USUARIOS.md` | El brief. Mismo formato que v1.0-v1.4. Incluye los datos que existen y los que no, la matriz de permisos, las preguntas de diseño P1-P10, las restricciones, el checklist de entrega (§8) y un **anexo técnico para dev** (§9) |
+| `MOCKUP_USUARIOS_v1.5.html` | Prototipo navegable autocontenido: 3 roles, escritorio y celular, claro y oscuro, borrador con revisión, guardado bien/parcial/error, sin conexión, eliminar y purgar, zonas. Datos ficticios. La pestaña **Brief** trae el .md y la imagen incrustados |
+| `REFERENCIA_USUARIOS_v1.5.png` | La imagen de referencia del cliente |
+| `scripts/mockup-usuarios/` | Fuente del prototipo (`mockup.src.html`) y `build.mjs`, que le incrusta el brief y la imagen. **Si se cambia el brief, correr `node scripts/mockup-usuarios/build.mjs` desde la raíz del workspace** y republicar |
+
+**Publicado como artifact** (compartido como "cualquiera con el link"):
+https://claude.ai/artifact/L42NLY8ujqE33LuUXLWKye — ese link es lo que se le mandó al diseñador.
+Para actualizarlo desde otra sesión: `Artifact` con `url` = ese link.
+
+Datos relevados para el brief (ya están en el brief, no hace falta volver a medirlos):
+
+- **Hoy solo `admin` y `superadmin` abren Usuarios** (`lib/gestion.js:31`).
+- **Es un solo componente** para los tres canales: `features/admin/UsuariosView.jsx`, 806 LOC.
+- **Guardado inconsistente:** rol, horarios y código ERP usan un borrador por fila; color de trazo,
+  perfil de GPS y desactivar escriben al instante.
+- **No existe borrar usuario.**
+- **Las FK a `perfiles` bloquean el borrado:** `pedidos` (tres columnas), `posiciones`, `visitas`,
+  `metas`, `pedido_ediciones`, `exportaciones_pedidos`.
+- **Quedan huérfanas al borrar:** `estado_dispositivo`, `recorridos_snap` y `zonas.id_vendedor`, que
+  no tienen FK.
+- **"Pedido cancelado" no existe:** el estado se llama `Anulado`.
+
+### ⏳ ESTAMOS ESPERANDO: la entrega del diseñador
+
+Va a llegar en la carpeta **`C:\dev\DisT-At\trabajo diseñador 24-9\`**, junto a la de julio
+(`trabajo diseñador 27-7\`).
+
+**Cuando llegue, la sesión nueva arranca así:**
+
+1. Leer la entrega contra el **§8 del brief** (qué esperamos recibir). Prioridad 1:
+   - superadmin en escritorio
+   - flujo de borrador completo
+   - eliminar y purgar
+   - encargado en celular
+
+   Marcar qué falta.
+2. Ver qué respondió en cada pregunta **P1-P10** (§6), en especial:
+   - P1: navegación del superadmin
+   - P4: borrador y guardado
+   - P10: ¿propone editar zonas desde Usuarios?
+
+   Si pidió **tokens nuevos**, decidir si se aceptan.
+3. Recién ahí planificar la implementación con el **anexo técnico (§9)**:
+   - abrir `usuarios` al encargado en `GESTION_ITEMS` y verificar la lectura con RLS
+   - árbol por `id_empresa` → rol en `UsuariosView`
+   - un solo borrador con guardado en lote, que reemplaza el borrador por fila y las escrituras
+     inmediatas
+   - **Edge Function nueva `eliminar-usuario`** (service role) que reasigna a un perfil "Usuario
+     eliminado" por empresa y, al purgar, borra `posiciones` y `visitas`
+   - métricas con `metricas_actividad`, `metricas_venta`, `informeDePersona`,
+     `useDiagnosticoEquipo` y `alertas_equipo`, reutilizando
+     `features/direccion/components/SheetPersona.jsx`
+   - colgar `ReplayJornada` de la ficha (la auditoría del 19/09 lo marca como "rescatar")
+4. **Canales:** todo eso es JS + una Edge Function + quizá una migración. **No necesita APK**, pero la
+   OTA y la PWA se publican por separado (CLAUDE.md §1).
+
+---
+
+## 📋 000000. SESIÓN DEL 19/09 (tarde) — auditoría de código + estudio de AWS. SÓLO DOCUMENTOS
+
+Plan en `~/.claude/plans/necesito-que-hagas-una-splendid-engelbart.md`. **No se tocó código, ni la
+base, ni se publicó nada.** Dos documentos nuevos en la raíz:
+
+- [AUDITORIA_CODIGO_2026-09.md](AUDITORIA_CODIGO_2026-09.md) — inventario de lo muerto y lo inerte
+  en `web/src` (8 archivos / 938 LOC inalcanzables, 20 exports sin importador, 21 variables sin uso),
+  nativo (limpio), Edge Functions (todas con llamador), base viva (1 RPC huérfana
+  `reclamar_y_ubicar_cliente`, **un cron que falla todas las noches** `purge_consultas_120d`, 4
+  columnas + bucket `firmas` nunca usados, `rutas` sin un solo escritor) y deps (`papaparse`, `qrcode`
+  sin import). Y la sección de "tipeado pero no hace nada": el punto verde "en vivo" es decorativo,
+  `empresas.activo`, `NO_OVERRIDEABLE`, `KEEPALIVE_MS`, `cubreElRecorrido`, `CENTRO` de `demoGeo.js`
+  para todas las empresas, etc. Reemplaza el §10 de DOCUMENTACION_FUNCIONAL. Trae plan de bajas por
+  tanda (SQL / OTA / decisiones), **sin ejecutar**.
+- [ESTUDIO_AWS_DESCARGA_DATOS.md](ESTUDIO_AWS_DESCARGA_DATOS.md) — el síntoma de "los teléfonos se
+  saturan a la tarde / se cierra la sesión / no cargan ubicaciones" desarmado en 4 causas medidas:
+  el supervisor baja **2,9-4,7 MB de posiciones crudas por día** y las retiene; la PWA agota los 5 MB
+  de `localStorage` (la sesión se pierde ahí, no en el APK); Realtime manda la fila entera
+  (4,6-7,5 MB/día por pantalla); y **21 policies evalúan `mi_empresa()` por fila** —medido: el
+  `select *` de `clientes` cuesta 79 ms / 4.164 buffers con la policy y 4,9 ms / 68 sin ella—.
+  Evalúa 8 opciones de AWS con costo y riesgos. **Veredicto: AWS como transporte no toca ninguna de
+  las 4 causas.** Plan A (sin AWS, 6-9 días, sin APK): policies con `(select …)` → RPC
+  `recorridos_resumen` (el servidor ya tiene el día en 86-191 KB en `recorridos_snap` y el cliente lo
+  descarta) → IndexedDB en la PWA → Broadcast desde trigger. Plan B (S3+CloudFront, ~US$ 1-5/mes)
+  diseñado para cuando haya varias empresas mirando el mapa; **no sirve sin el Plan A**.
+
+Lo primero que conviene hacer de todo eso, y no necesita release: **`cron.unschedule` del job roto y
+la migración de policies** (Plan A paso 1). Ambos están descriptos con la verificación.
+
+---
+
 ## 🟦 00000. RELEASE 1.41.0 (19/09/2026) — el vendedor ve SÓLO lo suyo + "Cubrir otra zona" + jornada de transporte
 
 Plan en `~/.claude/plans/pense-en-una-funcion-mutable-mountain.md` (revisado el 18/09 con el dueño).

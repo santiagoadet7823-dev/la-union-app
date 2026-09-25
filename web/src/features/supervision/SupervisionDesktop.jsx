@@ -507,6 +507,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
               onEditarProducto={(p) => setModalProducto(p)}
               invitarInline
               onCerrarInvitar={() => setView('mapa')}
+              onIrA={irA}
             />
           ) : (
             <div style={{ maxWidth: 1500, width: '100%', margin: '0 auto', boxSizing: 'border-box', padding: isMobile ? 14 : 22, display: 'flex', flexDirection: 'column', gap: 16 }}>

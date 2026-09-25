@@ -677,6 +677,11 @@ Otras reglas transversales:
 
 ### Código muerto verificado — 850 líneas
 
+> 📋 **Superado el 19/09/2026 por [AUDITORIA_CODIGO_2026-09.md](AUDITORIA_CODIGO_2026-09.md)**, que
+> re-verifica estos seis (siguen muertos), suma dos más (`KpiCard.jsx`, `services/sync/index.js`:
+> 938 LOC en total) y cubre exports, variables, deps, nativo, Edge Functions y base viva. Esta tabla
+> queda como registro del 08/09.
+
 Trazado por `import` real, no por menciones en comentarios. `AuthedApp` ataja a los seis roles antes
 de que `RoleRouter` llegue a su `return <AdminView/>`.
 
@@ -703,3 +708,5 @@ vivo.
 - `GUIA_APK_ANDROID.md` — se contradice sobre `storeFile` (`:230` mal, `:320` bien).
 - `GUIA_API_KEY_GOOGLE_MAPS.md` — obsoleta; nada del código lee esa variable.
 - `INFORME_AUDITORIA.md` — rev. 3, sobre 1.10.0. La arquitectura sigue valiendo; los números no.
+- El detalle archivo por archivo de referencias rotas en estas docs (17 rutas que ya no existen)
+  está en [AUDITORIA_CODIGO_2026-09.md](AUDITORIA_CODIGO_2026-09.md) §6.

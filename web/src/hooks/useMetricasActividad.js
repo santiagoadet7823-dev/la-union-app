@@ -28,6 +28,10 @@ const VENTANAS = {
   semana: { dias: 7,  barras: 7,  atras: 28 },
   // 'mes' son 30 días y compara contra los 4 períodos previos → 120 días más.
   mes:    { dias: 30, barras: 30, atras: 120 },
+  // 60 días (24/09/2026): lo pide la ficha de persona del menú Usuarios (brief v1.5 P3), que
+  // compara contra los 60 anteriores y no contra cuatro períodos. 120 días en total, dentro de
+  // DIAS_CACHE, así que comparte la caché por día con los otros horizontes.
+  bimestre: { dias: 60, barras: 60, atras: 60 },
 }
 
 const REFRESH_MS = 60000
@@ -266,7 +270,11 @@ export default function useMetricasActividad(horizonte = 'hoy', activo = true) {
 
   return {
     ...derivado,
-    desde, hasta, barras: cfg.barras,
+    // Las filas crudas (día × persona) de TODA la ventana consultada. La ficha de persona de
+    // Usuarios las necesita por día —primer punto, paradas, minutos— y no sólo el km que llega
+    // agregado en `serieKmPorUsuario`.
+    filas,
+    desde, desdeConsulta, hasta, barras: cfg.barras,
     loading, error, updatedAt,
     reload: () => cargar(false, true),
   }
