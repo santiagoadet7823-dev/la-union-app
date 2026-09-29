@@ -276,7 +276,7 @@ function AuthedApp() {
 }
 
 function Gate() {
-  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa, politicaPendiente, politicaError, refetchPolitica } = useAuth()
+  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa, mfaObligatoria, politicaPendiente, politicaError, refetchPolitica } = useAuth()
   /**
    * MODO VIDRIERA — la tablet del cliente. Va ACÁ, antes de todo lo demás, porque **la tablet no se
    * loguea nunca**: no toca Supabase, no tiene sesión ni perfil ni empresa, y todo lo que muestra se
@@ -311,7 +311,16 @@ function Gate() {
   // null todavía no se consultó (recién montó la sesión) → no dejar pasar un instante a la app.
   // Con error, loader acotado con reintento — igual que CargandoPerfil, nunca un "Cargando…" fijo.
   if (mfaNivel === null) return <CargandoPerfil error={mfaError} onRetry={refetchMfa} mensaje="el estado de tu verificación" />
-  if (mfaNivel === 'aal1' && mfaSiguiente === 'aal1') return <MfaActivar />   // sin ningún factor
+  if (mfaNivel === 'aal1' && mfaSiguiente === 'aal1') {
+    // Sin ningún factor. 🩸 SOLO SE EXIGE ACTIVAR SI EL INTERRUPTOR ESTÁ PRENDIDO (db/83,
+    // `app_config.mfa_obligatoria`, default false). Antes esto mandaba a `MfaActivar` a cualquiera
+    // sin factor, sin ninguna configuración de por medio: publicar el front habría frenado a todo el
+    // equipo en el primer arranque. `null` = todavía no se consultó → no dejar pasar un instante.
+    if (mfaObligatoria === null) return <CargandoPerfil error={politicaError} onRetry={refetchPolitica} mensaje="la configuración de seguridad" />
+    if (mfaObligatoria) return <MfaActivar />
+  }
+  // Quien YA tiene un factor lo verifica en cada sesión nueva, con el interruptor prendido o no:
+  // eso es una decisión que la persona ya tomó, no una imposición nueva.
   if (mfaSiguiente === 'aal2' && mfaNivel !== 'aal2') return <MfaVerificar /> // factor sin verificar esta sesión
   // Política de privacidad (db/81, Tarea 2.3). `null` todavía no se consultó — mismo criterio que
   // el gate de MFA: no dejar pasar un instante mientras se resuelve. `false` ya contempla el gate

@@ -206,31 +206,43 @@ export function AuthProvider({ children }) {
   // (`app_config.politica_version`) que esta cuenta todavía no aceptó, false si está al día O si el
   // gate está apagado (versión null — el documento sigue en revisión legal). Va DESPUÉS del gate de
   // MFA en App.jsx: no tiene sentido pedirle esto a una sesión que ni siquiera pasó la verificación.
+  //
+  // `mfaObligatoria` (db/83) sale de la MISMA consulta a `app_config`: `true` = el Gate exige activar la
+  // 2FA a quien no tenga factor; `false` = no se exige (default). `null` = todavía no se consultó.
   const [politicaPendiente, setPoliticaPendiente] = useState(null)
   const [politicaUrl, setPoliticaUrl] = useState(null)
   const [politicaError, setPoliticaError] = useState(false)
+  const [mfaObligatoria, setMfaObligatoria] = useState(null)
   const cargarPolitica = useCallback(async () => {
     if (!hasSupabase) return
     setPoliticaError(false)
+    // 🩸 SIN RED, LA APP ABRE (29/09/2026). La primera versión de este gate mostraba "Reintentar" si
+    // `app_config` no contestaba — pero esta consulta corre en CADA arranque, y esta es una app
+    // offline-first: un vendedor que la abre sin cobertura habría quedado afuera, con o sin política
+    // vigente. Estas dos cosas son gates de CUMPLIMIENTO, no de seguridad de datos (eso lo hace la
+    // RLS del servidor), y ninguna vale una jornada de trabajo perdida. Sin respuesta se deja pasar y
+    // se vuelve a preguntar en el próximo arranque con red (o cuando `authEpoch` avisa que volvió).
+    const abrir = () => { setMfaObligatoria(false); setPoliticaPendiente(false) }
     try {
-      const { data: cfg, error: errCfg } = await supabase.from('app_config').select('politica_version, politica_url').maybeSingle()
-      if (errCfg) { setPoliticaError(true); return }
+      const { data: cfg, error: errCfg } = await supabase.from('app_config').select('politica_version, politica_url, mfa_obligatoria').maybeSingle()
+      if (errCfg) { abrir(); return }
+      setMfaObligatoria(cfg?.mfa_obligatoria === true)
       const version = cfg?.politica_version
       setPoliticaUrl(cfg?.politica_url || null)
       if (!version) { setPoliticaPendiente(false); return } // gate apagado: sin versión vigente todavía
       const { data: acept, error: errAcept } = await supabase
         .from('aceptaciones_legales').select('id')
         .eq('documento', 'politica_privacidad').eq('version', version).maybeSingle()
-      if (errAcept) { setPoliticaError(true); return }
+      if (errAcept) { setPoliticaPendiente(false); return }
       setPoliticaPendiente(!acept)
     } catch (_) {
-      setPoliticaError(true)
+      abrir()
     }
   }, [])
 
   useEffect(() => {
     if (session?.user?.id) cargarPolitica()
-    else { setPoliticaPendiente(null); setPoliticaUrl(null); setPoliticaError(false) }
+    else { setPoliticaPendiente(null); setPoliticaUrl(null); setPoliticaError(false); setMfaObligatoria(null) }
   }, [session?.user?.id, authEpoch, cargarPolitica])
 
   useEffect(() => {
@@ -624,6 +636,7 @@ export function AuthProvider({ children }) {
     politicaUrl,
     politicaError,
     refetchPolitica: cargarPolitica,
+    mfaObligatoria,
     loading,
     perfilLoading,
     perfilError,
