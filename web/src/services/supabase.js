@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { Capacitor } from '@capacitor/core'
-import { desalojarCaches } from './persistence'
+import { persistence } from './persistence'
 
 /**
  * Cliente único de Supabase (backend de producción: datos, realtime, auth, storage).
@@ -92,25 +92,47 @@ const fetchConTimeout = (input, init = {}) => {
  * `localStorage.setItem` crudo, sin `try/catch` (`helpers.js` → `setItemAsync`). Con el storage
  * lleno —el caso del 18/09 en la PC de la oficina— un refresh que no puede guardarse pierde el
  * refresh token ya ROTADO en el servidor: la sesión queda muerta en el próximo intento y la app
- * abre con 401/vacíos. Es la única escritura de la app que no pasaba por `persistence`, que sí
- * desaloja las cachés (recorridos, catálogo) antes que perder algo que no se rehace de la red.
- * Mismo criterio acá: si no entra, se tiran las cachés y se reintenta; si aun así no entra, se
- * avisa fuerte (auth-js no tiene nada útil que hacer con la excepción: el resultado es el mismo).
+ * abre con 401/vacíos.
+ *
+ * 🩸 Y EN LA APK, EL PROBLEMA NO ES EL ESPACIO: ES EL WEBVIEW (29/09/2026, Tarea 2.2.D). El
+ * `localStorage` de un WebView de Android es un archivo que Chrome/System WebView administra como
+ * dato de navegación, no como archivo privado de la app — One UI (Samsung) lo evicciona bajo presión
+ * de memoria mucho más agresivo que los archivos propios de la app, y algunos flujos de "optimizar
+ * batería" limpian datos de WebView por su cuenta. El resultado, reportado por el dueño: la sesión
+ * se pierde sola y pediría la verificación en dos pasos de nuevo en medio de la jornada.
+ *
+ * El arreglo es `persistence.raw` (puerto ya usado en toda la app: cola GPS, caché de catálogo, el
+ * espejo de sesión de AuthContext) — en el APK es SQLite vía el plugin nativo, un archivo PROPIO de
+ * la app que Android no confunde con datos de navegador descartables; en la PWA sigue siendo
+ * `localStorage` ni más ni menos que antes (mismo backend, cero cambio de comportamiento en web).
+ *
+ * ⚠️ `.raw`, NO `persistence.get/set` a secas — esto NO es cosmético. auth-js ya serializa la
+ * sesión a JSON él mismo y espera un `Storage` de verdad (string | null); `persistence.get/set`
+ * hacen SU PROPIO `JSON.stringify`/`JSON.parse` alrededor de lo que reciben, pensados para guardar
+ * objetos (cachés, colas). Usarlos acá envolvería el string de auth-js en una segunda capa de JSON
+ * — y peor, ROMPERÍA LA MIGRACIÓN: quien ya tiene una sesión guardada en `localStorage` por una
+ * versión anterior (raw, sin envolver, que ES JSON válido) se leería con un `JSON.parse` de más y
+ * volvería un OBJETO en vez de un STRING, y auth-js no sabría qué hacer con eso. `persistence.raw`
+ * pasa los strings tal cual, sin tocarlos — ver el comentario grande en `persistence/index.js`.
+ *
+ * auth-js acepta storage asíncrono: `SupportedStorage` en `@supabase/auth-js` está tipado como
+ * `Promisify<Pick<Storage, 'getItem'|'setItem'|'removeItem'>>` (confirmado contra la librería
+ * instalada), así que un `getItem`/`setItem`/`removeItem` que devuelven Promise andan igual.
+ *
+ * ⚠️ NO hace falta un APK nuevo para que esto llegue: el plugin de SQLite ya está empaquetado en el
+ * APK actual (lo usa `persistence` para la cola GPS y el espejo de sesión desde antes), así que este
+ * cambio es solo JS y se distribuye por el canal OTA normal.
+ *
+ * ⚠️ COSTO DE LA MIGRACIÓN, UNA SOLA VEZ: en el APK, la sesión vieja vivía en el `localStorage` del
+ * WebView; a partir de esta actualización, auth-js busca en SQLite, donde todavía no hay nada. El
+ * primer arranque después de instalar esta OTA pide loguearse de nuevo — a todo el equipo, una sola
+ * vez — y de ahí en más la sesión vive en el lugar durable. La PWA no paga este costo: sigue en el
+ * mismo `localStorage` de siempre, sin ningún corte.
  */
 const authStorage = {
-  getItem: (k) => { try { return localStorage.getItem(k) } catch { return null } },
-  setItem: (k, v) => {
-    try { localStorage.setItem(k, v); return } catch (e) {
-      const liberado = desalojarCaches(k)
-      try {
-        localStorage.setItem(k, v)
-        console.warn('[auth] almacenamiento lleno: se desalojaron', Math.round(liberado / 1024), 'KB de caché para guardar la sesión')
-      } catch (e2) {
-        console.error('[auth] NO SE PUDO GUARDAR LA SESIÓN · almacenamiento lleno o bloqueado:', e2?.message || e?.message)
-      }
-    }
-  },
-  removeItem: (k) => { try { localStorage.removeItem(k) } catch { /* nada */ } },
+  getItem: (k) => persistence.raw.get(k),
+  setItem: (k, v) => persistence.raw.set(k, v),
+  removeItem: (k) => persistence.raw.remove(k),
 }
 
 export const supabase = hasSupabase

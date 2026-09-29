@@ -6,6 +6,16 @@
  * La API es async a propósito: los llamadores (cola GPS, cola de escrituras, caché
  * de perfil) no cambian según el backend. El store nativo tiene FALLBACK a
  * localStorage si SQLite no inicializa, para no romper la app nunca.
+ *
+ * Dos capas sobre el mismo backend:
+ *   - `persistence.get/set/remove` — con JSON.stringify/parse, para guardar objetos (lo que usa
+ *     casi todo el mundo: cachés, colas, el espejo de sesión).
+ *   - `persistence.raw.get/set/remove` — strings tal cual entran y salen, SIN tocarlos. Existe para
+ *     `services/supabase.js` (el storage de auth-js, Tarea 2.2.D, 29/09/2026): auth-js ya serializa
+ *     la sesión a JSON él mismo y espera un `Storage` de verdad (string | null) — envolverlo con la
+ *     capa de JSON de arriba le daría una SEGUNDA vuelta de stringify/parse que además rompería la
+ *     migración: una sesión ya guardada en `localStorage` de una versión anterior (raw, sin envolver)
+ *     se leería con un `JSON.parse` de más y volvería como OBJETO en vez de STRING.
  */
 import { isNative } from '../platform'
 import { conTimeout } from '../../lib/conTimeout'
@@ -27,9 +37,6 @@ import { conTimeout } from '../../lib/conTimeout'
  */
 const CACHES_DESALOJABLES = ['lu-recorridos-cache', /^lu-catalogo-cache-/]
 
-// Se exporta para el storage de auth de `services/supabase.js`: la sesión de supabase-js es la
-// otra escritura que no puede perderse, y auth-js la guarda con `localStorage.setItem` crudo.
-
 export function desalojarCaches(exceptoKey) {
   let liberado = 0
   try {
@@ -45,27 +52,25 @@ export function desalojarCaches(exceptoKey) {
   return liberado
 }
 
-const webStore = {
-  async get(key, fallback = null) {
-    try {
-      const raw = localStorage.getItem(key)
-      return raw ? JSON.parse(raw) : fallback
-    } catch {
-      return fallback
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// Primitivos RAW: strings tal cual, sin JSON. Acá vive TODA la lógica de fallback
+// (SQLite → localStorage) y de "si no entra, desalojar cachés y reintentar" — una sola vez.
+// ─────────────────────────────────────────────────────────────────────────────
+const webStoreRaw = {
+  async get(key) {
+    try { return localStorage.getItem(key) } catch { return null }
   },
-  async set(key, value) {
-    const json = JSON.stringify(value)
+  async set(key, raw) {
     try {
-      localStorage.setItem(key, json)
+      localStorage.setItem(key, raw)
       return true
     } catch (e) {
       // Una caché que no entra no se pelea por el lugar: se descarta y listo (se rehace de la red).
       const esCache = CACHES_DESALOJABLES.some((p) => (p instanceof RegExp ? p.test(key) : p === key))
-      if (esCache) { console.warn('[persistence] caché descartada por falta de espacio:', key, Math.round(json.length / 1024), 'KB'); return false }
+      if (esCache) { console.warn('[persistence] caché descartada por falta de espacio:', key, Math.round(raw.length / 1024), 'KB'); return false }
       const liberado = desalojarCaches(key)
       try {
-        localStorage.setItem(key, json)
+        localStorage.setItem(key, raw)
         console.warn('[persistence] almacenamiento lleno: se desalojaron', Math.round(liberado / 1024), 'KB de caché para guardar', key)
         return true
       } catch (e2) {
@@ -75,15 +80,11 @@ const webStore = {
     }
   },
   async remove(key) {
-    try {
-      localStorage.removeItem(key)
-    } catch {
-      /* noop */
-    }
+    try { localStorage.removeItem(key) } catch { /* noop */ }
   },
 }
 
-// --- Store nativo (SQLite) con init perezosa y fallback a webStore ---
+// --- Store nativo (SQLite) con init perezosa y fallback a webStoreRaw ---
 let sqlite = null
 let nativeReady = null
 // Si un paso de SQLite se CUELGA (no tira error), el await nunca vuelve y la cola GPS queda
@@ -110,37 +111,53 @@ function initNative() {
 // Las operaciones también van con timeout: si el query/run se cuelga (no solo la init),
 // caemos a localStorage en vez de dejar el await colgado (lo que trababa la cola GPS y, al
 // leerla desde el latido de estado, podía colgar también la telemetría).
-const nativeStore = {
-  async get(key, fallback = null) {
-    if (!(await initNative())) return webStore.get(key, fallback)
+const nativeStoreRaw = {
+  async get(key) {
+    if (!(await initNative())) return webStoreRaw.get(key)
     try {
       const res = await conTimeout(sqlite.query('SELECT v FROM kv WHERE k = ?;', [key]), 5000, 'query')
-      const raw = res?.values?.[0]?.v
-      return raw ? JSON.parse(raw) : fallback
+      return res?.values?.[0]?.v ?? null
     } catch {
-      return webStore.get(key, fallback)
+      return webStoreRaw.get(key)
     }
   },
-  async set(key, value) {
-    if (!(await initNative())) return webStore.set(key, value)
+  async set(key, raw) {
+    if (!(await initNative())) return webStoreRaw.set(key, raw)
     try {
-      await conTimeout(sqlite.run('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?);', [key, JSON.stringify(value)]), 5000, 'run-set')
+      await conTimeout(sqlite.run('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?);', [key, raw]), 5000, 'run-set')
       return true
     } catch {
-      return webStore.set(key, value)
+      return webStoreRaw.set(key, raw)
     }
   },
   async remove(key) {
-    if (!(await initNative())) return webStore.remove(key)
+    if (!(await initNative())) return webStoreRaw.remove(key)
     try {
       await conTimeout(sqlite.run('DELETE FROM kv WHERE k = ?;', [key]), 5000, 'run-remove')
     } catch {
-      return webStore.remove(key)
+      return webStoreRaw.remove(key)
     }
   },
 }
 
-const store = isNative() ? nativeStore : webStore
+const storeRaw = isNative() ? nativeStoreRaw : webStoreRaw
 
-export const persistence = store
-export default store
+// ─────────────────────────────────────────────────────────────────────────────
+// Capa con JSON, para el resto de la app (objetos: cachés, colas, el espejo de sesión).
+// ─────────────────────────────────────────────────────────────────────────────
+export const persistence = {
+  async get(key, fallback = null) {
+    const raw = await storeRaw.get(key)
+    if (raw == null) return fallback
+    try { return JSON.parse(raw) } catch { return fallback }
+  },
+  async set(key, value) {
+    return storeRaw.set(key, JSON.stringify(value))
+  },
+  async remove(key) {
+    return storeRaw.remove(key)
+  },
+  /** Sin JSON — ver el comentario de arriba. Lo usa services/supabase.js (storage de auth-js). */
+  raw: storeRaw,
+}
+export default persistence
