@@ -13,7 +13,12 @@ import { persistence } from '../persistence'
  * La caché guarda las filas CRUDAS de DB (no el shape de vista), namespaced por
  * empresa, así el arranque sin red muestra los últimos datos conocidos.
  */
-const cacheKey = (idEmpresa) => `lu-catalogo-cache-${idEmpresa || 'sin-empresa'}`
+// `soloCatalogo` (rol marketing) usa OTRA clave: la caché es del dispositivo y no de la persona, así
+// que compartir clave hidrataría a marketing con la cartera que dejó un vendedor en ese teléfono —o
+// le pisaría a ese vendedor su caché con clientes vacíos. El prefijo se mantiene a propósito para
+// que `CACHES_DESALOJABLES` (persistence/index.js) también la cubra.
+const cacheKey = (idEmpresa, soloCatalogo = false) =>
+  `lu-catalogo-cache-${idEmpresa || 'sin-empresa'}${soloCatalogo ? '-solo-catalogo' : ''}`
 
 const PAGE = 1000
 const MAX_VUELTAS = 30 // 30.000 filas: techo de seguridad, nunca un bucle infinito
@@ -56,13 +61,22 @@ async function traerTodo(tabla, idEmpresa, columnaOrden) {
   return { data: filas, error: null }
 }
 
-/** Trae las tablas del catálogo de una empresa en paralelo. Devuelve filas crudas + el primer error si hubo. */
-export async function fetchCatalogo(idEmpresa) {
+const SIN_FILAS = Promise.resolve({ data: [], error: null })
+
+/**
+ * Trae las tablas del catálogo de una empresa en paralelo. Devuelve filas crudas + el primer error si hubo.
+ *
+ * `soloCatalogo` (rol marketing, db/82): NO pide `clientes` ni `zonas`. La base ya se los niega con
+ * una policy restrictiva —devolvería cero filas sin error—, pero pedirlas igual serían dos vueltas
+ * de red en vano y dejaría la puerta abierta a que un cambio de policy le vuelva a entregar la
+ * cartera. Las dos cosas se cierran: el servidor no las da y el cliente no las pide.
+ */
+export async function fetchCatalogo(idEmpresa, { soloCatalogo = false } = {}) {
   if (!idEmpresa) return { productos: [], clientes: [], zonas: [], categorias: [], error: null }
   const [{ data: prod, error: e1 }, { data: cli, error: e2 }, { data: zon, error: e3 }, { data: cat, error: e4 }] = await Promise.all([
     traerTodo('productos', idEmpresa, 'descripcion'),
-    traerTodo('clientes', idEmpresa, 'nombre_comercio'),
-    traerTodo('zonas', idEmpresa, 'nombre'),
+    soloCatalogo ? SIN_FILAS : traerTodo('clientes', idEmpresa, 'nombre_comercio'),
+    soloCatalogo ? SIN_FILAS : traerTodo('zonas', idEmpresa, 'nombre'),
     traerTodo('categorias', idEmpresa, 'nombre'),
   ])
   return {
@@ -128,8 +142,8 @@ export async function selloDePrecios(idEmpresa) {
  * ticket simplemente no dibuja el bloque. Nunca descartar la caché por falta de metadata: eso
  * dejaría al vendedor sin catálogo en el primer arranque sin red después de actualizar.
  */
-export async function leerCacheCatalogo(idEmpresa) {
-  return await persistence.get(cacheKey(idEmpresa))
+export async function leerCacheCatalogo(idEmpresa, soloCatalogo = false) {
+  return await persistence.get(cacheKey(idEmpresa, soloCatalogo))
 }
 
 /**
@@ -148,8 +162,8 @@ export async function leerCacheCatalogo(idEmpresa) {
  * `useRef` (que era donde vivía) es lo que lo hace sobrevivir a una recarga del WebView — que con
  * la OTA aplicándose sola es rutina, no excepción.
  */
-export async function escribirCacheCatalogo(idEmpresa, data, meta = {}) {
-  await persistence.set(cacheKey(idEmpresa), {
+export async function escribirCacheCatalogo(idEmpresa, data, meta = {}, soloCatalogo = false) {
+  await persistence.set(cacheKey(idEmpresa, soloCatalogo), {
     ...data,
     bajadoTs: meta.bajadoTs ?? Date.now(),
     sello: meta.sello ?? null,

@@ -176,6 +176,20 @@ Deno.serve(async (req) => {
     const { data: perfil } = await asUser.from('perfiles').select('id_empresa, rol, activo').eq('id', uid).maybeSingle()
     if (!perfil || !perfil.activo) return json({ error: 'sin-perfil' }, 403)
 
+    // 🩸 Tarea 3 / db/82 (29/09/2026). Esta función lee `posiciones` con service_role, o sea que
+    // SALTEA la RLS: hasta hoy cualquier perfil activo —un vendedor, un repartidor, marketing— podía
+    // pedir los recorridos de TODA la empresa y recibirlos, cuando `posiciones_sel` le deja ver solo
+    // los propios. El recorte que la RLS hace solo, acá se repite a mano:
+    //   · solo supervisión llama (las tres pantallas que la usan son SupervisionMovil/Desktop y
+    //     PanelDireccion);
+    //   · el encargado ve únicamente a quienes tiene a cargo (`ids_a_mi_cargo`), igual que en la RLS.
+    if (!['superadmin', 'admin', 'encargado'].includes(perfil.rol)) return json({ error: 'sin-permiso' }, 403)
+    let permitidos: string[] | null = null
+    if (perfil.rol === 'encargado') {
+      const { data: ids } = await asUser.rpc('ids_a_mi_cargo')
+      permitidos = Array.isArray(ids) ? (ids as string[]) : [] // si la RPC falla: no ve a nadie
+    }
+
     const body = await req.json().catch(() => ({}))
     const esSuper = perfil.rol === 'superadmin'
     const idEmpresa = (esSuper && body.id_empresa) ? body.id_empresa : perfil.id_empresa
@@ -202,10 +216,12 @@ Deno.serve(async (req) => {
     const pos: { id_usuario: string; lat: number; lng: number; ts: string; accuracy: number | null }[] = []
     let offset = 0
     for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
-      const { data: pagina, error: posErr } = await admin.from('posiciones')
+      let consulta = admin.from('posiciones')
         // `accuracy` desde ALGO 9: es lo que distingue un fix de GPS de uno triangulado por red
         // (ver ACC_GPS_MAX en segmentar.ts) y lo que pesa el centroide de los racimos.
         .select('id_usuario, lat, lng, ts, accuracy').eq('id_empresa', idEmpresa).gte('ts', desde).lte('ts', hasta)
+      if (permitidos) consulta = consulta.in('id_usuario', permitidos) // encargado: solo su equipo
+      const { data: pagina, error: posErr } = await consulta
         .order('ts', { ascending: true }).order('id', { ascending: true })
         .range(offset, offset + PAGE - 1)
       if (posErr) return json({ error: posErr.message }, 500)

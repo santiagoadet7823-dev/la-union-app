@@ -99,6 +99,8 @@ export function CatalogProvider({ children }) {
   const { idEmpresa, rol, user } = useAuth()
   // El encargado también carga clientes como preventista (quedan como "suyos").
   const esMovil = rol === 'vendedor' || rol === 'repartidor' || rol === 'encargado'
+  // Marketing trabaja SOLO el catálogo (db/82): ni descarga ni cachea clientes ni zonas.
+  const soloCatalogo = rol === 'marketing'
   const [productos, setProductos] = useState([])
   const [clientes, setClientes] = useState([])
   const [zonas, setZonas] = useState([])
@@ -152,7 +154,7 @@ export function CatalogProvider({ children }) {
     // datos en pantalla es justo lo que hace bien un offline-first: se hace callado y, si falla,
     // el guard de abajo conserva lo que había.
     if (!hayDatosRef.current) setLoading(true)
-    const { productos: prod, clientes: cli, zonas: zon, categorias: cat, error: err } = await fetchCatalogo(idEmpresa)
+    const { productos: prod, clientes: cli, zonas: zon, categorias: cat, error: err } = await fetchCatalogo(idEmpresa, { soloCatalogo })
     // Offline / falla sin datos: NO pisar con vacío — se conserva lo hidratado de
     // caché (mejor mostrar los últimos datos conocidos que una lista vacía).
     if (err && prod.length === 0 && cli.length === 0 && zon.length === 0) {
@@ -179,10 +181,10 @@ export function CatalogProvider({ children }) {
       const meta = { bajadoTs: Date.now(), sello }
       metaRef.current = meta
       setCatalogoMeta(meta)
-      escribirCacheCatalogo(idEmpresa, raw, meta)
+      escribirCacheCatalogo(idEmpresa, raw, meta, soloCatalogo)
     }
     setLoading(false)
-  }, [idEmpresa, aplicar])
+  }, [idEmpresa, aplicar, soloCatalogo])
 
   // Offline-first: hidratar de inmediato desde la caché (si existe) para que la app
   // muestre datos al toque aunque no haya red, y luego revalidar contra Supabase. Si
@@ -193,7 +195,7 @@ export function CatalogProvider({ children }) {
     // Empresa nueva = no hay nada de ella en pantalla, así que el spinner SÍ corresponde. Sin
     // esto, cambiar de empresa mostraría el catálogo de la anterior mientras carga el nuevo.
     hayDatosRef.current = false
-    leerCacheCatalogo(idEmpresa).then((cached) => {
+    leerCacheCatalogo(idEmpresa, soloCatalogo).then((cached) => {
       if (alive && cached && !netAppliedRef.current) {
         aplicar(cached)
         // `bajadoTs`/`sello` pueden no estar: es la cache escrita antes del 10/09/2026. Se hidrata
@@ -205,7 +207,7 @@ export function CatalogProvider({ children }) {
       }
     })
     return () => { alive = false }
-  }, [idEmpresa, aplicar])
+  }, [idEmpresa, aplicar, soloCatalogo])
 
   useEffect(() => { recargar() }, [recargar])
 
