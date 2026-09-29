@@ -23,7 +23,7 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 const json = (b: unknown, status = 200) =>
-  new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
+  new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -48,21 +48,25 @@ Deno.serve(async (req) => {
     const { data: ud } = await asUser.auth.getUser()
     const uid = ud?.user?.id
     if (!uid) return json({ error: 'no-auth' }, 401)
-    const { data: yo } = await asUser.from('perfiles').select('rol, activo').eq('id', uid).maybeSingle()
+    const { data: yo } = await asUser.from('perfiles').select('rol, activo, id_empresa').eq('id', uid).maybeSingle()
     if (!yo || !yo.activo) return json({ error: 'sin-perfil' }, 403)
     if (yo.rol !== 'admin' && yo.rol !== 'superadmin') return json({ error: 'sin-permiso' }, 403)
     if (leerAal(authHeader) !== 'aal2') return json({ error: 'requiere-aal2' }, 403)
 
     const body = await req.json().catch(() => ({}))
-    const id = String(body.id || '')
+    const id = String(body.id || '').toLowerCase() // el UUID_RE acepta mayúsculas; sin esto se saltaba `propia-cuenta`
     if (!UUID_RE.test(id)) return json({ error: 'payload-invalido' }, 400)
     if (id === uid) return json({ error: 'propia-cuenta' }, 400) // para la propia: recuperar con código, o reemplazar el factor ya autenticado
 
     // La fila objetivo con el token del que llama: si perfiles_sel no la deja pasar, no está autorizado.
     const { data: objetivo, error: errObj } = await asUser
-      .from('perfiles').select('id, rol, sistema').eq('id', id).maybeSingle()
+      .from('perfiles').select('id, rol, sistema, id_empresa').eq('id', id).maybeSingle()
     if (errObj) return json({ error: errObj.message }, 500)
     if (!objetivo) return json({ error: 'no-existe-o-sin-permiso' }, 404)
+    // 🩸 `perfiles_sel` deja ver a un admin también las cuentas SIN empresa (id_empresa null: altas
+    // pendientes) de CUALQUIER empresa. Solo el superadmin cruza empresas (mismo criterio que
+    // resetear-contrasena).
+    if (yo.rol !== 'superadmin' && objetivo.id_empresa !== yo.id_empresa) return json({ error: 'no-existe-o-sin-permiso' }, 404)
     if (objetivo.sistema) return json({ error: 'perfil-de-sistema' }, 400)
     if (objetivo.rol === 'superadmin' && yo.rol !== 'superadmin') return json({ error: 'sin-permiso-superadmin' }, 403)
 
@@ -78,11 +82,16 @@ Deno.serve(async (req) => {
       if (errDel) fallas.push(factorId)
     }
     if (fallas.length > 0) return json({ error: 'no-se-pudo-completar' }, 500)
-    try { await admin.from('mfa_codigos').delete().eq('id_usuario', id) } catch (_) { /* best-effort */ }
-    try { await admin.rpc('cerrar_sesiones_usuario', { p_id: id }) } catch (_) { /* best-effort, ver comentario de arriba */ }
+    // supabase-js NO lanza: devuelve `{ error }`, así que un try/catch solo no alcanza. Los pasos
+    // secundarios no tumban el reseteo (los factores ya están borrados), pero si fallan hay que saberlo.
+    const { error: errCod } = await admin.from('mfa_codigos').delete().eq('id_usuario', id)
+    const { error: errSes } = await admin.rpc('cerrar_sesiones_usuario', { p_id: id }) // ver comentario de arriba
+    let errAud: unknown = null
     try {
-      await admin.from('auditoria_seguridad').insert({ id_usuario: id, id_actor: uid, accion: 'mfa_reseteado_por_admin' })
-    } catch (_) { /* la auditoría no puede tumbar el reseteo */ }
+      const r = await admin.from('auditoria_seguridad').insert({ id_usuario: id, id_actor: uid, accion: 'mfa_reseteado_por_admin' })
+      errAud = r.error
+    } catch (e) { errAud = e } // la auditoría no puede tumbar el reseteo
+    if (errCod || errSes || errAud) console.error('mfa-resetear: pasos secundarios fallaron', { codigos: errCod?.message, sesiones: errSes?.message, auditoria: (errAud as Error)?.message })
 
     return json({ ok: true })
   } catch (e) {
