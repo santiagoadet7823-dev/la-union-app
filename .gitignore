@@ -47,13 +47,12 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 
-# Config local de Claude/preview (no versionar)
-# OJO: el patrón debe ser `.claude/*` y no `.claude/`. Con la barra al final git
-# excluye el directorio entero y ni siquiera desciende, así que el `!` de abajo
-# nunca llegaría a aplicar y las skills quedarían fuera del repo.
-.claude/*
-# …salvo las skills de diseño, que SÍ se versionan (ver CLAUDE.md §9)
-!.claude/skills/
+# Config local de Claude (no versionar). Hasta el 29/09/2026 las skills de diseño en
+# .claude/skills/ SÍ se versionaban (ver historial de este archivo); se destrackearon en la
+# limpieza del repo (repo PÚBLICO) junto con el resto de la documentación interna — ver la lista
+# blanca de abajo. Quedan igual en disco, en _interno/repo-retirado/.claude/skills/ (fuera del
+# repo), y le siguen sirviendo a quien programa acá.
+.claude/
 
 # Logs
 npm-debug.log*
@@ -100,3 +99,32 @@ catalogo-actual-*.csv
 # mirarla), no una dependencia del proyecto. Se ignora para no imponerle un servidor MCP
 # al que clone. Si el equipo lo quiere compartido, sacar esta linea y commitear .mcp.json.
 .mcp.json
+
+# 🔴 LIMPIEZA DEL REPO (29/09/2026) — repo PÚBLICO. Lista BLANCA para la documentación interna:
+# en vez de acordarse de ignorar cada auditoría/handoff/guía nueva a mano, se ignora todo `.md`
+# de la raíz salvo el README, y el resto de los formatos de documento uno por uno. Lo que salió
+# del repo sigue completo en `_interno/repo-retirado/` (al lado de este repo, fuera de git — ver
+# `_interno/informes/01_limpieza_repo.md`), no se perdió nada.
+/*.md
+!/README.md
+/*.html
+/*.xlsx
+/legal/
+/CLAUDE.md
+
+# db/historico/ tiene políticas RLS históricas INSEGURAS (ver db/00_LEER_PRIMERO.md) — además de
+# no publicarse, que quede afuera del árbol normal reduce el riesgo de correrlas por error.
+/db/historico/
+
+# scripts/fixtures/ solo debe tener el fixture SINTÉTICO (sin pedidos reales del cliente).
+/scripts/fixtures/*
+!/scripts/fixtures/erp-pedidos-sintetico.txt
+
+# Herramientas de service del parque de teléfonos — no aportan a compilar/desplegar la app y
+# fix-adb-interface.ps1 trae el serial de un equipo real.
+/scripts/diagnostico-usb.sh
+/scripts/fix-adb-interface.ps1
+
+# Semillas viejas sin uso (ningún código las lee) que además GitHub Pages sirve en público con
+# nombres de comercios reales y sus coordenadas exactas.
+/web/public/data/*.csv
