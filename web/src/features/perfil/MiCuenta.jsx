@@ -23,7 +23,7 @@ import { isNative } from '../../services/platform'
  *
  * props: { onToast }
  */
-const ROLE_LABEL = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor' }
+const ROLE_LABEL = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor', marketing: 'Marketing' }
 const item = { ...sx('display:flex;align-items:center;gap:12px;padding:13px 4px;cursor:pointer;min-height:44px;box-sizing:border-box') }
 const iconBox = { ...sx('width:32px;height:32px;flex:none;border-radius:10px;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;color:var(--deep)') }
 
@@ -90,7 +90,10 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
         <ThemeToggle />
       </div>
 
-      {showDeviceToggle && (
+      {/* Celular/PC solo en la web: dentro de la APK no hay "PC" a la que cambiar, y el botón dejaba
+          a alguien con la app nativa en una vista de escritorio que no está pensada para ese
+          teléfono. */}
+      {showDeviceToggle && !isNative() && (
         <>
           <div style={sx('height:0.5px;background:var(--line)')} />
           <div style={sx('padding:12px 4px')}>
@@ -107,12 +110,17 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
 
       {/* Compartir la propia ubicación con otra empresa. Va acá y no en un menú de gestión porque
           es una decisión sobre MIS datos, no sobre los del equipo: la toma cada uno sobre sí mismo
-          y la puede cortar en el mismo lugar donde la prendió. */}
-      <div style={sx('padding:12px 0')}>
-        <CompartirUbicacion />
-      </div>
+          y la puede cortar en el mismo lugar donde la prendió. Marketing no se trackea (db/38):
+          no tiene ubicación que compartir, así que el panel solo le mostraría una opción muerta. */}
+      {rol !== 'marketing' && (
+        <>
+          <div style={sx('padding:12px 0')}>
+            <CompartirUbicacion />
+          </div>
 
-      <div style={sx('height:0.5px;background:var(--line)')} />
+          <div style={sx('height:0.5px;background:var(--line)')} />
+        </>
+      )}
 
       <div onClick={() => signOut()} className="lu-press" style={{ ...item, color: 'var(--danger)' }}>
         <div style={{ ...iconBox, color: 'var(--danger)', borderColor: 'var(--danger)', background: 'var(--danger-tint)' }}><LogOut size={15} /></div>

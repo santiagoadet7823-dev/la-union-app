@@ -5,6 +5,7 @@ import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { useDevice } from '../../context/DeviceContext'
 import { apilarAtras } from '../../services/atras'
+import { Box, Check, ImagenVacia } from '../../components/icons'
 import GuiaFotos from './GuiaFotos'
 
 /**
@@ -29,10 +30,14 @@ const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiCuenta = lazy(() => import('../perfil/MiCuenta'))
 
 const TABS = [
-  { k: 'catalogo', t: 'Catálogo' },
-  { k: 'codigos', t: 'Control de códigos' },
-  { k: 'guia', t: 'Guía de fotos' },
+  { k: 'catalogo', t: 'Catálogo', Icono: Box },
+  { k: 'codigos', t: 'Control de códigos', Icono: Check },
+  { k: 'guia', t: 'Guía de fotos', Icono: ImagenVacia },
 ]
+
+// Alto de la barra inferior del celular (sin safe-area). Mismo número que la bottom-nav de
+// SupervisionMovil, para que el pulgar encuentre las pestañas en el mismo lugar en todos los roles.
+const NAV_H = 56
 
 function Cargando() {
   return <div style={sx('padding:32px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:13px')}>Cargando…</div>
@@ -42,19 +47,46 @@ function Cargando() {
  * Contador del tablero. `onClick` lo lleva al problema, no solo lo informa: un número que no se
  * puede tocar obliga a buscar a mano los 67 productos que le faltan la foto.
  */
-function Contador({ label, valor, color, onClick, activo }) {
+function Contador({ label, valor, color, onClick, activo, compacto }) {
+  // `compacto` (celular): los CINCO entran en una sola fila, sin scroll horizontal. Antes eran
+  // tarjetas de 104 px mínimo, y en una pantalla de 360 px se veían tres y "Sin marca" / "De baja"
+  // quedaban escondidos sin ninguna pista de que había más. La etiqueta pasa a minúscula porque en
+  // mayúsculas "SIN PRECIO" no entra en los ~58 px que le tocan a cada uno.
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
-        ...sx('flex:1;min-width:104px;padding:9px 12px;border-radius:12px;cursor:pointer;text-align:left'),
+        ...(compacto
+          ? sx('flex:1;min-width:0;padding:6px 2px;border-radius:10px;cursor:pointer;text-align:center')
+          : sx('flex:1;min-width:104px;padding:9px 12px;border-radius:12px;cursor:pointer;text-align:left')),
         border: `1px solid ${activo ? color : 'var(--line)'}`,
         background: activo ? 'var(--surface2)' : 'var(--surface)',
       }}
     >
-      <span style={{ ...sx('display:block;font-family:var(--font-mono);font-size:19px;font-weight:700;line-height:1.1'), color }}>{valor}</span>
-      <span style={sx('display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-top:3px')}>{label}</span>
+      <span style={{ ...sx(`display:block;font-family:var(--font-mono);font-size:${compacto ? 16 : 19}px;font-weight:700;line-height:1.1`), color }}>{valor}</span>
+      <span style={compacto
+        ? sx('display:block;font-size:10px;font-weight:600;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')
+        : sx('display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-top:3px')}>{label}</span>
+    </button>
+  )
+}
+
+/** Pestaña de la barra inferior (celular). Mismo aspecto que `NavBtn` de SupervisionMovil. */
+function NavBtn({ active, label, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className="lu-press"
+      style={{
+        ...sx('flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0;cursor:pointer;background:none;border:none;font-family:inherit'),
+        color: active ? 'var(--primary)' : 'var(--muted)',
+      }}
+    >
+      {children}
+      <span style={sx('font-size:10px;font-weight:600')}>{label}</span>
     </button>
   )
 }
@@ -130,32 +162,36 @@ export default function MarketingView() {
 
         {/* Tablero: qué falta hacer. Es lo primero que se ve al abrir, a propósito — el trabajo de
             esta persona es justamente vaciar estos contadores. */}
-        <div style={sx('display:flex;gap:8px;padding:0 14px 11px;overflow-x:auto')}>
-          <Contador label="Vigentes" valor={loading ? '—' : stats.vigentes} color="var(--deep)" onClick={() => pedirFiltro('todos')} activo={filtroPedido?.f === 'todos'} />
-          <Contador label="Sin foto" valor={loading ? '—' : stats.sinFoto} color={stats.sinFoto ? 'var(--warning)' : 'var(--success)'} onClick={() => pedirFiltro('sin-foto')} activo={filtroPedido?.f === 'sin-foto'} />
-          <Contador label="Sin precio" valor={loading ? '—' : stats.sinPrecio} color={stats.sinPrecio ? 'var(--danger)' : 'var(--success)'} onClick={() => pedirFiltro('sin-precio')} activo={filtroPedido?.f === 'sin-precio'} />
-          <Contador label="Sin marca" valor={loading ? '—' : stats.sinMarca} color={stats.sinMarca ? 'var(--info)' : 'var(--success)'} onClick={() => pedirFiltro('sin-marca')} activo={filtroPedido?.f === 'sin-marca'} />
-          <Contador label="De baja" valor={loading ? '—' : stats.baja} color="var(--faint)" onClick={() => pedirFiltro('descontinuados')} activo={filtroPedido?.f === 'descontinuados'} />
+        <div style={isMobile ? sx('display:flex;gap:6px;padding:0 14px 10px') : sx('display:flex;gap:8px;padding:0 14px 11px;overflow-x:auto')}>
+          <Contador compacto={isMobile} label="Vigentes" valor={loading ? '—' : stats.vigentes} color="var(--deep)" onClick={() => pedirFiltro('todos')} activo={filtroPedido?.f === 'todos'} />
+          <Contador compacto={isMobile} label="Sin foto" valor={loading ? '—' : stats.sinFoto} color={stats.sinFoto ? 'var(--warning)' : 'var(--success)'} onClick={() => pedirFiltro('sin-foto')} activo={filtroPedido?.f === 'sin-foto'} />
+          <Contador compacto={isMobile} label="Sin precio" valor={loading ? '—' : stats.sinPrecio} color={stats.sinPrecio ? 'var(--danger)' : 'var(--success)'} onClick={() => pedirFiltro('sin-precio')} activo={filtroPedido?.f === 'sin-precio'} />
+          <Contador compacto={isMobile} label="Sin marca" valor={loading ? '—' : stats.sinMarca} color={stats.sinMarca ? 'var(--info)' : 'var(--success)'} onClick={() => pedirFiltro('sin-marca')} activo={filtroPedido?.f === 'sin-marca'} />
+          <Contador compacto={isMobile} label="De baja" valor={loading ? '—' : stats.baja} color="var(--faint)" onClick={() => pedirFiltro('descontinuados')} activo={filtroPedido?.f === 'descontinuados'} />
         </div>
 
-        <div style={sx('display:flex;gap:6px;padding:0 14px 10px')}>
-          {TABS.map(({ k, t }) => (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              style={{
-                ...sx('padding:6px 13px;border-radius:99px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap'),
-                border: `1px solid ${tab === k ? 'var(--primary)' : 'var(--line2)'}`,
-                background: tab === k ? 'var(--primary)' : 'transparent',
-                color: tab === k ? 'var(--on-primary)' : 'var(--muted)',
-              }}
-            >{t}</button>
-          ))}
-        </div>
+        {/* Escritorio: pestañas en píldoras bajo el tablero. En el celular van ABAJO (más
+            abajo, en la barra), donde llega el pulgar, y acá no ocupan alto. */}
+        {!isMobile && (
+          <div style={sx('display:flex;gap:6px;padding:0 14px 10px')}>
+            {TABS.map(({ k, t }) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                style={{
+                  ...sx('padding:6px 13px;border-radius:99px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap'),
+                  border: `1px solid ${tab === k ? 'var(--primary)' : 'var(--line2)'}`,
+                  background: tab === k ? 'var(--primary)' : 'transparent',
+                  color: tab === k ? 'var(--on-primary)' : 'var(--muted)',
+                }}
+              >{t}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ===== CUERPO ===== */}
-      <div style={sx('flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)')}>
+      <div style={sx(`flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;${isMobile ? '' : 'padding-bottom:env(safe-area-inset-bottom)'}`)}>
         <Suspense fallback={<Cargando />}>
           {tab === 'catalogo' && (
             <CatalogoTab
@@ -190,6 +226,19 @@ export default function MarketingView() {
         </Suspense>
       </div>
 
+      {/* ===== BARRA INFERIOR (celular) ===== */}
+      {isMobile && (
+        <div style={{ flex: 'none', background: 'var(--glass-bg)', ...glassBlur, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around', minHeight: NAV_H, padding: '4px 10px' }}>
+            {TABS.map(({ k, t, Icono }) => (
+              <NavBtn key={k} active={tab === k} label={t} onClick={() => setTab(k)}>
+                <Icono size={22} />
+              </NavBtn>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ===== CAPAS ===== */}
       {cuentaOpen && (
         <div
@@ -218,7 +267,7 @@ export default function MarketingView() {
       )}
 
       {toast && (
-        <div style={sx('position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:var(--z-toast);background:var(--deep);color:var(--on-primary);padding:10px 16px;border-radius:99px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow);max-width:90vw;text-align:center')}>
+        <div style={sx(`position:fixed;left:50%;bottom:calc(${isMobile ? NAV_H + 14 : 20}px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:var(--z-toast);background:var(--deep);color:var(--on-primary);padding:10px 16px;border-radius:99px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow);max-width:90vw;text-align:center`)}>
           {toast}
         </div>
       )}
