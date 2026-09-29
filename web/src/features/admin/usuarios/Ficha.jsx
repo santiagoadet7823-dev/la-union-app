@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { hoyStr } from '../../../lib/format'
-import { esPendiente, esRastreado } from './modelo'
+import { supabase } from '../../../services/supabase'
+import { esPendiente, esRastreado, traducirError } from './modelo'
+import { leerErrorInvoke } from './guardarLote'
 import useFichaPersona, { useRecorridoDia } from './useFichaPersona'
 import {
   EncabezadoFicha, TarjetasIdentidad, BloqueAsignaciones, ZonaPeligro, BloqueActividad, Historial,
   PedidosAnulados, TelefonoAlertas, RecorridoCard, SinRastreo, accesosIconos,
 } from './FichaBloques'
+import { ResultadoReset } from './Dialogos'
 import { tarjeta } from './ui'
 
 /**
@@ -50,6 +53,10 @@ export function permisosSobre(i, v) {
     bloqueo,
     desactivar: !intocable && !propia && !esPendiente(p) && !i.del,
     eliminar: !intocable && puedeEliminar,
+    // Resetear contraseña (db/78): mismas condiciones que desactivar — no tiene sentido para la
+    // propia cuenta (ahí es "Cambiar contraseña" en Mi cuenta), ni para un pendiente sin rol
+    // todavía, ni para alguien ya marcado para eliminar en el borrador.
+    resetearPass: !intocable && !propia && !esPendiente(p) && !i.del,
   }
 }
 
@@ -64,6 +71,18 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
 
   const f = useFichaPersona({ persona: p, periodo, companeros: i.companeros, activa: !i.nuevo, miEmpresa: v.miEmpresa, esTrackeado: rastreado })
   const r = useRecorridoDia({ persona: p, dia: diaSel, activa: rastreado && (layout !== 'movil' || tab === 'recorrido' || (tab === 'resumen' && periodo === 'hoy')) })
+
+  // Reseteo de contraseña por un admin (db/78, Edge Function resetear-contrasena). Es un acto
+  // INMEDIATO contra el servidor, no pasa por el borrador de useBorrador: no tiene "deshacer" —al
+  // revés que rol/empresa/horarios— porque el servidor ya generó y guardó la contraseña nueva.
+  const [reset, setReset] = useState(null) // null | 'pidiendo' | { password, usuario, email } | { error }
+  async function resetearPass() {
+    setReset('pidiendo')
+    const { data, error } = await supabase.functions.invoke('resetear-contrasena', { body: { id: p.id } })
+    const code = await leerErrorInvoke(data, error)
+    if (code || error || !data?.ok) { setReset({ error: traducirError(code || error?.message) }); return }
+    setReset({ password: data.password, usuario: data.usuario, email: data.email })
+  }
 
   const aprobar = esPendiente(p) && perm.algo ? {
     puede: !!(bor.b.cambios[p.id]?.rol || p.rol),
@@ -90,10 +109,14 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
       onQuitarAlta={i.nuevo ? () => bor.quitarAlta(p.id) : null} aprobar={aprobar} />
   )
   const peligro = (
-    <ZonaPeligro i={i} perm={perm}
-      onDesactivar={() => onPeligro({ i, modo: 'desactivar' })}
-      onReactivar={() => bor.setCampo(p, 'activo', true)}
-      onEliminar={(modo) => onPeligro({ i, modo })} />
+    <>
+      <ZonaPeligro i={i} perm={perm}
+        onDesactivar={() => onPeligro({ i, modo: 'desactivar' })}
+        onReactivar={() => bor.setCampo(p, 'activo', true)}
+        onEliminar={(modo) => onPeligro({ i, modo })}
+        onResetearPass={resetearPass} resetPidiendo={reset === 'pidiendo'} />
+      <ResultadoReset resultado={reset} onClose={() => setReset(null)} />
+    </>
   )
 
   // ── Alta todavía en el borrador: no existe en el servidor, no hay nada que medir ──

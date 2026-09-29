@@ -19,7 +19,9 @@ import { ROLES_EDITAN_CATALOGO, traducirError } from './modelo'
  * Nada de lo que falla se pierde: la vista llama a `aplicarGuardado` sólo con lo que salió bien.
  */
 
-async function leerErrorInvoke(data, err) {
+/** functions.invoke no distingue 2xx de error salvo por esto — la usa cualquier llamada a una
+ * Edge Function de este menú, no solo guardarLote (ver resetearPass en Ficha.jsx). */
+export async function leerErrorInvoke(data, err) {
   // functions.invoke: ante un !2xx `data` viene null y el cuerpo {error} queda en err.context.
   let code = data?.error || null
   if (err && !code) {
@@ -71,7 +73,8 @@ export async function guardarLote(b, porId) {
     total++
     try {
       const { data, error } = await supabase.functions.invoke('crear-usuario', {
-        body: { email: a.email, password: a.password, nombre: a.nombre, rol: a.rol, id_empresa: a.id_empresa, numero: a.numero || null },
+        // usuario/email son excluyentes (db/78): manda uno u otro, nunca los dos.
+        body: { email: a.usuario ? null : a.email, usuario: a.usuario || null, password: a.password, nombre: a.nombre, rol: a.rol, id_empresa: a.id_empresa, numero: a.numero || null },
       })
       const code = await leerErrorInvoke(data, error)
       if (code || error || !data?.id) throw new Error(code || error?.message || 'error-alta')
@@ -82,7 +85,7 @@ export async function guardarLote(b, porId) {
       if (a.categorias?.length) campos.categorias = a.categorias
       if (Object.keys(campos).length) extras.push({ id: data.id, campos })
     } catch (e) {
-      fallas.push({ pid: tmp, nombre: a.nombre || a.email, campo: '_alta', motivo: traducirError(e.message) })
+      fallas.push({ pid: tmp, nombre: a.nombre || a.usuario || a.email, campo: '_alta', motivo: traducirError(e.message) })
     }
   }
 

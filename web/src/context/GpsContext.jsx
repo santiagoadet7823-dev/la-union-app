@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect } from 'react'
-import { useAuth } from './AuthContext'
+import { useAuth, identidadVisible } from './AuthContext'
 import { usePublishPosition } from '../hooks/usePublishPosition'
 import { useEstadoDispositivo } from '../hooks/useEstadoDispositivo'
 import { initPush } from '../services/push'
@@ -28,7 +28,7 @@ export function GpsProvider({ children }) {
   // el equipo entero podía quedarse mudo y ellos no se enteraban).
   const esSupervisor = rol === 'admin' || rol === 'superadmin'
   const id = user?.id || null
-  const nombre = perfil?.nombre || user?.email || 'Usuario'
+  const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
 
   // GPS obligatorio: siempre habilitado para roles móviles (sin toggle para apagarlo).
   const gps = usePublishPosition({ enabled: esMovil, id, rol, idEmpresa })

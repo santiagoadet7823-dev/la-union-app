@@ -152,6 +152,14 @@ export const Smartphone = ({ size = 14 }) => (
   </svg>
 )
 
+/* Candado — "Cambiar contraseña" en Mi cuenta. */
+export const Lock = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+    <rect x="5" y="11" width="14" height="10" rx="2.4" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+)
+
 export const Monitor = ({ size = 14 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
     <rect x="2" y="3" width="20" height="14" rx="2" />

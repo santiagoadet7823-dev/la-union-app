@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Overlay from '../../../components/Overlay'
 import { sx } from '../../../lib/sx'
 import { supabase } from '../../../services/supabase'
+import { identidadVisible } from '../../../context/AuthContext'
 import {
   ROL_UNO, CAMPO_LABEL, esRastreado, textoValor, valorOriginal, generarPassword, colorDe, nivelTexto,
 } from './modelo'
@@ -17,6 +18,8 @@ const btnSec = sx('min-height:44px;padding:0 16px;border-radius:10px;border:1px 
 const btnPri = (on = true) => ({ ...sx('min-height:44px;padding:0 18px;border-radius:10px;border:0;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;justify-content:center'), background: on ? 'var(--primary)' : 'var(--line)', color: on ? 'var(--on-primary)' : 'var(--muted)', cursor: on ? 'pointer' : 'not-allowed' })
 const btnPeligro = (on = true) => ({ ...btnPri(on), background: on ? 'var(--danger)' : 'var(--line)', color: on ? 'var(--surface)' : 'var(--muted)' })
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Mismo formato que valida crear-usuario/db/78: minúsculas, sin espacios ni `@`.
+const USUARIO_RE = /^[a-z0-9._-]{3,30}$/
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Barra de cambios pendientes
@@ -124,7 +127,7 @@ export function Revision({ open, onClose, bor, porId, info, ctx, sinRed, guardan
                 <div key={pid} style={sx('display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--line)')}>
                   <Avatar nombre={p?.nombre} color="var(--danger)" />
                   <div style={sx('flex:1;min-width:0')}>
-                    <div style={sx('font-weight:600')}>{p?.nombre || p?.email || 'Persona'} · {modo === 'purgar' ? 'Purgar definitivo' : 'Eliminar'}</div>
+                    <div style={sx('font-weight:600')}>{p?.nombre || identidadVisible(p?.email) || 'Persona'} · {modo === 'purgar' ? 'Purgar definitivo' : 'Eliminar'}</div>
                     <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.45')}>
                       {modo === 'purgar' ? 'Se borran la cuenta, sus recorridos y sus visitas. Los pedidos quedan como “Usuario eliminado”.' : 'Se borra la cuenta. Pedidos, recorridos y visitas quedan como “Usuario eliminado”.'}
                     </div>
@@ -140,11 +143,11 @@ export function Revision({ open, onClose, bor, porId, info, ctx, sinRed, guardan
             <div style={sx('padding:10px 14px;background:var(--primary-tint);font-size:12px;font-weight:700;color:var(--deep);letter-spacing:.03em')}>ALTAS · SE CREAN AL GUARDAR</div>
             {altas.map(([id, a]) => (
               <div key={id} style={sx('display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--line)')}>
-                <Avatar nombre={a.nombre || a.email} color="var(--primary)" />
+                <Avatar nombre={a.nombre || a.usuario || identidadVisible(a.email)} color="var(--primary)" />
                 <div style={sx('flex:1;min-width:0')}>
-                  <div style={sx('font-weight:600')}>{a.nombre || a.email}</div>
+                  <div style={sx('font-weight:600')}>{a.nombre || a.usuario || identidadVisible(a.email)}</div>
                   <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.45')}>
-                    {ROL_UNO[a.rol]}{a.rol === 'encargado' ? ` · ${nivelTexto(a.nivel)}` : ''} · {ctx.empresaNombre[a.id_empresa] || 'su empresa'} · {a.email} · contraseña <span style={mono}>{a.password}</span>
+                    {ROL_UNO[a.rol]}{a.rol === 'encargado' ? ` · ${nivelTexto(a.nivel)}` : ''} · {ctx.empresaNombre[a.id_empresa] || 'su empresa'} · {a.usuario || a.email} · contraseña <span style={mono}>{a.password}</span>
                   </div>
                 </div>
                 <button type="button" onClick={() => bor.quitarAlta(id)} className="lu-press" style={btnQuitar}>Quitar</button>
@@ -168,8 +171,8 @@ export function Revision({ open, onClose, bor, porId, info, ctx, sinRed, guardan
           return (
             <div key={pid} style={sx('border:1px solid var(--line);border-radius:14px;overflow:hidden')}>
               <div style={sx('display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2)')}>
-                <Avatar nombre={p.nombre || p.email} color={colorDe(p)} size={28} fs={10} />
-                <span style={sx('flex:1;font-weight:600')}>{p.nombre || p.email}</span>
+                <Avatar nombre={p.nombre || identidadVisible(p.email)} color={colorDe(p)} size={28} fs={10} />
+                <span style={sx('flex:1;font-weight:600')}>{p.nombre || identidadVisible(p.email)}</span>
                 <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap')}>{ctx.empresaNombre[p.id_empresa] || ''}</span>
               </div>
               {Object.entries(cambios).map(([campo, despues]) => {
@@ -225,7 +228,7 @@ export function DialogoPeligro({ estado, onClose, onConfirmar }) {
   if (!e) return <Overlay open={false} onClose={onClose} />
 
   const { i, modo } = e
-  const nombre = (i.p.nombre || i.p.email || '').trim()
+  const nombre = (i.p.nombre || i.p.usuario || identidadVisible(i.p.email) || '').trim()
   const desact = modo === 'desactivar'
   const purgar = modo === 'purgar'
   const nombreOk = desact || txt.trim().toLowerCase() === nombre.toLowerCase()
@@ -299,14 +302,14 @@ export function DialogoPeligro({ estado, onClose, onConfirmar }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Alta
 // ─────────────────────────────────────────────────────────────────────────────
-export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes }) {
+export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes, usuariosExistentes }) {
   const ref = useRef(estado)
   if (estado) ref.current = estado
   const e = ref.current
   const [f, setF] = useState(null)
   useEffect(() => {
     if (!estado) return
-    setF({ nombre: '', email: '', password: generarPassword(), rol: estado.rol || '', nivel: 1, id_empresa: estado.idEmpresa || ctx.miEmpresa || '', categorias: [], numero: '' })
+    setF({ modo: 'email', nombre: '', email: '', usuario: '', password: generarPassword(), rol: estado.rol || '', nivel: 1, id_empresa: estado.idEmpresa || ctx.miEmpresa || '', categorias: [], numero: '' })
   }, [estado, ctx.miEmpresa])
   const set = (patch) => setF((x) => ({ ...x, ...patch }))
   const cats = useMemo(() => (f ? ctx.categorias.filter((c) => !c.id_empresa || c.id_empresa === f.id_empresa) : []), [ctx.categorias, f])
@@ -314,7 +317,21 @@ export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes 
 
   const email = f.email.trim().toLowerCase()
   const errEmail = email && !EMAIL_RE.test(email) ? 'Revisá el email.' : email && emailsExistentes.has(email) ? 'Ese email ya tiene cuenta.' : null
-  const listo = f.nombre.trim() && email && !errEmail && f.rol && f.id_empresa && f.password.length >= 6
+  const usuario = f.usuario.trim().toLowerCase()
+  const errUsuario = usuario && !USUARIO_RE.test(usuario) ? 'Solo minúsculas, números, puntos, guiones y guión bajo (3 a 30 caracteres).' : usuario && usuariosExistentes.has(usuario) ? 'Ese usuario ya tiene cuenta.' : null
+  const identidadOk = f.modo === 'email' ? (email && !errEmail) : (usuario && !errUsuario)
+  const listo = f.nombre.trim() && identidadOk && f.rol && f.id_empresa && f.password.length >= 6
+
+  function agregar() {
+    if (!listo) return
+    onAgregar({
+      ...f,
+      nombre: f.nombre.trim(),
+      email: f.modo === 'email' ? email : '',
+      usuario: f.modo === 'usuario' ? usuario : null,
+      categorias: esRastreado(f.rol) ? f.categorias : [],
+    })
+  }
 
   return (
     <Overlay open={!!estado} onClose={onClose} maxWidth={600}
@@ -323,15 +340,32 @@ export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes 
         <div style={sx('display:flex;align-items:center;gap:10px;width:100%;flex-wrap:wrap')}>
           <div style={sx('flex:1 1 180px;font-size:11px;color:var(--muted);line-height:1.4')}>Entra al borrador. La cuenta se crea con “Guardar cambios”.</div>
           <button type="button" onClick={onClose} className="lu-press" style={btnSec}>Cancelar</button>
-          <button type="button" disabled={!listo} onClick={listo ? () => onAgregar({ ...f, email, nombre: f.nombre.trim(), categorias: esRastreado(f.rol) ? f.categorias : [] }) : undefined} className="lu-press" style={btnPri(!!listo)}>Agregar al borrador</button>
+          <button type="button" disabled={!listo} onClick={agregar} className="lu-press" style={btnPri(!!listo)}>Agregar al borrador</button>
         </div>
       }>
       <div style={sx('display:flex;flex-direction:column;gap:14px')}>
         <div style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px')}>
           <label style={lbl}><span>Nombre y apellido</span><input value={f.nombre} onChange={(ev) => set({ nombre: ev.target.value })} placeholder="Ej. Julián Castro" className="lu-input" style={inp} /></label>
-          <label style={lbl}><span>Email</span><input value={f.email} onChange={(ev) => set({ email: ev.target.value })} placeholder="nombre@empresa.com.ar" inputMode="email" autoComplete="off" className="lu-input" style={inp} />
-            {errEmail && <span style={sx('color:var(--danger);font-weight:500')}>{errEmail}</span>}
-          </label>
+          <div style={sx('display:flex;flex-direction:column;gap:6px')}>
+            <div style={sx('font-size:11px;font-weight:600;color:var(--muted)')}>Cómo entra</div>
+            <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:5px')}>
+              <Opcion on={f.modo === 'email'} onClick={() => set({ modo: 'email' })} alto={38}>Con email</Opcion>
+              <Opcion on={f.modo === 'usuario'} onClick={() => set({ modo: 'usuario' })} alto={38}>Con usuario</Opcion>
+            </div>
+          </div>
+        </div>
+        <div style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px')}>
+          {f.modo === 'email' ? (
+            <label style={lbl}><span>Email</span><input value={f.email} onChange={(ev) => set({ email: ev.target.value })} placeholder="nombre@empresa.com.ar" inputMode="email" autoComplete="off" className="lu-input" style={inp} />
+              {errEmail && <span style={sx('color:var(--danger);font-weight:500')}>{errEmail}</span>}
+            </label>
+          ) : (
+            <label style={lbl}><span>Usuario</span><input value={f.usuario} onChange={(ev) => set({ usuario: ev.target.value })} placeholder="ej. jcastro" autoComplete="off" className="lu-input" style={inp} />
+              {errUsuario
+                ? <span style={sx('color:var(--danger);font-weight:500')}>{errUsuario}</span>
+                : <span style={sx('color:var(--muted)')}>Sin email real: entra tipeando solo “{usuario || 'usuario'}” + contraseña.</span>}
+            </label>
+          )}
         </div>
         <div style={sx('display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:11px;background:var(--surface2);flex-wrap:wrap')}>
           <div style={sx('flex:1;min-width:180px')}>
@@ -384,6 +418,55 @@ export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes 
 }
 const lbl = sx('display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:var(--muted)')
 const inp = sx('height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);font-size:14px;color:var(--text);font-family:var(--font-body);box-sizing:border-box;width:100%')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Resultado de "Resetear contraseña" (db/78, Ficha.jsx → Edge Function resetear-contrasena)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * `resultado`: null | 'pidiendo' (no abre nada — el botón de la Zona de peligro ya muestra
+ * "Reseteando…") | { error } | { password, usuario, email }.
+ *
+ * La contraseña se muestra UNA vez, igual que la del alta: no se guarda en ningún lado más que
+ * en la respuesta de la Edge Function, así que si se cierra esta hoja sin copiarla hay que
+ * resetear de nuevo.
+ */
+export function ResultadoReset({ resultado, onClose }) {
+  const [copiado, setCopiado] = useState(false)
+  useEffect(() => { setCopiado(false) }, [resultado])
+  const listo = resultado && resultado !== 'pidiendo'
+  const esError = listo && 'error' in resultado
+
+  async function copiar() {
+    try { await navigator.clipboard.writeText(resultado.password); setCopiado(true) } catch (_) { /* sin clipboard: se dicta a mano */ }
+  }
+
+  return (
+    <Overlay open={!!listo} onClose={onClose} maxWidth={380} title={esError ? 'No se pudo resetear' : 'Contraseña reseteada'}>
+      {listo && (esError ? (
+        <div style={sx('font-size:13px;color:var(--danger);line-height:1.5')}>{resultado.error}</div>
+      ) : (
+        <div style={sx('display:flex;flex-direction:column;gap:12px')}>
+          <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>
+            Se la pasás vos — por teléfono o en persona. Va a tener que cambiarla apenas entre.
+          </div>
+          <div style={sx('padding:10px 12px;border-radius:11px;background:var(--surface2);display:flex;flex-direction:column;gap:4px')}>
+            <span style={sx('font-size:11px;color:var(--muted)')}>{resultado.usuario ? 'Usuario' : 'Email'}</span>
+            <span style={mono}>{resultado.usuario || resultado.email}</span>
+          </div>
+          <div style={sx('padding:10px 12px;border-radius:11px;background:var(--surface2);display:flex;align-items:center;gap:10px')}>
+            <div style={sx('flex:1;min-width:0')}>
+              <div style={sx('font-size:11px;color:var(--muted)')}>Contraseña nueva</div>
+              <div style={{ ...mono, fontWeight: 600, fontSize: 15 }}>{resultado.password}</div>
+            </div>
+            <button type="button" onClick={copiar} className="lu-press" style={sx('flex:none;min-height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)')}>
+              {copiado ? 'Copiada' : 'Copiar'}
+            </button>
+          </div>
+        </div>
+      ))}
+    </Overlay>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Descartar

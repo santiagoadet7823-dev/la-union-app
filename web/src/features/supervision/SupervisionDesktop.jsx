@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useCatalog } from '../../context/CatalogContext'
@@ -336,7 +336,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     Promise.resolve(recargarPosiciones()).finally(() => setTimeout(() => { setSyncing(false); showToast('Ubicaciones actualizadas · hace 0s') }, 700))
   }
 
-  const nombre = perfil?.nombre || user?.email || 'Usuario'
+  const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
   const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
   const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard')
   const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : `Ventas y actividad · ${horizonteDash === 'hoy' ? 'hoy' : horizonteDash === 'semana' ? 'esta semana' : 'este mes'}`)
@@ -449,7 +449,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     <div style={{ width: 44, height: 44, flex: 'none', borderRadius: 13, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>{initials(nombre)}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{roleLabel} · {user?.email || ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{roleLabel} · {identidadVisible(user?.email)}</div>
                       <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>App v{APP_VERSION}</div>
                     </div>
                   </div>

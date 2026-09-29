@@ -135,14 +135,19 @@ const MSG = {
   'perfil-de-sistema': 'es un perfil del sistema',
   // crear-usuario
   'email-invalido': 'el email no es válido',
+  'usuario-invalido': 'el usuario tiene que ser minúsculas, números, puntos, guiones o guión bajo (3 a 30 caracteres)',
+  'usuario-o-email': 'elegí usuario o email, no los dos',
+  'falta-usuario-o-email': 'falta el usuario o el email',
   'password-corta': 'la contraseña tiene menos de 6 caracteres',
   'email-ya-existe': 'el email ya existe',
+  'usuario-ya-existe': 'ese usuario ya existe',
   'rol-no-permitido': 'no podés asignar ese rol',
   'sin-empresa': 'falta la empresa',
   'codigo-invalido': 'el código ERP tiene que ser un número',
   'error-alta': 'el servidor no pudo crear la cuenta',
-  // eliminar-usuario
+  // eliminar-usuario / resetear-contrasena
   'no-existe': 'la cuenta ya no existe',
+  'no-existe-o-sin-permiso': 'la cuenta no existe, o no te toca',
   'sin-perfil': 'tu cuenta no está habilitada para esto',
   'payload-invalido': 'pedido inválido',
 }

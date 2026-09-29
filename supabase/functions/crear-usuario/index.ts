@@ -14,6 +14,13 @@
 //
 // El trigger handle_new_user inserta el perfil (rol=null, activo=false) al crearse
 // el usuario; después lo actualizamos con el rol/empresa definitivos.
+//
+// 🩸 CUENTAS SIN EMAIL REAL (29/09/2026, db/78). Supabase Auth exige email o teléfono; se manda
+// `usuario` en vez de `email` y se arma `<usuario>@usuarios.dist-at.invalid` — mismo dominio
+// reservado (RFC 2606) que ya usa el marcador "Usuario eliminado" de eliminar-usuario, así que no
+// hay que confiar en que nadie escriba a esa dirección: nunca se entrega. El login hace el camino
+// inverso (AuthContext.signInWithPassword): si lo que se tipeó no tiene `@`, arma el mismo email.
+// `usuario` y `email` son EXCLUYENTES: una cuenta entra por una sola puerta.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const cors = {
@@ -41,6 +48,9 @@ const json = (b: unknown, status = 200) =>
 const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'marketing', 'admin']
 const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Mismo formato que valida el CHECK de la base (db/78): minúsculas, sin espacios ni `@`.
+const USUARIO_RE = /^[a-z0-9._-]{3,30}$/
+const DOMINIO_USUARIO = 'usuarios.dist-at.invalid'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -63,14 +73,28 @@ Deno.serve(async (req) => {
 
     // 2) Validación del payload.
     const body = await req.json().catch(() => ({}))
-    const email = String(body.email || '').trim().toLowerCase()
+    const usuarioRaw = body.usuario != null ? String(body.usuario).trim().toLowerCase() : ''
+    const emailRaw = String(body.email || '').trim().toLowerCase()
     const password = String(body.password || '')
     const nombre = String(body.nombre || '').trim()
     const rol = String(body.rol || '').trim()
     const telefono = body.telefono ? String(body.telefono).trim() : null
     const numero = body.numero != null && body.numero !== '' ? Number(body.numero) : null
 
-    if (!EMAIL_RE.test(email)) return json({ error: 'email-invalido' }, 400)
+    // Una sola puerta de entrada: usuario (sin email real) O email, nunca las dos ni ninguna.
+    if (usuarioRaw && emailRaw) return json({ error: 'usuario-o-email' }, 400)
+    if (!usuarioRaw && !emailRaw) return json({ error: 'falta-usuario-o-email' }, 400)
+    let usuario: string | null = null
+    let email: string
+    if (usuarioRaw) {
+      if (!USUARIO_RE.test(usuarioRaw)) return json({ error: 'usuario-invalido' }, 400)
+      usuario = usuarioRaw
+      email = `${usuarioRaw}@${DOMINIO_USUARIO}`
+    } else {
+      if (!EMAIL_RE.test(emailRaw)) return json({ error: 'email-invalido' }, 400)
+      email = emailRaw
+    }
+
     if (password.length < 6) return json({ error: 'password-corta' }, 400) // mínimo de Supabase
     if (numero != null && !Number.isFinite(numero)) return json({ error: 'codigo-invalido' }, 400)
 
@@ -91,9 +115,12 @@ Deno.serve(async (req) => {
       user_metadata: { full_name: nombre || email },
     })
     if (errCrear || !creado?.user) {
-      // 422 = email ya registrado; se lo devolvemos claro al admin.
+      // 422 = email/dirección sintética ya registrada; se lo devolvemos claro al admin. Con
+      // `usuario` el choque es de nombre de usuario, no de "email" — mismo mensaje de fondo,
+      // código distinto para que la UI no diga "el email ya existe" de un usuario que no eligió.
       const yaExiste = /already|registered|exists/i.test(errCrear?.message || '')
-      return json({ error: yaExiste ? 'email-ya-existe' : (errCrear?.message || 'error-alta') }, yaExiste ? 409 : 500)
+      const codigo = yaExiste ? (usuario ? 'usuario-ya-existe' : 'email-ya-existe') : (errCrear?.message || 'error-alta')
+      return json({ error: codigo }, yaExiste ? 409 : 500)
     }
     const nuevoId = creado.user.id
 
@@ -102,6 +129,7 @@ Deno.serve(async (req) => {
     const { error: errPerfil } = await admin.from('perfiles').update({
       nombre: nombre || null,
       email,
+      usuario,
       rol,
       activo: true,
       id_empresa: idEmpresa,
@@ -115,7 +143,7 @@ Deno.serve(async (req) => {
       return json({ error: 'error-perfil: ' + errPerfil.message }, 500)
     }
 
-    return json({ ok: true, id: nuevoId, email, rol, id_empresa: idEmpresa })
+    return json({ ok: true, id: nuevoId, email, usuario, rol, id_empresa: idEmpresa })
   } catch (e) {
     return json({ error: (e as Error)?.message || 'error-inesperado' }, 500)
   }

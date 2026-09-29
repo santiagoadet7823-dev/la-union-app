@@ -60,6 +60,15 @@ function esRechazoDelServidor(error) {
 const ULTIMO_KEY = 'lu-ultimo-ingreso'
 const RECORDAR_KEY = 'lu-recordar-usuario'
 
+// Cuentas sin email real (db/78): crear-usuario arma <usuario>@usuarios.dist-at.invalid — dominio
+// reservado (RFC 2606), nadie recibe nada ahí. El login hace el camino inverso acá abajo, y
+// cualquier pantalla que mostraría ese email la reemplaza por el nombre de usuario (la parte antes
+// de la @, que es exactamente lo que se tipeó al crear la cuenta).
+const DOMINIO_USUARIO = 'usuarios.dist-at.invalid'
+export const esEmailSintetico = (email) => !!email && email.toLowerCase().endsWith('@' + DOMINIO_USUARIO)
+/** Lo que hay que MOSTRAR en pantalla: el usuario si la cuenta es sintética, si no el email tal cual. */
+export const identidadVisible = (email) => (esEmailSintetico(email) ? email.split('@')[0] : email) || ''
+
 export function leerUltimoIngreso() {
   try {
     const raw = localStorage.getItem(ULTIMO_KEY)
@@ -91,6 +100,11 @@ function recordarIngreso(s) {
       email: u.email,
       nombre: m.full_name || m.name || '',
       foto: m.avatar_url || m.picture || '',
+      // Con qué entró la última vez (29/09/2026, db/78). La tarjeta "Continuar como…" de
+      // LoginView dispara Google directo: sin esto, una cuenta con usuario/contraseña quedaría
+      // ofreciendo ese botón, y tocarlo abriría el selector de cuentas de Google para una cuenta
+      // que no tiene ninguna identidad Google — un login que no puede funcionar nunca.
+      metodo: u.app_metadata?.provider === 'google' ? 'google' : 'password',
     }))
   } catch (_) { /* modo privado: el login arranca sin tarjeta, y no pasa nada */ }
 }
@@ -399,20 +413,26 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
-  // Ingreso con email + contraseña, para las cuentas que da de alta el admin
+  // Ingreso con usuario/email + contraseña, para las cuentas que da de alta el admin
   // (ver Edge Function crear-usuario). Convive con Google: el onAuthStateChange de
   // arriba levanta la sesión y dispara la carga del perfil igual que en el OAuth.
-  const signInWithPassword = async ({ email, password }) => {
+  //
+  // Acepta las DOS puertas de crear-usuario (db/78): con `@` es un email real y se manda tal
+  // cual; sin `@` es un nombre de usuario y se completa con el dominio sintético — el mismo que
+  // arma la Edge Function al crear la cuenta, así que el resultado siempre es el email real de
+  // auth.users, tenga o no destinatario de verdad.
+  const signInWithPassword = async ({ entrada, password }) => {
     setAuthError(null)
-    const correo = (email || '').trim().toLowerCase()
-    if (!correo || !password) {
-      const msg = 'Ingresá tu email y contraseña.'
+    const texto = (entrada || '').trim().toLowerCase()
+    if (!texto || !password) {
+      const msg = 'Ingresá tu usuario o email y tu contraseña.'
       setAuthError(msg)
       return { error: { message: msg } }
     }
+    const correo = texto.includes('@') ? texto : `${texto}@${DOMINIO_USUARIO}`
     const { data, error } = await supabase.auth.signInWithPassword({ email: correo, password })
     // Mensaje humano para el error más común; el resto se muestra tal cual.
-    if (error) setAuthError(/invalid login/i.test(error.message) ? 'Email o contraseña incorrectos.' : error.message)
+    if (error) setAuthError(/invalid login/i.test(error.message) ? 'Usuario/email o contraseña incorrectos.' : error.message)
     return { data, error }
   }
 

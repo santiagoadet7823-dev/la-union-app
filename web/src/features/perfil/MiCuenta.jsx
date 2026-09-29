@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
 import { APP_VERSION } from '../../version'
 import { estadoOta } from '../../services/ota'
 import MiPerfilModal from './MiPerfilModal'
+import CambiarContrasenaModal from './CambiarContrasenaModal'
 import CompartirUbicacion from '../../components/CompartirUbicacion'
 import ThemeToggle from '../../components/ThemeToggle'
-import { ChevronRight, LogOut, Monitor, Profile, Smartphone } from '../../components/icons'
+import { ChevronRight, LogOut, Lock, Monitor, Profile, Smartphone } from '../../components/icons'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from '../../services/platform'
 
@@ -30,6 +31,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
   const { perfil, user, rol, signOut } = useAuth()
   const { isMobile, setMode } = useDevice()
   const [perfilOpen, setPerfilOpen] = useState(false)
+  const [passOpen, setPassOpen] = useState(false)
   // 🩸 QUÉ VERSIÓN HAY ESPERANDO (20/08/2026). `APP_VERSION` es una constante compilada dentro del
   // bundle que está corriendo, así que jamás puede avisar de una actualización ya descargada. El
   // 19/08 los nueve equipos pasaron un día entero en la versión anterior con el bundle nuevo ya
@@ -50,7 +52,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
     CapApp.getInfo().then((i) => { if (vivo && i?.version) setApkVer(i.version) }).catch(() => {})
     return () => { vivo = false }
   }, [])
-  const nombre = perfil?.nombre || user?.email || 'Usuario'
+  const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
 
   return (
     <div className="lu-modal-card" style={sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:6px 14px')}>
@@ -58,7 +60,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
         <div style={sx('width:44px;height:44px;flex:none;border-radius:14px;background:var(--tlight);color:var(--deep);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:16px')}>{nombre.slice(0, 2).toUpperCase()}</div>
         <div style={sx('flex:1;min-width:0')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{nombre}</div>
-          <div style={sx('font-size:11px;color:var(--muted);font-family:var(--font-mono)')}>{ROLE_LABEL[rol] || rol || '—'} · {user?.email || ''}</div>
+          <div style={sx('font-size:11px;color:var(--muted);font-family:var(--font-mono)')}>{ROLE_LABEL[rol] || rol || '—'} · {identidadVisible(user?.email)}</div>
           <div style={sx('font-size:10px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>
             App v{APP_VERSION}{apkVer ? ` · APK ${apkVer}` : ''}
             {ota?.encolado && <span style={sx('color:var(--primary)')}> · v{ota.encolado} lista (se aplica al reabrir)</span>}
@@ -72,6 +74,12 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
       <div onClick={() => setPerfilOpen(true)} className="lu-press" style={item}>
         <div style={iconBox}><Profile size={15} /></div>
         <span style={sx('flex:1;font-size:13.5px;font-weight:500')}>Mi perfil</span>
+        <ChevronRight size={16} />
+      </div>
+
+      <div onClick={() => setPassOpen(true)} className="lu-press" style={item}>
+        <div style={iconBox}><Lock size={15} /></div>
+        <span style={sx('flex:1;font-size:13.5px;font-weight:500')}>Cambiar contraseña</span>
         <ChevronRight size={16} />
       </div>
 
@@ -112,6 +120,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
       </div>
 
       {perfilOpen && <MiPerfilModal onClose={() => setPerfilOpen(false)} onToast={onToast} />}
+      {passOpen && <CambiarContrasenaModal onClose={() => setPassOpen(false)} onToast={onToast} />}
     </div>
   )
 }

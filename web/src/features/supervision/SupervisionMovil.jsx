@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId, tintaTransporte } from '../../lib/colors'
@@ -449,7 +449,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     Promise.resolve(recargarPosiciones()).finally(() => setTimeout(() => { setSyncing(false); showToast('Ubicaciones actualizadas · hace 0s') }, 700))
   }
 
-  const nombre = perfil?.nombre || user?.email || 'Usuario'
+  const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
   const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
   const title = section === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard total'
   const cerrarTodo = () => { setPlusOpen(false); setAcctOpen(false); setDatePop(false); setPinId(null) }
@@ -594,7 +594,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
               <div style={{ width: 46, height: 46, flex: 'none', borderRadius: 14, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17 }}>{initials(nombre)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{roleLabel} · {user?.email || ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{roleLabel} · {identidadVisible(user?.email)}</div>
                 <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>App v{APP_VERSION}{apkVer ? ` · APK ${apkVer}` : ''}</div>
               </div>
             </div>

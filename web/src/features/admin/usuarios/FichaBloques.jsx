@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { sx } from '../../../lib/sx'
+import { identidadVisible, esEmailSintetico } from '../../../context/AuthContext'
 import { PALETA } from '../../../lib/colors'
 import { fmtPesos, fmtDuracion, hace, hoyStr } from '../../../lib/format'
 import { sumarDias } from '../../../lib/comparar'
@@ -88,7 +89,7 @@ export function EncabezadoFicha({ i, empresaNombre, onDeshacerDel, onQuitarAlta,
   return (
     <div style={{ ...tarjeta, overflow: 'hidden' }}>
       <div style={{ ...sx('position:relative;display:grid;place-items:center'), height: compacto ? 104 : 132, background: heroBg }}>
-        <Avatar nombre={p.nombre || p.email} color={i.color} size={compacto ? 68 : 84} fs={compacto ? 23 : 28} borde={3} style={{ background: 'var(--surface)' }} />
+        <Avatar nombre={p.nombre || identidadVisible(p.email)} color={i.color} size={compacto ? 68 : 84} fs={compacto ? 23 : 28} borde={3} style={{ background: 'var(--surface)' }} />
         <div style={sx('position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:6px;padding:5px 9px;border-radius:99px;background:var(--surface);font-size:11px;font-weight:600;white-space:nowrap;max-width:calc(100% - 100px);overflow:hidden;text-overflow:ellipsis')}>
           <span style={{ ...sx('flex:none;width:7px;height:7px;border-radius:99px'), background: i.estado.dot }} />{i.estado.t}
         </div>
@@ -99,10 +100,15 @@ export function EncabezadoFicha({ i, empresaNombre, onDeshacerDel, onQuitarAlta,
         )}
       </div>
       <div style={sx('padding:14px 16px 16px;display:flex;flex-direction:column;gap:4px')}>
-        <div style={{ ...display, ...sx('font-weight:700;font-size:21px;line-height:1.15'), textDecoration: i.del ? 'line-through' : 'none' }}>{p.nombre || p.email}</div>
+        <div style={{ ...display, ...sx('font-weight:700;font-size:21px;line-height:1.15'), textDecoration: i.del ? 'line-through' : 'none' }}>{p.nombre || identidadVisible(p.email)}</div>
         <div style={sx('font-size:12.5px;color:var(--muted)')}>{sub}</div>
         <div style={{ ...mono, ...sx('display:flex;flex-direction:column;gap:3px;margin-top:8px;font-size:11px;color:var(--muted);word-break:break-all') }}>
-          {p.email && <span>{p.email}</span>}
+          {/* Sin email real (db/78): mostrar la dirección sintética como si fuera un contacto de
+              verdad confundiría — se rotula "Usuario" y se muestra solo la parte que la persona
+              tipea al entrar. */}
+          {p.email && (esEmailSintetico(p.email)
+            ? <span>Usuario: {identidadVisible(p.email)}</span>
+            : <span>{p.email}</span>)}
           {p.telefono && <span>{p.telefono}</span>}
         </div>
         {i.del && (
@@ -369,13 +375,24 @@ function EditorGps({ valor, original, onChange, estado }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Zona de peligro
 // ─────────────────────────────────────────────────────────────────────────────
-export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar }) {
+export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar, onResetearPass, resetPidiendo }) {
   if (!perm.peligro) return null
   const activoEf = i.activoEf
   return (
     <div style={sx('border:1px solid var(--danger);border-radius:16px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px;background:var(--surface)')}>
       <div style={{ ...display, ...sx('font-weight:600;font-size:14px;color:var(--danger)') }}>Zona de peligro</div>
       {perm.bloqueo && <div style={sx('font-size:12px;line-height:1.5;padding:10px 11px;border-radius:10px;background:var(--surface2)')}>{perm.bloqueo}</div>}
+      {perm.resetearPass && (
+        <div style={sx('display:flex;align-items:center;gap:10px')}>
+          <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>
+            Le genera una contraseña nueva YA — se la pasás vos. Tiene que cambiarla al entrar.
+          </div>
+          <button type="button" onClick={onResetearPass} disabled={resetPidiendo} className="lu-press"
+            style={{ ...sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)'), ...(resetPidiendo ? { opacity: 0.6, cursor: 'not-allowed' } : null) }}>
+            {resetPidiendo ? 'Reseteando…' : 'Resetear contraseña'}
+          </button>
+        </div>
+      )}
       {perm.desactivar && (
         <div style={sx('display:flex;align-items:center;gap:10px')}>
           <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>

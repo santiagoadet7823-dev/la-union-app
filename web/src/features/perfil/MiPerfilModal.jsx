@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { initials } from '../../lib/format'
 import { subirAvatar } from '../../services/data/productoImagen'
 import Overlay from '../../components/Overlay'
@@ -114,7 +114,7 @@ export default function MiPerfilModal({ onClose, onToast }) {
       <Field label="Cuenta">
         <div style={sx('display:flex;align-items:center;gap:8px;flex-wrap:wrap')}>
           <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:600;color:var(--deep)'), background: 'var(--surface2)', border: '1px solid var(--line)' }}>{ROLE_LABEL[rol] || rol || '—'}</span>
-          <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);word-break:break-all')}>{user?.email || ''}</span>
+          <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);word-break:break-all')}>{identidadVisible(user?.email)}</span>
         </div>
       </Field>
     </Overlay>

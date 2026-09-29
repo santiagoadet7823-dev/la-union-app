@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useRef, useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, identidadVisible } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
 import { isNative } from '../services/platform'
 import Logo from './Logo'
@@ -46,7 +46,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   const { perfil, user, rol } = useAuth()
   const { isMobile } = useDevice()
   const meta = ROLE_META[rol] || { label: rol || '—', color: 'var(--muted)' }
-  const nombre = perfil?.nombre || user?.email || 'Usuario'
+  const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
 
   const [acctOpen, setAcctOpen] = useState(false)
   // 🩸 El estado vive ACÁ y no adentro del menú de cuenta (20/08/2026). Si colgara del menú, al
@@ -129,7 +129,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
           {!isMobile && (
             <div style={{ textAlign: 'right', lineHeight: 1.15 }}>
               <div style={{ fontSize: 12.5, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
-              <div style={{ fontSize: 9.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{user?.email}</div>
+              <div style={{ fontSize: 9.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{identidadVisible(user?.email)}</div>
             </div>
           )}
           <span style={{

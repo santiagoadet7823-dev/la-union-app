@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { supabase } from '../../../services/supabase'
+import { identidadVisible } from '../../../context/AuthContext'
 import { fmtPesos, hoyStr } from '../../../lib/format'
 import useMetricasActividad from '../../../hooks/useMetricasActividad'
 import { ORDEN_ROLES, ROL_GRUPO, ROL_UNO, esRastreado } from './modelo'
@@ -157,7 +158,7 @@ export default function ResumenEmpresa({ e, v, onPersona, onCrear, onIrA, soloLe
               {pend.map((i) => (
                 <div key={i.p.id} style={sx('display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)')}>
                   <div role="button" tabIndex={0} onClick={() => onPersona(i.p.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') onPersona(i.p.id) }} style={sx('flex:1;min-width:0;cursor:pointer')}>
-                    <div style={sx('font-weight:600;font-size:12.5px')}>{i.p.nombre || i.p.email}</div>
+                    <div style={sx('font-weight:600;font-size:12.5px')}>{i.p.nombre || identidadVisible(i.p.email)}</div>
                     <div style={sx('font-size:11px;color:var(--muted)')}>{i.nuevo ? 'Alta nueva · se crea al guardar' : `Entró con Google el ${new Date(i.p.created_at).toLocaleDateString('es-AR')}`}</div>
                   </div>
                   {!i.nuevo && (

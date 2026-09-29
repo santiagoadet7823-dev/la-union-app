@@ -9,7 +9,9 @@ import { valorOriginal, iguales, generarPassword } from './modelo'
  *
  *   cambios: { [idPersona]: { [campo]: valor } }      campos de `modelo.js`
  *   del:     { [idPersona]: 'eliminar' | 'purgar' }
- *   altas:   { [idTemporal]: { nombre, email, password, rol, nivel, id_empresa, categorias, numero } }
+ *   altas:   { [idTemporal]: { nombre, email, usuario, password, rol, nivel, id_empresa, categorias, numero } }
+ *            (db/78) `email` y `usuario` son excluyentes: una cuenta sin email real trae `usuario`
+ *            y `email: ''`.
  *   cob:     { [idCobertura]: { zona, por, pid } }   coberturas del día a cancelar (sólo admin/super)
  *
  * SE GUARDA EN EL DISPOSITIVO, por usuario (`lu-usuarios-borrador-<uid>`). Es lo que hace que

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { glassBlur } from '../../lib/glass'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { useDevice } from '../../context/DeviceContext'
 import { apilarAtras } from '../../services/atras'
@@ -109,7 +109,7 @@ export default function MarketingView() {
     setFiltroPedido({ f, nonce: nonceRef.current })
   }
 
-  const nombre = perfil?.nombre || user?.email || 'Marketing'
+  const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Marketing'
 
   return (
     <div style={sx('position:fixed;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text);font-family:var(--font-body)')}>

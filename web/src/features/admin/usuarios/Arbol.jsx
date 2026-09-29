@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
+import { identidadVisible } from '../../../context/AuthContext'
 import { ORDEN_ROLES, ROL_GRUPO, ROL_UNO } from './modelo'
 import { Avatar, Segmentado, IcoBuscar, IcoChevron, IcoAviso, IcoEdificio, mono, display, rotulo } from './ui'
 
@@ -43,9 +44,9 @@ export function FilaPersona({ i, sel, onClick, etiqueta, alto = 46, sub }) {
   return (
     <div role="button" tabIndex={0} onClick={onClick} onKeyDown={(e) => { if (e.key === 'Enter') onClick() }}
       style={{ ...sx('display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;cursor:pointer;box-sizing:border-box'), minHeight: alto, background: sel ? 'var(--primary-tint)' : 'transparent', opacity: i.estado.k === 'off' ? 0.6 : 1 }}>
-      <Avatar nombre={i.p.nombre || i.p.email} color={i.color} dot={i.estado.dot} />
+      <Avatar nombre={i.p.nombre || identidadVisible(i.p.email)} color={i.color} dot={i.estado.dot} />
       <div style={sx('flex:1;min-width:0')}>
-        <div style={{ ...sx('font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), textDecoration: tachada ? 'line-through' : 'none' }}>{i.p.nombre || i.p.email}</div>
+        <div style={{ ...sx('font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), textDecoration: tachada ? 'line-through' : 'none' }}>{i.p.nombre || identidadVisible(i.p.email)}</div>
         <div style={sx('font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{sub ?? i.sub}</div>
       </div>
       {etiqueta && <span style={sx('flex:none;font-size:10.5px;font-weight:600;padding:3px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{etiqueta}</span>}

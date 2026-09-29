@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
-import { useAuth, leerUltimoIngreso, quiereRecordar, setRecordarUsuario } from '../../context/AuthContext'
+import { useAuth, leerUltimoIngreso, quiereRecordar, setRecordarUsuario, identidadVisible } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { APP_VERSION } from '../../version'
 import { initials } from '../../lib/format'
@@ -64,19 +64,22 @@ export default function LoginView({ onTablet }) {
   // instante después, la tarjeta aparecería de golpe y la pantalla saltaría en el primer render.
   const [ultimo] = useState(leerUltimoIngreso)
 
-  const [form, setForm] = useState(false)          // formulario de email desplegado
-  const [email, setEmail] = useState(() => (leerUltimoIngreso()?.email) || '')
+  const [form, setForm] = useState(false)          // formulario de usuario/email desplegado
+  // Puede ser un usuario (cuentas sin email, db/78) o un email real; AuthContext.signInWithPassword
+  // decide cuál es por la presencia de `@`. `leerUltimoIngreso` siempre trae el email real de
+  // auth.users (sintético o no) — para precargar el campo, la parte visible es la que importa.
+  const [entrada, setEntrada] = useState(() => identidadVisible(leerUltimoIngreso()?.email))
   const [password, setPassword] = useState('')
   const [verPass, setVerPass] = useState(false)
   const [recordar, setRecordar] = useState(quiereRecordar)
   const [cargando, setCargando] = useState(null)   // 'google' | 'email' | null
   const [detalle, setDetalle] = useState(false)
-  const [hoja, setHoja] = useState(null)           // 'recuperar' | 'enlace' | 'acceso' | null
+  const [hoja, setHoja] = useState(null)           // 'recuperar' | 'enlace' | 'sin-email' | 'acceso' | null
   const [mailRecuperar, setMailRecuperar] = useState('')
   const [enviando, setEnviando] = useState(false)
 
   const tipoError = authError ? clasificar(authError) : null
-  const puedeEnviar = hasSupabase && email.trim() && password && !cargando
+  const puedeEnviar = hasSupabase && entrada.trim() && password && !cargando
 
   async function entrarConEmail(e) {
     e.preventDefault()
@@ -84,7 +87,7 @@ export default function LoginView({ onTablet }) {
     setCargando('email'); setDetalle(false)
     // El onAuthStateChange del AuthProvider levanta la sesión y cambia de pantalla; solo hay que
     // reactivar el botón si hubo error (si entró, esta vista se desmonta sola).
-    const { error } = await signInWithPassword({ email, password })
+    const { error } = await signInWithPassword({ entrada, password })
     if (error) setCargando(null)
   }
 
@@ -94,10 +97,25 @@ export default function LoginView({ onTablet }) {
     try { await signInWithGoogle() } finally { setCargando(null) }
   }
 
+  /** Abre la hoja de recuperación correcta según lo que hay tipeado: con `@` es un email de
+   * verdad (recuperación por enlace); sin `@` es un usuario y esa cuenta no tiene mail. */
+  function abrirRecuperar() {
+    const destino = entrada.trim()
+    setMailRecuperar(destino)
+    setHoja(destino.includes('@') || !destino ? 'recuperar' : 'sin-email')
+  }
+
   async function pedirEnlace() {
+    const destino = (mailRecuperar || entrada).trim()
+    // Una cuenta sin email real (db/78) no tiene a dónde mandarle nada — el dominio sintético
+    // está reservado por la RFC 2606 y ningún correo llega ahí jamás. Sin `@` no hay forma de
+    // distinguir "escribió mal su email" de "es un usuario": se asume usuario, que es el caso que
+    // de verdad necesita otra salida (el reseteo lo hace un admin, Edge Function
+    // resetear-contrasena, desde el menú Usuarios).
+    if (!destino.includes('@')) { setHoja('sin-email'); return }
     if (enviando) return
     setEnviando(true)
-    await enviarEnlaceContrasena(mailRecuperar || email)
+    await enviarEnlaceContrasena(destino)
     setEnviando(false)
     // Se muestra siempre la misma confirmación, haya o no cuenta con ese email: responder
     // distinto dejaría averiguar quién tiene cuenta en el sistema.
@@ -163,7 +181,7 @@ export default function LoginView({ onTablet }) {
             </div>
             <div style={{ ...sx('display:flex;margin-top:12px;flex-wrap:wrap'), '--gx': '8px' }}>
               {tipoError === 'pass' && (
-                <button onClick={() => { setMailRecuperar(email); setHoja('recuperar') }} className="lu-press"
+                <button onClick={abrirRecuperar} className="lu-press"
                   style={sx('min-height:44px;padding:0 16px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);color:var(--text);font-size:var(--fs-sm);font-weight:600;cursor:pointer')}>
                   Recuperar contraseña
                 </button>
@@ -198,20 +216,23 @@ export default function LoginView({ onTablet }) {
 
           {/* Tarjeta de la última cuenta. OJO: no entra sola — en el APK, Google abre igual el
               selector de cuentas del sistema. Lo que ahorra es no tener que acordarse con cuál
-              de las cuentas del teléfono se entra, que es el error real que se comete. */}
-          {ultimo && !form && (
+              de las cuentas del teléfono se entra, que es el error real que se comete.
+              Solo si la ÚLTIMA vez entró con Google (29/09/2026): para usuario/contraseña el
+              botón de acá abajo dispararía el selector de Google para una cuenta que no tiene
+              ninguna identidad Google — el campo del formulario ya queda precargado en su lugar. */}
+          {ultimo && ultimo.metodo === 'google' && !form && (
             <button onClick={entrarConGoogle} disabled={!hasSupabase || !!cargando} className="lu-press"
               style={{ ...sx('display:flex;align-items:center;width:100%;min-height:64px;padding:10px 16px;border:none;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);text-align:left;cursor:pointer;box-shadow:var(--shadow-lg)'), '--gx': '12px' }}>
               <span style={sx('width:42px;height:42px;flex:none;border-radius:var(--r-pill);background:rgba(255,255,255,.9);color:#0B2B2A;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:var(--fs-lg);overflow:hidden')}>
                 {ultimo.foto
                   ? <img src={ultimo.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : initials(ultimo.nombre || ultimo.email)}
+                  : initials(ultimo.nombre || identidadVisible(ultimo.email))}
               </span>
               <span style={sx('flex:1;min-width:0')}>
                 <span style={sx('display:block;font-size:var(--fs-lg);font-weight:700;line-height:1.2')}>
-                  Continuar como {(ultimo.nombre || ultimo.email).split(' ')[0]}
+                  Continuar como {(ultimo.nombre || identidadVisible(ultimo.email)).split(' ')[0]}
                 </span>
-                <span style={sx('display:block;font-size:var(--fs-sm);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{ultimo.email}</span>
+                <span style={sx('display:block;font-size:var(--fs-sm);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{identidadVisible(ultimo.email)}</span>
               </span>
               {cargando === 'google'
                 ? <span className="lu-spin" style={sx('width:22px;height:22px;flex:none;border-radius:var(--r-pill);border:2.5px solid rgba(255,255,255,.35);border-top-color:var(--on-primary)')} />
@@ -226,26 +247,28 @@ export default function LoginView({ onTablet }) {
               : <GoogleIcon />}
             {/* El texto va en un <span> y no suelto: la separación de Chrome 79 la da
                 `[style*="--gx"] > * + *`, y ese selector NO alcanza a un nodo de texto. */}
-            <span>{cargando === 'google' ? 'Elegí tu cuenta…' : (ultimo && !form ? 'Usar otra cuenta de Google' : 'Continuar con Google')}</span>
+            <span>{cargando === 'google' ? 'Elegí tu cuenta…' : (ultimo && ultimo.metodo === 'google' && !form ? 'Usar otra cuenta de Google' : 'Continuar con Google')}</span>
           </button>
 
-          {/* ---- Camino secundario: email + contraseña (1 de 14) ---- */}
+          {/* ---- Camino secundario: usuario/email + contraseña (1 de 14) ---- */}
           {!form ? (
             <button onClick={() => setForm(true)} className="lu-press"
               style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line);color:var(--muted);font-size:var(--fs-md);font-weight:600;cursor:pointer'), '--gx': '8px' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2.8" y="5" width="18.4" height="14" rx="2.6" /><path d="m3.6 6.6 8.4 6 8.4-6" /></svg>
-              <span>Ingresar con email y contraseña</span>
+              <span>Ingresar con usuario y contraseña</span>
             </button>
           ) : (
             <form onSubmit={entrarConEmail} className="lu-rise" style={{ ...sx('display:flex;flex-direction:column;padding-top:4px'), '--gy': '10px' }}>
               <div style={sx('display:flex;align-items:center;justify-content:space-between')}>
-                <span style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.06em;text-transform:uppercase')}>Email y contraseña</span>
+                <span style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.06em;text-transform:uppercase')}>Usuario y contraseña</span>
                 <button type="button" onClick={() => setForm(false)}
                   style={sx('min-height:32px;padding:0 8px;background:transparent;border:none;font-size:var(--fs-sm);color:var(--muted);cursor:pointer')}>Cerrar</button>
               </div>
+              {/* `type="text"` a propósito, no `email`: un nombre de usuario (cuentas sin email
+                  real, db/78) no es una dirección válida y el navegador lo marcaría en rojo. */}
               <input
-                type="email" autoComplete="username" inputMode="email" placeholder="Email" aria-label="Email"
-                value={email} onChange={(e) => setEmail(e.target.value)} disabled={!hasSupabase || !!cargando}
+                type="text" autoComplete="username" placeholder="Usuario o email" aria-label="Usuario o email"
+                value={entrada} onChange={(e) => setEntrada(e.target.value)} disabled={!hasSupabase || !!cargando}
                 className="lu-input" style={campo}
               />
               <div style={sx('position:relative')}>
@@ -272,7 +295,7 @@ export default function LoginView({ onTablet }) {
                     style={{ width: 22, height: 22, accentColor: 'var(--primary)', cursor: 'pointer' }} />
                   <span style={sx('font-size:var(--fs-sm);color:var(--muted)')}>Recordar mi usuario</span>
                 </label>
-                <button type="button" onClick={() => { setMailRecuperar(email); setHoja('recuperar') }}
+                <button type="button" onClick={abrirRecuperar}
                   style={sx('min-height:44px;background:transparent;border:none;font-size:var(--fs-sm);font-weight:600;color:var(--deep);cursor:pointer')}>
                   Olvidé mi contraseña
                 </button>
@@ -282,9 +305,10 @@ export default function LoginView({ onTablet }) {
                 {cargando === 'email' && <span className="lu-spin" style={{ width: 20, height: 20, borderRadius: 999, border: '2.5px solid rgba(0,0,0,.18)', borderTopColor: 'var(--on-primary)' }} />}
                 <span>{cargando === 'email' ? 'Entrando…' : 'Ingresar'}</span>
               </button>
-              {/* Que quede escrito en la pantalla, no solo en el código: se guarda el email y nada más. */}
+              {/* Que quede escrito en la pantalla, no solo en el código: se guarda el usuario/email
+                  y nada más. */}
               <div style={sx('font-size:var(--fs-xs);color:var(--faint);line-height:1.5')}>
-                {recordar ? 'Guardamos solo el email, nunca la contraseña.' : 'No se va a guardar tu email en este teléfono.'}
+                {recordar ? 'Guardamos solo el usuario o email, nunca la contraseña.' : 'No se va a guardar esto en este teléfono.'}
               </div>
             </form>
           )}
@@ -342,8 +366,28 @@ export default function LoginView({ onTablet }) {
           {/* Sin prometer una duración: el vencimiento lo fija la config de Auth de Supabase y
               escribir un número que después no coincide es peor que no decir nada. */}
           <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.55')}>
-            Si <b style={{ color: 'var(--text)' }}>{(mailRecuperar || email || 'ese email').trim()}</b> tiene una cuenta,
+            Si <b style={{ color: 'var(--text)' }}>{(mailRecuperar || entrada || 'ese email').trim()}</b> tiene una cuenta,
             le va a llegar el enlace. Revisá también el correo no deseado.
+          </div>
+          <button onClick={() => setHoja(null)} className="lu-press"
+            style={sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin-top:18px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700;cursor:pointer')}>
+            Entendido
+          </button>
+        </div>
+      </Overlay>
+
+      {/* Cuentas sin email real (db/78): el enlace por mail no tiene a dónde llegar. La única
+          salida es que un administrador la resetee desde el menú Usuarios (Edge Function
+          resetear-contrasena) y le dicte la contraseña nueva por teléfono. */}
+      <Overlay open={hoja === 'sin-email'} onClose={() => setHoja(null)} variant="sheet" title="Esta cuenta no tiene email">
+        <div style={sx('text-align:center;padding:4px 0 8px')}>
+          <div style={sx('width:64px;height:64px;margin:0 auto 14px;border-radius:var(--r-pill);background:var(--warning-tint);display:grid;place-items:center')}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.8" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2.4" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /><path d="M12 15v2" /></svg>
+          </div>
+          <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.55')}>
+            Tu cuenta entra con usuario, no con email, así que no hay dónde mandarte un enlace.
+            Pedile a tu administrador que te resetee la contraseña desde el menú Usuarios — te va a
+            dar una nueva por teléfono.
           </div>
           <button onClick={() => setHoja(null)} className="lu-press"
             style={sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin-top:18px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700;cursor:pointer')}>

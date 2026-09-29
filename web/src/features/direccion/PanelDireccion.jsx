@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useCatalog } from '../../context/CatalogContext'
@@ -421,7 +421,7 @@ export default function PanelDireccion() {
               aria-label="Mi cuenta"
               style={sx('width:36px;height:36px;flex:none;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);color:var(--deep);font-family:var(--font-display);font-size:var(--fs-sm);font-weight:700;cursor:pointer')}
             >
-              {initials(perfil?.nombre || perfil?.email || '?')}
+              {initials(perfil?.nombre || identidadVisible(perfil?.email) || '?')}
             </button>
           </div>
         </div>

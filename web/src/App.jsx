@@ -15,6 +15,7 @@ import LoginView from './features/auth/LoginView'
 import ParearTablet from './features/vidriera/ParearTablet'
 import VidrieraTablet from './features/vidriera/VidrieraTablet'
 import PendienteView from './features/auth/PendienteView'
+import CambioContrasenaObligatorio from './features/auth/CambioContrasenaObligatorio'
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { sx } from './lib/sx'
 import { isNative } from './services/platform'
@@ -300,6 +301,9 @@ function Gate() {
   // Sesión OK pero el perfil aún no cargó (o falló): loader acotado, no "Cargando…" infinito.
   if (!perfil && (perfilLoading || perfilError)) return <CargandoPerfil error={perfilError} onRetry={refetchPerfil} />
   if (!aprobado) return <PendienteView />
+  // Reseteo de un admin (db/78, resetear-contrasena): bloquea TODO hasta que ponga una propia.
+  // Va DESPUÉS de "aprobado" — no tiene sentido pedirle esto a una cuenta que ni pasó ese gate.
+  if (perfil?.debe_cambiar_contrasena) return <CambioContrasenaObligatorio />
 
   // 🚨 TenantProvider va ENTRE Auth y Catalog (PLAN_SAAS §3.2), y ese lugar no es casual: tiene
   // que ver el perfil (para saber si es superadmin) y quedar por ENCIMA de todo lo que lee datos

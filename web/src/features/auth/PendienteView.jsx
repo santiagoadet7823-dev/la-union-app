@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { supabase } from '../../services/supabase'
 
@@ -78,7 +78,7 @@ export default function PendienteView() {
               : 'Entraste bien, pero tu cuenta está desactivada. Un administrador tiene que habilitarla de nuevo.'}
           </div>
           <div style={sx('padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface2);font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis')}>
-            {user?.email}
+            {identidadVisible(user?.email)}
           </div>
         </div>
 

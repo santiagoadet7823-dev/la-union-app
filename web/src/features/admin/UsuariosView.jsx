@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useCatalog } from '../../context/CatalogContext'
@@ -103,7 +103,7 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
     if (!datos) return null
     const empresaNombre = Object.fromEntries(datos.empresas.map((e) => [e.id, e.nombre]))
     const categoriaNombre = Object.fromEntries(datos.categorias.map((c) => [c.id, c.nombre]))
-    const nombres = Object.fromEntries(datos.perfiles.map((p) => [p.id, p.nombre || p.email]))
+    const nombres = Object.fromEntries(datos.perfiles.map((p) => [p.id, p.nombre || identidadVisible(p.email)]))
     const porIdReal = Object.fromEntries(datos.perfiles.map((p) => [p.id, p]))
     const zonaPorId = Object.fromEntries(datos.zonas.map((z) => [z.id, { ...z, clientes: datos.clientesOk ? datos.clientesPorZona[z.id] || 0 : null }]))
 
@@ -123,7 +123,7 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
 
     // Altas del borrador como personas "nuevas".
     const altas = Object.entries(bor.b.altas).map(([id, a]) => ({
-      id, nombre: a.nombre, email: a.email, rol: a.rol, nivel: a.nivel, id_empresa: a.id_empresa, activo: false, permisos: [],
+      id, nombre: a.nombre, email: a.email, usuario: a.usuario || null, rol: a.rol, nivel: a.nivel, id_empresa: a.id_empresa, activo: false, permisos: [],
       categorias: a.categorias || [], numero: a.numero, created_at: new Date().toISOString(), _nuevo: true,
     }))
 
@@ -298,9 +298,11 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
   const nombresCambios = [...new Set([
     ...Object.keys(bor.b.cambios).map((id) => m.nombres[id]),
     ...Object.keys(bor.b.del).map((id) => m.nombres[id]),
-    ...Object.values(bor.b.altas).map((a) => a.nombre || a.email),
+    ...Object.values(bor.b.altas).map((a) => a.nombre || a.usuario || identidadVisible(a.email)),
   ].filter(Boolean))]
   const emailsExistentes = new Set([...datos.perfiles.map((p) => (p.email || '').toLowerCase()), ...Object.values(bor.b.altas).map((a) => a.email)])
+  // Cuentas sin email (db/78): mismo criterio de duplicados, sobre `usuario` en vez de `email`.
+  const usuariosExistentes = new Set([...datos.perfiles.map((p) => (p.usuario || '').toLowerCase()).filter(Boolean), ...Object.values(bor.b.altas).map((a) => a.usuario).filter(Boolean)])
   const onCrear = soloLectura ? null : crear
 
   const arbol = (
@@ -330,7 +332,7 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
   const migas = [
     esSuper && empSelId && { l: m.empresaNombre[empSelId] || (empSelId === '_sin' ? 'Sin empresa' : 'Empresa'), go: () => abrirEmpresa(empSelId) },
     personaSel && { l: ROL_GRUPO[personaSel.rolEf] || 'Sin rol' },
-    personaSel && { l: personaSel.p.nombre || personaSel.p.email },
+    personaSel && { l: personaSel.p.nombre || identidadVisible(personaSel.p.email) },
   ].filter(Boolean)
 
   const dialogos = (
@@ -345,14 +347,14 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
           else bor.marcarDel(i.p.id, modo)
           setPeligro(null)
         }} />
-      <AltaUsuario estado={alta} onClose={() => setAlta(null)} ctx={ctx} emailsExistentes={emailsExistentes}
+      <AltaUsuario estado={alta} onClose={() => setAlta(null)} ctx={ctx} emailsExistentes={emailsExistentes} usuariosExistentes={usuariosExistentes}
         onAgregar={(datosAlta) => {
           const id = bor.agregarAlta({ ...datosAlta, password: datosAlta.password || generarPassword() })
           setAlta(null)
           abrirPersona(id)
         }} />
       <Overlay open={!!replay} onClose={() => setReplay(null)} maxWidth={1180} title="Reproducir jornada"
-        subtitle={replay ? `${replay.i.p.nombre || replay.i.p.email}` : ''}>
+        subtitle={replay ? `${replay.i.p.nombre || identidadVisible(replay.i.p.email)}` : ''}>
         {replay && (
           <Suspense fallback={<div style={sx('padding:30px;text-align:center;color:var(--muted)')}>Cargando…</div>}>
             <ReplayJornada onToast={onToast} userId={replay.i.p.id} fecha={replay.dia} idEmpresa={replay.i.p.id_empresa} nombre={replay.i.p.nombre} />
