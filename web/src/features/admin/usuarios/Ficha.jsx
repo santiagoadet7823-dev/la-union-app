@@ -9,7 +9,7 @@ import {
   EncabezadoFicha, TarjetasIdentidad, BloqueAsignaciones, ZonaPeligro, BloqueActividad, Historial,
   PedidosAnulados, TelefonoAlertas, RecorridoCard, SinRastreo, accesosIconos,
 } from './FichaBloques'
-import { ResultadoReset } from './Dialogos'
+import { ResultadoReset, ResultadoResetMfa } from './Dialogos'
 import { tarjeta } from './ui'
 
 /**
@@ -57,6 +57,9 @@ export function permisosSobre(i, v) {
     // propia cuenta (ahí es "Cambiar contraseña" en Mi cuenta), ni para un pendiente sin rol
     // todavía, ni para alguien ya marcado para eliminar en el borrador.
     resetearPass: !intocable && !propia && !esPendiente(p) && !i.del,
+    // Resetear 2FA (db/80, Tarea 2.2): mismas condiciones. La propia cuenta se recupera sola con
+    // un código de recuperación (MfaVerificar) o reemplazando el factor ya autenticada.
+    resetearMfa: !intocable && !propia && !esPendiente(p) && !i.del,
   }
 }
 
@@ -82,6 +85,17 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
     const code = await leerErrorInvoke(data, error)
     if (code || error || !data?.ok) { setReset({ error: traducirError(code || error?.message) }); return }
     setReset({ password: data.password, usuario: data.usuario, email: data.email })
+  }
+
+  // Reseteo de 2FA por un admin (db/80, Edge Function mfa-resetear). Mismo criterio que
+  // resetearPass: inmediato contra el servidor, sin borrador — no hay "deshacer" un factor borrado.
+  const [resetMfa, setResetMfa] = useState(null) // null | 'pidiendo' | { ok: true } | { error }
+  async function resetearMfa() {
+    setResetMfa('pidiendo')
+    const { data, error } = await supabase.functions.invoke('mfa-resetear', { body: { id: p.id } })
+    const code = await leerErrorInvoke(data, error)
+    if (code || error || !data?.ok) { setResetMfa({ error: traducirError(code || error?.message) }); return }
+    setResetMfa({ ok: true })
   }
 
   const aprobar = esPendiente(p) && perm.algo ? {
@@ -114,8 +128,10 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
         onDesactivar={() => onPeligro({ i, modo: 'desactivar' })}
         onReactivar={() => bor.setCampo(p, 'activo', true)}
         onEliminar={(modo) => onPeligro({ i, modo })}
-        onResetearPass={resetearPass} resetPidiendo={reset === 'pidiendo'} />
+        onResetearPass={resetearPass} resetPidiendo={reset === 'pidiendo'}
+        onResetearMfa={resetearMfa} resetMfaPidiendo={resetMfa === 'pidiendo'} />
       <ResultadoReset resultado={reset} onClose={() => setReset(null)} />
+      <ResultadoResetMfa resultado={resetMfa} onClose={() => setResetMfa(null)} />
     </>
   )
 

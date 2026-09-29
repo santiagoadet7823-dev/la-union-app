@@ -16,6 +16,8 @@ import ParearTablet from './features/vidriera/ParearTablet'
 import VidrieraTablet from './features/vidriera/VidrieraTablet'
 import PendienteView from './features/auth/PendienteView'
 import CambioContrasenaObligatorio from './features/auth/CambioContrasenaObligatorio'
+import MfaActivar from './features/auth/MfaActivar'
+import MfaVerificar from './features/auth/MfaVerificar'
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { sx } from './lib/sx'
 import { isNative } from './services/platform'
@@ -97,11 +99,11 @@ function Cargando() {
  * Hay sesión pero el perfil todavía no cargó (o falló por red lenta/cortada). Loader
  * acotado con reintento — nunca queda trabado como el "Cargando…" genérico.
  */
-function CargandoPerfil({ error, onRetry }) {
+function CargandoPerfil({ error, onRetry, mensaje = 'tu perfil' }) {
   return (
     <div style={sx('min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg-app);color:var(--text);text-align:center;padding:24px')}>
       <div style={sx('font-family:var(--font-mono);font-size:13px;color:var(--muted)')}>
-        {error ? 'No pudimos cargar tu perfil (revisá tu conexión).' : 'Cargando tu perfil…'}
+        {error ? `No pudimos cargar ${mensaje} (revisá tu conexión).` : `Cargando ${mensaje}…`}
       </div>
       {error && (
         <button onClick={onRetry} style={sx('min-height:46px;padding:0 22px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer')}>
@@ -273,7 +275,7 @@ function AuthedApp() {
 }
 
 function Gate() {
-  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil } = useAuth()
+  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa } = useAuth()
   /**
    * MODO VIDRIERA — la tablet del cliente. Va ACÁ, antes de todo lo demás, porque **la tablet no se
    * loguea nunca**: no toca Supabase, no tiene sesión ni perfil ni empresa, y todo lo que muestra se
@@ -304,6 +306,12 @@ function Gate() {
   // Reseteo de un admin (db/78, resetear-contrasena): bloquea TODO hasta que ponga una propia.
   // Va DESPUÉS de "aprobado" — no tiene sentido pedirle esto a una cuenta que ni pasó ese gate.
   if (perfil?.debe_cambiar_contrasena) return <CambioContrasenaObligatorio />
+  // 2FA obligatoria (db/80, Tarea 2.2 fase 1). Tabla oficial de Supabase (currentLevel/nextLevel):
+  // null todavía no se consultó (recién montó la sesión) → no dejar pasar un instante a la app.
+  // Con error, loader acotado con reintento — igual que CargandoPerfil, nunca un "Cargando…" fijo.
+  if (mfaNivel === null) return <CargandoPerfil error={mfaError} onRetry={refetchMfa} mensaje="el estado de tu verificación" />
+  if (mfaNivel === 'aal1' && mfaSiguiente === 'aal1') return <MfaActivar />   // sin ningún factor
+  if (mfaSiguiente === 'aal2' && mfaNivel !== 'aal2') return <MfaVerificar /> // factor sin verificar esta sesión
 
   // 🚨 TenantProvider va ENTRE Auth y Catalog (PLAN_SAAS §3.2), y ese lugar no es casual: tiene
   // que ver el perfil (para saber si es superadmin) y quedar por ENCIMA de todo lo que lee datos

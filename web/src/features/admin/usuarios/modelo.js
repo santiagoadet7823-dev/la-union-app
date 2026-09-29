@@ -145,11 +145,13 @@ const MSG = {
   'sin-empresa': 'falta la empresa',
   'codigo-invalido': 'el código ERP tiene que ser un número',
   'error-alta': 'el servidor no pudo crear la cuenta',
-  // eliminar-usuario / resetear-contrasena
+  // eliminar-usuario / resetear-contrasena / mfa-resetear
   'no-existe': 'la cuenta ya no existe',
   'no-existe-o-sin-permiso': 'la cuenta no existe, o no te toca',
   'sin-perfil': 'tu cuenta no está habilitada para esto',
   'payload-invalido': 'pedido inválido',
+  'requiere-aal2': 'para esto hace falta que vos mismo hayas verificado tu 2FA en esta sesión',
+  'no-se-pudo-completar': 'no se pudo completar del todo — probá de nuevo en un momento',
 }
 
 export function traducirError(err) {

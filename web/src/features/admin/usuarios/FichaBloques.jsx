@@ -375,7 +375,7 @@ function EditorGps({ valor, original, onChange, estado }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Zona de peligro
 // ─────────────────────────────────────────────────────────────────────────────
-export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar, onResetearPass, resetPidiendo }) {
+export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar, onResetearPass, resetPidiendo, onResetearMfa, resetMfaPidiendo }) {
   if (!perm.peligro) return null
   const activoEf = i.activoEf
   return (
@@ -390,6 +390,17 @@ export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar, on
           <button type="button" onClick={onResetearPass} disabled={resetPidiendo} className="lu-press"
             style={{ ...sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)'), ...(resetPidiendo ? { opacity: 0.6, cursor: 'not-allowed' } : null) }}>
             {resetPidiendo ? 'Reseteando…' : 'Resetear contraseña'}
+          </button>
+        </div>
+      )}
+      {perm.resetearMfa && (
+        <div style={sx('display:flex;align-items:center;gap:10px')}>
+          <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>
+            Le borra la verificación en dos pasos YA. Tiene que activar una nueva al entrar.
+          </div>
+          <button type="button" onClick={onResetearMfa} disabled={resetMfaPidiendo} className="lu-press"
+            style={{ ...sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)'), ...(resetMfaPidiendo ? { opacity: 0.6, cursor: 'not-allowed' } : null) }}>
+            {resetMfaPidiendo ? 'Reseteando…' : 'Resetear 2FA'}
           </button>
         </div>
       )}

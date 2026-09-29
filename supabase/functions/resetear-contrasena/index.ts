@@ -79,12 +79,6 @@ Deno.serve(async (req) => {
     if (objetivo.rol === 'superadmin' && yo.rol !== 'superadmin') return json({ error: 'sin-permiso-superadmin' }, 403)
 
     // 4) Reseteo con service_role.
-    // ⚠️ SIN VERIFICAR CONTRA LA BASE VIVA (29/09/2026): cambiar la contraseña por acá debería
-    // revocar los refresh tokens ya emitidos para esta cuenta (comportamiento documentado de
-    // GoTrue), pero no se probó en este proyecto que una sesión abierta en OTRO teléfono se corte
-    // de verdad. Antes de contar con esto para el caso "recuperar un teléfono robado/perdido",
-    // reproducirlo: loguear una sesión, resetear desde acá, y confirmar que esa sesión deja de
-    // servir en el próximo refresh (no solo que la contraseña vieja ya no entra).
     const admin = createClient(SB_URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
     const nuevaPassword = generarPassword()
     const { error: errPass } = await admin.auth.admin.updateUserById(id, { password: nuevaPassword })
@@ -93,6 +87,15 @@ Deno.serve(async (req) => {
     // `debe_cambiar_contrasena` con service_role: el trigger de db/77 no aplica sin auth.uid().
     const { error: errFlag } = await admin.from('perfiles').update({ debe_cambiar_contrasena: true }).eq('id', id)
     if (errFlag) return json({ error: errFlag.message }, 500)
+
+    // 🩸 CIERRE DE SESIÓN, YA VERIFICADO (29/09/2026, db/80). Esto vivía marcado como "sin
+    // verificar": se asumía que cambiar la contraseña alcanzaba para cortar una sesión abierta en
+    // otro teléfono, sin haberlo comprobado contra la base. La documentación de Supabase confirma
+    // que cada JWT lleva un claim `session_id` que se valida contra `auth.sessions`, así que borrar
+    // esas filas (y las de `auth.refresh_tokens`, sin FK entre sí en este proyecto) sí corta la
+    // sesión de verdad — no hace falta apoyarse en un efecto secundario no documentado del cambio
+    // de contraseña. Ver `cerrar_sesiones_usuario` (db/80).
+    try { await admin.rpc('cerrar_sesiones_usuario', { p_id: id }) } catch (_) { /* best-effort: la contraseña ya cambió igual */ }
 
     return json({ ok: true, id, usuario: objetivo.usuario, email: objetivo.email, password: nuevaPassword })
   } catch (e) {

@@ -170,6 +170,37 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // ---- 2FA TOTP (29/09/2026, Tarea 2.2, fase 1: gate solo en el front) ----
+  // `mfaNivel`/`mfaSiguiente` son el `currentLevel`/`nextLevel` tal cual los documenta Supabase
+  // (auth-mfa#add-a-challenge-step-to-login) — se usan sin traducir a un estado propio para no
+  // duplicar la tabla de combinaciones que ellos ya mantienen:
+  //   aal1/aal1 → sin ningún factor          aal1/aal2 → tiene factor, falta verificar esta sesión
+  //   aal2/aal2 → verificado, pasa            aal2/aal1 → factor dado de baja (JWT viejo)
+  // `null` en cualquiera de los dos es "todavía no se consultó", nunca "no tiene". No se recalcula
+  // en cada refresh de token (eso pasaría por cada `session` nuevo): solo al cambiar de cuenta o
+  // tras un arranque degradado (authEpoch), más lo que las pantallas de MFA pidan a mano con
+  // `refetchMfa` apenas activan/verifican/recuperan.
+  const [mfaNivel, setMfaNivel] = useState(null)
+  const [mfaSiguiente, setMfaSiguiente] = useState(null)
+  const [mfaError, setMfaError] = useState(false)
+  const cargarMfa = useCallback(async () => {
+    if (!hasSupabase) return
+    setMfaError(false)
+    try {
+      const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (error || !data) { setMfaError(true); return } // deja mfaNivel/mfaSiguiente como estaban: el Gate ofrece "Reintentar", no un loader infinito
+      setMfaNivel(data.currentLevel || 'aal1')
+      setMfaSiguiente(data.nextLevel || 'aal1')
+    } catch (_) {
+      setMfaError(true) // getAuthenticatorAssuranceLevel() no debería tirar (lee la sesión cacheada), pero mejor no confiar
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session?.user?.id) cargarMfa()
+    else { setMfaNivel(null); setMfaSiguiente(null); setMfaError(false) }
+  }, [session?.user?.id, authEpoch, cargarMfa])
+
   useEffect(() => {
     if (!hasSupabase) { setLoading(false); return }
     let active = true
@@ -553,6 +584,10 @@ export function AuthProvider({ children }) {
     idEmpresa: perfil?.id_empresa || null,
     activo: !!perfil?.activo,
     aprobado: !!perfil?.activo && !!perfil?.rol,
+    mfaNivel,
+    mfaSiguiente,
+    mfaError,
+    refetchMfa: cargarMfa,
     loading,
     perfilLoading,
     perfilError,

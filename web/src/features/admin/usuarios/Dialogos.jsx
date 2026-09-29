@@ -468,6 +468,24 @@ export function ResultadoReset({ resultado, onClose }) {
   )
 }
 
+/** Resultado de mfa-resetear (db/80): a diferencia de la contraseña, acá no hay ningún valor que
+ * copiar — solo confirma que el factor se borró. Mismo criterio de Overlay siempre montado. */
+export function ResultadoResetMfa({ resultado, onClose }) {
+  const listo = resultado && resultado !== 'pidiendo'
+  const esError = listo && 'error' in resultado
+  return (
+    <Overlay open={!!listo} onClose={onClose} maxWidth={380} title={esError ? 'No se pudo resetear' : 'Verificación reseteada'}>
+      {listo && (esError ? (
+        <div style={sx('font-size:13px;color:var(--danger);line-height:1.5')}>{resultado.error}</div>
+      ) : (
+        <div style={sx('font-size:13px;color:var(--muted);line-height:1.5')}>
+          Le borramos la verificación en dos pasos. En su próximo ingreso va a tener que activar una nueva.
+        </div>
+      ))}
+    </Overlay>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Descartar
 // ─────────────────────────────────────────────────────────────────────────────
