@@ -443,8 +443,9 @@ export function AuthProvider({ children }) {
    * (pendiente, igual que quien entra con Google por primera vez) y recién ahí se hace login con
    * lo que acaba de elegir — el Gate la manda sola a la pantalla de espera.
    *
-   * `codigo` es el código de invitación (freno anti-spam, no autenticación real: lo valida la
-   * función contra un secret que nunca viaja al bundle del cliente).
+   * `codigo` es el código de invitación de un solo uso (db/79, `generar_codigo_registro`): un
+   * admin lo genera para esta persona puntual y se invalida apenas se usa una vez, así que
+   * compartirlo de más no sirve para crear cuentas en cadena.
    */
   const registrarUsuario = async ({ usuario, password, nombre, telefono, codigo }) => {
     const { data, error: errFn } = await supabase.functions.invoke('registrar-usuario', {

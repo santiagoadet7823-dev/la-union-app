@@ -65,8 +65,8 @@ const MSG_REGISTRO = {
   'usuario-ya-existe': 'ese usuario ya existe, elegí otro',
   'password-corta': 'la contraseña tiene que tener al menos 6 caracteres',
   'falta-nombre': 'falta tu nombre',
-  'codigo-registro-invalido': 'el código de invitación no es correcto',
-  'registro-no-configurado': 'el registro todavía no está habilitado, avisale a tu administrador',
+  'falta-codigo': 'falta el código de invitación',
+  'codigo-invalido-o-usado': 'ese código no es válido, ya se usó, o venció — pedile uno nuevo a tu administrador',
 }
 const traducirRegistro = (code) => MSG_REGISTRO[code] || 'no se pudo crear la cuenta. Probá de nuevo.'
 
@@ -510,7 +510,8 @@ export default function LoginView({ onTablet }) {
             className="lu-input" style={campo}
           />
           <div style={sx('font-size:var(--fs-xs);color:var(--faint);line-height:1.5')}>
-            Te lo pasa tu administrador — no es tu contraseña, es solo para evitar altas al azar.
+            Te lo pasa tu administrador. Es de un solo uso: una vez que te registrás, ese código ya
+            no sirve para nadie más.
           </div>
           {regError && (
             <div style={sx('font-size:var(--fs-sm);color:var(--danger);line-height:1.5')}>{regError}</div>
