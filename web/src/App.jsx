@@ -18,6 +18,7 @@ import PendienteView from './features/auth/PendienteView'
 import CambioContrasenaObligatorio from './features/auth/CambioContrasenaObligatorio'
 import MfaActivar from './features/auth/MfaActivar'
 import MfaVerificar from './features/auth/MfaVerificar'
+import AceptarPolitica from './features/auth/AceptarPolitica'
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { sx } from './lib/sx'
 import { isNative } from './services/platform'
@@ -275,7 +276,7 @@ function AuthedApp() {
 }
 
 function Gate() {
-  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa } = useAuth()
+  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa, politicaPendiente, politicaError, refetchPolitica } = useAuth()
   /**
    * MODO VIDRIERA — la tablet del cliente. Va ACÁ, antes de todo lo demás, porque **la tablet no se
    * loguea nunca**: no toca Supabase, no tiene sesión ni perfil ni empresa, y todo lo que muestra se
@@ -312,6 +313,11 @@ function Gate() {
   if (mfaNivel === null) return <CargandoPerfil error={mfaError} onRetry={refetchMfa} mensaje="el estado de tu verificación" />
   if (mfaNivel === 'aal1' && mfaSiguiente === 'aal1') return <MfaActivar />   // sin ningún factor
   if (mfaSiguiente === 'aal2' && mfaNivel !== 'aal2') return <MfaVerificar /> // factor sin verificar esta sesión
+  // Política de privacidad (db/81, Tarea 2.3). `null` todavía no se consultó — mismo criterio que
+  // el gate de MFA: no dejar pasar un instante mientras se resuelve. `false` ya contempla el gate
+  // apagado (queda así cuando `app_config.politica_version` es null), no hace falta chequear eso acá.
+  if (politicaPendiente === null) return <CargandoPerfil error={politicaError} onRetry={refetchPolitica} mensaje="tu estado de aceptación" />
+  if (politicaPendiente) return <AceptarPolitica />
 
   // 🚨 TenantProvider va ENTRE Auth y Catalog (PLAN_SAAS §3.2), y ese lugar no es casual: tiene
   // que ver el perfil (para saber si es superadmin) y quedar por ENCIMA de todo lo que lee datos

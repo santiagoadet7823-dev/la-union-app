@@ -201,6 +201,38 @@ export function AuthProvider({ children }) {
     else { setMfaNivel(null); setMfaSiguiente(null); setMfaError(false) }
   }, [session?.user?.id, authEpoch, cargarMfa])
 
+  // ---- Aceptación de la política de privacidad (29/09/2026, Tarea 2.3, db/81) ----
+  // `politicaPendiente`: null mientras no se consultó, true si hay una versión vigente
+  // (`app_config.politica_version`) que esta cuenta todavía no aceptó, false si está al día O si el
+  // gate está apagado (versión null — el documento sigue en revisión legal). Va DESPUÉS del gate de
+  // MFA en App.jsx: no tiene sentido pedirle esto a una sesión que ni siquiera pasó la verificación.
+  const [politicaPendiente, setPoliticaPendiente] = useState(null)
+  const [politicaUrl, setPoliticaUrl] = useState(null)
+  const [politicaError, setPoliticaError] = useState(false)
+  const cargarPolitica = useCallback(async () => {
+    if (!hasSupabase) return
+    setPoliticaError(false)
+    try {
+      const { data: cfg, error: errCfg } = await supabase.from('app_config').select('politica_version, politica_url').maybeSingle()
+      if (errCfg) { setPoliticaError(true); return }
+      const version = cfg?.politica_version
+      setPoliticaUrl(cfg?.politica_url || null)
+      if (!version) { setPoliticaPendiente(false); return } // gate apagado: sin versión vigente todavía
+      const { data: acept, error: errAcept } = await supabase
+        .from('aceptaciones_legales').select('id')
+        .eq('documento', 'politica_privacidad').eq('version', version).maybeSingle()
+      if (errAcept) { setPoliticaError(true); return }
+      setPoliticaPendiente(!acept)
+    } catch (_) {
+      setPoliticaError(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session?.user?.id) cargarPolitica()
+    else { setPoliticaPendiente(null); setPoliticaUrl(null); setPoliticaError(false) }
+  }, [session?.user?.id, authEpoch, cargarPolitica])
+
   useEffect(() => {
     if (!hasSupabase) { setLoading(false); return }
     let active = true
@@ -588,6 +620,10 @@ export function AuthProvider({ children }) {
     mfaSiguiente,
     mfaError,
     refetchMfa: cargarMfa,
+    politicaPendiente,
+    politicaUrl,
+    politicaError,
+    refetchPolitica: cargarPolitica,
     loading,
     perfilLoading,
     perfilError,
