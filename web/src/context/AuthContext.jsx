@@ -437,6 +437,31 @@ export function AuthProvider({ children }) {
   }
 
   /**
+   * Alta propia, sin admin de por medio (29/09/2026, db/78 — segunda tanda). `crear-usuario`
+   * necesita que YA exista un admin logueado; acá no hay nadie todavía. La persona elige su propio
+   * usuario y contraseña, la Edge Function `registrar-usuario` crea la cuenta SIN rol ni empresa
+   * (pendiente, igual que quien entra con Google por primera vez) y recién ahí se hace login con
+   * lo que acaba de elegir — el Gate la manda sola a la pantalla de espera.
+   *
+   * `codigo` es el código de invitación (freno anti-spam, no autenticación real: lo valida la
+   * función contra un secret que nunca viaja al bundle del cliente).
+   */
+  const registrarUsuario = async ({ usuario, password, nombre, telefono, codigo }) => {
+    const { data, error: errFn } = await supabase.functions.invoke('registrar-usuario', {
+      body: { usuario, password, nombre, telefono, codigo },
+    })
+    if (errFn || !data?.ok) {
+      // functions.invoke: ante un !2xx `data` viene null y el cuerpo {error} queda en err.context.
+      let code = data?.error || null
+      if (errFn && !code) {
+        try { code = (await errFn.context.json())?.error } catch (_) { code = errFn.message }
+      }
+      return { error: { code: code || 'error-inesperado' } }
+    }
+    return signInWithPassword({ entrada: usuario, password })
+  }
+
+  /**
    * Manda el mail con el enlace para poner una contraseña nueva (diseño v1.4).
    *
    * Hasta ahora no existía NINGÚN camino: si un vendedor se olvidaba la contraseña tenía que
@@ -536,6 +561,7 @@ export function AuthProvider({ children }) {
     authEpoch,
     signInWithGoogle,
     signInWithPassword,
+    registrarUsuario,
     enviarEnlaceContrasena,
     signOut,
     actualizarMiPerfil,

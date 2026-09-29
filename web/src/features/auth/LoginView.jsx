@@ -56,8 +56,22 @@ function clasificar(mensaje) {
   return 'otro'
 }
 
+/** Errores de `registrarUsuario` (Edge Function registrar-usuario, db/78 segunda tanda). Mapa
+ * propio y no el de `admin/usuarios/modelo.js`: esta pantalla es pública y no tiene por qué
+ * depender del módulo de administración, y algunos códigos chocan de nombre con otros usos
+ * (ahí "codigo-invalido" es el código ERP; acá es el código de invitación). */
+const MSG_REGISTRO = {
+  'usuario-invalido': 'el usuario tiene que ser minúsculas, números, puntos, guiones o guión bajo (3 a 30 caracteres)',
+  'usuario-ya-existe': 'ese usuario ya existe, elegí otro',
+  'password-corta': 'la contraseña tiene que tener al menos 6 caracteres',
+  'falta-nombre': 'falta tu nombre',
+  'codigo-registro-invalido': 'el código de invitación no es correcto',
+  'registro-no-configurado': 'el registro todavía no está habilitado, avisale a tu administrador',
+}
+const traducirRegistro = (code) => MSG_REGISTRO[code] || 'no se pudo crear la cuenta. Probá de nuevo.'
+
 export default function LoginView({ onTablet }) {
-  const { signInWithGoogle, signInWithPassword, enviarEnlaceContrasena, hasSupabase, authError, authStatus } = useAuth()
+  const { signInWithGoogle, signInWithPassword, registrarUsuario, enviarEnlaceContrasena, hasSupabase, authError, authStatus } = useAuth()
   const { isDark, toggleTheme } = useTheme()
 
   // Última cuenta que entró en ESTE teléfono. Lectura síncrona a propósito: si llegara un
@@ -74,9 +88,42 @@ export default function LoginView({ onTablet }) {
   const [recordar, setRecordar] = useState(quiereRecordar)
   const [cargando, setCargando] = useState(null)   // 'google' | 'email' | null
   const [detalle, setDetalle] = useState(false)
-  const [hoja, setHoja] = useState(null)           // 'recuperar' | 'enlace' | 'sin-email' | 'acceso' | null
+  const [hoja, setHoja] = useState(null)           // 'recuperar' | 'enlace' | 'sin-email' | 'acceso' | 'registro' | null
   const [mailRecuperar, setMailRecuperar] = useState('')
   const [enviando, setEnviando] = useState(false)
+
+  // ---- Registro propio (sin admin de por medio, db/78 segunda tanda) ----
+  const [regUsuario, setRegUsuario] = useState('')
+  const [regNombre, setRegNombre] = useState('')
+  const [regPassword, setRegPassword] = useState('')
+  const [regPassword2, setRegPassword2] = useState('')
+  const [regCodigo, setRegCodigo] = useState('')
+  const [regVerPass, setRegVerPass] = useState(false)
+  const [regEnviando, setRegEnviando] = useState(false)
+  const [regError, setRegError] = useState('')
+
+  function abrirRegistro() {
+    setRegUsuario(''); setRegNombre(''); setRegPassword(''); setRegPassword2(''); setRegCodigo('')
+    setRegError(''); setHoja('registro')
+  }
+
+  async function registrarme(e) {
+    e.preventDefault()
+    if (regEnviando) return
+    const usuario = regUsuario.trim().toLowerCase()
+    const nombre = regNombre.trim()
+    if (!/^[a-z0-9._-]{3,30}$/.test(usuario)) { setRegError(traducirRegistro('usuario-invalido')); return }
+    if (!nombre) { setRegError(traducirRegistro('falta-nombre')); return }
+    if (regPassword.length < 6) { setRegError(traducirRegistro('password-corta')); return }
+    if (regPassword !== regPassword2) { setRegError('las dos contraseñas no coinciden'); return }
+    if (!regCodigo.trim()) { setRegError('falta el código de invitación'); return }
+    setRegEnviando(true); setRegError('')
+    // El onAuthStateChange del AuthProvider hace el resto si sale bien: entra sola y el Gate la
+    // manda a la pantalla de espera (queda pendiente hasta que un admin la asigne a su empresa).
+    const { error } = await registrarUsuario({ usuario, password: regPassword, nombre, codigo: regCodigo.trim() })
+    setRegEnviando(false)
+    if (error) setRegError(traducirRegistro(error.code))
+  }
 
   const tipoError = authError ? clasificar(authError) : null
   const puedeEnviar = hasSupabase && entrada.trim() && password && !cargando
@@ -396,24 +443,84 @@ export default function LoginView({ onTablet }) {
         </div>
       </Overlay>
 
-      {/* 🩸 "Solicitar acceso" NO es un formulario de alta, y no es un descuido: en DisT-At NADIE
-          se registra solo. Cada usuario pertenece a una distribuidora y alguien tiene que
-          asignarle rol y empresa. El camino real —el único que existe— es entrar con Google y
-          quedar pendiente de aprobación, así que eso es lo que esta hoja explica y hace.
-          El diseño v1.4 proponía un formulario (nombre/teléfono/empresa) que crea una solicitud:
-          eso necesita tabla nueva, aviso al admin y límite de spam, porque sería un endpoint
-          anónimo abierto a internet. Va en la tanda siguiente. */}
+      {/* 🩸 "Solicitar acceso" (29/09/2026, db/78 segunda tanda): dos caminos, no uno. Antes acá
+          solo se explicaba que había que entrar con Google porque no existía otra puerta. Ahora
+          también se puede crear un usuario y contraseña propios (Edge Function
+          registrar-usuario) — los dos caminos terminan igual: una cuenta PENDIENTE (sin rol ni
+          empresa) hasta que un administrador la revise y la asigne. */}
       <Overlay open={hoja === 'acceso'} onClose={() => setHoja(null)} variant="sheet" title="Solicitar acceso">
         <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.6')}>
-          DisT-At es privado de cada distribuidora: no hay registro abierto. Entrá con tu cuenta de
-          Google y tu pedido le llega al administrador, que te asigna el rol y la empresa. Hasta
-          que lo haga vas a ver una pantalla de espera.
+          DisT-At es privado de cada distribuidora. Entrá con tu cuenta de Google, o creá tu propio
+          usuario y contraseña. En los dos casos tu cuenta queda pendiente hasta que un
+          administrador te asigne la empresa y el rol.
         </div>
         <button onClick={() => { setHoja(null); entrarConGoogle() }} className="lu-press"
           style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin-top:18px;border-radius:var(--r-md);background:#FFFFFF;color:#1F2937;border:1px solid #DADCE0;font-size:var(--fs-lg);font-weight:600;cursor:pointer'), '--gx': '12px' }}>
           <GoogleIcon />
           <span>Continuar con Google</span>
         </button>
+        <button onClick={abrirRegistro} className="lu-press"
+          style={sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin-top:10px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line2);color:var(--text);font-size:var(--fs-lg);font-weight:600;cursor:pointer')}>
+          Crear usuario y contraseña
+        </button>
+      </Overlay>
+
+      {/* Alta propia. El código de invitación NO es una contraseña de verdad —es un freno contra
+          cualquiera que encuentre la URL pública, no autenticación—, así que se lo dice tal cual:
+          no hace falta esconder por qué se pide. */}
+      <Overlay open={hoja === 'registro'} onClose={() => setHoja(null)} variant="sheet" title="Crear tu cuenta">
+        <form onSubmit={registrarme} className="lu-rise" style={{ ...sx('display:flex;flex-direction:column'), '--gy': '10px' }}>
+          <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.55')}>
+            Elegí tu usuario y contraseña. Tu cuenta queda pendiente hasta que un administrador te
+            la asigne a tu empresa.
+          </div>
+          <input
+            type="text" autoComplete="username" placeholder="Elegí un usuario" aria-label="Elegí un usuario" autoFocus
+            value={regUsuario} onChange={(e) => setRegUsuario(e.target.value)} disabled={regEnviando}
+            className="lu-input" style={campo}
+          />
+          <input
+            type="text" autoComplete="name" placeholder="Tu nombre" aria-label="Tu nombre"
+            value={regNombre} onChange={(e) => setRegNombre(e.target.value)} disabled={regEnviando}
+            className="lu-input" style={campo}
+          />
+          <div style={sx('position:relative')}>
+            <input
+              type={regVerPass ? 'text' : 'password'} autoComplete="new-password" placeholder="Contraseña" aria-label="Contraseña"
+              value={regPassword} onChange={(e) => setRegPassword(e.target.value)} disabled={regEnviando}
+              className="lu-input" style={{ ...campo, paddingRight: 58 }}
+            />
+            <button type="button" onClick={() => setRegVerPass((v) => !v)}
+              aria-label={regVerPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} title={regVerPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              style={sx('position:absolute;right:4px;top:2px;width:48px;height:48px;display:grid;place-items:center;background:transparent;border:none;cursor:pointer;border-radius:var(--r-md)')}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={regVerPass ? 'var(--primary)' : 'var(--muted)'} strokeWidth="1.8" strokeLinecap="round">
+                <path d="M2 12s3.8-6.4 10-6.4S22 12 22 12s-3.8 6.4-10 6.4S2 12 2 12Z" /><circle cx="12" cy="12" r="2.8" />
+                {regVerPass && <path d="M3 3l18 18" />}
+              </svg>
+            </button>
+          </div>
+          <input
+            type={regVerPass ? 'text' : 'password'} autoComplete="new-password" placeholder="Repetí la contraseña" aria-label="Repetí la contraseña"
+            value={regPassword2} onChange={(e) => setRegPassword2(e.target.value)} disabled={regEnviando}
+            className="lu-input" style={campo}
+          />
+          <input
+            type="text" placeholder="Código de invitación" aria-label="Código de invitación"
+            value={regCodigo} onChange={(e) => setRegCodigo(e.target.value)} disabled={regEnviando}
+            className="lu-input" style={campo}
+          />
+          <div style={sx('font-size:var(--fs-xs);color:var(--faint);line-height:1.5')}>
+            Te lo pasa tu administrador — no es tu contraseña, es solo para evitar altas al azar.
+          </div>
+          {regError && (
+            <div style={sx('font-size:var(--fs-sm);color:var(--danger);line-height:1.5')}>{regError}</div>
+          )}
+          <button type="submit" disabled={regEnviando} className="lu-press"
+            style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700'), '--gx': '10px', cursor: regEnviando ? 'wait' : 'pointer', opacity: regEnviando ? 0.7 : 1 }}>
+            {regEnviando && <span className="lu-spin" style={{ width: 20, height: 20, borderRadius: 999, border: '2.5px solid rgba(0,0,0,.18)', borderTopColor: 'var(--on-primary)' }} />}
+            <span>{regEnviando ? 'Creando…' : 'Crear cuenta'}</span>
+          </button>
+        </form>
       </Overlay>
     </div>
   )
