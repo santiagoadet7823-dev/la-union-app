@@ -637,6 +637,11 @@ export function AuthProvider({ children }) {
     politicaError,
     refetchPolitica: cargarPolitica,
     mfaObligatoria,
+    // `true` = la app abrió con el ESPEJO de sesión (sin red, token vencido). Se lee de la ref en
+    // cada render: es correcto porque cada vez que la ref cambia va seguida de un setState
+    // (`setSession` / `setAuthEpoch`), que vuelve a renderizar. El Gate lo usa para no exigir
+    // gates de cumplimiento (2FA, política) a alguien que ni siquiera puede consultarlos.
+    sesionDegradada: tokenDegradadoRef.current !== null,
     loading,
     perfilLoading,
     perfilError,

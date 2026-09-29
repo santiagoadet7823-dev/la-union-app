@@ -276,7 +276,7 @@ function AuthedApp() {
 }
 
 function Gate() {
-  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa, mfaObligatoria, politicaPendiente, politicaError, refetchPolitica } = useAuth()
+  const { loading, session, aprobado, perfil, perfilLoading, perfilError, refetchPerfil, mfaNivel, mfaSiguiente, mfaError, refetchMfa, mfaObligatoria, sesionDegradada, politicaPendiente, politicaError, refetchPolitica } = useAuth()
   /**
    * MODO VIDRIERA — la tablet del cliente. Va ACÁ, antes de todo lo demás, porque **la tablet no se
    * loguea nunca**: no toca Supabase, no tiene sesión ni perfil ni empresa, y todo lo que muestra se
@@ -307,26 +307,35 @@ function Gate() {
   // Reseteo de un admin (db/78, resetear-contrasena): bloquea TODO hasta que ponga una propia.
   // Va DESPUÉS de "aprobado" — no tiene sentido pedirle esto a una cuenta que ni pasó ese gate.
   if (perfil?.debe_cambiar_contrasena) return <CambioContrasenaObligatorio />
-  // 2FA obligatoria (db/80, Tarea 2.2 fase 1). Tabla oficial de Supabase (currentLevel/nextLevel):
-  // null todavía no se consultó (recién montó la sesión) → no dejar pasar un instante a la app.
-  // Con error, loader acotado con reintento — igual que CargandoPerfil, nunca un "Cargando…" fijo.
-  if (mfaNivel === null) return <CargandoPerfil error={mfaError} onRetry={refetchMfa} mensaje="el estado de tu verificación" />
-  if (mfaNivel === 'aal1' && mfaSiguiente === 'aal1') {
-    // Sin ningún factor. 🩸 SOLO SE EXIGE ACTIVAR SI EL INTERRUPTOR ESTÁ PRENDIDO (db/83,
-    // `app_config.mfa_obligatoria`, default false). Antes esto mandaba a `MfaActivar` a cualquiera
-    // sin factor, sin ninguna configuración de por medio: publicar el front habría frenado a todo el
-    // equipo en el primer arranque. `null` = todavía no se consultó → no dejar pasar un instante.
-    if (mfaObligatoria === null) return <CargandoPerfil error={politicaError} onRetry={refetchPolitica} mensaje="la configuración de seguridad" />
-    if (mfaObligatoria) return <MfaActivar />
+  // 🩸 GATES DE CUMPLIMIENTO (2FA y política): NO SE EXIGEN CON LA SESIÓN ABIERTA POR EL ESPEJO.
+  // `sesionDegradada` = la app abrió sin red y con el token vencido (offline-first). Ahí ninguno de
+  // los dos se puede ni consultar: `getAuthenticatorAssuranceLevel()` pasa por `getSession()`, que en
+  // ese estado tarda ~25–30 s (ver el comentario de `restaurarDesdeEspejo`), y `app_config` no
+  // contesta. Sin esta salida el vendedor esperaba medio minuto —o quedaba en "Reintentar"— antes de
+  // poder trabajar, cuando antes de estos gates la app abría con el espejo a los 6 s. Cuando vuelve
+  // la red, `authEpoch` sube y los dos se reevalúan solos.
+  if (!sesionDegradada) {
+    // 2FA (db/80, Tarea 2.2 fase 1). Tabla oficial de Supabase (currentLevel/nextLevel):
+    // null todavía no se consultó (recién montó la sesión) → no dejar pasar un instante a la app.
+    // Con error, loader acotado con reintento — igual que CargandoPerfil, nunca un "Cargando…" fijo.
+    if (mfaNivel === null) return <CargandoPerfil error={mfaError} onRetry={refetchMfa} mensaje="el estado de tu verificación" />
+    if (mfaNivel === 'aal1' && mfaSiguiente === 'aal1') {
+      // Sin ningún factor. 🩸 SOLO SE EXIGE ACTIVAR SI EL INTERRUPTOR ESTÁ PRENDIDO (db/83,
+      // `app_config.mfa_obligatoria`, default false). Antes esto mandaba a `MfaActivar` a cualquiera
+      // sin factor, sin ninguna configuración de por medio: publicar el front habría frenado a todo
+      // el equipo en el primer arranque. `null` = todavía no se consultó → no dejar pasar un instante.
+      if (mfaObligatoria === null) return <CargandoPerfil error={politicaError} onRetry={refetchPolitica} mensaje="la configuración de seguridad" />
+      if (mfaObligatoria) return <MfaActivar />
+    }
+    // Quien YA tiene un factor lo verifica en cada sesión nueva, con el interruptor prendido o no:
+    // eso es una decisión que la persona ya tomó, no una imposición nueva.
+    if (mfaSiguiente === 'aal2' && mfaNivel !== 'aal2') return <MfaVerificar /> // factor sin verificar esta sesión
+    // Política de privacidad (db/81, Tarea 2.3). `null` todavía no se consultó — mismo criterio que
+    // el gate de MFA: no dejar pasar un instante mientras se resuelve. `false` ya contempla el gate
+    // apagado (queda así cuando `app_config.politica_version` es null), no hace falta chequear eso acá.
+    if (politicaPendiente === null) return <CargandoPerfil error={politicaError} onRetry={refetchPolitica} mensaje="tu estado de aceptación" />
+    if (politicaPendiente) return <AceptarPolitica />
   }
-  // Quien YA tiene un factor lo verifica en cada sesión nueva, con el interruptor prendido o no:
-  // eso es una decisión que la persona ya tomó, no una imposición nueva.
-  if (mfaSiguiente === 'aal2' && mfaNivel !== 'aal2') return <MfaVerificar /> // factor sin verificar esta sesión
-  // Política de privacidad (db/81, Tarea 2.3). `null` todavía no se consultó — mismo criterio que
-  // el gate de MFA: no dejar pasar un instante mientras se resuelve. `false` ya contempla el gate
-  // apagado (queda así cuando `app_config.politica_version` es null), no hace falta chequear eso acá.
-  if (politicaPendiente === null) return <CargandoPerfil error={politicaError} onRetry={refetchPolitica} mensaje="tu estado de aceptación" />
-  if (politicaPendiente) return <AceptarPolitica />
 
   // 🚨 TenantProvider va ENTRE Auth y Catalog (PLAN_SAAS §3.2), y ese lugar no es casual: tiene
   // que ver el perfil (para saber si es superadmin) y quedar por ENCIMA de todo lo que lee datos
