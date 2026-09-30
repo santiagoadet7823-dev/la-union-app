@@ -92,7 +92,7 @@ function crearControlBasemap(getId, position) {
 /**
  * Tinta del texto sobre un relleno de color: la de más contraste entre blanco y la tinta oscura del Grafito
  * (`#0E0E10`). Antes el texto iba en `#fff` fijo, y en el tema Oscuro los rellenos son claros (`#93B3D3`,
- * `#D2A857`, `#7CB8C9`): blanco sobre ellos daba 1.9 a 2.5:1. Solo entiende `#rrggbb`; con otra cosa, blanco.
+ * `#D2A857`, `#7CB8C9`): blanco sobre ellos daba 2.2:1. Solo entiende `#rrggbb`; con otra cosa, blanco.
  */
 function tintaSobre(hex) {
   const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
@@ -162,7 +162,7 @@ function dwellIcon({ label, sub, extra, color, k = 1, orden = null, atenuado = f
   const apilado = !!renglones
   // El disco del número. `flex:none` para que no se ovale cuando el texto de al lado es largo.
   const badge = orden == null ? '' :
-    `<span style="display:grid;place-items:center;flex:none;width:${px(13)}px;height:${px(13)}px;border-radius:50%;background:#fff;color:${c};font-size:${px(8)}px;font-weight:700;line-height:1">${esc(orden)}</span>`
+    `<span style="display:grid;place-items:center;flex:none;width:${px(13)}px;height:${px(13)}px;border-radius:50%;background:#fff;color:#2E3A44;font-size:${px(8)}px;font-weight:700;line-height:1">${esc(orden)}</span>`
   // Con badge el padding izquierdo se achica para abrazar el disco (mismo criterio que `hitoIcon`).
   const padIzq = orden == null ? px(7) : px(3)
   return L.divIcon({
@@ -190,7 +190,7 @@ function esc(s) {
 // abrir cada cartel. Umbrales: <2 min fresco, <15 min reciente, resto viejo.
 // Los colores espejan `--success`, `--warning` y el gris `#7E939C` de la paleta, en su variante del
 // CLARO: el punto no conoce el tema y va siempre con aro blanco, y son las que se leen contra él.
-// La FORMA también cambia (30/09/2026): el verde y el ocre tienen casi la misma luminosidad (1.04:1) y
+// La FORMA también cambia (30/09/2026): el verde y el ocre tienen casi la misma luminosidad (~1:1) y
 // sin otra pista no se distinguen: fresco = círculo, reciente = rombo, viejo = círculo apagado.
 function frescura(ts) {
   const edad = Date.now() - (ts || 0)
@@ -381,7 +381,7 @@ function hitoIcon({ hora, color, glifo, atenuado = false }) {
 }
 
 const GLIFO_INICIO = '<span style="margin-left:1px">▶</span>'
-const GLIFO_FIN = '<span style="width:5px;height:5px;background:#fff;border-radius:1px"></span>'
+const GLIFO_FIN = '<span style="width:5px;height:5px;background:currentColor;border-radius:1px"></span>'
 
 const inicioIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_INICIO })
 const finIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_FIN })
@@ -392,7 +392,7 @@ const finIcon = (o) => hitoIcon({ ...o, glifo: GLIFO_FIN })
  * cada 10 minutos de tramo, y la velocidad es la MEDIA desde el hito anterior — para leerla, no
  * para calcularla a ojo entre dos horas. Sin velocidad (primer hito, o hueco) va la hora sola.
  */
-const GLIFO_HITO = '<span style="width:5px;height:5px;background:#fff;border-radius:50%"></span>'
+const GLIFO_HITO = '<span style="width:5px;height:5px;background:currentColor;border-radius:50%"></span>'
 const hitoTransporteIcon = ({ hora, kmh, color, atenuado }) =>
   hitoIcon({ hora: kmh != null ? `${hora} · ${kmh} km/h` : hora, color, glifo: GLIFO_HITO, atenuado })
 /** Por debajo de este zoom los hitos no se dibujan: son nodos del DOM y de lejos sólo se encimarían. */

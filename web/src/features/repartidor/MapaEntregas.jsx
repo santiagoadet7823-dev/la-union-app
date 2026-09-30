@@ -69,10 +69,11 @@ export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
     // los separa. "En camino" lleva SIEMPRE su glifo `»` (no el número de parada) y un punto más
     // grande a zoom bajo; el número lo sigue mostrando la lista y el pin de los demás estados.
     const enCamino = d.status === 'en_camino'
+    const glifoPropio = enCamino || d.status === 'no_entregado'
     return {
       id: d.id, lat: d.lat, lng: d.lng, nombre: d.client,
       color: base.color,
-      glifo: !enCamino && orden != null && d.status !== 'entregado' ? String(orden) : base.glifo,
+      glifo: !glifoPropio && orden != null && d.status !== 'entregado' ? String(orden) : base.glifo,
       hueco: false,
       radio: sel ? 11 : enCamino ? 10 : 8,
       stroke: sel ? base.color : stroke,
