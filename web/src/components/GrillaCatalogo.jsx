@@ -207,9 +207,11 @@ export default function GrillaCatalogo({
                     ...sx('display:flex;flex-direction:column;background:var(--surface);border-radius:14px;overflow:hidden'),
                     cursor: 'pointer',
                     // El marco SIEMPRE es el nivel de rentabilidad; el estado "en carrito"
-                    // se marca con un anillo (box-shadow) para no pisar ese código de color.
+                    // se marca con un anillo (box-shadow) para no pisar ese código de color. El aro interior
+                    // (--bg-app) los separa: con el acento azul acero el anillo se fundía con el marco azul
+                    // del nivel 2 (30/09/2026).
                     border: `2px solid ${rentColor(p.nivel)}`,
-                    boxShadow: qty > 0 ? '0 0 0 2px var(--primary)' : 'none',
+                    boxShadow: qty > 0 ? '0 0 0 2px var(--bg-app), 0 0 0 4px var(--primary)' : 'none',
                   }}
                 >
                   {/* Foto: caja cuadrada con fallback padding-top (aspect-ratio no está en

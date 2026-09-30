@@ -965,7 +965,8 @@ const sheetLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '.06em', text
 function NavBtn({ active, label, onClick, children }) {
   return (
     <div onClick={onClick} className="lu-press" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '5px 0', cursor: 'pointer', color: active ? 'var(--primary)' : 'var(--muted)', transition: 'transform 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1)' }}>
-      {children}
+      {/* Píldora de tinte detrás del ícono activo (ver el mismo caso en VendedorView): el color solo no alcanza con el acento azul acero. */}
+      <span style={{ display: 'grid', placeItems: 'center', padding: '0 14px', borderRadius: 99, background: active ? 'var(--primary-tint)' : 'transparent' }}>{children}</span>
       <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
     </div>
   )
