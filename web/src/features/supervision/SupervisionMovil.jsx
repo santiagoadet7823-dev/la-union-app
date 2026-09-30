@@ -32,7 +32,7 @@ import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
 import DespachoGestion from './components/DespachoGestion'
 import ThemeToggle from '../../components/ThemeToggle'
-import { Alerta, AlertaCirculo, Check, ChevronRight, GestIcon, LogOut, Mapa, Profile } from '../../components/icons'
+import { Alerta, AlertaCirculo, Check, ChevronRight, GestIcon, Lock, LogOut, Mapa, Profile } from '../../components/icons'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
 
@@ -45,6 +45,8 @@ import TarjetaComercio from './components/TarjetaComercio'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
+// Mismo modal que abre MiCuenta (cambiar la PROPIA contraseña): acá no se duplica lógica, solo se abre.
+const CambiarContrasenaModal = lazy(() => import('../perfil/CambiarContrasenaModal'))
 // Pulso de ventas con gráficos (16/09/2026): el mismo módulo que PanelDireccion y la consola de
 // PC, en su layout compacto. Lazy: sólo baja al abrir el sheet, y la librería de gráficos aparte.
 const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
@@ -123,6 +125,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
   const [modalPerfil, setModalPerfil] = useState(false)
+  const [modalPass, setModalPass] = useState(false)
   const [datePop, setDatePop] = useState(false)  // fallback: popover con el <input date> inline
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin chrome
   // SEGUIMIENTO: id de la persona a la que la cámara se queda pegada, o null.
@@ -620,6 +623,12 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
                 <ChevronRight />
               </div>
+              {/* Igual que en MiCuenta: lo ven todos los roles, cada uno cambia SU contraseña. */}
+              <div onClick={() => { setAcctOpen(false); setModalPass(true) }} style={acctItem}>
+                <div style={acctIconBox}><Lock size={15} /></div>
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Cambiar contraseña</span>
+                <ChevronRight />
+              </div>
               <div onClick={() => { setAcctOpen(false); showToast('Ayuda y soporte · próximamente') }} style={acctItem}>
                 <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.4-1.4 1-1.4 2M12 17h.01" /></svg></div>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ayuda y soporte</span>
@@ -929,12 +938,13 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* Modales de alta (se abren desde Clientes / Catálogo). Van por Overlay, que
           los pone en --z-modal (500), por encima del GestionHost (--z-screen, 400). */}
-      {(modalCliente || modalProducto || modalPerfil) && (
+      {(modalCliente || modalProducto || modalPerfil || modalPass) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
           {/* `true` = alta; un objeto producto = edición (mismo patrón que AdminView). */}
           {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} producto={modalProducto === true ? null : modalProducto} />}
           {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
+          {modalPass && <CambiarContrasenaModal onClose={() => setModalPass(false)} onToast={showToast} />}
         </Suspense>
       )}
 
