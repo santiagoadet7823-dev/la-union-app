@@ -29,7 +29,7 @@ import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
 import ThemeToggle from '../../components/ThemeToggle'
-import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
+import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Monitor, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
 import { APP_VERSION } from '../../version'
 import useCapaCartera from './useCapaCartera'
 import LeyendaCartera from './components/LeyendaCartera'
@@ -395,11 +395,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           )}
         </nav>
 
-        {/* Pie: cambiar a vista celular (útil en la PWA de escritorio). */}
+        {/* Pie: alterna la vista, siempre hacia la OTRA. Antes decía "Cambiar a vista Celular" aunque
+            ya se estuviera en celular: un encargado en la PWA de un teléfono (que cae acá, ver
+            App.jsx `usaDesktop`) solo podía volver a fijar 'mobile' y nunca ofrecía "PC" — quedaba
+            encerrado. En escritorio (`isMobile` false) el pie es el de siempre. */}
         <div style={{ flex: 'none', padding: 10, borderTop: '1px solid var(--line)' }}>
-          <div onClick={() => setMode('mobile')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
-            <Smartphone size={17} />
-            Cambiar a vista Celular
+          <div onClick={() => { setDrawerOpen(false); setMode(isMobile ? 'desktop' : 'mobile') }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
+            {isMobile ? <Monitor size={17} /> : <Smartphone size={17} />}
+            {isMobile ? 'Cambiar a vista PC' : 'Cambiar a vista Celular'}
           </div>
         </div>
       </aside>
