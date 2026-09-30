@@ -79,7 +79,7 @@ export default function GestionarCategorias({ onClose, onToast }) {
                 ) : confirmDel === c.id ? (
                   <>
                     <span style={sx('flex:1;font-size:12.5px;color:var(--danger)')}>¿Quitar "{c.nombre}"?{n ? ` (${n} → Otros)` : ''}</span>
-                    <button onClick={() => quitar(c)} style={sx('flex:none;padding:0 12px;height:34px;border:none;border-radius:9px;background:var(--danger);color:#fff;font-size:12px;font-weight:600;cursor:pointer')}>Quitar</button>
+                    <button onClick={() => quitar(c)} style={sx('flex:none;padding:0 12px;height:34px;border:none;border-radius:9px;background:var(--danger);color:var(--on-danger);font-size:12px;font-weight:600;cursor:pointer')}>Quitar</button>
                     <button onClick={() => setConfirmDel(null)} style={sx('flex:none;padding:0 10px;height:34px;border:1px solid var(--line2);border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer')}>No</button>
                   </>
                 ) : (

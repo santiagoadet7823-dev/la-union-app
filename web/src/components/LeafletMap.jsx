@@ -448,7 +448,7 @@ const tamGlifo = (g, w) => {
   return w >= 25 ? 8.5 : 7
 }
 
-function pinComercioIcon({ color, glifo, hueco, sel, stroke }) {
+function pinComercioIcon({ color, glifo, hueco, sel, stroke, tintaGlifo = '#F6F4EE' }) {
   // Todas las medidas salen de `w`, como en `dwellIcon`: no hay dos versiones del pin que se puedan
   // desincronizar.
   //
@@ -461,7 +461,7 @@ function pinComercioIcon({ color, glifo, hueco, sel, stroke }) {
   const h = Math.round(w * 1.207)
   const fondo = hueco ? 'transparent' : color
   const borde = hueco ? color : (sel ? '#5FB7B1' : stroke)
-  const tinta = hueco ? color : '#fff'
+  const tinta = hueco ? color : tintaGlifo
   const grosor = hueco ? 2 : sel ? 2.5 : 1.5
   return L.divIcon({
     className: 'lu-pin-comercio',
@@ -1338,6 +1338,9 @@ export default function LeafletMap({
     if (!map || !layer) return
     const neutro = theme === 'dark' ? '#9A9AA6' : '#7E939C'
     const stroke = theme === 'dark' ? '#0E0E10' : '#ffffff'
+    // El glifo va sobre el relleno del estado: espeja `--on-primary` (crema en Claro, tinta en Oscuro,
+    // donde el blanco sobre los rellenos claros daba 2.2-2.8:1).
+    const tintaGlifo = theme === 'dark' ? '#0E0E10' : '#F6F4EE'
     let modo = null
     const modoDeZoom = () => {
       const z = map.getZoom() || 0
@@ -1371,7 +1374,7 @@ export default function LeafletMap({
         const color = cl.color || neutro
         const tip = [cl.abrev, cl.nombre, cl.zona].filter(Boolean).join(' · ')
         const mk = m === 'pin'
-          ? L.marker([cl.lat, cl.lng], { icon: pinComercioIcon({ color, glifo: cl.glifo ?? cl.abrev ?? '', hueco: cl.hueco, sel: cl.sel, stroke }), interactive: true, keyboard: false })
+          ? L.marker([cl.lat, cl.lng], { icon: pinComercioIcon({ color, glifo: cl.glifo ?? cl.abrev ?? '', hueco: cl.hueco, sel: cl.sel, stroke, tintaGlifo }), interactive: true, keyboard: false })
           : L.circleMarker([cl.lat, cl.lng], { radius: cl.radio || clientRadius, color: cl.stroke || stroke, weight: cl.peso || 1, fillColor: color, fillOpacity: cl.hueco ? 0.25 : 0.95 })
         // Con handler, el tooltip sobra: el toque abre algo más rico que un globito, y en un
         // teléfono el tooltip aparecería junto con el toque y taparía justo lo que se abrió.

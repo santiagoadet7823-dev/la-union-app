@@ -297,8 +297,8 @@ export default function PedidosView({ onToast }) {
           invisible justo el día que no lo está. */}
       <div style={sx('display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--line)')}>
         {[
-          { key: 'activos',  label: 'Pedidos',  n: activos.length,  color: 'var(--primary)' },
-          { key: 'papelera', label: 'Papelera', n: anulados.length, color: 'var(--danger)' },
+          { key: 'activos',  label: 'Pedidos',  n: activos.length,  color: 'var(--primary)', on: 'var(--on-primary)' },
+          { key: 'papelera', label: 'Papelera', n: anulados.length, color: 'var(--danger)', on: 'var(--on-danger)' },
         ].map((t) => (
           <button
             key={t.key}
@@ -315,7 +315,7 @@ export default function PedidosView({ onToast }) {
               <span style={{
                 ...sx('margin-left:6px;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--font-mono)'),
                 background: vista === t.key ? t.color : 'var(--surface2)',
-                color: vista === t.key ? '#fff' : 'var(--faint)',
+                color: vista === t.key ? t.on : 'var(--faint)',
               }}>{t.n}</span>
             )}
           </button>

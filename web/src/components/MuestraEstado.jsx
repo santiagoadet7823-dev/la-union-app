@@ -22,8 +22,8 @@ export function Muestra({ color, glifo, hueco = false, size = 14 }) {
       }} />
       {glifo && typeof glifo === 'object' && glifo.svg
         // El logo de WhatsApp (pedido del bot): markup de una constante del repo, no de datos.
-        ? <span style={{ position: 'relative', display: 'grid', placeItems: 'center', width: Math.round(size * 0.6), height: Math.round(size * 0.6), color: hueco ? color : '#fff' }} dangerouslySetInnerHTML={{ __html: glifo.svg.replace(/width="\d+" height="\d+"/, 'width="100%" height="100%"') }} />
-        : <span style={{ position: 'relative', fontFamily: 'var(--font-mono)', fontSize: Math.round(size * 0.57), fontWeight: 700, color: hueco ? color : '#fff', lineHeight: 1 }}>{glifo}</span>}
+        ? <span style={{ position: 'relative', display: 'grid', placeItems: 'center', width: Math.round(size * 0.6), height: Math.round(size * 0.6), color: hueco ? color : 'var(--on-primary)' }} dangerouslySetInnerHTML={{ __html: glifo.svg.replace(/width="\d+" height="\d+"/, 'width="100%" height="100%"') }} />
+        : <span style={{ position: 'relative', fontFamily: 'var(--font-mono)', fontSize: Math.round(size * 0.57), fontWeight: 700, color: hueco ? color : 'var(--on-primary)', lineHeight: 1 }}>{glifo}</span>}
     </span>
   )
 }

@@ -79,7 +79,7 @@ export default function RuteoTab({ onToast }) {
           <div style={sx('border:1px solid var(--success);background:var(--success-tint);border-radius:12px;padding:12px')}>
             <div style={sx('font-size:12px;font-weight:600;color:var(--success);margin-bottom:4px')}>Plan V2 generado</div>
             <div style={sx('font-size:11.5px;color:var(--muted);font-family:var(--font-mono);font-variant-numeric:tabular-nums;line-height:1.7')}>2 rutas · 46,8 km · 6 h 40 m<br />▼ −18% distancia vs plan actual</div>
-            <div onClick={() => onToast('Plan V2 publicado · 2 móviles notificados')} style={sx('margin-top:10px;min-height:40px;display:grid;place-items:center;background:var(--success);color:#04211F;border-radius:10px;font-weight:600;font-size:12.5px;cursor:pointer')}>Publicar plan a los móviles</div>
+            <div onClick={() => onToast('Plan V2 publicado · 2 móviles notificados')} style={sx('margin-top:10px;min-height:40px;display:grid;place-items:center;background:var(--success);color:var(--on-success);border-radius:10px;font-weight:600;font-size:12.5px;cursor:pointer')}>Publicar plan a los móviles</div>
           </div>
         )}
       </div>

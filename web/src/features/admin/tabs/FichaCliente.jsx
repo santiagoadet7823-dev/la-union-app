@@ -289,7 +289,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
                   setDeleting(false); setConfirmDel(false)
                   if (ok) { onCerrar(); onToast(`${fc.name} eliminado`) }
                   else onToast('Error al eliminar: ' + (error?.message || ''))
-                }} style={sx('flex:1;min-height:44px;border:none;border-radius:var(--r-sm);background:var(--danger);color:#fff;font-weight:700;font-size:13px;cursor:pointer')}>{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button>
+                }} style={sx('flex:1;min-height:44px;border:none;border-radius:var(--r-sm);background:var(--danger);color:var(--on-danger);font-weight:700;font-size:13px;cursor:pointer')}>{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button>
                 <button disabled={deleting} className="lu-press" onClick={() => setConfirmDel(false)} style={sx('flex:1;min-height:44px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer')}>Cancelar</button>
               </div>
             </div>

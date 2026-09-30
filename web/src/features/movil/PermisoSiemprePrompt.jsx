@@ -153,7 +153,7 @@ export default function PermisoSiemprePrompt() {
           </div>
         )}
         {exento === false && (
-          <button onClick={pedirBateria} style={sx('width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--warning);color:var(--on-primary,#fff);border:none;border-radius:14px;font-weight:600;font-size:15px;cursor:pointer;margin-bottom:8px')}>
+          <button onClick={pedirBateria} style={sx('width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--warning);color:var(--on-warning);border:none;border-radius:14px;font-weight:600;font-size:15px;cursor:pointer;margin-bottom:8px')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="6" width="18" height="12" rx="2" /><path d="M23 10v4" /></svg>
             Quitar restricción de batería
           </button>

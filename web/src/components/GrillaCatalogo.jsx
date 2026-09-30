@@ -223,7 +223,7 @@ export default function GrillaCatalogo({
                       </div>
                     )}
                     {enOferta && (
-                      <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:#3d2c00;font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
+                      <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:var(--on-warning);font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
                     )}
                     {/* El rombo marca el destacado en el resto de los filtros: dentro de Destacados
                         lo son todos y repetirlo 20 veces es ruido. Va abajo de OFERTA cuando hay las

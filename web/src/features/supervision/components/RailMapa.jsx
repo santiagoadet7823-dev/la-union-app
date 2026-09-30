@@ -62,7 +62,7 @@ export default function RailMapa({
             badge={vendCount} title={`Vendedores (${vendCount})`}
             onClick={() => onFiltro(filter === 'v' ? null : 'v')}
           >
-            <span style={{ width: 12, height: 12, borderRadius: 99, background: filter === 'v' ? '#fff' : 'var(--info)' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 99, background: filter === 'v' ? 'var(--on-info)' : 'var(--info)' }} />
           </RailBtn>
 
           {/* Repartidores */}
@@ -71,7 +71,7 @@ export default function RailMapa({
             badge={repCount} title={`Repartidores (${repCount})`}
             onClick={() => onFiltro(filter === 'r' ? null : 'r')}
           >
-            <span style={{ width: 12, height: 12, borderRadius: 4, background: filter === 'r' ? '#fff' : 'var(--warning)' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 4, background: filter === 'r' ? 'var(--on-warning)' : 'var(--warning)' }} />
           </RailBtn>
         </>
       )}
@@ -177,7 +177,7 @@ export function RailBtn({ on, dim, color, badge, title, onClick, children }) {
         borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', cursor: 'pointer',
         background: on ? color : 'var(--glass-bg)',
         border: `0.5px solid ${on ? 'transparent' : 'var(--glass-brd)'}`,
-        color: on ? '#fff' : (dim ? 'var(--faint)' : 'var(--text)'),
+        color: on ? 'var(--on-primary)' : (dim ? 'var(--faint)' : 'var(--text)'),
         opacity: dim && !on ? 0.72 : 1,
         // El cambio de filtro conmutaba background/border/color/opacity de golpe.
         // 160 ms los lleva juntos; el scale(.97) da el acuse de toque.
@@ -189,7 +189,7 @@ export function RailBtn({ on, dim, color, badge, title, onClick, children }) {
     >
       {children}
       {badge > 0 && (
-        <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', boxSizing: 'border-box', borderRadius: 99, background: on ? 'var(--surface)' : color, color: on ? color : '#fff', border: '1.5px solid var(--surface)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{badge}</span>
+        <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', boxSizing: 'border-box', borderRadius: 99, background: on ? 'var(--surface)' : color, color: on ? color : 'var(--on-primary)', border: '1.5px solid var(--surface)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{badge}</span>
       )}
     </div>
   )

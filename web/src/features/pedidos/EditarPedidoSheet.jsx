@@ -180,7 +180,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
               style={{
                 ...sx('width:100%;min-height:48px;display:grid;place-items:center;border:none;border-radius:12px;font-size:14px;font-weight:700'),
                 background: puedeGuardar ? (quedaVacio ? 'var(--danger)' : 'var(--primary)') : 'var(--surface2)',
-                color: puedeGuardar ? '#fff' : 'var(--faint)',
+                color: puedeGuardar ? (quedaVacio ? 'var(--on-danger)' : 'var(--on-primary)') : 'var(--faint)',
                 cursor: puedeGuardar ? 'pointer' : 'default',
               }}
             >
