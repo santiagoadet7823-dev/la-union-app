@@ -68,7 +68,7 @@ function crearControlBasemap(getId, position) {
       // `a[data-id]` y no `a` a secas: el crédito del pie puede traer enlaces del proveedor.
       menu.querySelectorAll('a[data-id]').forEach((a) => {
         const on = a.dataset.id === cur
-        a.style.background = on ? 'var(--primary-tint,rgba(47,108,126,.12))' : 'transparent'
+        a.style.background = on ? 'var(--primary-tint,rgba(45,103,120,.12))' : 'transparent'
         a.style.color = on ? 'var(--deep,#1E4B59)' : 'var(--text,#2E3A44)'
       })
       // innerHTML y no textContent: los `attribution` traen entidades (&copy;) y enlaces.
@@ -89,12 +89,28 @@ function crearControlBasemap(getId, position) {
   return ctrl
 }
 
+/**
+ * Tinta del texto sobre un relleno de color: la de más contraste entre blanco y la tinta oscura del Grafito
+ * (`#0E0E10`). Antes el texto iba en `#fff` fijo, y en el tema Oscuro los rellenos son claros (`#93B3D3`,
+ * `#D2A857`, `#7CB8C9`): blanco sobre ellos daba 1.9 a 2.5:1. Solo entiende `#rrggbb`; con otra cosa, blanco.
+ */
+function tintaSobre(hex) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
+  if (!m) return '#fff'
+  const c = [0, 2, 4].map((i) => {
+    const v = parseInt(m[1].slice(i, i + 2), 16) / 255
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  })
+  const L = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+  return 1.05 / (L + 0.05) >= (L + 0.05) / 0.0546 ? '#fff' : '#0E0E10'
+}
+
 function pinIcon(color, label, labelColor, selected) {
   const size = selected ? 26 : 22
-  const ring = selected ? '#6FB1C4' : '#ffffff'
+  const ring = selected ? '#7CB8C9' : '#ffffff'
   return L.divIcon({
     className: 'lu-pin',
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50% 50% 50% 3px;background:${color};border:2px solid ${ring};box-shadow:0 1px 5px rgba(0,0,0,.35);display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${labelColor || '#fff'}">${label || ''}</div>`,
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50% 50% 50% 3px;background:${color};border:2px solid ${ring};box-shadow:0 1px 5px rgba(0,0,0,.35);display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${labelColor || tintaSobre(color)}">${label || ''}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
@@ -133,7 +149,7 @@ const Z_ATENUADO = -1000000
  * efecto de carteles: la atenuación de una píldora no es la de un trazo.
  */
 function dwellIcon({ label, sub, extra, color, k = 1, orden = null, atenuado = false }) {
-  const c = color || '#6FB1C4'
+  const c = color || '#7CB8C9'
   const px = (n) => n * k
   // `sub` va en un segundo renglón, más chico y translúcido. En una sola línea la píldora se iba a
   // ~180 px: como el ancho lo fija el texto (nowrap + iconSize [0,0]), apilar es lo que la mantiene
@@ -155,7 +171,7 @@ function dwellIcon({ label, sub, extra, color, k = 1, orden = null, atenuado = f
     // la polilínea que tenga debajo —que no es clickeable— y NO a los pines en vivo, que viven en
     // markerPane (z 600) por encima de este pane (450). Atenuado vuelve a `none`: un cartel de
     // fondo no puede robarle el toque al de la persona que se está revisando.
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:${atenuado ? 'none' : 'auto'};cursor:${atenuado ? 'default' : 'pointer'};display:flex;align-items:center;gap:${px(4)}px;text-align:center;opacity:${atenuado ? 0.32 : 1};background:${c};color:#fff;border:${px(1.5)}px solid rgba(255,255,255,.9);border-radius:${apilado ? px(9) : 99}px;padding:${apilado ? `${px(3)}px ${px(7)}px ${px(3)}px ${padIzq}px` : `${px(2)}px ${px(7)}px ${px(2)}px ${padIzq}px`};box-shadow:${atenuado ? 'none' : '0 1px 5px rgba(0,0,0,.35)'};font-family:'IBM Plex Mono',monospace;font-size:${px(10)}px;font-weight:600;line-height:1.35">${badge}<div>${label || ''}${renglones}</div></div>`,
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:${atenuado ? 'none' : 'auto'};cursor:${atenuado ? 'default' : 'pointer'};display:flex;align-items:center;gap:${px(4)}px;text-align:center;opacity:${atenuado ? 0.32 : 1};background:${c};color:${tintaSobre(c)};border:${px(1.5)}px solid rgba(255,255,255,.9);border-radius:${apilado ? px(9) : 99}px;padding:${apilado ? `${px(3)}px ${px(7)}px ${px(3)}px ${padIzq}px` : `${px(2)}px ${px(7)}px ${px(2)}px ${padIzq}px`};box-shadow:${atenuado ? 'none' : '0 1px 5px rgba(0,0,0,.35)'};font-family:'IBM Plex Mono',monospace;font-size:${px(10)}px;font-weight:600;line-height:1.35">${badge}<div>${label || ''}${renglones}</div></div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
@@ -174,12 +190,14 @@ function esc(s) {
 // abrir cada cartel. Umbrales: <2 min fresco, <15 min reciente, resto viejo.
 // Los colores espejan `--success`, `--warning` y el gris `#7E939C` de la paleta, en su variante del
 // CLARO: el punto no conoce el tema y va siempre con aro blanco, y son las que se leen contra él.
+// La FORMA también cambia (30/09/2026): el verde y el ocre tienen casi la misma luminosidad (1.04:1) y
+// sin otra pista no se distinguen: fresco = círculo, reciente = rombo, viejo = círculo apagado.
 function frescura(ts) {
   const edad = Date.now() - (ts || 0)
-  if (!ts) return { color: '#7E939C', dim: true }
-  if (edad < 2 * 60000) return { color: '#37714A', dim: false }
-  if (edad < 15 * 60000) return { color: '#7D6524', dim: false }
-  return { color: '#7E939C', dim: true }
+  if (!ts) return { color: '#7E939C', dim: true, forma: 'circulo' }
+  if (edad < 2 * 60000) return { color: '#346B46', dim: false, forma: 'circulo' }
+  if (edad < 15 * 60000) return { color: '#735D21', dim: false, forma: 'rombo' }
+  return { color: '#7E939C', dim: true, forma: 'circulo' }
 }
 
 /**
@@ -196,7 +214,7 @@ function bubbleIcon(opts) {
   const fr = frescura(ts)
   const contenido = foto
     ? `<img src="${esc(foto)}" style="width:100%;height:100%;object-fit:cover;display:block" />`
-    : `<div style="width:100%;height:100%;display:grid;place-items:center;background:${color || '#3D6A94'};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:${selected ? 15 : 13}px;font-weight:700">${esc(iniciales || '')}</div>`
+    : `<div style="width:100%;height:100%;display:grid;place-items:center;background:${color || '#39638A'};color:${tintaSobre(color || '#39638A')};font-family:'IBM Plex Mono',monospace;font-size:${selected ? 15 : 13}px;font-weight:700">${esc(iniciales || '')}</div>`
   const label = nombre
     ? `<div style="margin-bottom:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(46,58,68,.82);color:#fff;font-family:Inter,sans-serif;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:99px">${esc(nombre)}</div>`
     : ''
@@ -210,7 +228,9 @@ function bubbleIcon(opts) {
         <div style="width:100%;height:100%;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);overflow:hidden;box-sizing:border-box">
           ${contenido}
         </div>
-        <div style="position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;background:${fr.color};border:2px solid #fff;box-sizing:border-box"></div>
+        ${fr.forma === 'rombo'
+          ? `<div style="position:absolute;bottom:1px;right:1px;width:10px;height:10px;border-radius:2px;background:${fr.color};border:2px solid #fff;box-sizing:border-box;transform:rotate(45deg)"></div>`
+          : `<div style="position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;background:${fr.color};border:2px solid #fff;box-sizing:border-box"></div>`}
       </div>
       <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:${punta}px solid #fff;margin-top:-2px;filter:drop-shadow(0 2px 1px rgba(0,0,0,.3))"></div>
     </div>`
@@ -351,10 +371,10 @@ function depotIcon(theme) {
  * fuente y en IBM Plex Mono no queda centrado ni del tamaño que se pide.
  */
 function hitoIcon({ hora, color, glifo, atenuado = false }) {
-  const c = color || '#6FB1C4'
+  const c = color || '#7CB8C9'
   return L.divIcon({
     className: 'lu-hito',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#2E3A44;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:#fff;font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#2E3A44;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:${tintaSobre(c)};font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
@@ -460,7 +480,7 @@ function pinComercioIcon({ color, glifo, hueco, sel, stroke, tintaGlifo = '#F6F4
   const w = sel ? 30 : hueco ? 19 : 25
   const h = Math.round(w * 1.207)
   const fondo = hueco ? 'transparent' : color
-  const borde = hueco ? color : (sel ? '#6FB1C4' : stroke)
+  const borde = hueco ? color : (sel ? '#7CB8C9' : stroke)
   const tinta = hueco ? color : tintaGlifo
   const grosor = hueco ? 2 : sel ? 2.5 : 1.5
   return L.divIcon({
@@ -489,7 +509,7 @@ export default function LeafletMap({
   depot = null,
   live = null,
   route = null,
-  routeColor = '#6FB1C4',
+  routeColor = '#7CB8C9',
   optimize = false,
   roundtrip = true,
   onRouteInfo,
@@ -552,7 +572,7 @@ export default function LeafletMap({
   // vendedor pasa más, porque ahí el punto es el TARGET TÁCTIL y con 4 px no lo agarra un dedo.
   clientRadius = 4,
   trail = null,
-  trailColor = '#6FB1C4',
+  trailColor = '#7CB8C9',
   trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
   // Enfoque imperativo puntual: al clickear una persona en la lista, encuadrar SU recorrido.
   // { points:[{lat,lng}], nonce }. El nonce (timestamp por click) permite re-enfocar al
@@ -824,7 +844,7 @@ export default function LeafletMap({
     if (live) {
       // Posición GPS en vivo. No se incluye en el fitBounds para no descuadrar el
       // encuadre del recorrido si el dispositivo está lejos del área de trabajo.
-      const lc = liveColor || (theme === 'dark' ? '#83A7CC' : '#3D6A94')
+      const lc = liveColor || (theme === 'dark' ? '#93B3D3' : '#39638A')
       L.circleMarker([live.lat, live.lng], { radius: 7, color: '#fff', weight: 3, fillColor: lc, fillOpacity: 1 }).addTo(layer)
     }
 
@@ -915,8 +935,8 @@ export default function LeafletMap({
     movers.forEach((mv) => {
       if (mv.id) return // idem: los que tienen identidad viven en la capa de pines
       const color = mv.color || (mv.rol === 'repartidor'
-        ? (theme === 'dark' ? '#D2A857' : '#7D6524')
-        : (theme === 'dark' ? '#83A7CC' : '#3D6A94'))
+        ? (theme === 'dark' ? '#D2A857' : '#735D21')
+        : (theme === 'dark' ? '#93B3D3' : '#39638A'))
       // Burbuja de perfil (Life360): foto o iniciales, ancla al punto, frescura por ts.
       const icon = bubbleIcon({ foto: mv.foto, iniciales: mv.iniciales, color, nombre: mv.nombre, ts: mv.ts, selected: mv.selected })
       L.marker([mv.lat, mv.lng], { icon }).addTo(layer)
@@ -951,8 +971,8 @@ export default function LeafletMap({
     ;(movers || []).forEach((mv) => {
       if (!mv.id) return
       const color = mv.color || (mv.rol === 'repartidor'
-        ? (theme === 'dark' ? '#D2A857' : '#7D6524')
-        : (theme === 'dark' ? '#83A7CC' : '#3D6A94'))
+        ? (theme === 'dark' ? '#D2A857' : '#735D21')
+        : (theme === 'dark' ? '#93B3D3' : '#39638A'))
       vivos.push({ ...mv, color, indice: null })
     })
 

@@ -43,7 +43,8 @@ const config: CapacitorConfig = {
     // el proceso (Huawei/Xiaomi/ZTE) cada apertura es en frío y el WebView tarda en pintar;
     // sin esto queda un hueco negro/blanco entre el splash del sistema y el primer render de
     // React. Lo ocultamos desde JS (App.jsx) recién cuando la app ya tiene contenido. El color
-    // matchea el theme-color (#0C0C0C) de index.html para que no haya salto.
+    // matchea el splash de JS (SplashIntro, #0C0C0C) y casi el theme-color oscuro (#0E0E10) de
+    // index.html (ratio 1.01) para que no haya salto.
     SplashScreen: {
       launchAutoHide: false,
       backgroundColor: '#0C0C0C',

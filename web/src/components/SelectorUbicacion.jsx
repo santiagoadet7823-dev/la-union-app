@@ -71,7 +71,7 @@ export default function SelectorUbicacion({ inicial = null, live = null, onCambi
             focus={focus}
             live={live}
             // El círculo de precisión sólo cuando vale la pena verlo: con ±10 m es un puntito.
-            circle={live && acc != null && acc > 30 ? { lat: live.lat, lng: live.lng, radiusM: acc, color: gpsMalo ? '#7D6524' : '#3D6A94' } : null}
+            circle={live && acc != null && acc > 30 ? { lat: live.lat, lng: live.lng, radiusM: acc, color: theme === 'dark' ? (gpsMalo ? '#D2A857' : '#93B3D3') : (gpsMalo ? '#735D21' : '#39638A') } : null}
             onMoveEnd={(c) => onCambioRef.current?.(c)}
           />
         </ErrorBoundary>

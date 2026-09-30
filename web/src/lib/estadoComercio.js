@@ -39,16 +39,16 @@ import { WHATSAPP_PATH } from '../components/icons'
  * aprobados por el dueño el 30/09/2026): espejan a `index.css`, no los eligen.
  */
 export const ESTADOS = {
-  hoy:        { etiqueta: 'Toca hoy',          glifo: '·', light: '#2F6C7E', dark: '#6FB1C4' },
-  visitado:   { etiqueta: 'Con pedido',        glifo: '✓', light: '#37714A', dark: '#7FBF95' },
+  hoy:        { etiqueta: 'Toca hoy',          glifo: '·', light: '#2D6778', dark: '#7CB8C9' },
+  visitado:   { etiqueta: 'Con pedido',        glifo: '✓', light: '#346B46', dark: '#7FBF95' },
   // 🩸 EL BOT DE WHATSAPP (17/09/2026). Un comercio al que le vendió el bot lleva el logo de
   // WhatsApp como glifo y el VERDE DE WHATSAPP (#25D366), no el `--success` de la app — a
   // propósito: es la marca la que engancha, y el dueño de la empresa tiene que VER que el bot
   // está vendiendo. El glifo no es un carácter sino un SVG (`{ svg }`): `pinComercioIcon` y
   // `Muestra` aceptan las dos formas. El trazado sale de `components/icons` (una sola copia).
   pedido_bot: { etiqueta: 'Vendió el bot',     glifo: { svg: `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="${WHATSAPP_PATH}"/></svg>` }, light: '#25D366', dark: '#25D366' },
-  sin_pedido: { etiqueta: 'Sin pedido',        glifo: '–', light: '#7D6524', dark: '#D2A857' },
-  dormido:    { etiqueta: 'No compra hace +30 d', glifo: '!', light: '#A8433C', dark: '#D9857D' },
+  sin_pedido: { etiqueta: 'Sin pedido',        glifo: '–', light: '#735D21', dark: '#D2A857' },
+  dormido:    { etiqueta: 'No compra hace +30 d', glifo: '!', light: '#A1403A', dark: '#E19E98' },
   // El gris del pin hueco es DECORATIVO (no es texto): por eso puede ser el crudo de la paleta
   // (#63636E en oscuro da 3.25:1 sobre el fondo, no llega a los 4.5:1 de un texto).
   no_toca:    { etiqueta: 'Hoy no toca',       glifo: '',  light: '#7E939C', dark: '#63636E', hueco: true },

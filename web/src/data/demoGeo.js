@@ -14,4 +14,4 @@ export const DEPOSITO = {
 // Centro por defecto del mapa = depósito.
 export const CENTRO = { lat: DEPOSITO.lat, lng: DEPOSITO.lng }
 
-export const ROUTE_COLOR = { dark: '#6FB1C4', light: '#2F6C7E' }
+export const ROUTE_COLOR = { dark: '#7CB8C9', light: '#2D6778' }
