@@ -98,7 +98,7 @@ function roundRect(ctx, x, y, w, h, r) {
  * Los tres son OPCIONALES y sin ellos la función se comporta exactamente como antes, así que
  * `ReplayJornada` y la descarga suelta no cambian.
  */
-export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], color = '#1E6F6B', filename = 'recorrido.png', paradas = [], devolver = 'archivo', escala = 1, zoom = null, centro = null }) {
+export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], color = '#2F6C7E', filename = 'recorrido.png', paradas = [], devolver = 'archivo', escala = 1, zoom = null, centro = null }) {
   if (!coords || coords.length < 2) throw new Error('Sin recorrido para exportar')
 
   // `k` multiplica TODO lo que se dibuja: lienzo, grosores, radios y tipografías. Si se escalara
@@ -180,13 +180,13 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
 
   // --- Encabezado (se dibuja al final, tapa cualquier desborde de tiles/línea) ---
   // Colores de la paleta CLARA (la del informe, que sale igual con cualquier tema): la banda es la
-  // tinta `#2E3A44`, y el acento va con el `--primary` del tema oscuro (`#5FB7B1`) porque cae
-  // SOBRE esa banda oscura (el del claro, `#1E6F6B`, sobre `#2E3A44` no se lee).
+  // tinta `#2E3A44`, y el acento va con el `--primary` del tema oscuro (`#6FB1C4`) porque cae
+  // SOBRE esa banda oscura (el del claro, `#2F6C7E`, sobre `#2E3A44` no se lee).
   ctx.fillStyle = '#2E3A44'
   ctx.fillRect(0, 0, W, HEADER)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = '#5FB7B1'
+  ctx.fillStyle = '#6FB1C4'
   ctx.font = `bold ${26 * k}px sans-serif`
   ctx.fillText(titulo || 'Recorrido', 28 * k, 46 * k)
   ctx.fillStyle = '#B0C2C6'
@@ -198,7 +198,7 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
   stats.forEach((s) => {
     const txt = `${s.label}: ${s.value}`
     const w = ctx.measureText(txt).width + 20 * k
-    ctx.fillStyle = 'rgba(95,183,177,.16)'
+    ctx.fillStyle = 'rgba(111,177,196,.16)'
     roundRect(ctx, cx, 90 * k, w, 28 * k, 8 * k); ctx.fill()
     ctx.fillStyle = '#DDE4E1'
     ctx.fillText(txt, cx + 10 * k, 109 * k)
@@ -206,7 +206,7 @@ export async function exportarRutaPng({ coords, titulo, subtitulo, stats = [], c
   })
 
   ctx.textAlign = 'right'
-  ctx.fillStyle = '#5FB7B1'
+  ctx.fillStyle = '#6FB1C4'
   ctx.font = `bold ${18 * k}px sans-serif`
   ctx.fillText('DisT-At', W - 28 * k, 42 * k)
   ctx.fillStyle = '#B0C2C6'

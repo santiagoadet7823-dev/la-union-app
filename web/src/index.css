@@ -80,10 +80,11 @@
    (D) = DERIVADOS: la paleta no tiene el escalón que hacía falta para llegar a WCAG (texto 4.5:1,
    borde de control 3:1) y se ajustó lo mínimo, mismo tono. Con la paleta cruda `#7E939C` sobre la
    crema da 2.92:1: por eso --muted sube al escalón `#4C5F6B` y --faint/--line2 son derivados.
-   ⚠️ Acento (--primary/--deep) y estados (--success/--warning/--danger/--info) son PROPUESTA,
-   pendientes de aprobación del dueño: si cambian, cambian también las constantes espejo de JS
-   (lib/estadoComercio.js, LeafletMap, mapas del vendedor/repartidor) y se re-corre el chequeo de
-   contraste. Solo hex y rgba(): el WebView Chrome 79 de las tablets no entiende
+   Acento (--primary/--deep, azul acero) y estados (--success/--warning/--danger/--info): NO salen
+   de las imágenes de la paleta (solo traen neutros). Los aprobó el dueño el 30/09/2026 (acento B,
+   azul acero; estados tal cual, con el ocre de advertencia). Si cambian, cambian también las
+   constantes espejo de JS (lib/estadoComercio.js, LeafletMap, mapas del vendedor/repartidor) y se
+   re-corre el chequeo de contraste. Solo hex y rgba(): el WebView Chrome 79 de las tablets no entiende
    color-mix/oklch/light-dark() y falla en silencio. */
 html[data-theme='light'] {
   --bg-app: #f6f4ee;
@@ -95,9 +96,9 @@ html[data-theme='light'] {
   --text: #2e3a44;
   --muted: #4c5f6b;
   --faint: #5a6d76; /* (D) 350 usos como color de texto: tiene que dar 4.5:1 */
-  --primary: #1e6f6b;
+  --primary: #2f6c7e;
   --on-primary: #f6f4ee;
-  --deep: #14524f;
+  --deep: #1e4b59;
   --tclassic: #b0c2c6;
   --tlight: #dde4e1;
   --success: #37714a;
@@ -110,7 +111,7 @@ html[data-theme='light'] {
   --on-warning: #f6f4ee;
   --on-danger: #f6f4ee;
   --on-info: #f6f4ee;
-  --primary-tint: rgba(30, 111, 107, 0.12);
+  --primary-tint: rgba(47, 108, 126, 0.12);
   --success-tint: rgba(55, 113, 74, 0.12);
   --warning-tint: rgba(125, 101, 36, 0.12);
   --danger-tint: rgba(168, 67, 60, 0.12);
@@ -143,17 +144,17 @@ html[data-theme='light'] {
   --console-bg: #2e3a44;
   --console-fg: #dde4e1;
   --hm0: #e3e8e5;
-  --hm1: #bbd3d0;
-  --hm2: #7fb0ac;
-  --hm3: #3f8783;
-  --hm4: #1e6f6b;
+  --hm1: #b6c9cb;
+  --hm2: #89aab2;
+  --hm3: #5c8b98;
+  --hm4: #2f6c7e;
   color-scheme: light;
 }
 
 /* --- DARK: Grafito (paleta del dueño) ---
    Mismos criterios que el claro: exacto de la paleta salvo (D). #63636E (3.25:1 sobre el fondo,
    2.64:1 sobre --surface) queda solo para decoración; el texto usa los escalones #C9C9D2 y #9A9AA6.
-   Acento y estados: PROPUESTA pendiente de aprobación (ver el bloque claro). */
+   Acento y estados: aprobados por el dueño el 30/09/2026 (ver el bloque claro). */
 html[data-theme='dark'] {
   --bg-app: #0e0e10;
   --bg-solid: #0e0e10;
@@ -164,9 +165,9 @@ html[data-theme='dark'] {
   --text: #f2f2f5;
   --muted: #c9c9d2;
   --faint: #9a9aa6;
-  --primary: #5fb7b1;
+  --primary: #6fb1c4;
   --on-primary: #0e0e10;
-  --deep: #5fb7b1;
+  --deep: #6fb1c4;
   --tclassic: #3e3e45;
   --tlight: #313136;
   --success: #7fbf95;
@@ -177,7 +178,7 @@ html[data-theme='dark'] {
   --on-warning: #0e0e10;
   --on-danger: #0e0e10;
   --on-info: #0e0e10;
-  --primary-tint: rgba(95, 183, 177, 0.14);
+  --primary-tint: rgba(111, 177, 196, 0.14);
   --success-tint: rgba(127, 191, 149, 0.14);
   --warning-tint: rgba(210, 168, 87, 0.14);
   --danger-tint: rgba(217, 133, 125, 0.14);
@@ -201,12 +202,12 @@ html[data-theme='dark'] {
   --sk: rgba(242, 242, 245, 0.07);
   --bar: rgba(242, 242, 245, 0.1);
   --console-bg: #0e0e10;
-  --console-fg: #5fb7b1;
+  --console-fg: #6fb1c4;
   --hm0: #232327;
-  --hm1: #1f4a47;
-  --hm2: #2c6f6b;
-  --hm3: #45958f;
-  --hm4: #5fb7b1;
+  --hm1: #2c474e;
+  --hm2: #406772;
+  --hm3: #578a99;
+  --hm4: #6fb1c4;
   color-scheme: dark;
 }
 

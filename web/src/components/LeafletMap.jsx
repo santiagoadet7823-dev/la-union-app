@@ -68,8 +68,8 @@ function crearControlBasemap(getId, position) {
       // `a[data-id]` y no `a` a secas: el crédito del pie puede traer enlaces del proveedor.
       menu.querySelectorAll('a[data-id]').forEach((a) => {
         const on = a.dataset.id === cur
-        a.style.background = on ? 'var(--primary-tint,rgba(30,111,107,.12))' : 'transparent'
-        a.style.color = on ? 'var(--deep,#14524F)' : 'var(--text,#2E3A44)'
+        a.style.background = on ? 'var(--primary-tint,rgba(47,108,126,.12))' : 'transparent'
+        a.style.color = on ? 'var(--deep,#1E4B59)' : 'var(--text,#2E3A44)'
       })
       // innerHTML y no textContent: los `attribution` traen entidades (&copy;) y enlaces.
       credito.innerHTML = basemapById(cur).opts?.attribution || ''
@@ -91,7 +91,7 @@ function crearControlBasemap(getId, position) {
 
 function pinIcon(color, label, labelColor, selected) {
   const size = selected ? 26 : 22
-  const ring = selected ? '#5FB7B1' : '#ffffff'
+  const ring = selected ? '#6FB1C4' : '#ffffff'
   return L.divIcon({
     className: 'lu-pin',
     html: `<div style="width:${size}px;height:${size}px;border-radius:50% 50% 50% 3px;background:${color};border:2px solid ${ring};box-shadow:0 1px 5px rgba(0,0,0,.35);display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${labelColor || '#fff'}">${label || ''}</div>`,
@@ -133,7 +133,7 @@ const Z_ATENUADO = -1000000
  * efecto de carteles: la atenuación de una píldora no es la de un trazo.
  */
 function dwellIcon({ label, sub, extra, color, k = 1, orden = null, atenuado = false }) {
-  const c = color || '#5FB7B1'
+  const c = color || '#6FB1C4'
   const px = (n) => n * k
   // `sub` va en un segundo renglón, más chico y translúcido. En una sola línea la píldora se iba a
   // ~180 px: como el ancho lo fija el texto (nowrap + iconSize [0,0]), apilar es lo que la mantiene
@@ -351,7 +351,7 @@ function depotIcon(theme) {
  * fuente y en IBM Plex Mono no queda centrado ni del tamaño que se pide.
  */
 function hitoIcon({ hora, color, glifo, atenuado = false }) {
-  const c = color || '#5FB7B1'
+  const c = color || '#6FB1C4'
   return L.divIcon({
     className: 'lu-hito',
     html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#2E3A44;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:#fff;font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
@@ -460,7 +460,7 @@ function pinComercioIcon({ color, glifo, hueco, sel, stroke, tintaGlifo = '#F6F4
   const w = sel ? 30 : hueco ? 19 : 25
   const h = Math.round(w * 1.207)
   const fondo = hueco ? 'transparent' : color
-  const borde = hueco ? color : (sel ? '#5FB7B1' : stroke)
+  const borde = hueco ? color : (sel ? '#6FB1C4' : stroke)
   const tinta = hueco ? color : tintaGlifo
   const grosor = hueco ? 2 : sel ? 2.5 : 1.5
   return L.divIcon({
@@ -489,7 +489,7 @@ export default function LeafletMap({
   depot = null,
   live = null,
   route = null,
-  routeColor = '#5FB7B1',
+  routeColor = '#6FB1C4',
   optimize = false,
   roundtrip = true,
   onRouteInfo,
@@ -552,7 +552,7 @@ export default function LeafletMap({
   // vendedor pasa más, porque ahí el punto es el TARGET TÁCTIL y con 4 px no lo agarra un dedo.
   clientRadius = 4,
   trail = null,
-  trailColor = '#5FB7B1',
+  trailColor = '#6FB1C4',
   trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
   // Enfoque imperativo puntual: al clickear una persona en la lista, encuadrar SU recorrido.
   // { points:[{lat,lng}], nonce }. El nonce (timestamp por click) permite re-enfocar al

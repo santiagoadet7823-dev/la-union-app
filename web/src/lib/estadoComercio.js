@@ -35,11 +35,11 @@ import { WHATSAPP_PATH } from '../components/icons'
  * razón concreta: los puntos de esta capa se dibujan en
  * CANVAS cuando el zoom es bajo (regla de `LeafletMap`), y un `<canvas>` no resuelve `var(--x)`.
  * ⚠️ Si se tocan esos tokens, se tocan también acá. Es el mismo trato que ya tenían los colores de
- * pin de `RutaTab` y de `SupervisionMovil`. Valores de la paleta del 29/09/2026 (acento y estados
- * son PROPUESTA pendiente de aprobación del dueño): espejan a `index.css`, no los eligen.
+ * pin de `RutaTab` y de `SupervisionMovil`. Valores de la paleta del 29/09/2026 (acento azul acero y estados,
+ * aprobados por el dueño el 30/09/2026): espejan a `index.css`, no los eligen.
  */
 export const ESTADOS = {
-  hoy:        { etiqueta: 'Toca hoy',          glifo: '·', light: '#1E6F6B', dark: '#5FB7B1' },
+  hoy:        { etiqueta: 'Toca hoy',          glifo: '·', light: '#2F6C7E', dark: '#6FB1C4' },
   visitado:   { etiqueta: 'Con pedido',        glifo: '✓', light: '#37714A', dark: '#7FBF95' },
   // 🩸 EL BOT DE WHATSAPP (17/09/2026). Un comercio al que le vendió el bot lleva el logo de
   // WhatsApp como glifo y el VERDE DE WHATSAPP (#25D366), no el `--success` de la app — a
