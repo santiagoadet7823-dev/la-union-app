@@ -8,7 +8,8 @@ import Isotipo from './Isotipo'
  * 🩸 TRES CONDICIONES QUE NO SE NEGOCIAN — las tres vienen del brief y las tres tienen motivo:
  *
  * 1. **El fondo es #0C0C0C exacto.** Es el color del splash NATIVO (`capacitor.config.ts`) y del
- *    `theme-color` del index.html. Esta capa aparece justo cuando el splash del sistema se va; si
+ *    `theme-color` del index.html (hasta el 29/09/2026; hoy es `#0E0E10` en oscuro, casi
+ *    idéntico: ratio 1.01). Esta capa aparece justo cuando el splash del sistema se va; si
  *    el negro no coincide, se ve un parpadeo de color en cada apertura.
  *
  * 2. **Nunca puede demorar el ingreso.** Es una capa POR ENCIMA de la app, no un paso previo: la

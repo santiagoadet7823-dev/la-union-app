@@ -35,8 +35,9 @@ export default defineConfig({
         name: 'DisT-At',
         short_name: 'DisT-At',
         description: 'DisT-At — plataforma logística: Vendedor, Repartidor y Administrador.',
-        theme_color: '#0C0C0C',
-        background_color: '#0C0C0C',
+        // Los del tema por defecto (oscuro): el manifest es estático. `--bg-app` de index.css.
+        theme_color: '#0E0E10',
+        background_color: '#0E0E10',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '.',
