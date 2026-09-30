@@ -237,7 +237,7 @@ export default function EmpresasView({ onToast }) {
         </div>
         <div style={sx('display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end')}>
           <label style={sx('display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>
-            <input type="checkbox" checked={track.enabled} onChange={(e) => setTrack((t) => ({ ...t, enabled: e.target.checked }))} style={{ width: 18, height: 18, accentColor: '#0ABAB5' }} />
+            <input type="checkbox" checked={track.enabled} onChange={(e) => setTrack((t) => ({ ...t, enabled: e.target.checked }))} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
             Rastreo activo
           </label>
           <div>
@@ -274,7 +274,7 @@ export default function EmpresasView({ onToast }) {
         </div>
         <div style={sx('display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end')}>
           <label style={sx('display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>
-            <input type="checkbox" checked={alertas.activas} onChange={(e) => setAlertas((a) => ({ ...a, activas: e.target.checked }))} style={{ width: 18, height: 18, accentColor: '#0ABAB5' }} />
+            <input type="checkbox" checked={alertas.activas} onChange={(e) => setAlertas((a) => ({ ...a, activas: e.target.checked }))} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
             Avisos activos
           </label>
           <div>

@@ -34,15 +34,15 @@ import { distanciaMetros } from '../../services/geolocation/geofence'
 // puntos se dibujan en canvas a zoom bajo y un `<canvas>` no entiende `var(--x)`; el mapeo de
 // ESTADO a token es el de `colorEstadoPedido`, no uno nuevo.
 const COLOR_ENTREGA = {
-  pendiente:    { etiqueta: 'Por entregar', glifo: '·', light: '#0ABAB5', dark: '#2DD4CE' }, // --primary
-  en_camino:    { etiqueta: 'En camino',    glifo: '»', light: '#0EA5E9', dark: '#38BDF8' }, // --info
-  entregado:    { etiqueta: 'Entregado',    glifo: '✓', light: '#10B981', dark: '#34D399' }, // --success
-  no_entregado: { etiqueta: 'No entregado', glifo: '!', light: '#F59E0B', dark: '#FBBF24' }, // --warning
+  pendiente:    { etiqueta: 'Por entregar', glifo: '·', light: '#1E6F6B', dark: '#5FB7B1' }, // --primary
+  en_camino:    { etiqueta: 'En camino',    glifo: '»', light: '#3D6A94', dark: '#83A7CC' }, // --info
+  entregado:    { etiqueta: 'Entregado',    glifo: '✓', light: '#37714A', dark: '#7FBF95' }, // --success
+  no_entregado: { etiqueta: 'No entregado', glifo: '!', light: '#7D6524', dark: '#D2A857' }, // --warning
 }
 const ORDEN_LEYENDA = ['pendiente', 'en_camino', 'entregado', 'no_entregado']
 
 const K_LEYENDA = 'lu-mapa-entregas-leyenda'
-const STROKE = { dark: '#0B2B2A', light: '#ffffff' }
+const STROKE = { dark: '#0E0E10', light: '#ffffff' }
 
 const pintar = (status, isDark) => {
   const e = COLOR_ENTREGA[status] || COLOR_ENTREGA.pendiente

@@ -56,7 +56,7 @@ export default function LeyendaCartera({ modo, conteo, zonasEnMapa = null, sinUb
   if (modo === 'zona') {
     const zonas = zonasEnMapa?.zonas || []
     const sinZona = zonasEnMapa?.sinZona || 0
-    const gris = isDark ? '#94A3B8' : '#475569'
+    const gris = isDark ? '#9A9AA6' : '#7E939C'
     // Sin nada que dibujar: sin foco no hay leyenda (no hay cartera ubicada, el botón ya lo dice);
     // con foco SÍ, porque el mapa quedó vacío por la persona y eso hay que explicarlo en el lugar.
     if (!zonas.length && !sinZona) {

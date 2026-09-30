@@ -38,19 +38,19 @@ function crearControlBasemap(getId, position) {
   const ctrl = L.control({ position: position || 'topright' })
   ctrl.onAdd = () => {
     const wrap = L.DomUtil.create('div', 'leaflet-bar lu-basemap-ctrl')
-    wrap.style.cssText = 'background:var(--surface,#fff);border-radius:8px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.3)'
+    wrap.style.cssText = 'background:var(--surface,#FCFBF8);border-radius:8px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.3)'
     const btn = L.DomUtil.create('a', '', wrap)
     btn.href = '#'; btn.title = 'Cambiar mapa'
-    btn.style.cssText = 'display:grid;place-items:center;width:34px;height:34px;color:var(--text,#222)'
+    btn.style.cssText = 'display:grid;place-items:center;width:34px;height:34px;color:var(--text,#2E3A44)'
     btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>'
     const menu = L.DomUtil.create('div', '', wrap)
-    menu.style.cssText = 'display:none;border-top:1px solid var(--line,#e5e5e5)'
+    menu.style.cssText = 'display:none;border-top:1px solid var(--line,#DDE4E1)'
     const opciones = usableBasemaps()
     opciones.forEach((b) => {
       const item = L.DomUtil.create('a', '', menu)
       item.href = '#'; item.textContent = b.label
       item.dataset.id = b.id
-      item.style.cssText = 'display:block;padding:7px 12px;font:600 12px/1 var(--font-body,sans-serif);color:var(--text,#222);white-space:nowrap;text-decoration:none;border:none;width:auto;height:auto'
+      item.style.cssText = 'display:block;padding:7px 12px;font:600 12px/1 var(--font-body,sans-serif);color:var(--text,#2E3A44);white-space:nowrap;text-decoration:none;border:none;width:auto;height:auto'
       L.DomEvent.on(item, 'click', (e) => {
         L.DomEvent.stop(e)
         setBasemap(b.id)
@@ -61,15 +61,15 @@ function crearControlBasemap(getId, position) {
     // Crédito del proveedor, al pie del menú. Se actualiza al cambiar de capa porque cada una
     // tiene el suyo (OSM / Stadia + OpenMapTiles / satélite).
     const credito = L.DomUtil.create('div', '', menu)
-    credito.style.cssText = 'padding:6px 12px 7px;border-top:1px solid var(--line,#e5e5e5);font:400 9px/1.4 var(--font-mono,monospace);color:var(--faint,#93a9a7);max-width:190px'
+    credito.style.cssText = 'padding:6px 12px 7px;border-top:1px solid var(--line,#DDE4E1);font:400 9px/1.4 var(--font-mono,monospace);color:var(--faint,#5A6D76);max-width:190px'
 
     const pintarActivo = () => {
       const cur = getId()
       // `a[data-id]` y no `a` a secas: el crédito del pie puede traer enlaces del proveedor.
       menu.querySelectorAll('a[data-id]').forEach((a) => {
         const on = a.dataset.id === cur
-        a.style.background = on ? 'var(--primary-tint,#e6f7f6)' : 'transparent'
-        a.style.color = on ? 'var(--deep,#0ABAB5)' : 'var(--text,#222)'
+        a.style.background = on ? 'var(--primary-tint,rgba(30,111,107,.12))' : 'transparent'
+        a.style.color = on ? 'var(--deep,#14524F)' : 'var(--text,#2E3A44)'
       })
       // innerHTML y no textContent: los `attribution` traen entidades (&copy;) y enlaces.
       credito.innerHTML = basemapById(cur).opts?.attribution || ''
@@ -91,7 +91,7 @@ function crearControlBasemap(getId, position) {
 
 function pinIcon(color, label, labelColor, selected) {
   const size = selected ? 26 : 22
-  const ring = selected ? '#2DD4CE' : '#ffffff'
+  const ring = selected ? '#5FB7B1' : '#ffffff'
   return L.divIcon({
     className: 'lu-pin',
     html: `<div style="width:${size}px;height:${size}px;border-radius:50% 50% 50% 3px;background:${color};border:2px solid ${ring};box-shadow:0 1px 5px rgba(0,0,0,.35);display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${labelColor || '#fff'}">${label || ''}</div>`,
@@ -133,7 +133,7 @@ const Z_ATENUADO = -1000000
  * efecto de carteles: la atenuación de una píldora no es la de un trazo.
  */
 function dwellIcon({ label, sub, extra, color, k = 1, orden = null, atenuado = false }) {
-  const c = color || '#2DD4CE'
+  const c = color || '#5FB7B1'
   const px = (n) => n * k
   // `sub` va en un segundo renglón, más chico y translúcido. En una sola línea la píldora se iba a
   // ~180 px: como el ancho lo fija el texto (nowrap + iconSize [0,0]), apilar es lo que la mantiene
@@ -172,12 +172,14 @@ function esc(s) {
 // deja de emitir: en vez de desaparecer del mapa, su burbuja queda con el punto en gris
 // ("hace rato / app cerrada"), así se ve de un vistazo quién está desactualizado sin
 // abrir cada cartel. Umbrales: <2 min fresco, <15 min reciente, resto viejo.
+// Los colores espejan `--success`, `--warning` y el gris `#7E939C` de la paleta, en su variante del
+// CLARO: el punto no conoce el tema y va siempre con aro blanco, y son las que se leen contra él.
 function frescura(ts) {
   const edad = Date.now() - (ts || 0)
-  if (!ts) return { color: '#94a3b8', dim: true }
-  if (edad < 2 * 60000) return { color: '#22c55e', dim: false }
-  if (edad < 15 * 60000) return { color: '#f59e0b', dim: false }
-  return { color: '#94a3b8', dim: true }
+  if (!ts) return { color: '#7E939C', dim: true }
+  if (edad < 2 * 60000) return { color: '#37714A', dim: false }
+  if (edad < 15 * 60000) return { color: '#7D6524', dim: false }
+  return { color: '#7E939C', dim: true }
 }
 
 /**
@@ -194,9 +196,9 @@ function bubbleIcon(opts) {
   const fr = frescura(ts)
   const contenido = foto
     ? `<img src="${esc(foto)}" style="width:100%;height:100%;object-fit:cover;display:block" />`
-    : `<div style="width:100%;height:100%;display:grid;place-items:center;background:${color || '#0EA5E9'};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:${selected ? 15 : 13}px;font-weight:700">${esc(iniciales || '')}</div>`
+    : `<div style="width:100%;height:100%;display:grid;place-items:center;background:${color || '#3D6A94'};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:${selected ? 15 : 13}px;font-weight:700">${esc(iniciales || '')}</div>`
   const label = nombre
-    ? `<div style="margin-bottom:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(11,43,42,.82);color:#fff;font-family:Inter,sans-serif;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:99px">${esc(nombre)}</div>`
+    ? `<div style="margin-bottom:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(46,58,68,.82);color:#fff;font-family:Inter,sans-serif;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:99px">${esc(nombre)}</div>`
     : ''
   // Alto de referencia para el ancla: avatar + punta (la píldora del nombre queda por
   // encima y no debe correr el ancla). iconAnchor = tip de la punta sobre la coordenada.
@@ -311,8 +313,8 @@ function firmaHitos(hs) {
 }
 
 function depotIcon(theme) {
-  const bg = theme === 'dark' ? '#ECF5F4' : '#0B2B2A'
-  const fg = theme === 'dark' ? '#0B2B2A' : '#ECF5F4'
+  const bg = theme === 'dark' ? '#F2F2F5' : '#2E3A44'
+  const fg = theme === 'dark' ? '#2E3A44' : '#F2F2F5'
   return L.divIcon({
     className: 'lu-depot',
     html: `<div style="width:26px;height:26px;border-radius:8px;background:${bg};display:grid;place-items:center;box-shadow:0 1px 5px rgba(0,0,0,.35)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-8h6v8"/></svg></div>`,
@@ -349,10 +351,10 @@ function depotIcon(theme) {
  * fuente y en IBM Plex Mono no queda centrado ni del tamaño que se pide.
  */
 function hitoIcon({ hora, color, glifo, atenuado = false }) {
-  const c = color || '#2DD4CE'
+  const c = color || '#5FB7B1'
   return L.divIcon({
     className: 'lu-hito',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#0B2B2A;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:#fff;font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#2E3A44;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:#fff;font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })
@@ -458,7 +460,7 @@ function pinComercioIcon({ color, glifo, hueco, sel, stroke }) {
   const w = sel ? 30 : hueco ? 19 : 25
   const h = Math.round(w * 1.207)
   const fondo = hueco ? 'transparent' : color
-  const borde = hueco ? color : (sel ? '#2DD4CE' : stroke)
+  const borde = hueco ? color : (sel ? '#5FB7B1' : stroke)
   const tinta = hueco ? color : '#fff'
   const grosor = hueco ? 2 : sel ? 2.5 : 1.5
   return L.divIcon({
@@ -487,7 +489,7 @@ export default function LeafletMap({
   depot = null,
   live = null,
   route = null,
-  routeColor = '#2DD4CE',
+  routeColor = '#5FB7B1',
   optimize = false,
   roundtrip = true,
   onRouteInfo,
@@ -550,7 +552,7 @@ export default function LeafletMap({
   // vendedor pasa más, porque ahí el punto es el TARGET TÁCTIL y con 4 px no lo agarra un dedo.
   clientRadius = 4,
   trail = null,
-  trailColor = '#2DD4CE',
+  trailColor = '#5FB7B1',
   trails = null, // varios recorridos a la vez: [{ points:[{lat,lng}], color }]
   // Enfoque imperativo puntual: al clickear una persona en la lista, encuadrar SU recorrido.
   // { points:[{lat,lng}], nonce }. El nonce (timestamp por click) permite re-enfocar al
@@ -822,7 +824,7 @@ export default function LeafletMap({
     if (live) {
       // Posición GPS en vivo. No se incluye en el fitBounds para no descuadrar el
       // encuadre del recorrido si el dispositivo está lejos del área de trabajo.
-      const lc = liveColor || (theme === 'dark' ? '#38BDF8' : '#0EA5E9')
+      const lc = liveColor || (theme === 'dark' ? '#83A7CC' : '#3D6A94')
       L.circleMarker([live.lat, live.lng], { radius: 7, color: '#fff', weight: 3, fillColor: lc, fillOpacity: 1 }).addTo(layer)
     }
 
@@ -913,8 +915,8 @@ export default function LeafletMap({
     movers.forEach((mv) => {
       if (mv.id) return // idem: los que tienen identidad viven en la capa de pines
       const color = mv.color || (mv.rol === 'repartidor'
-        ? (theme === 'dark' ? '#FBBF24' : '#F59E0B')
-        : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
+        ? (theme === 'dark' ? '#D2A857' : '#7D6524')
+        : (theme === 'dark' ? '#83A7CC' : '#3D6A94'))
       // Burbuja de perfil (Life360): foto o iniciales, ancla al punto, frescura por ts.
       const icon = bubbleIcon({ foto: mv.foto, iniciales: mv.iniciales, color, nombre: mv.nombre, ts: mv.ts, selected: mv.selected })
       L.marker([mv.lat, mv.lng], { icon }).addTo(layer)
@@ -949,8 +951,8 @@ export default function LeafletMap({
     ;(movers || []).forEach((mv) => {
       if (!mv.id) return
       const color = mv.color || (mv.rol === 'repartidor'
-        ? (theme === 'dark' ? '#FBBF24' : '#F59E0B')
-        : (theme === 'dark' ? '#38BDF8' : '#0EA5E9'))
+        ? (theme === 'dark' ? '#D2A857' : '#7D6524')
+        : (theme === 'dark' ? '#83A7CC' : '#3D6A94'))
       vivos.push({ ...mv, color, indice: null })
     })
 
@@ -1334,8 +1336,8 @@ export default function LeafletMap({
     const map = mapRef.current
     const layer = clientsLayerRef.current
     if (!map || !layer) return
-    const neutro = theme === 'dark' ? '#94A3B8' : '#475569'
-    const stroke = theme === 'dark' ? '#0B2B2A' : '#ffffff'
+    const neutro = theme === 'dark' ? '#9A9AA6' : '#7E939C'
+    const stroke = theme === 'dark' ? '#0E0E10' : '#ffffff'
     let modo = null
     const modoDeZoom = () => {
       const z = map.getZoom() || 0

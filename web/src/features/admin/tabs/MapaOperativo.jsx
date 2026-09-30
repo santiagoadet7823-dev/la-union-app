@@ -28,7 +28,7 @@ export default function MapaOperativo({ equipo, events, onNuevoCliente }) {
 
   const carteraGeo = cartera.filter((c) => c.lat != null && c.lng != null)
   const sel = carteraGeo[selPin] || null
-  const primaryPin = theme === 'dark' ? '#2DD4CE' : '#0ABAB5'
+  const primaryPin = theme === 'dark' ? '#5FB7B1' : '#1E6F6B'
   const zonaColor = useMemo(() => {
     const m = {}
     zonas.forEach((z) => { if (z.color) m[z.id] = z.color })
