@@ -92,7 +92,7 @@ function RoleRouter({ vista }) {
   // el menú del `AppShell` que lo envuelve.
   return (
     <div style={sx('padding:32px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5')}>
-      Tu perfil no tiene una vista asignada. Cerrá sesión y avisale al administrador.
+      No hay una vista para tu perfil en este momento. Probá cambiar de vista desde el menú o cerrá sesión y avisale al administrador.
     </div>
   )
 }
