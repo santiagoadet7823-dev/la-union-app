@@ -11,6 +11,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 import { ChevronRight, LogOut, Lock, Monitor, Profile, Smartphone } from '../../components/icons'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from '../../services/platform'
+import { esRastreado } from '../../lib/roles'
 
 /**
  * Sección "Mi cuenta" reutilizable: las MISMAS acciones que el menú de cuenta del admin
@@ -110,9 +111,12 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
 
       {/* Compartir la propia ubicación con otra empresa. Va acá y no en un menú de gestión porque
           es una decisión sobre MIS datos, no sobre los del equipo: la toma cada uno sobre sí mismo
-          y la puede cortar en el mismo lugar donde la prendió. Marketing no se trackea (db/38):
-          no tiene ubicación que compartir, así que el panel solo le mostraría una opción muerta. */}
-      {rol !== 'marketing' && (
+          y la puede cortar en el mismo lugar donde la prendió. Solo para los roles que la app
+          rastrea (`esRastreado`: vendedor, repartidor, encargado). Marketing (db/38) y admin/
+          superadmin no publican posición (`GpsContext`: solo `esMovil` la escribe), así que la RPC
+          `ultimas_posiciones_compartidas` no tendría nada que devolverle a la otra empresa y el
+          panel solo les mostraría una opción muerta. */}
+      {esRastreado(rol) && (
         <>
           <div style={sx('padding:12px 0')}>
             <CompartirUbicacion />
