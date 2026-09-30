@@ -434,12 +434,11 @@ function Metrica({ valor, etiqueta, sub }) {
  * tope viejo marca 57 % (a tres puntos de pasar a naranja) cuando el uso real de la base ronda el
  * 3,5 %, y un superadmin lo lee como "falta poco para el techo".
  *
- * 🔴 El TOPE no se corrigió acá a propósito: lo manda la RPC `estado_plan` (`db_limit_bytes`,
- * db/19:22) y la función viva sigue devolviendo 524.288.000 (500 MB, el del plan Free). Escribir
- * 8 GB en el front sería una segunda fuente del mismo número (regla 36) y, el día que se migre la
- * RPC, dos topes distintos peleándose. Hasta entonces la barra y el % se miden contra 500 MB: el
- * rótulo dice Pro, pero el porcentaje NO es contra el disco real. Pendiente: migración nueva que
- * ponga `db_limit_bytes` en 8 GiB (8589934592); el front ya lo lee tal cual.
+ * El TOPE NO está escrito acá a propósito: lo manda la RPC `estado_plan` (`db_limit_bytes`), y
+ * escribir 8 GB en el front sería una segunda fuente del mismo número (regla 36). Hasta el
+ * 30/09/2026 la función devolvía 524.288.000 (500 MB, el del plan Free); `db/84` (aplicada ese día)
+ * lo pasó a 8 GiB, el disco incluido en Pro. Si Supabase amplía el disco de este proyecto, se
+ * cambia con otra migración: el front lo lee tal cual.
  */
 function PanelPlan({ plan }) {
   if (!plan) {
