@@ -373,7 +373,10 @@ export default function App() {
             <Gate />
           </ErrorBoundary>
           <UpdatePrompt />
-          <DeviceBanner />
+          {/* Celular/PC es una decisión de la WEB. Dentro de la APK no hay "PC" a la que cambiar: elegirla
+              dejaba el mockup 393×820 flotando en el teléfono y, sin el switch (MiCuenta lo oculta en
+              nativo), sin forma de volver. Ver `useDeviceMode`: en nativo el modo es siempre 'mobile'. */}
+          {!isNative() && <DeviceBanner />}
           {splash && <SplashIntro onDone={() => setSplash(false)} />}
         </AuthProvider>
       </DeviceProvider>
