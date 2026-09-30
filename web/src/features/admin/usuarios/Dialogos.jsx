@@ -26,8 +26,9 @@ const USUARIO_RE = /^[a-z0-9._-]{3,30}$/
 // ─────────────────────────────────────────────────────────────────────────────
 /**
  * Invertida (texto sobre fondo) para que no se confunda con una tarjeta. Mientras haya cambios
- * está siempre visible. El texto va sobre `--surface` y no sobre `--bg-app` como en la entrega:
- * en el tema claro `--bg-app` es un degradado y no sirve como color.
+ * está siempre visible. El texto va sobre `--surface` y no sobre `--bg-app` como en la entrega.
+ * (Hasta el 29/09/2026 la razón era que en el tema claro `--bg-app` era un degradado y no servía
+ * como color; con la paleta nueva es sólido en los dos temas, pero se dejó `--surface` igual.)
  */
 export function BarraCambios({ resumen, nombres, sinRed, onDescartar, onRevisar, movil }) {
   if (!resumen.n) return null
