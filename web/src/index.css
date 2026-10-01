@@ -11,7 +11,10 @@
      igual que antes (las métricas del texto no cambian). Para sumar un peso, ampliar el rango
      (variables) o agregar el archivo (Plex Mono).
    - `unicode-range` = subset latin de Google: ASCII, Latin-1 (á é í ó ú ñ ü ¿ ¡ ° º) y
-     puntuación general (– — … · “ ”). Lo de afuera (→ ≥ σ ₂) cae al fallback, igual que antes.
+     puntuación general (– — … · “ ”). Lo de afuera cae a la fuente del sistema: → ≥ ₂ ya caían
+     antes; en cambio las letras latin-ext (ő č ł…) y el griego (σ) antes los traía Google en otro
+     subset y ahora no. En la UI no se usan; sólo podrían aparecer en datos (nombres de clientes).
+     Si hiciera falta, sumar el subset latin-ext (~+100 KB al precache).
    - URL absoluta a `public/`: Vite le antepone el `base` en los dos builds (`/la-union-app/` en
      la PWA; relativa al CSS con `CAP_BUILD=1`). */
 @font-face {
