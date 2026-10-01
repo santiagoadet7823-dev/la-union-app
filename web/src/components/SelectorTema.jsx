@@ -56,6 +56,13 @@ export default function SelectorTema({ variante = 'completo' }) {
     }
     previo.current = { theme, preferencia }
   }, [theme, preferencia])
+  // Se vacía a los pocos segundos: si quedara escrito, TalkBack podría leer un estado viejo al
+  // recorrer la pantalla más tarde.
+  useEffect(() => {
+    if (!aviso) return undefined
+    const t = setTimeout(() => setAviso(''), 4000)
+    return () => clearTimeout(t)
+  }, [aviso])
 
   const habilitada = (o) => o.id !== 'auto' || autoDisponible
 
@@ -103,6 +110,9 @@ export default function SelectorTema({ variante = 'completo' }) {
           const on = i === marcada
           const ok = habilitada(o)
           const { Icono } = o
+          // Sin rótulo visible, el "deshabilitado" tiene que ir en el nombre: la opacidad sola no
+          // la lee nadie.
+          const nombre = ok ? o.rotulo : `${o.rotulo} (no disponible en este dispositivo)`
           return (
             <button
               key={o.id}
@@ -111,8 +121,8 @@ export default function SelectorTema({ variante = 'completo' }) {
               role="radio"
               aria-checked={on}
               aria-disabled={ok ? undefined : true}
-              aria-label={iconos ? o.rotulo : undefined}
-              title={iconos ? o.rotulo : undefined}
+              aria-label={iconos ? nombre : undefined}
+              title={iconos ? nombre : undefined}
               tabIndex={on || (marcada === -1 && i === 0) ? 0 : -1}
               onClick={() => elegir(i)}
               onKeyDown={(e) => alTeclear(e, i)}
