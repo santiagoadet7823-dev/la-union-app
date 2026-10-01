@@ -1,13 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react'
 import { aplicarTemaNativo } from '../services/nativeUI'
-import { escucharTemaSistema, leerSistemaOscuroSync, sistemaInformaModo } from '../services/temaSistema'
+import { escucharTemaSistema, leerSistemaOscuro, sistemaInformaModo } from '../services/temaSistema'
 
 /**
  * TEMA EN TRES MODOS: Claro · Oscuro · Automático (01/10/2026, brief estético v2 §5).
  *
  * Dos valores distintos que antes eran uno solo:
  *   - `preferencia` ∈ light | dark | auto → lo que ELIGIÓ el usuario. Es lo único que se guarda.
- *   - `theme` ∈ light | dark → lo que se PINTA. Con `auto`, lo decide el teléfono en vivo
+ *   - `theme` ∈ light | dark → lo que se PINTA. Con `auto`, lo decide el modo del teléfono, en vivo
  *     (`services/temaSistema.js`). `data-theme` en <html> siempre lleva este (nunca `auto`): los
  *     tokens de `index.css` se enganchan de `html[data-theme='light'|'dark']`.
  *
@@ -24,9 +24,10 @@ import { escucharTemaSistema, leerSistemaOscuroSync, sistemaInformaModo } from '
  *        el reset ya se hizo; desde ahí, lo guardado se respeta.
  *   - 11: Automático **solo sigue al teléfono** (sin horario propio de la app).
  *
- * ⚠️ LA MISMA REGLA VIVE EN TRES RUNTIMES (riesgo R5 del brief): el script inline de `index.html`
- * (resuelve antes del primer pintado y hace también el reset), este contexto y, cuando llegue, el
- * plugin nativo. Si se cambia la clave, la marca o el default, se cambia en los tres.
+ * ⚠️ LA MISMA REGLA VIVE EN DOS LUGARES (riesgo R5 del brief): el script inline de `index.html`
+ * (resuelve antes del primer pintado y hace también el reset) y este contexto. Si se cambia la
+ * clave, la marca o el default, se cambia en los dos. El modo del teléfono sale de `matchMedia`
+ * (`services/temaSistema.js`), que el PR-0 midió que cambia en vivo dentro del WebView.
  */
 
 const CLAVE = 'launion-theme'
@@ -65,7 +66,7 @@ function aplicarAlDOM(theme, preferencia) {
 export function ThemeProvider({ children }) {
   const [preferencia, setPreferenciaEstado] = useState(leerPreferencia)
   const [autoDisponible] = useState(sistemaInformaModo)
-  const [sistemaOscuro, setSistemaOscuro] = useState(leerSistemaOscuroSync)
+  const [sistemaOscuro, setSistemaOscuro] = useState(leerSistemaOscuro)
   // Sin `prefers-color-scheme` no hay a quién seguir: `auto` guardado se pinta Claro (brief §5.6).
   const theme = resolver(preferencia, autoDisponible && sistemaOscuro)
 
@@ -84,7 +85,7 @@ export function ThemeProvider({ children }) {
   // cambia nada y no tiene sentido despertar el JS. Al entrar en `auto` se relee al instante.
   useEffect(() => {
     if (preferencia !== 'auto' || !autoDisponible) return undefined
-    setSistemaOscuro(leerSistemaOscuroSync())
+    setSistemaOscuro(leerSistemaOscuro())
     return escucharTemaSistema(setSistemaOscuro)
   }, [preferencia, autoDisponible])
 
