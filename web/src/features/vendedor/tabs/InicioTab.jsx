@@ -102,7 +102,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
       {/* La jornada de transporte (17/09/2026) estuvo acá hasta 01/10/2026: el dueño la dejó SOLO
           para el repartidor (RepartidorView). Sin el botón, el vendedor nunca carga `transporte.js`,
           así que `abierto()` queda en false y la cadencia es la adaptativa de siempre; un tramo que
-          hubiera quedado abierto en la base lo cierra el cron. La alerta "en ruta sin declarar"
+          hubiera quedado abierto en la base lo cierra el cron (con db/85, recién al tope de 14 h). La alerta "en ruta sin declarar"
           deja de mirar al vendedor con db/85. */}
 
       <div style={card}>
