@@ -5,6 +5,7 @@ import { invalidarTrackCache } from '../../services/tracking'
 import { useDevice } from '../../context/DeviceContext'
 import { CabeceraTabla } from './ui'
 import CategoriasRastreo from './CategoriasRastreo'
+import { TECHO_RECORRIDOS_DIAS } from './usuarios/modelo'
 import { Bell } from '../../components/icons'
 
 /**
@@ -427,6 +428,18 @@ function Metrica({ valor, etiqueta, sub }) {
   )
 }
 
+/**
+ * 29/09/2026: el panel decía "Supabase Free", "retención 60 días" y se ponía naranja al 60 %, y el
+ * proyecto es Pro (8 GB de disco) con una purga de 45 días (db/42, `TECHO_RECORRIDOS_DIAS`). Con el
+ * tope viejo marca 57 % (a tres puntos de pasar a naranja) cuando el uso real de la base ronda el
+ * 3,5 %, y un superadmin lo lee como "falta poco para el techo".
+ *
+ * El TOPE NO está escrito acá a propósito: lo manda la RPC `estado_plan` (`db_limit_bytes`), y
+ * escribir 8 GB en el front sería una segunda fuente del mismo número (regla 36). Hasta el
+ * 30/09/2026 la función devolvía 524.288.000 (500 MB, el del plan Free); `db/84` (aplicada ese día)
+ * lo pasó a 8 GiB, el disco incluido en Pro. Si Supabase amplía el disco de este proyecto, se
+ * cambia con otra migración: el front lo lee tal cual.
+ */
 function PanelPlan({ plan }) {
   if (!plan) {
     return (
@@ -437,19 +450,22 @@ function PanelPlan({ plan }) {
     )
   }
   const pct = plan.db_limit_bytes ? Math.min(100, (plan.db_bytes / plan.db_limit_bytes) * 100) : 0
-  const color = pct < 60 ? 'var(--success)' : pct < 85 ? 'var(--warning)' : 'var(--danger)'
+  // Semáforo 70/85/95 %: verde < 70, amarillo 70-85, naranja 85-95, rojo ≥ 95. El tema sólo tiene
+  // tres tonos (success/warning/danger), así que amarillo y naranja comparten --warning: el 85 %
+  // no cambia el color, el 70 % lo pasa a ámbar y el 95 % a rojo. Antes iba 60/85.
+  const color = pct < 70 ? 'var(--success)' : pct < 95 ? 'var(--warning)' : 'var(--danger)'
   const nf = (n) => (n ?? 0).toLocaleString('es-AR')
   return (
     <div style={panel}>
       <div style={sx('display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px')}>
-        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Estado del plan · Supabase Free</div>
+        <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Estado del plan · Supabase Pro</div>
         <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:700'), color, background: 'var(--surface2)', border: '1px solid var(--line)' }}>
           {pct.toFixed(pct < 10 ? 1 : 0)}% de la base
         </span>
       </div>
       <div style={sx('font-size:12px;color:var(--muted);margin:2px 0 14px')}>Uso de la base de datos y volumen de la operación. El egress mensual y los usuarios activos (MAU) no se pueden leer por SQL — revisalos en el panel de Supabase.</div>
 
-      {/* Barra de uso de la base (límite 500 MB del plan free) */}
+      {/* Barra de uso de la base. El tope es plan.db_limit_bytes tal como lo devuelve estado_plan (ver nota arriba de PanelPlan) */}
       <div style={sx('margin-bottom:14px')}>
         <div style={sx('display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px')}>
           <span style={sx('font-weight:600;color:var(--muted)')}>Base de datos</span>
@@ -461,7 +477,7 @@ function PanelPlan({ plan }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-        <Metrica valor={nf(plan.posiciones)} etiqueta="Posiciones GPS" sub={`${fmtMb(plan.posiciones_bytes)} · retención 60 días`} />
+        <Metrica valor={nf(plan.posiciones)} etiqueta="Posiciones GPS" sub={`${fmtMb(plan.posiciones_bytes)} · retención ${TECHO_RECORRIDOS_DIAS} días`} />
         <Metrica valor={nf(plan.dispositivos)} etiqueta="Dispositivos" sub="con telemetría" />
         <Metrica valor={nf(plan.clientes_geo) + ' / ' + nf(plan.clientes)} etiqueta="Clientes con ubicación" sub="geolocalizados / total" />
         <Metrica valor={nf(plan.empresas)} etiqueta="Empresas" sub={`${nf(plan.perfiles)} usuarios`} />
