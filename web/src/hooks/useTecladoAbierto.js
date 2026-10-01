@@ -13,8 +13,9 @@ import { useSyncExternalStore } from 'react'
  *      contenteditable). Sin foco no hay teclado, y esto descarta los falsos positivos de la
  *      barra de direcciones que se esconde al hacer scroll.
  *   2. `visualViewport` se achicó bastante respecto del alto de referencia: más de 120 px y más
- *      del 20 %. La referencia es el MAYOR alto visto con el ancho actual; si el ancho cambia
- *      (rotación) se vuelve a tomar.
+ *      del 20 %. La referencia es el MAYOR alto visto con el ancho actual (acotada por abajo, ver
+ *      `referencia`); si el ancho cambia (rotación) se vuelve a tomar. Todo sin el zoom de
+ *      pellizco (`altoVisible`).
  * Las dos cosas a la vez = teclado abierto. Cuando el usuario baja el teclado con el atrás de
  * Android, el campo SIGUE enfocado pero el viewport vuelve a crecer: da cerrado, que es lo justo.
  *
@@ -54,12 +55,40 @@ function esCampo(el) {
   return !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image', 'hidden'].includes(tipo)
 }
 
+// Alto y ancho VISIBLES en px CSS de la página, sin el zoom de pellizco. 🩸 01/10/2026 (revisión):
+// `visualViewport.height` se achica también al hacer zoom con dos dedos (es `innerHeight / scale`),
+// así que con el dedo en un campo y la página ampliada al 140 % daba "teclado abierto" sin teclado.
+// Multiplicado por `scale` vuelve al alto de la ventana; el teclado, en cambio, sí lo achica.
+const escala = (v) => (v.scale > 0 ? v.scale : 1)
+const altoVisible = (v) => v.height * escala(v)
+const anchoVisible = (v) => Math.round(v.width * escala(v))
+
+/**
+ * Alto de referencia "sin teclado". Lo normal es el mayor alto visto, pero al suscribirse (o al
+ * rotar) el teclado puede YA estar abierto, y entonces el alto actual es el chico. Dos cotas:
+ * - `innerHeight`: con `adjustPan` (y en iOS) la ventana no se achica con el teclado.
+ * - Con un campo enfocado en ese momento, el 85 % del lado de la pantalla que corresponde a la
+ *   orientación: las barras del sistema se llevan ~12 % (A06: 708 de 800). Solo con foco, para no
+ *   inventar un teclado en teléfonos de barras gruesas. Es una estimación, no una medición.
+ */
+function referencia(v) {
+  let ref = Math.max(altoVisible(v), window.innerHeight || 0)
+  const sc = window.screen
+  if (campoConFoco && sc && sc.width > 0 && sc.height > 0) {
+    const largo = Math.max(sc.width, sc.height)
+    const corto = Math.min(sc.width, sc.height)
+    const ladoAlto = anchoVisible(v) <= corto + 1 ? largo : corto
+    ref = Math.max(ref, Math.round(ladoAlto * 0.85))
+  }
+  return ref
+}
+
 function recalcular() {
   const v = vv()
   if (!v) return
-  const h = v.height
-  const w = Math.round(v.width)
-  if (w !== anchoBase) { anchoBase = w; base = h } // rotación: nueva referencia
+  const h = altoVisible(v)
+  const w = anchoVisible(v)
+  if (w !== anchoBase) { anchoBase = w; base = referencia(v) } // rotación: nueva referencia
   if (h > base) base = h
   const achique = base - h
   const nuevo = campoConFoco && achique > UMBRAL_PX && achique > base * UMBRAL_FRACCION
@@ -81,12 +110,16 @@ function suscribir(fn) {
   if (!v) return () => {}
   suscriptores.add(fn)
   if (suscriptores.size === 1) {
-    anchoBase = Math.round(v.width)
-    base = v.height
     campoConFoco = esCampo(document.activeElement)
+    anchoBase = anchoVisible(v)
+    base = referencia(v)
     v.addEventListener('resize', recalcular)
     document.addEventListener('focusin', alEnfocar)
     document.addEventListener('focusout', alDesenfocar)
+    // Evaluar YA: si el teclado estaba abierto al montar, no hay que esperar al próximo `resize`
+    // (que puede no llegar nunca mientras el usuario escribe). Medido en la galería: sin esto,
+    // montar con el teclado abierto dejaba la barra visible.
+    recalcular()
   }
   return () => {
     suscriptores.delete(fn)
