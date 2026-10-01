@@ -31,12 +31,17 @@ import { Capacitor } from '@capacitor/core'
  */
 export const COLOR_TEMA = { light: '#F6F4EE', dark: '#0E0E10' }
 
-const temaValido = (t) => (t === 'light' ? 'light' : 'dark')
+// Desde el 01/10/2026 el tema por defecto es Claro (decisión 1 del dueño): un valor que no sea
+// `dark` (atributo ausente, basura) se pinta Claro, igual que el script de `index.html`.
+const temaValido = (t) => (t === 'dark' ? 'dark' : 'light')
 
 /**
  * Pinta lo que rodea a la app con el color del tema: el `theme-color` (barra del navegador en la
  * PWA de Android) y, en la APK, la barra de estado. Best-effort: en web solo toca el `<meta>`;
  * en la APK, un plugin ausente o un error no rompen nada.
+ *
+ * Recibe el tema RESUELTO (`light`/`dark`), nunca la preferencia: con "Automático" quien decide qué
+ * color va es `ThemeContext`, que llama acá cada vez que el teléfono cambia de modo.
  */
 export async function aplicarTemaNativo(theme) {
   const t = temaValido(theme)
@@ -58,7 +63,8 @@ export async function initNativeUI() {
     const { StatusBar } = await import('@capacitor/status-bar')
     await StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {})
   } catch (_) { /* sin plugin / no soportado → seguir */ }
-  // El tema ya lo resolvió el script de `index.html` y `ThemeContext` (`data-theme` en <html>).
+  // El tema ya lo resolvió el script de `index.html` y `ThemeContext` (`data-theme` en <html>, que
+  // es siempre el resuelto: con "Automático" no dice `auto`, dice `light` o `dark`).
   await aplicarTemaNativo(document.documentElement.getAttribute('data-theme'))
   try {
     const { SplashScreen } = await import('@capacitor/splash-screen')

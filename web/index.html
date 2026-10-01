@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0E0E10" />
+    <meta name="theme-color" content="#F6F4EE" />
     <title>DisT-At</title>
 
     <!--
@@ -16,6 +16,9 @@
       la barra de estado, que es justo lo que el layout ya espera: `viewport-fit=cover` (arriba)
       más los `env(safe-area-inset-*)` de PanelDireccion. Sin las tres piezas juntas, el header se
       mete abajo de la hora y la señal.
+      ⚠️ PENDIENTE (01/10/2026, riesgo R3 del brief estético v2): con Claro por defecto,
+      `black-translucent` puede dejar la hora y la señal en blanco sobre la crema. Se deja como está
+      hasta probarlo en el iPhone del dueño; las salidas posibles están en el brief §5.4.
     -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -32,19 +35,44 @@
     <link rel="preload" href="/fonts/space-grotesk-latin-var.woff2" as="font" type="font/woff2" crossorigin />
 
     <!--
-      Bootstrap de tema antes del render para evitar flash (FOUC). Default: dark.
-      También pone el `theme-color` del tema (ES5 puro, corre antes del CSS). Los dos hex son el
-      `--bg-app` de cada tema (`index.css`) y los mismos de `COLOR_TEMA` en `services/nativeUI.js`:
-      si cambian, cambian los tres lugares. El `<meta>` estático de arriba es el del tema por defecto.
+      Bootstrap de tema ANTES del primer pintado (01/10/2026, brief estético v2 §5.3). ES5 puro, como
+      el gate de abajo: corre en el WebView Chrome 79 de la tablet antes de que exista el bundle.
+
+      Tres modos guardados en `launion-theme`: light | dark | auto. Sin nada guardado → Claro
+      (decisión 1 del dueño; antes arrancaba en oscuro y React lo corregía después: flash oscuro→claro).
+      `auto` se resuelve con `prefers-color-scheme`; `data-theme` lleva SIEMPRE el tema resuelto
+      (light/dark), y `data-theme-mode` la preferencia.
+
+      Reset único (decisión 2): si hay un tema guardado y falta la marca `launion-theme-v2`, se pasa
+      a Claro y se escribe la marca. Va acá y no solo en React para no pintar un cuadro con el tema
+      viejo. `ThemeContext.jsx` repite la misma regla (idempotente): si se cambia la clave, la marca
+      o el default, se cambia en los dos lugares.
+
+      Los dos hex son el `--bg-app` de cada tema (`index.css`) y los mismos de `COLOR_TEMA` en
+      `services/nativeUI.js` (criterio A8): si cambian, cambian los tres lugares. El `<meta>` estático
+      de arriba es el del tema por defecto.
     -->
     <script>
       (function () {
-        var t;
-        try { t = localStorage.getItem('launion-theme'); } catch (e) {}
-        if (!t) t = 'dark';
-        document.documentElement.setAttribute('data-theme', t);
-        var m = document.querySelector('meta[name="theme-color"]');
-        if (m) m.setAttribute('content', t === 'light' ? '#F6F4EE' : '#0E0E10');
+        var d = document.documentElement, modo = 'light', g = null, oscuro = false, tema, m;
+        try {
+          g = window.localStorage.getItem('launion-theme');
+          if (window.localStorage.getItem('launion-theme-v2') === null) {
+            // `g = null` ANTES de escribir: con el almacenamiento lleno `setItem` lanza, y si esto
+            // fuera después quedaba el `dark` viejo acá mientras `ThemeContext` cae a Claro: flash
+            // oscuro→claro en cada arranque (la marca nunca llega a escribirse).
+            g = null;
+            if (window.localStorage.getItem('launion-theme') !== null) window.localStorage.setItem('launion-theme', 'light');
+            window.localStorage.setItem('launion-theme-v2', '1');
+          }
+        } catch (e) {}
+        if (g === 'light' || g === 'dark' || g === 'auto') modo = g;
+        try { oscuro = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) {}
+        tema = modo === 'auto' ? (oscuro ? 'dark' : 'light') : modo;
+        d.setAttribute('data-theme', tema);
+        d.setAttribute('data-theme-mode', modo);
+        m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', tema === 'dark' ? '#0E0E10' : '#F6F4EE');
       })();
     </script>
 

@@ -7,8 +7,11 @@ const base = {
   strokeLinejoin: 'round',
 }
 
-export const Sun = ({ size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+/* Sol, Luna y Contraste son las tres opciones de `SelectorTema` (01/10/2026). Van con el trazo 1,75
+   de la decisión 16 del dueño desde ya, aunque el resto del set siga en 2 hasta que se baje `base`
+   entero: las tres opciones de un mismo control no pueden tener trazos distintos. */
+export const Sun = ({ size = 15, w = 1.75 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} strokeWidth={w}>
     <circle cx="12" cy="12" r="4" />
     <path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
   </svg>
@@ -30,9 +33,18 @@ export const Crosshair = ({ size = 16 }) => (
   </svg>
 )
 
-export const Moon = ({ size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+export const Moon = ({ size = 15, w = 1.75 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} strokeWidth={w}>
     <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+  </svg>
+)
+
+/* Círculo con la mitad derecha llena: "Automático" (sigue el modo del teléfono) en `SelectorTema`.
+   El relleno va en `currentColor` para que tome el color de la opción (marcada o no). */
+export const Contraste = ({ size = 15, w = 1.75 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} strokeWidth={w}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" />
   </svg>
 )
 
@@ -305,27 +317,4 @@ export const GestIcon = ({ k, size = 18 }) => (
     {GEST_PATHS[k]}
   </svg>
 )
-
-/* Toggle animado de tema. Reemplaza el swap sin transición del botón redondo de LoginView:
-   rayos y creciente en el mismo SVG, cross-fade + escala vía CSS transition (sin librerías,
-   misma curva que el resto de la app — CLAUDE.md §7). */
-export const SunMoon = ({ size = 20, dark = false, sunColor = 'var(--warning)', moonColor = 'var(--deep)' }) => {
-  const t = 'opacity 260ms cubic-bezier(.23,1,.32,1), transform 260ms cubic-bezier(.23,1,.32,1)'
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <g
-        stroke={sunColor} strokeWidth="1.8" strokeLinecap="round"
-        style={{ transformOrigin: '12px 12px', transition: t, opacity: dark ? 0 : 1, transform: dark ? 'scale(.5) rotate(-90deg)' : 'scale(1) rotate(0deg)' }}
-      >
-        <circle cx="12" cy="12" r="4.2" />
-        <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6" />
-      </g>
-      <path
-        d="M20 14.5A8.2 8.2 0 0 1 9.5 4 8.4 8.4 0 1 0 20 14.5Z"
-        stroke={moonColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-        style={{ transformOrigin: '12px 12px', transition: t, opacity: dark ? 1 : 0, transform: dark ? 'scale(1) rotate(0deg)' : 'scale(.5) rotate(90deg)' }}
-      />
-    </svg>
-  )
-}
 

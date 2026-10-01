@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth, identidadVisible } from '../../context/AuthContext'
-import { useTheme } from '../../context/ThemeContext'
 import { supabase } from '../../services/supabase'
+import SelectorTema from '../../components/SelectorTema'
 
 /**
  * CUENTA EN ESPERA — diseño v1.4 del handoff (28/07/2026).
@@ -27,7 +27,6 @@ import { supabase } from '../../services/supabase'
  */
 export default function PendienteView() {
   const { user, perfil, signOut, refetchPerfil } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
   const [contacto, setContacto] = useState(null) // { telefono, empresa } | null
   const [consultando, setConsultando] = useState(false)
 
@@ -125,10 +124,11 @@ export default function PendienteView() {
             </div>
           )}
 
-          <button onClick={toggleTheme}
-            style={sx('margin-top:6px;background:none;border:none;color:var(--faint);font-size:var(--fs-xs);cursor:pointer')}>
-            Cambiar a modo {isDark ? 'claro' : 'oscuro'}
-          </button>
+          {/* Tema sin salir de la espera (01/10/2026): las tres opciones, en la variante de íconos
+              del mismo selector que el ingreso. Antes era un renglón que alternaba claro/oscuro. */}
+          <div style={sx('display:flex;justify-content:center;margin-top:6px')}>
+            <SelectorTema variante="iconos" />
+          </div>
         </div>
       </div>
     </div>

@@ -31,7 +31,7 @@ import RailMapa, { RAIL_W } from './components/RailMapa'
 import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
 import DespachoGestion from './components/DespachoGestion'
-import ThemeToggle from '../../components/ThemeToggle'
+import SelectorTema from '../../components/SelectorTema'
 import { Alerta, AlertaCirculo, Check, ChevronRight, GestIcon, Lock, LogOut, Mapa, Profile } from '../../components/icons'
 import { App as CapApp } from '@capacitor/app'
 import { APP_VERSION } from '../../version'
@@ -644,7 +644,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
             <div style={{ padding: '13px 15px' }}>
               <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 9 }}>Apariencia</div>
-              <ThemeToggle />
+              <SelectorTema />
             </div>
             <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
             <div onClick={() => signOut()} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', cursor: 'pointer', color: 'var(--danger)', minHeight: 44, boxSizing: 'border-box' }}>
