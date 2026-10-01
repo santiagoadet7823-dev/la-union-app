@@ -1,3 +1,4 @@
+import { useCallback, useLayoutEffect, useRef } from 'react'
 import { sx } from '../../lib/sx'
 import { glassBlur } from '../../lib/glass'
 import { useTecladoAbierto } from '../../hooks/useTecladoAbierto'
@@ -18,9 +19,13 @@ import { pintarIcono } from './icono'
  * Medidas: cada botón ≥ 56 px de alto (`--nav-alto`, 3,5 rem) y nunca menos de 44 de ancho; la
  * barra suma abajo el área segura (`--safe-bottom`, o `env()` mientras ese token no exista). El
  * ícono va en px fijos (22): con letra al 200 % no tiene que crecer a 44 y empujar el rótulo.
- * El rótulo es 11 px con tope de 12 (§4.5 regla 5, excepción documentada a WCAG 1.4.4: con letra
- * grande "Dashboard" a 22 px no entra en 90 px, y partir la palabra sería peor; el ícono y el
- * `aria-label` sostienen la función).
+ * El rótulo es 11 px con tope de 12 (§4.5 regla 5)… pero ese tope SOLO vale en navegadores.
+ * 🩸 01/10/2026 (PR-0, informe 08): en el WebView de Android el tamaño de letra del sistema es un
+ * `textZoom` que multiplica TODO font-size —px, rem y el resultado del `clamp()`— y NO las cajas.
+ * A 2,0 el rótulo mide 22-24 px dentro de un botón de 90, y con `nowrap + overflow:hidden`
+ * "Dashboard" salía recortado. Ahora el rótulo puede partir en dos líneas (y, si una sola palabra
+ * no entra, se corta con guion antes que recortarse) y el botón crece con `min-height`. La
+ * píldora del ícono sí queda fija (52×28 px): las cajas no crecen, y así no empuja al rótulo.
  *
  * Con el teclado abierto la barra NO se dibuja (`display:none`, ver useTecladoAbierto): así el
  * contenido recupera ese alto y, si la pantalla mide la barra con `useAltoMedido`, el alto medido
@@ -47,9 +52,26 @@ export default function NavInferior({ items, activo, onCambiar, ariaLabel = 'Pri
   const teclado = useTecladoAbierto()
   const n = items?.length || 1
 
+  // Ref propio + el del consumidor (React 19 lo pasa como prop: puede ser objeto o función).
+  const nodo = useRef(null)
+  const unirRef = useCallback((el) => {
+    nodo.current = el
+    if (typeof ref === 'function') ref(el)
+    else if (ref) ref.current = el
+  }, [ref])
+
+  // Al ocultarse (inmersivo) con el foco ADENTRO, primero se suelta el foco: un `aria-hidden`
+  // sobre un elemento enfocado deja a TalkBack parado en algo que "no existe" (y Chrome ignora
+  // el aria-hidden con un aviso). Layout effect: corre antes de que el navegador pinte o el
+  // lector vea el árbol nuevo.
+  useLayoutEffect(() => {
+    const el = nodo.current
+    if (oculta && el && el.contains(document.activeElement)) document.activeElement.blur()
+  }, [oculta])
+
   return (
     <nav
-      ref={ref}
+      ref={unirRef}
       aria-label={ariaLabel}
       aria-hidden={oculta || undefined}
       style={{
@@ -92,12 +114,12 @@ export default function NavInferior({ items, activo, onCambiar, ariaLabel = 'Pri
             >
               {pintarIcono(it.icono, 22)}
               {cuenta && (
-                <span style={sx('position:absolute;top:-3px;right:4px;min-width:18px;height:18px;padding:0 4px;border-radius:var(--r-pill);background:var(--text);color:var(--surface);border:2px solid var(--surface);font-family:var(--font-mono);font-size:11px;font-weight:600;line-height:1;display:grid;place-items:center')}>
+                <span style={sx('position:absolute;top:-3px;right:4px;min-width:18px;min-height:18px;padding:0 4px;border-radius:var(--r-pill);background:var(--text);color:var(--surface);border:2px solid var(--surface);font-family:var(--font-mono);font-size:11px;font-weight:600;line-height:1;display:grid;place-items:center')}>
                   {cuenta}
                 </span>
               )}
             </span>
-            <span style={{ ...sx('font-size:clamp(11px, 0.6875rem, 12px);line-height:1.2;white-space:nowrap;max-width:100%;overflow:hidden'), fontWeight: on ? 600 : 500 }}>
+            <span lang="es" style={{ ...sx('font-size:clamp(11px, 0.6875rem, 12px);line-height:1.15;max-width:100%;overflow-wrap:anywhere;-webkit-hyphens:auto;hyphens:auto'), fontWeight: on ? 600 : 500 }}>
               {it.etiqueta}
             </span>
           </button>

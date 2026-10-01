@@ -37,7 +37,8 @@ export function GrupoLista({ titulo, extra, children, style }) {
           {extra != null && <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{extra}</span>}
         </div>
       )}
-      <div style={sx('border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);overflow:hidden')}>
+      {/* `flex:none` por la misma trampa que TiraContadores: overflow + columna flex = alto mínimo 0. */}
+      <div style={sx('flex:none;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);overflow:hidden')}>
         {children}
       </div>
     </section>
@@ -58,12 +59,17 @@ export function GrupoLista({ titulo, extra, children, style }) {
  *   - valor         a la derecha, --muted: "Centro", "12", "Activa"
  *   - valorMono     bool: el valor en mono tabular (números, códigos: "V-014", "62 %")
  *   - icono         componente de icons.jsx o elemento; va en un cuadrado --surface2 de 32 px
- *   - extremo       nodo a la derecha en lugar del valor (un interruptor, una PildoraEstado)
+ *   - extremo       nodo a la derecha en lugar del valor (un interruptor, una PildoraEstado).
+ *                   ⚠️ Si el `extremo` es INTERACTIVO (un interruptor, un botón), la fila va SIN
+ *                   `onClick`/`href`: un control dentro de un <button> o <a> es HTML inválido,
+ *                   TalkBack lee las dos cosas como una sola y el toque dispara las dos. La fila
+ *                   queda como <div> y el control es el único tocable (que mida ≥ 44).
  *   - chevron       bool; por defecto, sí cuando la fila navega (onClick/href) y no es destructiva
  *   - destructiva   bool: texto e ícono en --danger, 600, sin chevron (acciones que no llevan a
  *                   otra pantalla sino que HACEN algo: "Cerrar sesión", "Desactivar cuenta")
  *   - deshabilitada bool (solo <button>)
- *   - onClick, href, ariaLabel, title, style
+ *   - onClick, href, title, style
+ *   - ariaLabel     solo se aplica si la fila es <button> o <a>
  */
 export function FilaLista({ etiqueta, detalle, valor, valorMono = false, icono, extremo, chevron, destructiva = false, deshabilitada = false, onClick, href, ariaLabel, title, style }) {
   const navega = !!(onClick || href)
@@ -79,7 +85,8 @@ export function FilaLista({ etiqueta, detalle, valor, valorMono = false, icono, 
     <Tag
       {...props}
       className="lu-fila"
-      aria-label={ariaLabel}
+      // Solo en <button>/<a>: en un <div> sin rol, `aria-label` no se lee (y pisaría el texto).
+      aria-label={Tag === 'div' ? undefined : ariaLabel}
       title={title}
       style={{
         ...sx('display:flex;align-items:center;gap:var(--sp-3);width:100%;min-height:var(--row-h, 3rem);padding:var(--sp-2) var(--sp-3);margin:0;border:0;background:transparent;font-family:inherit;text-align:left;text-decoration:none;-webkit-tap-highlight-color:transparent'),

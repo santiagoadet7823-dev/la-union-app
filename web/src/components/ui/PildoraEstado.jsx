@@ -15,8 +15,9 @@ import { sx } from '../../lib/sx'
  * Props:
  *   - tipo      'ok' | 'aviso' | 'error' | 'info' | 'neutro'   (por defecto 'neutro')
  *   - children  el texto. Obligatorio en la práctica: sin texto la píldora no dice nada.
- *   - glifo     opcional: un carácter que reemplaza al símbolo del tipo ('$', '#'), para cuando
- *               el problema tiene su propio signo (precio, código). Va dentro del mismo disco.
+ *   - glifo     opcional: un carácter que reemplaza al símbolo del tipo, para cuando el problema
+ *               tiene su propio signo. '$' y '#' van dibujados (no crecen con la letra del
+ *               sistema); otro carácter va como texto y con letra grande se sale del disco.
  *   - title, style
  */
 const TIPOS = {
@@ -36,13 +37,23 @@ const SIMBOLO = {
   info: <path d="M12 11v6.5M12 6.8h.01" />,
 }
 
+// Signos propios que la app ya usa ("$ Sin precio", "# Código repetido"), dibujados y no como
+// texto. 🩸 01/10/2026 (revisión, informe 08): el tamaño de letra del sistema agranda TODO texto
+// pero no las cajas, así que un "$" de 11 px en un disco de 14 px pasaba a 22 px y se salía del
+// disco. Un trazo no crece con la letra. Cualquier otro carácter sigue yendo como texto.
+const SIGNO = {
+  $: <path d="M15.5 8.6c-.6-1.2-1.9-2-3.5-2-2 0-3.4 1-3.4 2.5 0 3.5 7 1.8 7 5.3 0 1.6-1.5 2.8-3.6 2.8-1.7 0-3.1-.8-3.7-2.1M12 4.6v14.8" />,
+  '#': <path d="M9.6 6 8.2 18M15.8 6l-1.4 12M6.2 10h11.6M5.8 14h11.6" />,
+}
+
 function Glifo({ tipo, tinta, glifo }) {
-  if (glifo) {
+  const trazo = glifo ? SIGNO[glifo] : SIMBOLO[tipo]
+  if (glifo && !trazo) {
     return (
       <span aria-hidden="true" style={{ ...sx('flex:none;width:14px;height:14px;border-radius:var(--r-pill);display:grid;place-items:center;font-size:11px;font-weight:700;line-height:1;color:var(--surface)'), background: tinta }}>{glifo}</span>
     )
   }
-  if (tipo === 'neutro') {
+  if (tipo === 'neutro' && !glifo) {
     // Neutro = punto: no es ni bien ni mal, solo un estado (p. ej. "Fuera de jornada").
     return (
       <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" style={{ flex: 'none' }}>
@@ -53,7 +64,7 @@ function Glifo({ tipo, tinta, glifo }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" style={{ flex: 'none' }}>
       <circle cx="12" cy="12" r="12" fill={tinta} />
-      <g fill="none" stroke="var(--surface)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">{SIMBOLO[tipo]}</g>
+      <g fill="none" stroke="var(--surface)" strokeWidth={glifo ? 2.6 : 3} strokeLinecap="round" strokeLinejoin="round">{trazo}</g>
     </svg>
   )
 }

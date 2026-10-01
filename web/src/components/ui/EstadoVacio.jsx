@@ -79,16 +79,26 @@ const ANCHOS = [['62%', '38%'], ['48%', '44%'], ['70%', '30%'], ['55%', '40%'], 
 
 function Carga({ filas = 5, avatar = true, lento, textoLento = 'Cargando… la señal está lenta', etiqueta = 'Cargando', style }) {
   const [tarde, setTarde] = useState(false)
+  // 🩸 REGIÓN VIVA (01/10/2026, revisión). Un `role="status"` que NACE con su texto no se anuncia:
+  // TalkBack solo lee los CAMBIOS de una región que ya estaba en el árbol. Por eso la región se
+  // monta vacía y el texto llega un render después ("Cargando equipo…", oculto a la vista), y a
+  // los 8 s cambia a `textoLento`, que sí se ve. Antes eran un `status` con solo `aria-label` (no
+  // se lee como anuncio) y otro que aparecía ya con el texto: ninguno de los dos se anunciaba.
+  const [montada, setMontada] = useState(false)
+  useEffect(() => { setMontada(true) }, [])
   useEffect(() => {
     if (lento !== undefined) return undefined
     const t = setTimeout(() => setTarde(true), ESPERA_LENTA_MS)
     return () => clearTimeout(t)
   }, [lento])
-  const mostrarLento = lento ?? tarde
+  const mostrarLento = montada && (lento ?? tarde)
 
   return (
+    // Sin `aria-busy` en este contenedor: un ancestro "ocupado" hace que algunos lectores esperen
+    // a que termine para leer la región viva, que es justo lo que no queremos.
     <div style={{ ...sx('display:flex;flex-direction:column;gap:var(--sp-3)'), ...style }}>
-      <div aria-busy="true" aria-label={etiqueta} role="status" style={sx('border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);overflow:hidden')}>
+      {/* El esqueleto es solo forma: no tiene nada que leer. */}
+      <div aria-hidden="true" style={sx('flex:none;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);overflow:hidden')}>
         {Array.from({ length: filas }, (_, i) => {
           const [w1, w2] = ANCHOS[i % ANCHOS.length]
           return (
@@ -103,9 +113,9 @@ function Carga({ filas = 5, avatar = true, lento, textoLento = 'Cargando… la s
           )
         })}
       </div>
-      {mostrarLento && (
-        <div role="status" style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);text-align:center')}>{textoLento}</div>
-      )}
+      <div role="status" style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);text-align:center')}>
+        {mostrarLento ? textoLento : montada ? <span className="lu-ui-oculto">{etiqueta}…</span> : null}
+      </div>
     </div>
   )
 }
@@ -137,11 +147,14 @@ function ErrorEnLinea({ causa = 'red', titulo, texto, onReintentar, etiquetaAcci
 }
 
 /* ── sin conexión ──────────────────────────────────────────────────────────────────────────── */
+// Radio --r-lg (16) y no --r-pill: a 32 px de alto se ve igual de píldora, pero con la letra del
+// sistema al doble el texto parte en varias líneas (sin `nowrap`, para no salirse del header) y
+// una píldora de 999 sobre una caja alta queda un óvalo.
 function ChipSinConexion({ pendientes = 0, style }) {
   const n = Number(pendientes) || 0
   const texto = n > 0 ? `Sin conexión · ${n} ${n === 1 ? 'pendiente' : 'pendientes'}` : 'Sin conexión'
   return (
-    <span role="status" style={{ ...sx('display:inline-flex;align-items:center;gap:6px;min-height:2rem;padding:4px 10px;border-radius:var(--r-pill);background:var(--warning-tint);color:var(--warning);border:1px solid var(--warning);font-size:var(--fs-xs);font-weight:600;line-height:1.2;white-space:nowrap'), ...style }}>
+    <span role="status" style={{ ...sx('display:inline-flex;align-items:center;gap:6px;min-height:2rem;padding:4px 10px;border-radius:var(--r-lg);background:var(--warning-tint);color:var(--warning);border:1px solid var(--warning);font-size:var(--fs-xs);font-weight:600;line-height:1.2'), ...style }}>
       <span aria-hidden="true" style={sx('display:grid;flex:none')}><SinConexion size={16} /></span>
       {texto}
     </span>
@@ -153,7 +166,8 @@ function ChipSinConexion({ pendientes = 0, style }) {
  *   'vacio'        icono, titulo, texto, accion: { etiqueta, onClick, icono? }
  *                  (para "sin resultados" la acción es "Limpiar filtros")
  *   'carga'        filas (5), avatar (true), lento (bool; si no se pasa, se activa solo a los
- *                  8 s), textoLento, etiqueta (lo que lee TalkBack: "Cargando equipo")
+ *                  8 s), textoLento, etiqueta (lo que anuncia TalkBack al empezar: "Cargando
+ *                  equipo"; después anuncia `textoLento`)
  *   'error'        causa: 'red' | 'dato' | 'servidor' (defecto 'red'), titulo, texto (tienen
  *                  defaults por causa), onReintentar, etiquetaAccion ('Reintentar')
  *   'sinConexion'  pendientes (número; 0 = solo "Sin conexión")

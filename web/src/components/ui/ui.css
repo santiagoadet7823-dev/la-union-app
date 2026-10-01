@@ -64,6 +64,21 @@ button.lu-fila:disabled { cursor: default; opacity: 0.5; }
 .lu-ui-btn { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
 .lu-ui-btn:active { transform: scale(0.97); }
 
+/* --- Texto solo para lectores de pantalla ---------------------------------------------------
+   "sin dato" junto a la raya de un contador, "Cargando…" en la región viva de la carga. Sin
+   `display:none` ni `visibility:hidden`, que TalkBack también se saltea. */
+.lu-ui-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* --- Esqueleto de carga ---------------------------------------------------------------------
    Pulso de OPACIDAD, como la hoja 5c/5d, y no el brillo que recorre (`.lu-sk` de index.css anima
    `background-position`, que repinta en cada frame): la opacidad la compone la GPU y en un Helio

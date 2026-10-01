@@ -1,4 +1,5 @@
 import { sx } from '../../lib/sx'
+import { Check } from '../icons'
 
 /**
  * CONTADOR CON PUNTO DE ESTADO (01/10/2026). Decisión 14 del dueño: "número en tinta con punto
@@ -19,12 +20,14 @@ import { sx } from '../../lib/sx'
  *
  * Props:
  *   - valor        número o texto ya formateado. `null`/`undefined` = sin dato: muestra "—" en
- *                  `--faint`, nunca 0 (principio "sin dato ≠ cero" de KpiCard).
+ *                  `--faint`, nunca 0 (principio "sin dato ≠ cero" de KpiCard); TalkBack lee
+ *                  "sin dato" (la raya va `aria-hidden`).
  *   - etiqueta     rótulo ("Sin foto"). Puede partir en dos líneas: nunca se corta con elipsis.
  *   - tono         'ok' | 'aviso' | 'error' | 'info' | null — color del punto. null = sin punto
  *                  (el total no es un estado).
  *   - variante     'compacto' (defecto) | 'tarjeta'
- *   - activo       bool: el filtro elegido (tinte de acento)
+ *   - activo       bool: el filtro elegido. Tinte de acento MÁS una marca que no es color:
+ *                  indicador de 2 px y rótulo 600 (compacto), borde de 2 px y ✓ (tarjeta).
  *   - onClick, title, style
  */
 const PUNTO = { ok: 'var(--success)', aviso: 'var(--warning)', error: 'var(--danger)', info: 'var(--info)' }
@@ -38,7 +41,7 @@ export function Contador({ valor, etiqueta, tono = null, variante = 'compacto', 
   const sinDato = valor === null || valor === undefined || valor === ''
   const numero = (
     <span style={{ ...sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600;line-height:1.1'), fontSize: variante === 'tarjeta' ? 'var(--fs-num-md, 24px)' : 'min(1rem, 5vw)', color: sinDato ? 'var(--faint)' : 'var(--text)' }}>
-      {sinDato ? '—' : valor}
+      {sinDato ? <><span aria-hidden="true">—</span><span className="lu-ui-oculto">sin dato</span></> : valor}
     </span>
   )
   const Tag = onClick ? 'button' : 'div'
@@ -50,14 +53,19 @@ export function Contador({ valor, etiqueta, tono = null, variante = 'compacto', 
         {...interactivo}
         title={title}
         style={{
-          ...sx('display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:2.75rem;min-width:2.75rem;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-lg);border-width:1px;border-style:solid;background:var(--surface);box-shadow:var(--shadow);font-family:inherit;text-align:left;color:var(--text)'),
+          ...sx('display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:2.75rem;min-width:2.75rem;border-radius:var(--r-lg);border-style:solid;background:var(--surface);box-shadow:var(--shadow);font-family:inherit;text-align:left;color:var(--text)'),
+          // Activo = borde de 2 px (y ✓), no solo otro color: el tinte contra la superficie da
+          // ~1,1:1. El padding resta ese píxel de más para que la tarjeta no salte al elegirla.
+          borderWidth: activo ? 2 : 1,
           borderColor: activo ? 'var(--primary)' : 'var(--line)',
+          padding: activo ? 'calc(var(--sp-3) - 1px) calc(var(--sp-4) - 1px)' : 'var(--sp-3) var(--sp-4)',
           cursor: onClick ? 'pointer' : undefined,
           ...style,
         }}
       >
         <span style={sx('display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:600;color:var(--muted);line-height:1.25')}>
           <Punto tono={tono} />{etiqueta}
+          {activo && <span aria-hidden="true" style={sx('display:grid;color:var(--primary)')}><Check size={14} w={1.75} /></span>}
         </span>
         {numero}
       </Tag>
@@ -69,14 +77,18 @@ export function Contador({ valor, etiqueta, tono = null, variante = 'compacto', 
       {...interactivo}
       title={title}
       style={{
-        ...sx('flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px;min-height:3.5rem;padding:var(--sp-2) 6px;border:0;font-family:inherit;text-align:left;color:var(--text)'),
+        ...sx('position:relative;flex:1 0 0;min-width:auto;display:flex;flex-direction:column;justify-content:center;gap:3px;min-height:3.5rem;padding:var(--sp-2) 6px;border:0;font-family:inherit;text-align:left;color:var(--text)'),
         background: activo ? 'var(--primary-tint)' : 'transparent',
         cursor: onClick ? 'pointer' : undefined,
         ...style,
       }}
     >
-      <span style={sx('display:flex;align-items:center;gap:4px;min-width:0')}><Punto tono={tono} />{numero}</span>
-      <span style={sx('font-size:var(--fs-xs);color:var(--muted);line-height:1.2;overflow-wrap:break-word')}>{etiqueta}</span>
+      <span style={sx('display:flex;align-items:center;gap:4px;white-space:nowrap')}><Punto tono={tono} />{numero}</span>
+      <span style={{ ...sx('font-size:var(--fs-xs);line-height:1.2'), color: activo ? 'var(--text)' : 'var(--muted)', fontWeight: activo ? 600 : 400 }}>{etiqueta}</span>
+      {/* Activo: indicador de 2 px abajo + rótulo 600, como la pestaña de la barra inferior. El
+          tinte solo no alcanza (~1,1:1 contra la superficie). Es un hijo y no un box-shadow
+          inline porque el box-shadow ya lo usa la tira para el divisor (ui.css). */}
+      {activo && <span aria-hidden="true" style={sx('position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--primary)')} />}
     </Tag>
   )
 }
@@ -94,7 +106,13 @@ export function TiraContadores({ children, ariaLabel, style }) {
       role="group"
       aria-label={ariaLabel}
       className="lu-tira-contadores"
-      style={{ ...sx('display:flex;align-items:stretch;border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);overflow:hidden'), ...style }}
+      // `flex:none`: con `overflow:hidden`, dentro de una columna flex el alto mínimo es 0 y con
+      // letra grande la columna la aplastaba hasta hacerla desaparecer (galería, letra x2).
+      // `flex-wrap`: cada contador mide al menos su contenido (número y palabra más larga, sin
+      // partirlos) y reparte el resto en partes iguales. A 1,0 los cinco entran en una fila de
+      // 360; con la letra del sistema al doble (que agranda el texto y no las cajas, informe 08)
+      // pasan a una segunda fila en vez de pisarse los números o cortar "Códi-go" al medio.
+      style={{ ...sx('flex:none;display:flex;flex-wrap:wrap;align-items:stretch;border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);overflow:hidden'), ...style }}
     >
       {children}
     </div>
