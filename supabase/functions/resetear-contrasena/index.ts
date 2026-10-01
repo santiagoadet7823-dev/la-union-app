@@ -27,8 +27,9 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
+// no-store: la respuesta de éxito lleva la contraseña temporal en claro.
 const json = (b: unknown, status = 200) =>
-  new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
+  new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -58,22 +59,26 @@ Deno.serve(async (req) => {
     const { data: ud } = await asUser.auth.getUser()
     const uid = ud?.user?.id
     if (!uid) return json({ error: 'no-auth' }, 401)
-    const { data: yo } = await asUser.from('perfiles').select('rol, activo').eq('id', uid).maybeSingle()
+    const { data: yo } = await asUser.from('perfiles').select('rol, activo, id_empresa').eq('id', uid).maybeSingle()
     if (!yo || !yo.activo) return json({ error: 'sin-perfil' }, 403)
     if (yo.rol !== 'admin' && yo.rol !== 'superadmin') return json({ error: 'sin-permiso' }, 403)
 
     // 2) Payload.
     const body = await req.json().catch(() => ({}))
-    const id = String(body.id || '')
+    const id = String(body.id || '').toLowerCase() // el UUID_RE acepta mayúsculas; sin esto se saltaba `propia-cuenta`
     if (!UUID_RE.test(id)) return json({ error: 'payload-invalido' }, 400)
     if (id === uid) return json({ error: 'propia-cuenta' }, 400) // para la propia, "Cambiar contraseña" en Mi cuenta
 
     // 3) La fila objetivo, con el token del que llama: si `perfiles_sel` no la deja pasar
     //    (otra empresa, o un admin mirando a alguien fuera de su alcance), no está autorizado.
     const { data: objetivo, error: errObj } = await asUser
-      .from('perfiles').select('id, rol, sistema, usuario, email').eq('id', id).maybeSingle()
+      .from('perfiles').select('id, rol, sistema, usuario, email, id_empresa').eq('id', id).maybeSingle()
     if (errObj) return json({ error: errObj.message }, 500)
     if (!objetivo) return json({ error: 'no-existe-o-sin-permiso' }, 404)
+    // 🩸 `perfiles_sel` deja ver a un admin también las cuentas SIN empresa (id_empresa null: altas
+    // pendientes de `registrar-usuario` / Google), de CUALQUIER empresa. Resetear una de esas sería
+    // tomarla antes de que la apruebe el admin que le corresponde. Solo el superadmin cruza empresas.
+    if (yo.rol !== 'superadmin' && objetivo.id_empresa !== yo.id_empresa) return json({ error: 'no-existe-o-sin-permiso' }, 404)
     if (objetivo.sistema) return json({ error: 'perfil-de-sistema' }, 400)
     // Mismo límite que el trigger perfiles_guarda_cambios (db/77): un admin no toca a un superadmin.
     if (objetivo.rol === 'superadmin' && yo.rol !== 'superadmin') return json({ error: 'sin-permiso-superadmin' }, 403)
@@ -95,9 +100,16 @@ Deno.serve(async (req) => {
     // esas filas (y las de `auth.refresh_tokens`, sin FK entre sí en este proyecto) sí corta la
     // sesión de verdad — no hace falta apoyarse en un efecto secundario no documentado del cambio
     // de contraseña. Ver `cerrar_sesiones_usuario` (db/80).
-    try { await admin.rpc('cerrar_sesiones_usuario', { p_id: id }) } catch (_) { /* best-effort: la contraseña ya cambió igual */ }
+    // supabase-js NO lanza: devuelve `{ error }`. Best-effort (la contraseña ya cambió igual), pero
+    // se avisa si no se pudo, en vez de responder como si las sesiones estuvieran cerradas.
+    const { error: errSes } = await admin.rpc('cerrar_sesiones_usuario', { p_id: id })
 
-    return json({ ok: true, id, usuario: objetivo.usuario, email: objetivo.email, password: nuevaPassword })
+    // Quién le puso la contraseña a quién. Tampoco puede tumbar el reseteo (ya se hizo).
+    try {
+      await admin.from('auditoria_seguridad').insert({ id_usuario: id, id_actor: uid, accion: 'password_reseteada_por_admin' })
+    } catch (_) { /* la auditoría no puede tumbar un reseteo que ya ocurrió */ }
+
+    return json({ ok: true, id, usuario: objetivo.usuario, email: objetivo.email, password: nuevaPassword, sesiones_cerradas: !errSes })
   } catch (e) {
     return json({ error: (e as Error)?.message || 'error-inesperado' }, 500)
   }
