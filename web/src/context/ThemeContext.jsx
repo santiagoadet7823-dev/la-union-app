@@ -70,15 +70,27 @@ export function ThemeProvider({ children }) {
   // Sin `prefers-color-scheme` no hay a quién seguir: `auto` guardado se pinta Claro (brief §5.6).
   const theme = resolver(preferencia, autoDisponible && sistemaOscuro)
 
+  /** Cambia la preferencia en memoria. Al entrar en `auto` relee el modo del teléfono EN EL MISMO
+   * LOTE: fuera de Automático no hay listener y `sistemaOscuro` puede estar viejo; sin esto habría un
+   * render con el valor viejo y `aplicarTemaNativo` pintaría la barra de estado con el color
+   * equivocado por un instante. */
+  const cambiarPreferencia = useCallback((p) => {
+    if (p === 'auto') setSistemaOscuro(leerSistemaOscuro())
+    setPreferenciaEstado(p)
+  }, [])
+
   /** ÚNICO lugar que escribe `launion-theme`. */
   const setPreferencia = useCallback((p) => {
     if (!esModo(p)) return
-    setPreferenciaEstado(p)
+    cambiarPreferencia(p)
     try { localStorage.setItem(CLAVE, p) } catch (_) { /* modo privado: queda en memoria */ }
-  }, [])
+  }, [cambiarPreferencia])
 
   // Antes del pintado: así el atributo y el `theme-color` cambian en el mismo cuadro que el render.
-  // `useTemaGrafico` además lo auto-aplica (los efectos de los hijos corren antes que los del padre).
+  // React corre TODOS los layout effects de un commit antes que cualquier `useEffect`, así que
+  // cuando `useTemaGrafico` relee los tokens (en un `useEffect`) el atributo ya es el nuevo. El
+  // auto-aplicado que hace ese hook quedó de cuando esto era un `useEffect`: hoy es redundante pero
+  // inocuo (escribe el mismo valor).
   useLayoutEffect(() => { aplicarAlDOM(theme, preferencia) }, [theme, preferencia])
 
   // Las señales del teléfono se escuchan SOLO en Automático: con Claro u Oscuro fijo el sistema no
@@ -91,18 +103,15 @@ export function ThemeProvider({ children }) {
 
   // Dos pestañas de la PWA de escritorio: la elección de una llega a la otra (brief §5.7 #7).
   useEffect(() => {
-    const alGuardar = (e) => { if (e.key === CLAVE && esModo(e.newValue)) setPreferenciaEstado(e.newValue) }
+    const alGuardar = (e) => { if (e.key === CLAVE && esModo(e.newValue)) cambiarPreferencia(e.newValue) }
     window.addEventListener('storage', alGuardar)
     return () => window.removeEventListener('storage', alGuardar)
-  }, [])
+  }, [cambiarPreferencia])
 
-  // API vieja, conservada para los consumidores de antes. `setTheme` y `toggleTheme` FIJAN un tema
-  // (sacan de Automático); el selector usa `setPreferencia`.
-  const setTheme = useCallback((t) => setPreferencia(typeof t === 'function' ? t(theme) : t), [setPreferencia, theme])
-  const toggleTheme = useCallback(() => setPreferencia(theme === 'dark' ? 'light' : 'dark'), [setPreferencia, theme])
-
+  // `setTheme`/`toggleTheme` (la API de 2 modos) se retiraron el 01/10/2026: ya nadie los usaba y
+  // un toggle saca de Automático sin avisar. Para cambiar el tema: `setPreferencia`.
   return (
-    <ThemeContext.Provider value={{ theme, isDark: theme === 'dark', setTheme, toggleTheme, preferencia, setPreferencia, sistemaOscuro, autoDisponible }}>
+    <ThemeContext.Provider value={{ theme, isDark: theme === 'dark', preferencia, setPreferencia, sistemaOscuro, autoDisponible }}>
       {children}
     </ThemeContext.Provider>
   )
