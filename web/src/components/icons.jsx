@@ -329,3 +329,21 @@ export const SunMoon = ({ size = 20, dark = false, sunColor = 'var(--warning)', 
   )
 }
 
+/* Nube tachada: "sin conexión" (01/10/2026). La usan el chip persistente y el error de red de
+   `components/ui/EstadoVacio`; es el trazo de la hoja "Cuenta y Navegación" (5e, 5g). */
+export const SinConexion = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} stroke={color} aria-hidden="true">
+    <path d="M2 2l20 20" />
+    <path d="M5.8 8.4A5 5 0 0 0 6.5 18h10.8M20.5 16A4 4 0 0 0 17 10h-.5A6 6 0 0 0 9.3 5.5" />
+  </svg>
+)
+
+/* Círculo con `i`: el error "de dato" (el servidor respondió algo que no se pudo leer), que es
+   `--info` y no `--danger` porque no es culpa de nadie en la pantalla (01/10/2026). */
+export const Info = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} stroke={color} aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8h.01" />
+  </svg>
+)
+

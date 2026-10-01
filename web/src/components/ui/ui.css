@@ -1,0 +1,91 @@
+/* ============================================================================================
+   PRIMITIVOS DE UI (components/ui) — lo que `sx()` no puede expresar (01/10/2026).
+   ============================================================================================
+   Los estilos de los primitivos van inline con `sx()`, como el resto de la app. Acá vive SOLO lo
+   que inline no existe: pseudo-clases (`:focus-visible`, `:active`, `:hover`), pseudo-elementos
+   (el separador con sangría de las filas) y media queries (`prefers-reduced-motion`, `hover`).
+
+   Reglas del archivo (las mismas del brief v2 §2 y de RESTRICCIONES_IMPLEMENTACION_SAMSUNG):
+   - Solo tokens de index.css: ningún hex nuevo, ningún `color-mix()` (el WebView Chrome 79 de las
+     tablets no lo entiende y falla en silencio).
+   - Nada de `inset` (Chrome 87) ni `dvh` (Chrome 108): top/right/bottom/left a mano.
+   - Se importa UNA vez, desde main.jsx. No se toca index.css, que es de los tokens.
+   ============================================================================================ */
+
+/* --- Chip de filtro -------------------------------------------------------------------------
+   El <button> mide 44 px de alto (área táctil) y es transparente; la píldora visible es el hijo
+   `.lu-chip-cara`, de 36. Así el foco tiene que dibujarse sobre la cara y no sobre el botón: un
+   anillo alrededor de la caja de 44 se vería despegado de la píldora. */
+.lu-chip:focus-visible { outline: none; }
+.lu-chip:focus-visible > .lu-chip-cara { outline: 2px solid var(--primary); outline-offset: 2px; }
+.lu-chip > .lu-chip-cara { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+.lu-chip:active > .lu-chip-cara { transform: scale(0.97); }
+.lu-chip:disabled { cursor: default; opacity: 0.5; }
+
+/* --- Fila de lista agrupada -----------------------------------------------------------------
+   El separador es un pseudo-elemento de la fila de ABAJO, con sangría que declara cada fila en
+   `--sep-izq` (56 px con ícono, para alinear con el texto; 12 px sin ícono). Es la forma de la
+   hoja 4a/4b y de la ficha 6d: el separador no cruza la columna de los íconos.
+   El grupo tiene `overflow:hidden` (esquinas redondeadas), así que un anillo de foco por fuera
+   quedaría recortado: va por DENTRO, con offset negativo. */
+.lu-fila { position: relative; }
+.lu-fila + .lu-fila::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--sep-izq, 12px);
+  height: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+.lu-fila:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+button.lu-fila:active, a.lu-fila:active { background: var(--surface2); }
+button.lu-fila:disabled { cursor: default; opacity: 0.5; }
+@media (hover: hover) {
+  button.lu-fila:hover, a.lu-fila:hover { background: var(--surface2); }
+}
+
+/* --- Tira de contadores (celular) -----------------------------------------------------------
+   Divisor entre contadores. Con `box-shadow` interno y no con `border-left`: el contador lleva
+   `border:0` inline (es un <button>) y lo inline le gana a esta clase; la sombra no la pisa nadie
+   y no suma ancho, así los cinco siguen midiendo lo mismo. */
+.lu-tira-contadores > * + * { box-shadow: inset 1px 0 0 var(--line); }
+.lu-tira-contadores > button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* --- Barra inferior -------------------------------------------------------------------------
+   El foco va por dentro: la barra está pegada al borde inferior de la pantalla y un anillo por
+   fuera quedaría cortado por el viewport. */
+.lu-nav-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
+.lu-nav-btn .lu-nav-pildora { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+.lu-nav-btn:active .lu-nav-pildora { transform: scale(0.94); }
+
+/* --- Botones de los estados (Reintentar, CTA del vacío) ------------------------------------- */
+.lu-ui-btn { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+.lu-ui-btn:active { transform: scale(0.97); }
+
+/* --- Esqueleto de carga ---------------------------------------------------------------------
+   Pulso de OPACIDAD, como la hoja 5c/5d, y no el brillo que recorre (`.lu-sk` de index.css anima
+   `background-position`, que repinta en cada frame): la opacidad la compone la GPU y en un Helio
+   G85 con una lista entera de esqueletos es la diferencia entre fluido y entrecortado. */
+@keyframes lu-ui-pulso {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.lu-ui-sk {
+  background: var(--sk);
+  animation: lu-ui-pulso 1.4s ease-in-out infinite;
+}
+
+/* Movimiento reducido: el esqueleto queda quieto (sigue mostrando la forma, que es lo que
+   importa) y los botones no se achican al presionar. index.css ya acorta TODAS las animaciones a
+   0,01 ms; esto las apaga del todo para que el pulso no quede congelado a mitad de opacidad. */
+@media (prefers-reduced-motion: reduce) {
+  .lu-ui-sk { animation: none; }
+  .lu-chip > .lu-chip-cara,
+  .lu-nav-btn .lu-nav-pildora,
+  .lu-ui-btn { transition: none; }
+  .lu-chip:active > .lu-chip-cara,
+  .lu-nav-btn:active .lu-nav-pildora,
+  .lu-ui-btn:active { transform: none; }
+}

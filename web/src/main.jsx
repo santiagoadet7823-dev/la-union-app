@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Capacitor } from '@capacitor/core'
 import './index.css'
+// Pseudo-clases y media queries de los primitivos (components/ui). Después de index.css: usa sus tokens.
+import './components/ui/ui.css'
 import App from './App.jsx'
 import { iniciarAtras } from './services/atras'
 
