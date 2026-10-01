@@ -412,6 +412,22 @@ body {
 .lu-chips { scrollbar-width: none; -ms-overflow-style: none; }
 .lu-chips::-webkit-scrollbar { display: none; }
 
+/* Texto solo para el lector de pantalla (TalkBack): existe en el DOM y se lee, pero no ocupa lugar ni
+   se ve. La primera en el repo (01/10/2026); antes no había ninguna (`sr-only` de Tailwind no se
+   usa: solo se toma su reset). La usa el aviso `aria-live` de `SelectorTema` ("Tema oscuro activado
+   (automático)"). Sin `inset` a propósito: Chrome 79 de la tablet no lo entiende (ver arriba). */
+.lu-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Feedback de presión sutil (0.97) para elementos tocables. */
 .lu-press { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
 .lu-press:active { transform: scale(0.97); }
