@@ -318,26 +318,3 @@ export const GestIcon = ({ k, size = 18 }) => (
   </svg>
 )
 
-/* Toggle animado de tema. Reemplaza el swap sin transición del botón redondo de LoginView:
-   rayos y creciente en el mismo SVG, cross-fade + escala vía CSS transition (sin librerías,
-   misma curva que el resto de la app — CLAUDE.md §7). */
-export const SunMoon = ({ size = 20, dark = false, sunColor = 'var(--warning)', moonColor = 'var(--deep)' }) => {
-  const t = 'opacity 260ms cubic-bezier(.23,1,.32,1), transform 260ms cubic-bezier(.23,1,.32,1)'
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <g
-        stroke={sunColor} strokeWidth="1.8" strokeLinecap="round"
-        style={{ transformOrigin: '12px 12px', transition: t, opacity: dark ? 0 : 1, transform: dark ? 'scale(.5) rotate(-90deg)' : 'scale(1) rotate(0deg)' }}
-      >
-        <circle cx="12" cy="12" r="4.2" />
-        <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6" />
-      </g>
-      <path
-        d="M20 14.5A8.2 8.2 0 0 1 9.5 4 8.4 8.4 0 1 0 20 14.5Z"
-        stroke={moonColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-        style={{ transformOrigin: '12px 12px', transition: t, opacity: dark ? 1 : 0, transform: dark ? 'scale(1) rotate(0deg)' : 'scale(.5) rotate(90deg)' }}
-      />
-    </svg>
-  )
-}
-

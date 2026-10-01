@@ -7,7 +7,7 @@ import { estadoOta } from '../../services/ota'
 import MiPerfilModal from './MiPerfilModal'
 import CambiarContrasenaModal from './CambiarContrasenaModal'
 import CompartirUbicacion from '../../components/CompartirUbicacion'
-import ThemeToggle from '../../components/ThemeToggle'
+import SelectorTema from '../../components/SelectorTema'
 import { ChevronRight, LogOut, Lock, Monitor, Profile, Smartphone } from '../../components/icons'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from '../../services/platform'
@@ -19,7 +19,7 @@ import { esRastreado } from '../../lib/roles'
  * el Repartidor, que antes no tenían editar perfil / tema / cerrar sesión.
  *
  *   - Mi perfil    → abre MiPerfilModal (editar nombre + teléfono).
- *   - Apariencia   → toggle Oscuro/Claro (components/ThemeToggle).
+ *   - Apariencia   → Claro / Oscuro / Automático (components/SelectorTema).
  *   - Cerrar sesión→ signOut (useAuth).
  *
  * props: { onToast }
@@ -88,7 +88,7 @@ export default function MiCuenta({ onToast, showDeviceToggle = false }) {
 
       <div style={sx('padding:12px 4px')}>
         <div style={sx('font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:9px')}>Apariencia</div>
-        <ThemeToggle />
+        <SelectorTema />
       </div>
 
       {/* Celular/PC solo en la web: dentro de la APK no hay "PC" a la que cambiar, y el botón dejaba

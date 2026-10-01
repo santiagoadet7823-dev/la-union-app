@@ -28,7 +28,7 @@ import BurbujasEquipo from './components/BurbujasEquipo'
 import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
-import ThemeToggle from '../../components/ThemeToggle'
+import SelectorTema from '../../components/SelectorTema'
 import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, Lock, LogOut, Mapa, Menu, Monitor, Pin, Profile, Refrescar, Reloj, Smartphone, Truck } from '../../components/icons'
 import { APP_VERSION } from '../../version'
 import useCapaCartera from './useCapaCartera'
@@ -489,7 +489,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                   <div style={{ height: 1, background: 'var(--line)' }} />
                   <div style={{ padding: '13px 15px' }}>
                     <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 9 }}>Apariencia</div>
-                    <ThemeToggle />
+                    <SelectorTema />
                   </div>
                   <div style={{ height: 1, background: 'var(--line)' }} />
                   <div onClick={() => signOut()} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', cursor: 'pointer', color: 'var(--danger)' }}>

@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth, leerUltimoIngreso, quiereRecordar, setRecordarUsuario, identidadVisible } from '../../context/AuthContext'
-import { useTheme } from '../../context/ThemeContext'
 import { APP_VERSION } from '../../version'
 import { initials } from '../../lib/format'
 import Isotipo from '../../components/Isotipo'
 import Overlay from '../../components/Overlay'
-import { SunMoon } from '../../components/icons'
+import SelectorTema from '../../components/SelectorTema'
 import { disponible as vidrieraDisponible } from '../../services/vidrieraTablet'
 
 /**
@@ -72,7 +71,6 @@ const traducirRegistro = (code) => MSG_REGISTRO[code] || 'no se pudo crear la cu
 
 export default function LoginView({ onTablet }) {
   const { signInWithGoogle, signInWithPassword, registrarUsuario, enviarEnlaceContrasena, hasSupabase, authError, authStatus } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
 
   // Última cuenta que entró en ESTE teléfono. Lectura síncrona a propósito: si llegara un
   // instante después, la tarjeta aparecería de golpe y la pantalla saltaría en el primer render.
@@ -174,12 +172,13 @@ export default function LoginView({ onTablet }) {
       <div style={sx('width:100%;max-width:400px;margin:0 auto;display:flex;flex-direction:column;flex:1')}>
 
         {/* Cambiar de tema SIN entrar. No es un capricho: el caso de uso dominante es exterior con
-            sol de frente, donde el tema claro se lee bastante mejor. */}
+            sol de frente, donde el tema claro se lee bastante mejor. Desde el 01/10/2026 son las
+            tres opciones (Claro · Oscuro · Automático) en la variante de íconos del selector; antes
+            un botón que alternaba y, con un toque, sacaba de "Automático" sin avisar. Es además la
+            salida del reset único a Claro (riesgo R2 del brief): quien estaba en oscuro lo vuelve a
+            elegir acá sin entrar. El selector no usa `gap` en flex (esta pantalla la abre la tablet). */}
         <div style={sx('display:flex;justify-content:flex-end')}>
-          <button onClick={toggleTheme} className="lu-press" title="Cambiar tema" aria-label="Cambiar tema"
-            style={sx('width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer')}>
-            <SunMoon size={20} dark={isDark} />
-          </button>
+          <SelectorTema variante="iconos" />
         </div>
 
         {/* Marca. El isotipo va sobre su propio negro, el mismo del splash nativo. */}
