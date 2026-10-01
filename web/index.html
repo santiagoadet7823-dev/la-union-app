@@ -55,9 +55,12 @@
         try {
           g = window.localStorage.getItem('launion-theme');
           if (window.localStorage.getItem('launion-theme-v2') === null) {
-            if (g !== null) window.localStorage.setItem('launion-theme', 'light');
-            window.localStorage.setItem('launion-theme-v2', '1');
+            // `g = null` ANTES de escribir: con el almacenamiento lleno `setItem` lanza, y si esto
+            // fuera después quedaba el `dark` viejo acá mientras `ThemeContext` cae a Claro: flash
+            // oscuro→claro en cada arranque (la marca nunca llega a escribirse).
             g = null;
+            if (window.localStorage.getItem('launion-theme') !== null) window.localStorage.setItem('launion-theme', 'light');
+            window.localStorage.setItem('launion-theme-v2', '1');
           }
         } catch (e) {}
         if (g === 'light' || g === 'dark' || g === 'auto') modo = g;
