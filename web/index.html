@@ -21,12 +21,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="DisT-At" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      Fuentes autoalojadas (01/10/2026): las `@font-face` están al principio de `src/index.css`
+      y los archivos en `public/fonts/`. Ya no se pide nada a Google Fonts, así la app se ve igual
+      sin señal. Se precargan las dos variables que pinta el login (Inter = cuerpo, Space
+      Grotesk = títulos) para que no haya salto de fuente al primer render; Plex Mono baja cuando
+      se usa. `crossorigin` es obligatorio en un preload de fuente aunque sea del mismo origen.
+    -->
+    <link rel="preload" href="/fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/space-grotesk-latin-var.woff2" as="font" type="font/woff2" crossorigin />
 
     <!--
       Bootstrap de tema antes del render para evitar flash (FOUC). Default: dark.

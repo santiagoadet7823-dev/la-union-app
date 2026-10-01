@@ -1,5 +1,60 @@
 @import 'tailwindcss';
 
+/* --- Fuentes autoalojadas (01/10/2026, brief estético v2 §2.2, bloque 2d) -----------------
+   Antes venían de Google Fonts en runtime: sin señal (donde trabaja el vendedor) la app caía a
+   la fuente del sistema y cambiaba el layout. Ahora viven en `public/fonts/` (woff2, subset
+   latin de Google Fonts, licencias OFL al lado) y el service worker las precachea (`woff2` en
+   `workbox.globPatterns`); en el APK viajan dentro del bundle OTA.
+   - Inter y Space Grotesk son VARIABLES (un archivo cubre todos los pesos); Plex Mono no lo es.
+   - Los rangos de `font-weight` replican los pesos que se pedían a Google y NO el rango completo
+     del archivo: así un 400 en Space Grotesk sigue cayendo a 500 y un 700 en Plex Mono a 600,
+     igual que antes (las métricas del texto no cambian). Para sumar un peso, ampliar el rango
+     (variables) o agregar el archivo (Plex Mono).
+   - `unicode-range` = subset latin de Google: ASCII, Latin-1 (á é í ó ú ñ ü ¿ ¡ ° º) y
+     puntuación general (– — … · “ ”). Lo de afuera (→ ≥ σ ₂) cae al fallback, igual que antes.
+   - URL absoluta a `public/`: Vite le antepone el `base` en los dos builds (`/la-union-app/` en
+     la PWA; relativa al CSS con `CAP_BUILD=1`). */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-latin-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-600.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* ============================================================
    DESIGN SYSTEM — DisT-At
    Tokens duales: Claro (azul pizarra y crema) / Oscuro (Grafito), la paleta del dueño del
@@ -10,7 +65,7 @@
    ============================================================ */
 
 :root {
-  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
