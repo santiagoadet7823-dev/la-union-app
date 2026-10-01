@@ -30,24 +30,28 @@ import { WHATSAPP_PATH } from '../components/icons'
  */
 
 /**
- * Los hex salen de los tokens de `index.css` (`--primary`, `--success`, `--warning`, `--danger`,
- * `--faint`) y están escritos a mano por una razón concreta: los puntos de esta capa se dibujan en
+ * Los hex salen de los tokens de `index.css` (`--primary`, `--success`, `--warning`, `--danger`;
+ * el gris de `no_toca` es el crudo de la paleta, ya no `--faint`) y están escritos a mano por una
+ * razón concreta: los puntos de esta capa se dibujan en
  * CANVAS cuando el zoom es bajo (regla de `LeafletMap`), y un `<canvas>` no resuelve `var(--x)`.
  * ⚠️ Si se tocan esos tokens, se tocan también acá. Es el mismo trato que ya tenían los colores de
- * pin de `RutaTab` y de `SupervisionMovil`.
+ * pin de `RutaTab` y de `SupervisionMovil`. Valores de la paleta del 29/09/2026 (acento azul acero y estados,
+ * aprobados por el dueño el 30/09/2026): espejan a `index.css`, no los eligen.
  */
 export const ESTADOS = {
-  hoy:        { etiqueta: 'Toca hoy',          glifo: '·', light: '#0ABAB5', dark: '#2DD4CE' },
-  visitado:   { etiqueta: 'Con pedido',        glifo: '✓', light: '#10B981', dark: '#34D399' },
+  hoy:        { etiqueta: 'Toca hoy',          glifo: '·', light: '#2D6778', dark: '#7CB8C9' },
+  visitado:   { etiqueta: 'Con pedido',        glifo: '✓', light: '#346B46', dark: '#7FBF95' },
   // 🩸 EL BOT DE WHATSAPP (17/09/2026). Un comercio al que le vendió el bot lleva el logo de
   // WhatsApp como glifo y el VERDE DE WHATSAPP (#25D366), no el `--success` de la app — a
   // propósito: es la marca la que engancha, y el dueño de la empresa tiene que VER que el bot
   // está vendiendo. El glifo no es un carácter sino un SVG (`{ svg }`): `pinComercioIcon` y
   // `Muestra` aceptan las dos formas. El trazado sale de `components/icons` (una sola copia).
   pedido_bot: { etiqueta: 'Vendió el bot',     glifo: { svg: `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="${WHATSAPP_PATH}"/></svg>` }, light: '#25D366', dark: '#25D366' },
-  sin_pedido: { etiqueta: 'Sin pedido',        glifo: '–', light: '#F59E0B', dark: '#FBBF24' },
-  dormido:    { etiqueta: 'No compra hace +30 d', glifo: '!', light: '#EF4444', dark: '#F87171' },
-  no_toca:    { etiqueta: 'Hoy no toca',       glifo: '',  light: '#93A9A7', dark: '#5C7370', hueco: true },
+  sin_pedido: { etiqueta: 'Sin pedido',        glifo: '–', light: '#735D21', dark: '#D2A857' },
+  dormido:    { etiqueta: 'No compra hace +30 d', glifo: '!', light: '#A1403A', dark: '#E19E98' },
+  // El gris del pin hueco es DECORATIVO (no es texto): por eso puede ser el crudo de la paleta
+  // (#63636E en oscuro da 3.25:1 sobre el fondo, no llega a los 4.5:1 de un texto).
+  no_toca:    { etiqueta: 'Hoy no toca',       glifo: '',  light: '#7E939C', dark: '#63636E', hueco: true },
 }
 
 /**

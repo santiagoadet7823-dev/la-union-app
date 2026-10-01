@@ -236,7 +236,7 @@ export default function NuevoProducto({ onClose, onToast, producto = null }) {
                 onClick={() => setNivel(on ? null : n)}
                 title={`Nivel ${n}`}
                 style={{
-                  ...sx('width:40px;height:34px;border-radius:9px;cursor:pointer;font-size:12px;font-weight:700;color:#fff;display:grid;place-items:center'),
+                  ...sx('width:40px;height:34px;border-radius:9px;cursor:pointer;font-size:12px;font-weight:700;color:var(--on-rent);display:grid;place-items:center'),
                   background: `var(--rent-${n})`,
                   border: on ? '2px solid var(--text)' : '2px solid transparent',
                   opacity: on || nivel === null ? 1 : 0.4,

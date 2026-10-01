@@ -262,7 +262,7 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
             </div>
           )}
           {p.oferta && p.precioOferta != null && (
-            <span style={sx('position:absolute;top:9px;left:9px;background:var(--warning);color:#3d2c00;font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>OFERTA</span>
+            <span style={sx('position:absolute;top:9px;left:9px;background:var(--warning);color:var(--on-warning);font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>OFERTA</span>
           )}
           {p.destacado && (
             <span style={sx('position:absolute;top:9px;right:9px;background:var(--primary);color:var(--on-primary);font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>DESTACADO</span>

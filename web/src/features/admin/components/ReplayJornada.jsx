@@ -205,7 +205,7 @@ export default function ReplayJornada({ onToast, userId: userIdInicial = '', fec
               ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
               : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z" /></svg>}
           </button>
-          <input type="range" min="0" max={Math.max(0, pts.length - 1)} value={idx} onChange={(e) => { setPlaying(false); setIdx(+e.target.value) }} style={{ flex: 1, accentColor: '#0ABAB5', minWidth: 160 }} />
+          <input type="range" min="0" max={Math.max(0, pts.length - 1)} value={idx} onChange={(e) => { setPlaying(false); setIdx(+e.target.value) }} style={{ flex: 1, accentColor: 'var(--primary)', minWidth: 160 }} />
           <div style={sx('font-family:var(--font-mono);font-size:12px;color:var(--deep);font-weight:600;min-width:78px;text-align:center')}>{actual ? hhmm(actual.ts) : '--:--:--'}</div>
           <div style={sx('display:flex;gap:5px')}>
             {VELOCIDADES.map((v) => <button key={v} onClick={() => setVel(v)} style={btn(vel === v)}>{v}×</button>)}

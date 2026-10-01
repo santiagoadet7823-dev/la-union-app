@@ -550,7 +550,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Empresa que se mira (solo superadmin con más de una). No cambia identidad. */}
                     <SelectorEmpresa />
                     {/* Selector de fecha */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : '#fff' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : 'var(--on-primary)' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
                       <Calendario size={14} style={{ flex: 'none' }} />
                       <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
                       {!esHoy && <span onClick={() => cambiarFecha(hoyStr())} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
@@ -561,7 +561,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Toggle "Paradas" (carteles de permanencia) */}
                     {trails.length > 0 && (
                       <PistaBoton texto="Paradas" lado="abajo">
-                      <div onClick={() => setDwellOn((v) => !v)} title="Muestra un cartel donde la persona estuvo detenida más de 3 minutos, con el tiempo y la batería del equipo." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: dwellOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${dwellOn ? 'transparent' : 'var(--line)'}`, color: dwellOn ? '#fff' : 'var(--muted)' }}>
+                      <div onClick={() => setDwellOn((v) => !v)} title="Muestra un cartel donde la persona estuvo detenida más de 3 minutos, con el tiempo y la batería del equipo." style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: dwellOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${dwellOn ? 'transparent' : 'var(--line)'}`, color: dwellOn ? 'var(--on-primary)' : 'var(--muted)' }}>
                         <Reloj size={15} />
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Paradas</span>
                       </div>
@@ -577,7 +577,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                           : modoClientes === 'estado' ? (esHoy ? 'Cada comercio según cómo viene hoy: visitado, sin pedido, sin visitar. Tocá para ocultar.' : 'Cada comercio según cómo vino ese día: visitado, sin pedido, sin visitar. Tocá para ocultar.')
                             : 'Muestra los clientes geolocalizados de la cartera como puntos en el mapa.'
                       }
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: modoClientes === 'estado' ? 'var(--success)' : modoClientes === 'zona' ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${modoClientes !== 'off' ? 'transparent' : 'var(--line)'}`, color: modoClientes !== 'off' ? '#fff' : 'var(--muted)' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: modoClientes === 'estado' ? 'var(--success)' : modoClientes === 'zona' ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${modoClientes !== 'off' ? 'transparent' : 'var(--line)'}`, color: modoClientes === 'estado' ? 'var(--on-success)' : modoClientes !== 'off' ? 'var(--on-primary)' : 'var(--muted)' }}
                     >
                       {modoClientes === 'estado' ? <Check size={15} /> : <Pin size={15} />}
                       <span style={{ fontSize: 12, fontWeight: 600 }}>
@@ -593,7 +593,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       title={seguirId
                         ? `Siguiendo a ${nombres[seguirId] || 'el móvil'} · tocá para soltar`
                         : (objetivoSeguir ? `Centrar en la última posición${objetivoSeguir && nombres[objetivoSeguir.id] ? ' de ' + nombres[objetivoSeguir.id] : ''} y seguirla` : 'Nadie está reportando ahora')}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: seguirId ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${seguirId ? 'transparent' : 'var(--line)'}`, color: seguirId ? '#fff' : (objetivoSeguir ? 'var(--muted)' : 'var(--faint)') }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: seguirId ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${seguirId ? 'transparent' : 'var(--line)'}`, color: seguirId ? 'var(--on-primary)' : (objetivoSeguir ? 'var(--muted)' : 'var(--faint)') }}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M12 2v3.2M12 18.8V22M22 12h-3.2M5.2 12H2" /><circle cx="12" cy="12" r="8" /></svg>
                       <span style={{ fontSize: 12, fontWeight: 600 }}>{seguirId ? 'Siguiendo' : 'Centrar'}</span>
@@ -901,8 +901,8 @@ function SideItem({ active, label, onClick, children }) {
 // Chip de filtro (variante escritorio: sólido, sin glass flotante).
 function Chip({ on, dim, color, dotRadius, count, label, onClick }) {
   return (
-    <div onClick={onClick} style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 7, padding: '8px 13px', borderRadius: 10, cursor: 'pointer', background: on ? color : 'var(--surface2)', border: `1px solid ${on ? 'transparent' : 'var(--line)'}`, color: on ? '#fff' : (dim ? 'var(--faint)' : 'var(--text)') }}>
-      <span style={{ width: 8, height: 8, borderRadius: dotRadius, background: on ? '#fff' : color, flex: 'none' }} />
+    <div onClick={onClick} style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 7, padding: '8px 13px', borderRadius: 10, cursor: 'pointer', background: on ? color : 'var(--surface2)', border: `1px solid ${on ? 'transparent' : 'var(--line)'}`, color: on ? 'var(--on-primary)' : (dim ? 'var(--faint)' : 'var(--text)') }}>
+      <span style={{ width: 8, height: 8, borderRadius: dotRadius, background: on ? 'var(--on-primary)' : color, flex: 'none' }} />
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
       <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
     </div>

@@ -207,9 +207,11 @@ export default function GrillaCatalogo({
                     ...sx('display:flex;flex-direction:column;background:var(--surface);border-radius:14px;overflow:hidden'),
                     cursor: 'pointer',
                     // El marco SIEMPRE es el nivel de rentabilidad; el estado "en carrito"
-                    // se marca con un anillo (box-shadow) para no pisar ese código de color.
+                    // se marca con un anillo (box-shadow) para no pisar ese código de color. El aro interior
+                    // (--bg-app) los separa: con el acento azul acero el anillo se fundía con el marco azul
+                    // del nivel 2 (30/09/2026).
                     border: `2px solid ${rentColor(p.nivel)}`,
-                    boxShadow: qty > 0 ? '0 0 0 2px var(--primary)' : 'none',
+                    boxShadow: qty > 0 ? '0 0 0 2px var(--bg-app), 0 0 0 4px var(--primary)' : 'none',
                   }}
                 >
                   {/* Foto: caja cuadrada con fallback padding-top (aspect-ratio no está en
@@ -223,7 +225,7 @@ export default function GrillaCatalogo({
                       </div>
                     )}
                     {enOferta && (
-                      <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:#3d2c00;font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
+                      <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:var(--on-warning);font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
                     )}
                     {/* El rombo marca el destacado en el resto de los filtros: dentro de Destacados
                         lo son todos y repetirlo 20 veces es ruido. Va abajo de OFERTA cuando hay las

@@ -108,7 +108,9 @@ export default function RepartidorView() {
     ctx.lineWidth = 2.2
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#0B2B2A'
+    // Tinta y papel FIJOS (no `--text`/`--surface`): la firma se guarda como imagen con el lienzo
+    // transparente, así que la tinta tiene que ser oscura también con el tema oscuro puesto.
+    ctx.strokeStyle = '#2E3A44'
     ctxRef.current = ctx
     drawing.current = false
   }
@@ -344,9 +346,9 @@ export default function RepartidorView() {
               )}
               {d.status === 'entregado' && (
                 <div style={sx('margin-top:10px;display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--success);background:var(--success-tint);border-radius:12px')}>
-                  <div style={sx('flex:none;width:92px;height:44px;background:#F7FCFB;border:1px solid var(--line2);border-radius:8px;display:grid;place-items:center;overflow:hidden')}>
+                  <div style={sx('flex:none;width:92px;height:44px;background:#FCFBF8;border:1px solid var(--line2);border-radius:8px;display:grid;place-items:center;overflow:hidden')}>
                     {d.firma ? <img src={d.firma} alt="firma" style={sx('width:100%;height:100%;object-fit:contain')} />
-                      : <svg viewBox="0 0 92 44" style={sx('width:100%;height:100%')}><path d="M12 30 C20 12, 28 34, 36 22 S52 10, 58 26 S74 34, 82 18" fill="none" stroke="#0B2B2A" strokeWidth="1.6" strokeLinecap="round" /></svg>}
+                      : <svg viewBox="0 0 92 44" style={sx('width:100%;height:100%')}><path d="M12 30 C20 12, 28 34, 36 22 S52 10, 58 26 S74 34, 82 18" fill="none" stroke="#2E3A44" strokeWidth="1.6" strokeLinecap="round" /></svg>}
                   </div>
                   <div>
                     <div style={sx('font-size:12.5px;font-weight:600;color:var(--success)')}>Entrega registrada</div>
@@ -464,10 +466,10 @@ export default function RepartidorView() {
             {mdView && step === 'firma' && (
               <>
                 <div style={sx('font-size:12px;color:var(--muted);margin-bottom:10px')}>Entregá el teléfono al receptor para que firme la conformidad.</div>
-                <div style={sx('position:relative;border:1px solid var(--line2);border-radius:var(--r-lg);overflow:hidden;background:#F7FCFB')}>
+                <div style={sx('position:relative;border:1px solid var(--line2);border-radius:var(--r-lg);overflow:hidden;background:#FCFBF8')}>
                   <canvas ref={initCanvas} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} style={sx('display:block;width:100%;height:210px;touch-action:none;cursor:crosshair')} />
-                  <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed #C9E0DE;pointer-events:none')} />
-                  {!hasInk && <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;pointer-events:none;color:#93A9A7;font-size:14px;font-weight:500')}>Firmá acá</div>}
+                  <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed #B0C2C6;pointer-events:none')} />
+                  {!hasInk && <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;pointer-events:none;color:#5A6D76;font-size:14px;font-weight:500')}>Firmá acá</div>}
                 </div>
                 <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:8px')}>
                   <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-family:var(--font-mono)')}>{kgFmt(mdView.kg)} kg · {fmtPesos(mdView.monto)}</div>

@@ -59,11 +59,11 @@ export function colorPorId(id) {
 
 /**
  * La tinta con la que se pinta un tramo de TRANSPORTE en el mapa (17/09/2026, db/72). El pedido
- * fue "negro": en el tema claro es el mismo `#0B2B2A` que `LeafletMap` ya usa como tinta de los
- * hitos, y en el oscuro se invierte (`#ECF5F4`, como hace `depotIcon`) porque negro sobre el basemap
+ * fue "negro": en el tema claro es el mismo `#2E3A44` que `LeafletMap` ya usa como tinta de los
+ * hitos, y en el oscuro se invierte (`#F2F2F5`, como hace `depotIcon`) porque negro sobre el basemap
  * oscuro no se ve. Es UN lugar a propósito: lo consumen `construirLeaflet`, los hitos de hora, la
  * leyenda y el chip del vendedor tiene que coincidir de vista (usa `--text`, que es el mismo par).
  */
 export function tintaTransporte(theme) {
-  return theme === 'dark' ? '#ECF5F4' : '#0B2B2A'
+  return theme === 'dark' ? '#F2F2F5' : '#2E3A44'
 }

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { aplicarTemaNativo } from '../services/nativeUI'
 
 const STORAGE_KEY = 'launion-theme'
 const ThemeContext = createContext(null)
@@ -22,6 +23,8 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    // `theme-color` y barra de estado de la APK siguen al tema (best-effort, no espera).
+    aplicarTemaNativo(theme)
     try {
       localStorage.setItem(STORAGE_KEY, theme)
     } catch {

@@ -2,8 +2,9 @@
 
 /* ============================================================
    DESIGN SYSTEM — DisT-At
-   Tokens duales (Light Tiffany / Dark teal) tal como los definió
-   el diseñador en el handoff. Fuente de verdad del sistema visual.
+   Tokens duales: Claro (azul pizarra y crema) / Oscuro (Grafito), la paleta del dueño del
+   29/09/2026. Antes eran Light Tiffany / Dark teal, tal como los definió el diseñador en el
+   handoff. Fuente de verdad del sistema visual.
    Estética "sala de control" (TradingView): mono tabular, grillas
    finas, sparklines, deltas verde/rojo.
    ============================================================ */
@@ -74,116 +75,141 @@
                          acciones que pueden dispararse desde un modal */
 }
 
-/* --- LIGHT: Tiffany con degradado a blanco --- */
+/* --- LIGHT: azul pizarra y crema (paleta del dueño) ---
+   Paleta 29/09/2026 (propuesta 07). Cada valor es un color exacto de la paleta, salvo los marcados
+   (D) = DERIVADOS: la paleta no tiene el escalón que hacía falta para llegar a WCAG (texto 4.5:1,
+   borde de control 3:1) y se ajustó lo mínimo, mismo tono. Con la paleta cruda `#7E939C` sobre la
+   crema da 2.92:1: por eso --muted sube al escalón `#4C5F6B` y --faint/--line2 son derivados.
+   Acento (--primary/--deep, azul acero) y estados (--success/--warning/--danger/--info): NO salen
+   de las imágenes de la paleta (solo traen neutros). Los aprobó el dueño el 30/09/2026 (acento B,
+   azul acero; estados tal cual, con el ocre de advertencia). Si cambian, cambian también las
+   constantes espejo de JS (lib/estadoComercio.js, LeafletMap, mapas del vendedor/repartidor) y se
+   re-corre el chequeo de contraste. Solo hex y rgba(): el WebView Chrome 79 de las tablets no entiende
+   color-mix/oklch/light-dark() y falla en silencio. */
 html[data-theme='light'] {
-  --bg-app: linear-gradient(180deg, #ffffff 0%, #f2fbfa 60%, #edf9f7 100%);
-  --bg-solid: #fbfefd;
-  --surface: #ffffff;
-  --surface2: #f4faf9;
-  --line: #e2efee;
-  --line2: #c9e0de;
-  --text: #0b2b2a;
-  --muted: #5a7371;
-  --faint: #93a9a7;
-  --primary: #0abab5;
-  --on-primary: #ffffff;
-  --deep: #06807c;
-  --tclassic: #81d8d0;
-  --tlight: #a7e8e3;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #0ea5e9;
-  --primary-tint: rgba(10, 186, 181, 0.1);
-  --success-tint: rgba(16, 185, 129, 0.12);
-  --warning-tint: rgba(245, 158, 11, 0.14);
-  --danger-tint: rgba(239, 68, 68, 0.1);
-  --info-tint: rgba(14, 165, 233, 0.12);
+  --bg-app: #f6f4ee;
+  --bg-solid: #f6f4ee;
+  --surface: #fcfbf8; /* (D) crema 60 % hacia blanco: la paleta no tiene un escalón más claro */
+  --surface2: #eaece8; /* (D) punto medio entre --surface y #dde4e1 */
+  --line: #dde4e1;
+  --line2: #758b95; /* (D) borde de CONTROL, >= 3:1 (--line es solo separador decorativo) */
+  --text: #2e3a44;
+  --muted: #4c5f6b;
+  --faint: #5a6d76; /* (D) 350 usos como color de texto: tiene que dar 4.5:1 */
+  --primary: #2d6778;
+  --on-primary: #f6f4ee;
+  --deep: #1e4b59;
+  --tclassic: #b0c2c6;
+  --tlight: #dde4e1;
+  --success: #346b46;
+  --warning: #735d21;
+  --danger: #a1403a;
+  --info: #39638a;
+  /* Texto sobre un relleno pleno de estado. Antes cada sitio ponía `#fff` (o `#3d2c00` sobre el
+     ámbar) a mano, y en oscuro el blanco sobre el relleno claro daba 1.9-2.8:1. */
+  --on-success: #f6f4ee;
+  --on-warning: #f6f4ee;
+  --on-danger: #f6f4ee;
+  --on-info: #f6f4ee;
+  --primary-tint: rgba(45, 103, 120, 0.12);
+  --success-tint: rgba(52, 107, 70, 0.12);
+  --warning-tint: rgba(115, 93, 33, 0.12);
+  --danger-tint: rgba(161, 64, 58, 0.12);
+  --info-tint: rgba(57, 99, 138, 0.12);
   /* Marco de rentabilidad del catálogo (nivel 1..4). Código de color privado para el
      vendedor: NO reusa success/warning/danger (esos son estado) para no leerse como
      semáforo. Ver VisitaCatalogo.jsx / db/08_catalogo_visual.sql. */
-  --rent-1: #94a3b8;
-  --rent-2: #38bdf8;
-  --rent-3: #a78bfa;
-  --rent-4: #f59e0b;
-  --shadow: 0 2px 8px rgba(11, 43, 42, 0.06);
-  --shadow-lg: 0 10px 28px rgba(11, 43, 42, 0.12);
-  --grid: rgba(11, 43, 42, 0.06);
-  --map-bg: #e7f3f1;
-  --map-block: #dcebe8;
-  --map-road: #ffffff;
-  --scrim: rgba(11, 43, 42, 0.35);
-  --glass-bg: rgba(255, 255, 255, 0.62);
-  --glass-brd: rgba(11, 43, 42, 0.06);
-  --glass-strong: rgba(255, 255, 255, 0.86);
-  --glass-shadow: 0 -2px 16px rgba(11, 43, 42, 0.08);
-  --sheet-bg: rgba(247, 252, 251, 0.8);
-  --sk: rgba(11, 43, 42, 0.07);
+  --rent-1: #60737c;
+  --rent-2: #3d74a2;
+  --rent-3: #7b62a8;
+  --rent-4: #956717;
+  --on-rent: #f6f4ee; /* texto sobre el relleno de un nivel de rentabilidad (botón de nivel en NuevoProducto) */
+  --shadow: 0 2px 8px rgba(46, 58, 68, 0.07);
+  --shadow-lg: 0 10px 28px rgba(46, 58, 68, 0.14);
+  --grid: rgba(46, 58, 68, 0.07);
+  --map-bg: #dde4e1;
+  --map-block: #eaece8;
+  --map-road: #fcfbf8;
+  --scrim: rgba(46, 58, 68, 0.38);
+  --glass-bg: rgba(252, 251, 248, 0.66);
+  --glass-brd: rgba(46, 58, 68, 0.08);
+  --glass-strong: rgba(252, 251, 248, 0.88);
+  --glass-shadow: 0 -2px 16px rgba(46, 58, 68, 0.1);
+  --sheet-bg: rgba(246, 244, 238, 0.85);
+  --sk: rgba(46, 58, 68, 0.07);
   /* Pista neutra de una barra que se llena: el fondo de las sparklines, el riel del
      "km sobre el máximo del equipo" y el avatar de quien no reportó. Es más oscuro que
      --sk (que es el gris del skeleton, pensado para desaparecer) porque acá la parte
      vacía SIGNIFICA algo: es la referencia contra la que se lee lo lleno. */
-  --bar: rgba(11, 43, 42, 0.09);
-  --console-bg: #0b2b2a;
-  --console-fg: #a7e8e3;
-  --hm0: #eaf4f3;
-  --hm1: #b6e7e3;
-  --hm2: #7fd9d3;
-  --hm3: #38c6bf;
-  --hm4: #0abab5;
+  --bar: rgba(46, 58, 68, 0.1);
+  --console-bg: #2e3a44;
+  --console-fg: #dde4e1;
+  --hm0: #e3e8e5;
+  --hm1: #b6c8ca;
+  --hm2: #88a8ae;
+  --hm3: #5a8793;
+  --hm4: #2d6778;
   color-scheme: light;
 }
 
-/* --- DARK: base #0C0C0C + #0D1F1E con marcos blancos --- */
+/* --- DARK: Grafito (paleta del dueño) ---
+   Mismos criterios que el claro: exacto de la paleta salvo (D). #63636E (3.25:1 sobre el fondo,
+   2.64:1 sobre --surface) queda solo para decoración; el texto usa los escalones #C9C9D2 y #9A9AA6.
+   Acento y estados: aprobados por el dueño el 30/09/2026 (ver el bloque claro). */
 html[data-theme='dark'] {
-  --bg-app: #0c0c0c;
-  --bg-solid: #0c0c0c;
-  --surface: #0d1f1e;
-  --surface2: #12302e;
-  --line: rgba(255, 255, 255, 0.12);
-  --line2: rgba(255, 255, 255, 0.2);
-  --text: #ecf5f4;
-  --muted: #8fa9a6;
-  --faint: #5c7370;
-  --primary: #2dd4ce;
-  --on-primary: #04211f;
-  --deep: #2dd4ce;
-  --tclassic: #175753;
-  --tlight: #0f3b38;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --info: #38bdf8;
-  --primary-tint: rgba(45, 212, 206, 0.14);
-  --success-tint: rgba(52, 211, 153, 0.14);
-  --warning-tint: rgba(251, 191, 36, 0.14);
-  --danger-tint: rgba(248, 113, 113, 0.14);
-  --info-tint: rgba(56, 189, 248, 0.14);
-  --rent-1: #a3b2c2;
-  --rent-2: #56c7ff;
-  --rent-3: #b9a3fb;
-  --rent-4: #fbbf24;
+  --bg-app: #0e0e10;
+  --bg-solid: #0e0e10;
+  --surface: #232327;
+  --surface2: #313136; /* (D) punto medio con #3e3e45: con el exacto, --faint cae a 3.8:1 */
+  --line: rgba(242, 242, 245, 0.12);
+  --line2: #797986; /* (D) borde de CONTROL, >= 3:1 */
+  --text: #f2f2f5;
+  --muted: #c9c9d2;
+  --faint: #9a9aa6;
+  --primary: #7cb8c9;
+  --on-primary: #0e0e10;
+  --deep: #7cb8c9;
+  --tclassic: #3e3e45;
+  --tlight: #313136;
+  --success: #7fbf95;
+  --warning: #d2a857;
+  --danger: #e19e98;
+  --info: #93b3d3;
+  --on-success: #0e0e10;
+  --on-warning: #0e0e10;
+  --on-danger: #0e0e10;
+  --on-info: #0e0e10;
+  --primary-tint: rgba(124, 184, 201, 0.14);
+  --success-tint: rgba(127, 191, 149, 0.14);
+  --warning-tint: rgba(210, 168, 87, 0.14);
+  --danger-tint: rgba(225, 158, 152, 0.14);
+  --info-tint: rgba(147, 179, 211, 0.14);
+  --rent-1: #9a9aa6;
+  --rent-2: #7fb0dc;
+  --rent-3: #b29ad9;
+  --rent-4: #d9b25f;
+  --on-rent: #0e0e10;
   --shadow: none;
   --shadow-lg: none;
-  --grid: rgba(255, 255, 255, 0.06);
-  --map-bg: #0a1414;
-  --map-block: #0e1d1c;
-  --map-road: #1a3230;
-  --scrim: rgba(0, 0, 0, 0.55);
-  --glass-bg: rgba(13, 31, 30, 0.62);
-  --glass-brd: rgba(255, 255, 255, 0.14);
-  --glass-strong: rgba(9, 22, 21, 0.82);
+  --grid: rgba(242, 242, 245, 0.06);
+  --map-bg: #0e0e10;
+  --map-block: #1a1a1d;
+  --map-road: #313136;
+  --scrim: rgba(14, 14, 16, 0.62);
+  --glass-bg: rgba(35, 35, 39, 0.62);
+  --glass-brd: rgba(242, 242, 245, 0.14);
+  --glass-strong: rgba(24, 24, 27, 0.84);
   --glass-shadow: 0 -2px 16px rgba(0, 0, 0, 0.35);
-  --sheet-bg: rgba(11, 26, 25, 0.78);
-  --sk: rgba(255, 255, 255, 0.07);
-  --bar: rgba(255, 255, 255, 0.1);
-  --console-bg: #081414;
-  --console-fg: #5fd9d3;
-  --hm0: #12302e;
-  --hm1: #134e4a;
-  --hm2: #0e7c77;
-  --hm3: #1ba89f;
-  --hm4: #2dd4ce;
+  --sheet-bg: rgba(28, 28, 31, 0.8);
+  --sk: rgba(242, 242, 245, 0.07);
+  --bar: rgba(242, 242, 245, 0.1);
+  --console-bg: #0e0e10;
+  --console-fg: #7cb8c9;
+  --hm0: #232327;
+  --hm1: #324a50;
+  --hm2: #486b75;
+  --hm3: #61909d;
+  --hm4: #7cb8c9;
   color-scheme: dark;
 }
 
@@ -193,17 +219,21 @@ html[data-theme='dark'] {
  * la OPACIDAD de esos tokens vuelve las superficies sólidas sin tocar cada componente. Sin
  * esto, el desenfoque se ignora y quedaba un panel semitransparente que dejaba ver el mapa
  * detrás (ilegible). El -webkit- cubre los motores que solo tienen la variante con prefijo.
+ * ⚠️ El claro va con `html[data-theme='light']` y no solo `:root`: el bloque de tokens de arriba
+ * tiene más especificidad que `:root`, así que ese override nunca le ganaba (sí al oscuro, que
+ * empata en especificidad y viene después). Los valores son los mismos tokens con más opacidad.
  */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root {
-    --glass-bg: rgba(255, 255, 255, 0.94);
-    --glass-strong: rgba(255, 255, 255, 0.98);
-    --sheet-bg: rgba(247, 252, 251, 0.97);
+  :root,
+  html[data-theme='light'] {
+    --glass-bg: rgba(252, 251, 248, 0.94);
+    --glass-strong: rgba(252, 251, 248, 0.98);
+    --sheet-bg: rgba(246, 244, 238, 0.97);
   }
   html[data-theme='dark'] {
-    --glass-bg: rgba(13, 31, 30, 0.95);
-    --glass-strong: rgba(9, 22, 21, 0.98);
-    --sheet-bg: rgba(11, 26, 25, 0.97);
+    --glass-bg: rgba(35, 35, 39, 0.95);
+    --glass-strong: rgba(24, 24, 27, 0.98);
+    --sheet-bg: rgba(28, 28, 31, 0.97);
   }
 }
 

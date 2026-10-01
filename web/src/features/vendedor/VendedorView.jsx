@@ -292,7 +292,9 @@ export default function VendedorView() {
       >
         {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box]].map(([t, label, Icon]) => (
           <div key={t} onClick={() => j.setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
-            <Icon />
+            {/* Píldora de tinte detrás del ícono activo: con el acento azul acero (30/09/2026) el color solo
+                casi no separa la pestaña activa de las grises (contraste 1.09:1 contra --faint en Claro). */}
+            <span style={{ display: 'grid', placeItems: 'center', padding: '0 14px', borderRadius: 99, background: j.tab === t ? 'var(--primary-tint)' : 'transparent' }}><Icon /></span>
             <span style={sx('font-size:10px;font-weight:600')}>{label}</span>
           </div>
         ))}

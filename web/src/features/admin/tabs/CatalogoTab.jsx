@@ -282,7 +282,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     if (confirmDel === p.id) {
       return (
         <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
-          <button onClick={() => eliminar(p)} style={sx('height:34px;padding:0 10px;border:none;border-radius:9px;background:var(--danger);color:#fff;font-size:12px;font-weight:600;cursor:pointer')}>Eliminar</button>
+          <button onClick={() => eliminar(p)} style={sx('height:34px;padding:0 10px;border:none;border-radius:9px;background:var(--danger);color:var(--on-danger);font-size:12px;font-weight:600;cursor:pointer')}>Eliminar</button>
           <button onClick={() => setConfirmDel(null)} style={sx('height:34px;padding:0 10px;border:1px solid var(--line2);border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer')}>No</button>
         </div>
       )

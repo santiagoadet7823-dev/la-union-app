@@ -310,7 +310,7 @@ export default function ZonasView({ onToast }) {
                       ) : (
                         <span style={sx('font-size:12px;color:var(--muted)')}>¿Borrar «{z.nombre}»?</span>
                       )}
-                      <button onClick={confirmarBorrado} className="lu-press" style={{ ...btnPrimario, background: 'var(--danger)', color: '#fff' }}>Borrar zona</button>
+                      <button onClick={confirmarBorrado} className="lu-press" style={{ ...btnPrimario, background: 'var(--danger)', color: 'var(--on-danger)' }}>Borrar zona</button>
                       <button onClick={() => setBorrando(null)} className="lu-press" style={btnSuave}>Cancelar</button>
                     </div>
                   )}

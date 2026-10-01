@@ -41,7 +41,7 @@ export default function SinPedidoSheet({ j }) {
           style={{
             ...sx('width:100%;min-height:50px;display:grid;place-items:center;border:none;border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md)'),
             background: motivo ? 'var(--warning)' : 'var(--surface2)',
-            color: motivo ? '#3A2A00' : 'var(--faint)',
+            color: motivo ? 'var(--on-warning)' : 'var(--faint)',
             cursor: motivo ? 'pointer' : 'not-allowed',
           }}
         >

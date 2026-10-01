@@ -207,7 +207,7 @@ const Tarjeta = memo(function Tarjeta({ p, url, alto, acusado, cantidad, onTocar
                 </div>
               )}
               {enOferta && (
-                <span style={sx('position:absolute;top:8px;left:8px;background:var(--warning);color:#3d2c00;font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:99px')}>OFERTA</span>
+                <span style={sx('position:absolute;top:8px;left:8px;background:var(--warning);color:var(--on-warning);font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:99px')}>OFERTA</span>
               )}
               {acusado && (
                 <div className="lu-rise" style={sx('position:absolute;left:8px;right:8px;bottom:8px;padding:7px 10px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-size:11.5px;font-weight:600;text-align:center')}>
@@ -881,7 +881,7 @@ export default function VidrieraTablet({ sesion, catalogo, onSalir }) {
               <div style={sx('width:min(380px,60vh);padding-top:min(380px,60vh);position:relative;border-radius:24px;overflow:hidden;background:var(--surface2);box-shadow:var(--shadow-lg)')}>
                 <img src={fotos[p.id]} alt="" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover')} />
                 {oferta && (
-                  <span style={sx('position:absolute;top:14px;left:14px;background:var(--warning);color:#3d2c00;font-size:13px;font-weight:700;letter-spacing:.06em;padding:6px 15px;border-radius:99px')}>OFERTA</span>
+                  <span style={sx('position:absolute;top:14px;left:14px;background:var(--warning);color:var(--on-warning);font-size:13px;font-weight:700;letter-spacing:.06em;padding:6px 15px;border-radius:99px')}>OFERTA</span>
                 )}
               </div>
               <div style={sx('text-align:center')}>

@@ -36,11 +36,11 @@ import usePedidosBotDelDia from '../../hooks/usePedidosBotDelDia'
 
 // El COLOR y el GLIFO de cada estado viven en `lib/estadoComercio.js`, que los comparte con la
 // supervisión. Acá sólo queda lo que es de ESTE mapa.
-const STROKE = { dark: '#0B2B2A', light: '#ffffff' }
+const STROKE = { dark: '#0E0E10', light: '#ffffff' }
 const K_LEYENDA = 'lu-mapa-leyenda'
 // El interruptor "Mostrar sin dueño" se recuerda; apagado por defecto (ver `lib/carteraDe.js`).
 const K_SIN_DUENO = 'lu-mapa-sin-dueno'
-const GRIS = { dark: '#5C7370', light: '#93A9A7' }
+const GRIS = { dark: '#63636E', light: '#7E939C' } // el mismo gris de `no_toca` en lib/estadoComercio.js
 
 function fmtDistancia(m) {
   if (m == null) return null

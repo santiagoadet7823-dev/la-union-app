@@ -422,7 +422,7 @@ export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar, on
           </div>
           <div style={sx('display:flex;align-items:center;gap:10px')}>
             <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>Además borra recorridos GPS y visitas. Los pedidos quedan.</div>
-            <button type="button" onClick={() => onEliminar('purgar')} className="lu-press" style={sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:0;background:var(--danger);color:var(--surface);cursor:pointer;font-size:12px;font-weight:600')}>Purgar</button>
+            <button type="button" onClick={() => onEliminar('purgar')} className="lu-press" style={sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:0;background:var(--danger);color:var(--on-danger);cursor:pointer;font-size:12px;font-weight:600')}>Purgar</button>
           </div>
         </>
       )}

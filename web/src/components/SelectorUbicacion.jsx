@@ -71,7 +71,7 @@ export default function SelectorUbicacion({ inicial = null, live = null, onCambi
             focus={focus}
             live={live}
             // El círculo de precisión sólo cuando vale la pena verlo: con ±10 m es un puntito.
-            circle={live && acc != null && acc > 30 ? { lat: live.lat, lng: live.lng, radiusM: acc, color: gpsMalo ? '#F59E0B' : '#0EA5E9' } : null}
+            circle={live && acc != null && acc > 30 ? { lat: live.lat, lng: live.lng, radiusM: acc, color: theme === 'dark' ? (gpsMalo ? '#D2A857' : '#93B3D3') : (gpsMalo ? '#735D21' : '#39638A') } : null}
             onMoveEnd={(c) => onCambioRef.current?.(c)}
           />
         </ErrorBoundary>
@@ -104,7 +104,7 @@ export default function SelectorUbicacion({ inicial = null, live = null, onCambi
 
       {/* El renglón que hoy no existía: cuánto vale el GPS que se está mirando. */}
       <div style={{ ...sx('display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;font-family:var(--font-mono)'), color: live ? (gpsMalo ? 'var(--warning)' : 'var(--muted)') : 'var(--faint)' }}>
-        <span style={{ width: 7, height: 7, borderRadius: 99, flex: 'none', background: live ? (gpsMalo ? 'var(--warning)' : '#0EA5E9') : 'var(--faint)' }} />
+        <span style={{ width: 7, height: 7, borderRadius: 99, flex: 'none', background: live ? (gpsMalo ? 'var(--warning)' : 'var(--info)') : 'var(--faint)' }} />
         {!live
           ? 'Sin señal GPS · mové el mapa hasta el comercio'
           : acc == null

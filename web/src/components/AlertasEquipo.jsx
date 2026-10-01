@@ -53,7 +53,7 @@ export default function AlertasEquipo({ alertas = [], sinVer = 0, nombres = {}, 
           <span style={{
             position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, padding: '0 4px',
             display: 'grid', placeItems: 'center', borderRadius: 'var(--r-pill)',
-            background: 'var(--danger)', color: '#fff',
+            background: 'var(--danger)', color: 'var(--on-danger)',
             fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700, lineHeight: 1,
           }}>
             {sinVer > 9 ? '9+' : sinVer}

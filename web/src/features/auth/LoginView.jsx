@@ -270,7 +270,7 @@ export default function LoginView({ onTablet }) {
           {ultimo && ultimo.metodo === 'google' && !form && (
             <button onClick={entrarConGoogle} disabled={!hasSupabase || !!cargando} className="lu-press"
               style={{ ...sx('display:flex;align-items:center;width:100%;min-height:64px;padding:10px 16px;border:none;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);text-align:left;cursor:pointer;box-shadow:var(--shadow-lg)'), '--gx': '12px' }}>
-              <span style={sx('width:42px;height:42px;flex:none;border-radius:var(--r-pill);background:rgba(255,255,255,.9);color:#0B2B2A;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:var(--fs-lg);overflow:hidden')}>
+              <span style={sx('width:42px;height:42px;flex:none;border-radius:var(--r-pill);background:rgba(255,255,255,.9);color:#2E3A44;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:var(--fs-lg);overflow:hidden')}>
                 {ultimo.foto
                   ? <img src={ultimo.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : initials(ultimo.nombre || identidadVisible(ultimo.email))}

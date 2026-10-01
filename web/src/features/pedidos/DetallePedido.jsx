@@ -192,7 +192,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   style={{
                     ...sx('width:100%;min-height:46px;display:grid;place-items:center;border:none;border-radius:12px;font-size:13.5px;font-weight:600'),
                     background: motivo.trim() && !trabajando ? 'var(--danger)' : 'var(--surface2)',
-                    color: motivo.trim() && !trabajando ? '#fff' : 'var(--faint)',
+                    color: motivo.trim() && !trabajando ? 'var(--on-danger)' : 'var(--faint)',
                     cursor: motivo.trim() && !trabajando ? 'pointer' : 'default',
                   }}
                 >Anular el pedido</button>
@@ -211,7 +211,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   <button
                     onClick={alBorrar}
                     disabled={trabajando}
-                    style={sx('flex:1;min-height:42px;border:none;border-radius:12px;background:var(--danger);color:#fff;font-size:13px;font-weight:600;cursor:pointer')}
+                    style={sx('flex:1;min-height:42px;border:none;border-radius:12px;background:var(--danger);color:var(--on-danger);font-size:13px;font-weight:600;cursor:pointer')}
                   >Borrar #{pedido.numero}</button>
                 </div>
               ) : (
