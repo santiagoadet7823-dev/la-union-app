@@ -56,7 +56,7 @@ src/
   features/
     vendedor/    → VendedorView (hoja de ruta, catálogo, mapa, perfil)
     repartidor/  → RepartidorView (entregas, cantidades → faltante, firma canvas)
-    admin/       → AdminView (Dashboard, Mapa operativo, Ruteo, Órdenes, Clientes, Faltante)
+    admin/       → Usuarios, Empresas, Zonas, Clientes, Catálogo, Faltante (AdminView, Mapa operativo y Ruteo se borraron el 30/09/2026)
     reportes/    → faltanteStock.js (Generados vs Entregados, función pura)
   services/      → puertos reemplazables:
     maps/        → Google Maps (loader + config + estilo dark)

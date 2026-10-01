@@ -28,7 +28,6 @@ import { initNativeUI } from './services/nativeUI'
 // que la pantalla de login aparezca sin bajar todo el bundle de una.
 const VendedorView = lazy(() => import('./features/vendedor/VendedorView'))
 const RepartidorView = lazy(() => import('./features/repartidor/RepartidorView'))
-const AdminView = lazy(() => import('./features/admin/AdminView'))
 const PanelDireccion = lazy(() => import('./features/direccion/PanelDireccion'))
 const SupervisionMovil = lazy(() => import('./features/supervision/SupervisionMovil'))
 // Shell de escritorio (PWA/.exe) para los roles de supervisión: sidebar izq + topbar +
@@ -50,12 +49,15 @@ function usarSupervisionMovil() {
  *  - vendedor / repartidor → vista móvil con GPS obligatorio (GpsGate).
  *  - encargado → es preventista Y auditor: alterna entre "Mi jornada" (misma
  *    vista del vendedor, con GPS) y "Panel" (auditoría). El switch vive en AppShell.
- *  - admin / superadmin → panel de escritorio (AdminView).
+ *  - admin / superadmin → no llegan acá: `AuthedApp` los manda a la supervisión (móvil, panel de
+ *    dirección o escritorio). Hasta el 30/09/2026 el `return` del final era `<AdminView/>`, una
+ *    rama INALCANZABLE que arrastraba 5 pantallas; se borró (copia en `_interno/respaldos/
+ *    codigo_muerto_2026-09-30/`).
  *
  * `marketing` no llega nunca acá: `AuthedApp` lo ataja arriba de todo (db/38).
  *
- * ⚠️ El `return <AdminView/>` del final es INALCANZABLE: `AuthedApp` ataja a los 6 roles antes de
- * llegar acá. Está documentado como deuda en CLAUDE.md §8 junto con las 3 pantallas que arrastra.
+ * El `return` del final es solo una red por si aparece un rol sin vista: `AuthedApp` ataja a los 6
+ * roles antes de llegar acá, así que en la práctica no se ve.
  */
 function RoleRouter({ vista }) {
   // 🩸 11/08/2026 — pasa por `rolEfectivo` igual que `AuthedApp`. Sin esto el override
@@ -85,7 +87,14 @@ function RoleRouter({ vista }) {
       </PhoneFrame>
     )
   }
-  return <AdminView />
+  // Rol sin vista propia (no debería pasar, ver arriba). Antes caía en `AdminView`, que le hubiera
+  // mostrado un panel de gestión a un rol desconocido; ahora se le dice y puede cerrar sesión desde
+  // el menú del `AppShell` que lo envuelve.
+  return (
+    <div style={sx('padding:32px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5')}>
+      No hay una vista para tu perfil en este momento. Probá cambiar de vista desde el menú o cerrá sesión y avisale al administrador.
+    </div>
+  )
 }
 
 function Cargando() {
@@ -192,8 +201,8 @@ function AuthedApp() {
   // Va ANTES de las tres decisiones de abajo y no como un caso más de ellas, porque no comparte
   // NADA con los otros roles: no tiene mapa, ni equipo, ni jornada, ni `GpsGate` (esta persona no
   // sale a la calle, ver db/38). Si cayera en el camino normal, `esGestor` y `esEncargado` darían
-  // false en las tres y terminaría en `RoleRouter` → el `return <AdminView/>` inalcanzable, que es
-  // justo la rama muerta que arrastra deuda desde hace meses.
+  // false en las tres y terminaría en `RoleRouter`, la red del final para roles sin vista (hasta el
+  // 30/09/2026 era el `return <AdminView/>` inalcanzable, la rama muerta que arrastraba deuda).
   //
   // ⚠️ Va DESPUÉS de los hooks de arriba (`useState` del switch del encargado): un `return` antes
   // de ellos los saltearía en este rol y rompería el orden de hooks de React.

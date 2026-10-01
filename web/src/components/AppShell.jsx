@@ -3,7 +3,7 @@ import { useAuth, identidadVisible } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
 import { isNative } from '../services/platform'
 import Logo from './Logo'
-import { Check, Mapa } from './icons'
+import { Check } from './icons'
 import MiCuenta from '../features/perfil/MiCuenta'
 import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
 import MisPedidosSheet from '../features/pedidos/MisPedidosSheet'
@@ -40,9 +40,8 @@ export function useChrome() {
  * props:
  *  - encargadoVista  'jornada' | 'panel' | null   (null = no es encargado, sin switch)
  *  - onCambiarVista  (v) => void
- *  - onMonitoreo     () => void | null   (admin/superadmin en .apk: volver a la supervisión)
  */
-export default function AppShell({ children, encargadoVista = null, onCambiarVista, onMonitoreo = null }) {
+export default function AppShell({ children, encargadoVista = null, onCambiarVista }) {
   const { perfil, user, rol } = useAuth()
   const { isMobile } = useDevice()
   const meta = ROLE_META[rol] || { label: rol || '—', color: 'var(--muted)' }
@@ -141,14 +140,6 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
           </span>
         </div>
 
-        {/* Volver a la supervisión (admin/superadmin en .apk) */}
-        {onMonitoreo && (
-          <button onClick={onMonitoreo} title="Volver al monitoreo en vivo" style={isMobile ? iconBtn : textBtn}>
-            <Mapa size={15} w={1.9} />
-            {!isMobile && 'Monitoreo'}
-          </button>
-        )}
-
         {/* Cuenta: UN solo botón (avatar) que abre el menú tipo admin — perfil, tema, vista y
             cerrar sesión adentro. Reemplaza los botones sueltos que había acá. */}
         <div onClick={() => setAcctOpen(true)} title="Mi cuenta" style={{ flex: 'none', width: 36, height: 36, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{nombre.slice(0, 2).toUpperCase()}</div>
@@ -234,15 +225,4 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
     </div>
     </ChromeContext.Provider>
   )
-}
-
-const textBtn = {
-  flex: 'none', display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--line)',
-  borderRadius: 10, padding: '7px 12px', cursor: 'pointer', color: 'var(--muted)', fontSize: 12,
-  fontWeight: 600, background: 'transparent', fontFamily: 'var(--font-body)',
-}
-
-const iconBtn = {
-  flex: 'none', display: 'grid', placeItems: 'center', width: 34, height: 34, border: '1px solid var(--line)',
-  borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', background: 'transparent',
 }
