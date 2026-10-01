@@ -404,7 +404,7 @@ function Fila({ quien, detalle, fuerte, onClick }) {
         cursor: onClick ? 'pointer' : 'default',
       }}
     >
-      <span style={{ ...sx('width:6px;height:6px;border-radius:99px;flex:none;position:relative;top:-2px'), background: fuerte ? 'var(--danger)' : 'var(--warn, var(--faint))' }} />
+      <span style={{ ...sx('width:6px;height:6px;border-radius:99px;flex:none;position:relative;top:-2px'), background: fuerte ? 'var(--danger)' : 'var(--faint)' }} />
       <span style={sx('font-weight:600;white-space:nowrap')}>{quien}</span>
       <span style={sx('color:var(--muted)')}>{detalle}</span>
     </div>
