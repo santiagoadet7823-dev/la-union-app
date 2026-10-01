@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core'
  *
  * Prioridad de resolución:
  *   1) Override manual del usuario (banner "Celular / PC") guardado en localStorage.
+ *      SOLO EN LA WEB: en la APK se ignora (el modo es siempre 'mobile').
  *   2) Detección automática: app nativa (Capacitor) → mobile; si no, ancho de
  *      viewport + puntero grueso + userAgent.
  */
@@ -49,7 +50,10 @@ export function useDeviceMode() {
     setOverride(m === 'mobile' || m === 'desktop' ? m : null)
   }, [])
 
-  const mode = override || auto
+  // En la APK el modo es SIEMPRE 'mobile' (misma promesa que `PhoneFrame`): el override guardado se
+  // ignora sin borrarlo. Las instalaciones que ya eligieron "PC" en el banner (que también se
+  // mostraba en nativo) quedaban con `isMobile=false` y sin switch para volver.
+  const mode = (Capacitor.isNativePlatform() ? null : override) || auto
   return {
     mode,
     setMode,          // setMode('mobile'|'desktop'|null) — null vuelve a automático

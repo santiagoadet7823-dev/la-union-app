@@ -29,7 +29,7 @@ import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
 import ThemeToggle from '../../components/ThemeToggle'
-import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
+import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, Lock, LogOut, Mapa, Menu, Monitor, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
 import { APP_VERSION } from '../../version'
 import useCapaCartera from './useCapaCartera'
 import LeyendaCartera from './components/LeyendaCartera'
@@ -63,6 +63,8 @@ import TarjetaComercio from './components/TarjetaComercio'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
 const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
+// Mismo modal que abre MiCuenta (cambiar la PROPIA contraseña): acá no se duplica lógica, solo se abre.
+const CambiarContrasenaModal = lazy(() => import('../perfil/CambiarContrasenaModal'))
 // El dashboard con gráficos (ventas + actividad) es el mismo módulo que monta PanelDireccion en
 // celular y SupervisionMovil en el APK (regla 31). Lazy: sus hooks pegan tres RPC y la librería de
 // gráficos baja aparte; el monitoreo en vivo, que es lo que abre primero, no paga nada de eso.
@@ -117,6 +119,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
   const [modalPerfil, setModalPerfil] = useState(false)
+  const [modalPass, setModalPass] = useState(false)
   const toastRef = useRef(null)
   const dateRef = useRef(null) // <input type="date"> del rail compacto (modo inmersivo)
 
@@ -395,11 +398,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           )}
         </nav>
 
-        {/* Pie: cambiar a vista celular (útil en la PWA de escritorio). */}
+        {/* Pie: alterna la vista, siempre hacia la OTRA. Antes decía "Cambiar a vista Celular" aunque
+            ya se estuviera en celular: un encargado en la PWA de un teléfono (que cae acá, ver
+            App.jsx `usaDesktop`) solo podía volver a fijar 'mobile' y nunca ofrecía "PC" — quedaba
+            encerrado. En escritorio (`isMobile` false) el pie es el de siempre. */}
         <div style={{ flex: 'none', padding: 10, borderTop: '1px solid var(--line)' }}>
-          <div onClick={() => setMode('mobile')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
-            <Smartphone size={17} />
-            Cambiar a vista Celular
+          <div onClick={() => { setDrawerOpen(false); setMode(isMobile ? 'desktop' : 'mobile') }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
+            {isMobile ? <Monitor size={17} /> : <Smartphone size={17} />}
+            {isMobile ? 'Cambiar a vista PC' : 'Cambiar a vista Celular'}
           </div>
         </div>
       </aside>
@@ -465,6 +471,12 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
                       <div style={acctIconBox}><Profile size={15} /></div>
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
+                      <ChevronRight />
+                    </div>
+                    {/* Igual que en MiCuenta: lo ven todos los roles, cada uno cambia SU contraseña. */}
+                    <div onClick={() => { setAcctOpen(false); setModalPass(true) }} style={acctItem}>
+                      <div style={acctIconBox}><Lock size={15} /></div>
+                      <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Cambiar contraseña</span>
                       <ChevronRight />
                     </div>
                   </div>
@@ -790,12 +802,13 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
       </div>
 
       {/* Modales de alta (se abren desde Clientes / Catálogo) + edición de perfil. */}
-      {(modalCliente || modalProducto || modalPerfil) && (
+      {(modalCliente || modalProducto || modalPerfil || modalPass) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
           {/* `true` = alta; un objeto producto = edición (mismo patrón que AdminView). */}
           {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} producto={modalProducto === true ? null : modalProducto} />}
           {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
+          {modalPass && <CambiarContrasenaModal onClose={() => setModalPass(false)} onToast={showToast} />}
         </Suspense>
       )}
 

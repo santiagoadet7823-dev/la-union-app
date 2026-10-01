@@ -7,12 +7,13 @@
  */
 import { colorPorId } from '../../../lib/colors'
 import { normalizarPerfil, resumenPerfil } from '../../../services/gpsPerfil'
+import { ROLES_RASTREADOS, esRastreado } from '../../../lib/roles'
 
 // 🩸 Acá vivió `propietario` hasta el 08/08/2026 (db/31): el alta revienta contra el CHECK de la
 // base si alguien lo vuelve a poner. `marketing` (db/38) sí existe y NO se rastrea.
 export const ROLES_ADMIN = ['vendedor', 'repartidor', 'encargado', 'marketing', 'admin']
 export const ROLES_SUPER = [...ROLES_ADMIN, 'superadmin']
-export const ROLES_RASTREADOS = ['vendedor', 'repartidor', 'encargado']
+// Fuente única en `lib/roles.js` (se re-exporta abajo): ver el comentario de ese archivo.
 // Roles que editan el catálogo por lo que son: ofrecerles el permiso extra sugeriría que hoy no pueden.
 export const ROLES_EDITAN_CATALOGO = ['admin', 'encargado', 'superadmin', 'marketing']
 
@@ -20,7 +21,7 @@ export const ORDEN_ROLES = ['vendedor', 'repartidor', 'encargado', 'marketing', 
 export const ROL_UNO = { superadmin: 'Superadmin', admin: 'Admin', encargado: 'Encargado', vendedor: 'Vendedor', repartidor: 'Repartidor', marketing: 'Marketing' }
 export const ROL_GRUPO = { superadmin: 'Superadmins', admin: 'Admins', encargado: 'Encargados', vendedor: 'Vendedores', repartidor: 'Repartidores', marketing: 'Marketing' }
 
-export const esRastreado = (rol) => ROLES_RASTREADOS.includes(rol)
+export { ROLES_RASTREADOS, esRastreado }
 export const esPendiente = (p) => !p.activo && !p.rol
 export const nivelTexto = (n) => ((n ?? 0) >= 2 ? 'Todo el equipo' : 'Los vendedores')
 
