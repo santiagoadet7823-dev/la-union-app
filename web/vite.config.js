@@ -35,8 +35,12 @@ export default defineConfig({
         name: 'DisT-At',
         short_name: 'DisT-At',
         description: 'DisT-At — plataforma logística: Vendedor, Repartidor y Administrador.',
-        // Los del tema por defecto (oscuro): el manifest es estático. `--bg-app` de index.css.
-        theme_color: '#0E0E10',
+        // El manifest es estático. `theme_color` = `--bg-app` del tema por defecto, que desde el
+        // 01/10/2026 es Claro (decisión 1 del dueño; mismo hex que index.html y nativeUI.js).
+        // `background_color` es el fondo de la pantalla de arranque de la PWA instalada: queda
+        // OSCURO a propósito, igual que el splash nativo (decisión 13: splash oscuro siempre, es la
+        // marca). Es el `--bg-app` oscuro de index.css.
+        theme_color: '#F6F4EE',
         background_color: '#0E0E10',
         display: 'standalone',
         orientation: 'portrait',
