@@ -8,7 +8,7 @@ import useTramosTransporte from '../../hooks/useTramosTransporte'
 import { glassBlur } from '../../lib/glass'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, hayVelocidadesDeReparto, limpiarPorUsuario, totalDescartados } from './trazos'
 import useSnapConectores from './useSnapConectores'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { apilarAtras } from '../../services/atras'
@@ -113,6 +113,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   /* 🩸 APAGADAS POR DEFECTO (18/08/2026): `calcularDwells` cuesta ~250 ms por persona-día y con el
      equipo entero son ~2,5 s de hilo principal mientras el mapa se pinta. Ver SupervisionDesktop. */
   const [dwellOn, setDwellOn] = useState(false)
+  // Hitos de velocidad del reparto: apagados por defecto, se prenden desde el rail (01/10/2026).
+  const [velocidadOn, setVelocidadOn] = useState(false)
   // Cartel de parada AMPLIADO (índice dentro de `dwells`) o null. Uno a la vez, y NO se persiste
   // —a diferencia de `pinK`—: ampliar una parada es el gesto de "mirá ésta", no una preferencia
   // que alguien quiera encontrarse mañana. Se limpia solo al cambiar de día o de filtro, porque
@@ -362,7 +364,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     () => construirLeaflet({ trails, snapped, focoId: foco?.id || null, tramos, tinta }),
     [trails, snapped, foco, tramos, tinta]
   )
-  const hitos = useMemo(() => construirHitosTransporte(trails, tramos, tinta), [trails, tramos, tinta])
+  const hayVelocidad = useMemo(() => hayVelocidadesDeReparto(trails, tramos), [trails, tramos])
+  const hitos = useMemo(
+    () => (velocidadOn ? construirHitosTransporte(trails, tramos, tinta) : []),
+    [velocidadOn, trails, tramos, tinta]
+  )
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, compartido con Desktop). Sale de
   // `trails`, así que ya viene filtrado por chip y con los puntos limpios. Barato (una entrada por
   // persona), pero memoizado igual: el padre re-renderiza con cada posición que llega por Realtime.
@@ -682,6 +688,9 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         hayTrazos={trails.length > 0}
         dwellOn={dwellOn}
         onDwell={() => setDwellOn((v) => !v)}
+        hayVelocidad={hayVelocidad}
+        velocidadOn={velocidadOn}
+        onVelocidad={() => setVelocidadOn((v) => !v)}
         modoClientes={modoClientes}
         clientesCount={clientesCount}
         onClientes={alternarClientes}

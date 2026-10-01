@@ -53,7 +53,8 @@ export function construirTrails(byUser, pasaFiltro) {
       // 🩸 El km sale del MISMO helper que usa MetricasEquipo (`kmDePuntos`, lib/geo.js). Estaba
       // duplicado acá como un for suelto, y cuando se le agregó el piso de ruido en un lado el otro
       // habría seguido inflando — el panel y la supervisión mostrando distinto para el mismo día.
-      return { id, points: v.points, segmentos: v.segmentos, aproximados: v.aproximados || [], color: colorPorId(id), km: kmDePuntos(v.points) }
+      // `rol` viaja para `construirHitosTransporte`, que sólo muestra velocidades de repartidores.
+      return { id, rol: v.rol, points: v.points, segmentos: v.segmentos, aproximados: v.aproximados || [], color: colorPorId(id), km: kmDePuntos(v.points) }
     })
 }
 
@@ -400,13 +401,28 @@ export function construirLeaflet({ trails, snapped = {}, focoId = null, tramos =
  * ralea a un múltiplo de `cadaMs`. El zoom mínimo lo aplica `LeafletMap` (son nodos del DOM, misma
  * regla que los pines de comercios de 1.39.0).
  *
+ * 🩸 01/10/2026 — SÓLO REPARTIDORES y SÓLO A PEDIDO. Desde 1.43.0 las pastillas "10:42 · 78 km/h"
+ * salían siempre y de cualquiera con tramo, vendedores incluidos. El dueño lo quería como función
+ * del reparto, que el encargado/admin/superadmin prende con el interruptor "Velocidad" del mapa
+ * (arranca apagado, como las paradas). El filtro de rol vive acá, en el helper compartido, para que
+ * las tres pantallas de monitoreo no puedan volver a divergir (regla 31); el interruptor lo aplica
+ * cada pantalla no llamando a esta función (useMemo → []).
+ *
  * @returns {Array<{id:string, lat:number, lng:number, ts:number, hora:string, kmh:number|null, color:string}>}
  */
 const MAX_HITOS = 60
+
+/** ¿Hay algún repartidor con tramo de transporte en el día? Decide si se ofrece el interruptor. */
+export function hayVelocidadesDeReparto(trails, tramos) {
+  if (!tramos) return false
+  return (trails || []).some((t) => t.rol === 'repartidor' && tramos[t.id]?.length)
+}
+
 export function construirHitosTransporte(trails, tramos, tinta, { cadaMs = 10 * 60000 } = {}) {
   if (!tramos || !tinta) return []
   const out = []
   for (const t of trails) {
+    if (t.rol !== 'repartidor') continue
     const mios = tramos[t.id]
     if (!mios?.length) continue
     const pts = (t.points || []).filter((p) => enTramo(mios, p.ts))

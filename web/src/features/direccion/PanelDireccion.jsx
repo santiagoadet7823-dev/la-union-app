@@ -15,7 +15,7 @@ import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
-import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario } from '../supervision/trazos'
+import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, hayVelocidadesDeReparto, limpiarPorUsuario } from '../supervision/trazos'
 import { calcularDwells } from '../supervision/dwells'
 import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
@@ -109,6 +109,8 @@ export default function PanelDireccion() {
   // en un sheet de 60vh con cuatro props y sin un solo control.
   const [snapOn, setSnapOn] = useState(true) // pegado a calles por defecto (03/08/2026, ver SupervisionMovil)
   const [dwellOn, setDwellOn] = useState(true)
+  // Hitos de velocidad del reparto: apagados por defecto, se prenden desde el rail (01/10/2026).
+  const [velocidadOn, setVelocidadOn] = useState(false)
   const [dwellSel, setDwellSel] = useState(null)
   const [foco, setFoco] = useState(null)      // { id, nonce } — persona enfocada
   const [seguirId, setSeguirId] = useState(null)
@@ -253,7 +255,11 @@ export default function PanelDireccion() {
     () => construirLeaflet({ trails, snapped, focoId: foco?.id || null, tramos, tinta }),
     [trails, snapped, foco, tramos, tinta]
   )
-  const hitos = useMemo(() => construirHitosTransporte(trails, tramos, tinta), [trails, tramos, tinta])
+  const hayVelocidad = useMemo(() => hayVelocidadesDeReparto(trails, tramos), [trails, tramos])
+  const hitos = useMemo(
+    () => (velocidadOn ? construirHitosTransporte(trails, tramos, tinta) : []),
+    [velocidadOn, trails, tramos, tinta]
+  )
   // Hitos "▶ 08:47" y "■ 17:20". Las dos supervisiones ya los mostraban y acá faltaban: era una
   // omisión y no una decisión, así que el dueño veía el mismo trazo sin saber a qué hora empezó ni
   // cuándo dejó de reportar — que es justo lo que un dueño mira. ⚠️ El fin es el último punto
@@ -649,6 +655,9 @@ export default function PanelDireccion() {
           conTransporte={Object.keys(tramos).length > 0}
           dwellOn={dwellOn}
           setDwellOn={setDwellOn}
+          hayVelocidad={hayVelocidad}
+          velocidadOn={velocidadOn}
+          setVelocidadOn={setVelocidadOn}
           dwellSel={dwellSel}
           setDwellSel={setDwellSel}
           snapOn={snapOn}
@@ -803,6 +812,9 @@ function MapaCompleto({ theme, onClose, ...p }) {
         onSnap={() => p.setSnapOn((v) => !v)}
         dwellOn={p.dwellOn}
         onDwell={() => p.setDwellOn((v) => !v)}
+        hayVelocidad={p.hayVelocidad}
+        velocidadOn={p.velocidadOn}
+        onVelocidad={() => p.setVelocidadOn((v) => !v)}
         modoClientes={p.modoClientes}
         clientesCount={p.clientesCount}
         onClientes={p.alternarClientes}

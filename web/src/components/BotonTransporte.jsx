@@ -6,8 +6,9 @@ import Overlay from './Overlay'
 import { useTransporte } from '../hooks/useTransporte'
 
 /**
- * "Iniciar jornada de transporte" — el mismo control para el vendedor y el repartidor (regla 31).
- * (17/09/2026, db/72.)
+ * "Iniciar jornada de transporte" (17/09/2026, db/72). Desde el 01/10/2026 es SOLO del repartidor
+ * (`RepartidorView`): el dueño lo sacó del Inicio del vendedor, y el panel muestra sus hitos de
+ * velocidad sólo de repartidores y con el interruptor "Velocidad" prendido.
  *
  * Cerrado: una píldora de una línea, que se toca una vez. Abierto: un chip persistente en tinta
  * —el mismo color con el que el panel pinta el tramo— con la hora de inicio y "Terminar". Terminar

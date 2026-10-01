@@ -2,7 +2,7 @@ import { glassBlur } from '../../../lib/glass'
 import { hoyStr } from '../../../lib/format'
 import BtnInmersivo from '../../../components/BtnInmersivo'
 import PistaBoton from '../../../components/PistaBoton'
-import { Calendario, Check, Pin, Refrescar, Reloj } from '../../../components/icons'
+import { Calendario, Check, Pin, Refrescar, Reloj, Truck } from '../../../components/icons'
 
 /**
  * Rail vertical de controles del mapa (abajo a la derecha).
@@ -37,6 +37,8 @@ export default function RailMapa({
   // Capas
   hayTrazos = false,
   dwellOn = false, onDwell,
+  // Hitos de velocidad del reparto ("10:42 · 78 km/h"). Apagados por defecto (01/10/2026).
+  hayVelocidad = false, velocidadOn = false, onVelocidad,
   // Capa de cartera: 'off' | 'zona' | 'estado'. Sigue aceptando el booleano viejo (`showClientes`)
   // para no romper a un consumidor que no se haya migrado: true → 'zona'.
   showClientes = false, clientesCount = 0, onClientes, modoClientes = null,
@@ -132,6 +134,15 @@ export default function RailMapa({
             <Reloj size={19} />
           </RailBtn>
         </PistaBoton>
+      )}
+
+      {/* Velocidad del reparto (01/10/2026): las pastillas "10:42 · 78 km/h" sobre el tramo de
+          transporte de los REPARTIDORES. El dueño las quiere a pedido, no siempre en pantalla: el
+          botón sólo aparece si algún repartidor tuvo tramo ese día, y arranca apagado. */}
+      {hayVelocidad && onVelocidad && (
+        <RailBtn on={velocidadOn} color="var(--primary)" onClick={onVelocidad} title={velocidadOn ? 'Ocultar velocidad del reparto' : 'Mostrar velocidad del reparto: hora y km/h cada 10 minutos de transporte'}>
+          <Truck size={19} />
+        </RailBtn>
       )}
 
       {/* CAPA DE CARTERA, tres posiciones: apagada → por zona → por estado del día (17/09/2026).
