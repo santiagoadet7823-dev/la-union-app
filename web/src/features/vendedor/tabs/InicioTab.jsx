@@ -4,7 +4,6 @@ import { sx } from '../../../lib/sx'
 import { fmtPesos } from '../../../lib/format'
 import { Check, Editar, Mas, Pin, Search } from '../../../components/icons'
 import Logo from '../../../components/Logo'
-import BotonTransporte from '../../../components/BotonTransporte'
 import { useGps } from '../../../context/GpsContext'
 import { useAuth } from '../../../context/AuthContext'
 import { card, Stat } from '../ui'
@@ -100,10 +99,11 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
         </div>
       )}
 
-      {/* Jornada de transporte (17/09/2026): al salir a la ruta entre pueblos. Fija la cadencia del
-          GPS mientras dura y el panel pinta ese tramo aparte. Va debajo del estado del GPS porque es
-          la segunda decisión del día, después de prender la ubicación. */}
-      <BotonTransporte style={{ marginBottom: 14 }} />
+      {/* La jornada de transporte (17/09/2026) estuvo acá hasta 01/10/2026: el dueño la dejó SOLO
+          para el repartidor (RepartidorView). Sin el botón, el vendedor nunca carga `transporte.js`,
+          así que `abierto()` queda en false y la cadencia es la adaptativa de siempre; un tramo que
+          hubiera quedado abierto en la base lo cierra el cron. La alerta "en ruta sin declarar"
+          deja de mirar al vendedor con db/85. */}
 
       <div style={card}>
         <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px')}>

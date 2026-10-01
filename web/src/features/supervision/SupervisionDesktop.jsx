@@ -9,7 +9,7 @@ import useTramosTransporte from '../../hooks/useTramosTransporte'
 import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
-import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, limpiarPorUsuario, totalDescartados } from './trazos'
+import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, hayVelocidadesDeReparto, limpiarPorUsuario, totalDescartados } from './trazos'
 import useSnapConectores from './useSnapConectores'
 import MetricasEquipo from './MetricasEquipo'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
@@ -29,7 +29,7 @@ import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
 import ThemeToggle from '../../components/ThemeToggle'
-import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone } from '../../components/icons'
+import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, LogOut, Mapa, Menu, Pin, Profile, Refrescar, Reloj, Smartphone, Truck } from '../../components/icons'
 import { APP_VERSION } from '../../version'
 import useCapaCartera from './useCapaCartera'
 import LeyendaCartera from './components/LeyendaCartera'
@@ -99,6 +99,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
    * Como el botón deja de estar prendido, hay que decir que existe: `RailMapa` muestra una etiqueta
    * al lado que late unos segundos y se va (ver `PistaRail`). */
   const [dwellOn, setDwellOn] = useState(false)
+  // Hitos de velocidad del reparto: apagados por defecto, se prenden con el chip "Velocidad" (01/10/2026).
+  const [velocidadOn, setVelocidadOn] = useState(false)
   const [pinId, setPinId] = useState(null)
   const [foco, setFoco] = useState(null)       // { id, nonce } — usuario a enfocar en el mapa
   const [acctOpen, setAcctOpen] = useState(false)
@@ -323,7 +325,11 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     () => construirLeaflet({ trails, snapped, focoId: foco?.id || null, tramos, tinta }),
     [trails, snapped, foco, tramos, tinta]
   )
-  const hitos = useMemo(() => construirHitosTransporte(trails, tramos, tinta), [trails, tramos, tinta])
+  const hayVelocidad = useMemo(() => hayVelocidadesDeReparto(trails, tramos), [trails, tramos])
+  const hitos = useMemo(
+    () => (velocidadOn ? construirHitosTransporte(trails, tramos, tinta) : []),
+    [velocidadOn, trails, tramos, tinta]
+  )
   // Marcador "▶ 08:47" en el arranque de cada jornada (./trazos, el MISMO que usa Movil). El
   // `useMemo` es obligatorio por el tick de "hace Xs", que re-renderiza esto una vez por segundo.
   const inicios = useMemo(() => construirInicios(trails), [trails])
@@ -555,6 +561,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       </div>
                       </PistaBoton>
                     )}
+                    {/* Chip "Velocidad" (01/10/2026): hitos "10:42 · 78 km/h" del tramo de transporte de
+                        los REPARTIDORES. A pedido y sólo si algún repartidor tuvo tramo ese día. */}
+                    {hayVelocidad && (
+                      <div onClick={() => setVelocidadOn((v) => !v)} role="button" aria-pressed={velocidadOn} title={velocidadOn ? 'Ocultar la velocidad del reparto' : 'Mostrar la velocidad del reparto: hora y km/h cada 10 minutos de transporte'} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: velocidadOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${velocidadOn ? 'transparent' : 'var(--line)'}`, color: velocidadOn ? '#fff' : 'var(--muted)' }}>
+                        <Truck size={15} />
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>Velocidad</span>
+                      </div>
+                    )}
                     {/* Capa de cartera, tres posiciones: apagada → por zona → por estado de hoy.
                         En escritorio el chip tiene lugar para DECIR en cuál está, así que lo dice
                         con todas las letras en vez de dejarlo en el color como hace el rail. */}
@@ -686,6 +700,9 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                         hayTrazos={trails.length > 0}
                         dwellOn={dwellOn}
                         onDwell={() => setDwellOn((v) => !v)}
+                        hayVelocidad={hayVelocidad}
+                        velocidadOn={velocidadOn}
+                        onVelocidad={() => setVelocidadOn((v) => !v)}
                         modoClientes={modoClientes}
                         clientesCount={clientesCount}
                         onClientes={alternarClientes}
