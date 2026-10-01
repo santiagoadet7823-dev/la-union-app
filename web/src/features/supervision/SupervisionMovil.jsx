@@ -151,7 +151,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (trazos por persona). Auto-refresh incremental solo si es hoy. ----
-  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError, updatedAt: recorridosAt } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError, updatedAt: recorridosAt } = useRecorridosDelDia(fecha, idEmpresaActiva, true) // rol SIEMPRE (01/10/2026): con `esHoy` el historial venía sin rol y ni el chip Vend./Rep. ni la velocidad del reparto funcionaban en días pasados
 
   // 🩸 EL RECORRIDO SE LIMPIA UNA SOLA VEZ Y DE ACÁ SALE TODO (30/07/2026): trazos, km, paradas y
   // el resumen del pin. Si alguna de esas cuatro leyera `byUserCrudo`, contaría un recorrido que

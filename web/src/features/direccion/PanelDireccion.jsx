@@ -136,7 +136,7 @@ export default function PanelDireccion() {
   const { clientes: cartera, zonas } = useCatalog()
   // Trazos del día para el mapa y para el detalle de persona. Es la ÚNICA consulta que baja puntos
   // crudos: los números salen todos de la RPC agregada.
-  const { byUser: byUserCrudo } = useRecorridosDelDia(fechaMapa, idEmpresaActiva, esHoy)
+  const { byUser: byUserCrudo } = useRecorridosDelDia(fechaMapa, idEmpresaActiva, true) // rol SIEMPRE (01/10/2026): la velocidad del reparto lo necesita también en días pasados
 
   // 🩸 EL RECORRIDO CRUDO MIENTE — regla 22-bis (30/07/2026).
   //

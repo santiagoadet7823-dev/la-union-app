@@ -140,7 +140,7 @@ export default function RailMapa({
           transporte de los REPARTIDORES. El dueño las quiere a pedido, no siempre en pantalla: el
           botón sólo aparece si algún repartidor tuvo tramo ese día, y arranca apagado. */}
       {hayVelocidad && onVelocidad && (
-        <RailBtn on={velocidadOn} color="var(--primary)" onClick={onVelocidad} title={velocidadOn ? 'Ocultar velocidad del reparto' : 'Mostrar velocidad del reparto: hora y km/h cada 10 minutos de transporte'}>
+        <RailBtn on={velocidadOn} color="var(--primary)" onClick={onVelocidad} title={velocidadOn ? 'Ocultar velocidad del reparto' : 'Mostrar velocidad del reparto: hora y km/h cada 10 minutos de transporte (se ven al acercar el mapa)'}>
           <Truck size={19} />
         </RailBtn>
       )}

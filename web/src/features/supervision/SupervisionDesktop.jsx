@@ -129,7 +129,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const esHoy = fecha === hoyStr()
 
   // ---- Recorridos del día elegido (misma lógica que la vista móvil). ----
-  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError, updatedAt: recorridosAt } = useRecorridosDelDia(fecha, idEmpresaActiva, esHoy)
+  const { byUser: byUserCrudo, reload: recargarPosiciones, error: recorridosError, updatedAt: recorridosAt } = useRecorridosDelDia(fecha, idEmpresaActiva, true) // rol SIEMPRE (01/10/2026): con `esHoy` el historial venía sin rol y ni el chip Vend./Rep. ni la velocidad del reparto funcionaban en días pasados
 
   // 🩸 El recorrido se limpia UNA vez y de acá salen trazos, km y paradas — ver ./trazos.js. Sobre
   // los puntos crudos, el 29/07/2026 un vendedor figuraba con 524,8 km (cuatro fixes falsos lo
@@ -564,7 +564,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Chip "Velocidad" (01/10/2026): hitos "10:42 · 78 km/h" del tramo de transporte de
                         los REPARTIDORES. A pedido y sólo si algún repartidor tuvo tramo ese día. */}
                     {hayVelocidad && (
-                      <div onClick={() => setVelocidadOn((v) => !v)} role="button" aria-pressed={velocidadOn} title={velocidadOn ? 'Ocultar la velocidad del reparto' : 'Mostrar la velocidad del reparto: hora y km/h cada 10 minutos de transporte'} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: velocidadOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${velocidadOn ? 'transparent' : 'var(--line)'}`, color: velocidadOn ? '#fff' : 'var(--muted)' }}>
+                      <div onClick={() => setVelocidadOn((v) => !v)} role="button" aria-pressed={velocidadOn} title={velocidadOn ? 'Ocultar la velocidad del reparto' : 'Mostrar la velocidad del reparto: hora y km/h cada 10 minutos de transporte (se ven al acercar el mapa)'} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: velocidadOn ? 'var(--primary)' : 'var(--surface2)', border: `1px solid ${velocidadOn ? 'transparent' : 'var(--line)'}`, color: velocidadOn ? '#fff' : 'var(--muted)' }}>
                         <Truck size={15} />
                         <span style={{ fontSize: 12, fontWeight: 600 }}>Velocidad</span>
                       </div>
