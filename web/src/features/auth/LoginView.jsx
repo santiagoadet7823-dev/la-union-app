@@ -42,9 +42,9 @@ import { disponible as vidrieraDisponible } from '../../services/vidrieraTablet'
  *     La separación va con `--gx/--gy` (`index.css`, `[style*="--gx"] > * + *`).
  */
 
-/** Piso de 11 px para rótulos chicos mientras `--fs-2xs` siga en 10 px (decisión 15 del dueño).
- * Cuando la escala pase a rem (0,6875 rem = 11 px) el `max` deja de hacer efecto solo. */
-const FS_MIN = 'max(11px, var(--fs-2xs))'
+/** Piso de 11 px para rótulos chicos (decisión 15 del dueño). (02/10/2026) `--fs-2xs` ya es
+ * 0,6875 rem = 11 px: el `max(11px, …)` que lo protegía mientras valía 10 px ya no hace falta. */
+const FS_MIN = 'var(--fs-2xs)'
 
 /** Negro del isotipo: el mismo del splash nativo. Es color de MARCA, no de tema (07 §4.1). */
 const NEGRO_MARCA = '#0C0C0C'

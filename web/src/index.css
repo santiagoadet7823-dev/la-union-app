@@ -86,13 +86,19 @@
 
   /* --- Escala tipográfica ----------------------------------------------
      Antes 15 tamaños en decimales arbitrarios (9.5, 10.5, 11.5, 12.5,
-     13.5, 14.5…). Consolidados en 6. */
-  --fs-2xs: 10px;   /* labels de tabla, "Próx." */
-  --fs-xs: 11px;    /* labels de campo, hints */
-  --fs-sm: 12.5px;  /* texto secundario */
-  --fs-md: 14px;    /* cuerpo */
-  --fs-lg: 17px;    /* título de modal */
-  --fs-xl: 20px;    /* título de pantalla */
+     13.5, 14.5…). Consolidados en 6.
+     (02/10/2026) En rem 1:1 (1rem = 16px; el `html` NO fija font-size, así el rem sigue la
+     preferencia de tamaño de letra del navegador en la PWA). En el WebView de Android no cambia
+     nada: ahí el tamaño de letra del sistema multiplica px y rem por igual (informe 08, PR-0).
+     Único cambio visual: `--fs-2xs` sube de 10 a 11 px, el piso de rótulos (decisión 15 del
+     dueño: cuerpo 14, nada por debajo de 11). Los `--sp-*` siguen en px a propósito: en el
+     WebView un rem de layout no crece con la letra, así que pasarlos no protege nada. */
+  --fs-2xs: 0.6875rem;  /* 11px — labels de tabla, "Próx." (antes 10px) */
+  --fs-xs: 0.6875rem;   /* 11px — labels de campo, hints */
+  --fs-sm: 0.78125rem;  /* 12.5px — texto secundario */
+  --fs-md: 0.875rem;    /* 14px — cuerpo */
+  --fs-lg: 1.0625rem;   /* 17px — título de modal */
+  --fs-xl: 1.25rem;     /* 20px — título de pantalla */
 
   /* --- Espaciado (múltiplos de 4) --------------------------------------- */
   --sp-1: 4px;
