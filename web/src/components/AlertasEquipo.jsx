@@ -33,7 +33,8 @@ export default function AlertasEquipo({ alertas = [], sinVer = 0, nombres = {}, 
         aria-label={hay ? `${alertas.length} aviso(s) del equipo` : 'Sin avisos del equipo'}
         title={hay ? `${alertas.length} aviso(s) del equipo` : 'Sin avisos del equipo'}
         style={{
-          position: 'relative', width: 36, height: 36, flex: 'none', display: 'grid', placeItems: 'center',
+          // 44 y no 36 (01/10/2026): mínimo táctil del brief (§4.3); vive en el header de las dos pantallas móviles.
+          position: 'relative', width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center',
           borderRadius: 'var(--r-md)', cursor: 'pointer',
           // Sin incidentes la campana se apaga (borde y color neutros). Un ícono de alerta siempre
           // encendido deja de significar algo a los dos días.

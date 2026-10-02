@@ -482,7 +482,8 @@ export default function PanelDireccion() {
         ) : (
           <>
             <div style={sx('padding-top:18px')}>
-              <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600')}>
+              {/* --fs-xs (11 px) y no --fs-2xs (10): piso de texto del brief, decisión 15 (01/10/2026). */}
+              <div style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600')}>
                 {periodoTxt(horizonte, { desde: m.desde, hasta: m.hasta })}
               </div>
               <h1 style={sx('font-family:var(--font-display);font-size:28px;font-weight:700;line-height:1.14;margin:8px 0 0;letter-spacing:-.01em')}>

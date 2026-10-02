@@ -588,13 +588,14 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           <Logo size={34} radius={11} />
           <div style={{ textAlign: 'center', lineHeight: 1.15 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15 }}>{title}</div>
-            <div style={{ fontSize: 9.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 1 }}>
+            {/* 11 px (01/10/2026): piso de texto del brief (decisión 15); era 9,5. */}
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 5, marginTop: 1 }}>
               <span style={{ width: 5, height: 5, borderRadius: 99, background: mqttOn ? 'var(--success)' : 'var(--faint)', animation: mqttOn ? 'lu-blink 2s infinite' : 'none' }} />{roleLabel} · en vivo
             </div>
             {/* Mirando OTRA empresa: el aviso va en el header y no escondido en un menú, porque de
                 otro modo es facilísimo sacar conclusiones sobre el equipo equivocado. */}
             {esOverride && (
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.04em', color: 'var(--warning)', fontFamily: 'var(--font-mono)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.04em', color: 'var(--warning)', fontFamily: 'var(--font-mono)', marginTop: 2, overflowWrap: 'anywhere', maxWidth: 170 }}>
                 {nombreActiva || 'otra empresa'}
               </div>
             )}
