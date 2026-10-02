@@ -75,6 +75,7 @@ const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).j
 const SIDEBAR_W = 232
 // Rail expandido o no, por equipo (localStorage). Mismo criterio que `lu-device`.
 const RAIL_KEY = 'lu-rail-escritorio'
+const MQ_ANGOSTO = '(max-width: 1099px)'
 
 // "11:58:04" — la hora de la última carga de ubicaciones, con segundos como en la hoja.
 const horaConSegundos = (ts) => {
@@ -118,6 +119,17 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [railAbierto, setRailAbierto] = useState(() => { try { return localStorage.getItem(RAIL_KEY) === '1' } catch { return false } })
   const [panelGestion, setPanelGestion] = useState(true) // panel contextual de Gestión a la vista
   const ultimaGestionRef = useRef(null)
+  // Topbar angosto (< 1100 px, sin llegar al drawer): con el panel de Gestión abierto quedan ~600 px
+  // y las migas se partían en tres renglones. Se esconden la hora, el nombre de la cuenta y el rótulo
+  // de empresa fijo; el selector (quien puede cambiarla) y la campanita quedan siempre.
+  const [angosto, setAngosto] = useState(() => !!window.matchMedia?.(MQ_ANGOSTO).matches)
+  useEffect(() => {
+    const mq = window.matchMedia?.(MQ_ANGOSTO)
+    if (!mq) return undefined
+    const f = () => setAngosto(mq.matches)
+    mq.addEventListener?.('change', f)
+    return () => mq.removeEventListener?.('change', f)
+  }, [])
   const railRef = useRef(null)
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
@@ -480,15 +492,10 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           )}
 
           {/* Migas + título de la sección activa */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ flex: 1, minWidth: 96, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {!isMobile && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', lineHeight: 1.2 }}>
-                {migas.map((m, i) => (
-                  <span key={m} style={{ display: 'contents' }}>
-                    {i > 0 && <span aria-hidden="true" style={{ color: 'var(--faint)' }}>›</span>}
-                    <span>{m}</span>
-                  </span>
-                ))}
+              <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {migas.join(' › ')}
               </div>
             )}
             <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 18, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
@@ -499,7 +506,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           {!isMobile && (
             <div title={mqttOn ? 'Recibiendo posiciones en tiempo real' : 'Sin tiempo real: las posiciones se actualizan cada minuto'} style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 99, background: mqttOn ? 'var(--success-tint)' : 'var(--surface2)', color: mqttOn ? 'var(--success)' : 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
               <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 99, background: mqttOn ? 'var(--success)' : 'var(--faint)', animation: mqttOn ? 'lu-blink 2s infinite' : 'none' }} />
-              {mqttOn ? 'En línea' : 'Sin tiempo real'}{recorridosAt ? ` · ${horaConSegundos(recorridosAt)}` : ''}
+              {mqttOn ? 'En línea' : 'Sin tiempo real'}{recorridosAt && !angosto ? ` · ${horaConSegundos(recorridosAt)}` : ''}
             </div>
           )}
 
@@ -514,7 +521,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
               selector; el resto ve el nombre, sin control. No cambia identidad. */}
           {puedeCambiarScope ? (
             <SelectorEmpresa compacto={isMobile} style={{ height: 44, borderRadius: 12 }} />
-          ) : (!isMobile && nombreActiva && (
+          ) : (!isMobile && !angosto && nombreActiva && (
             <div style={{ flex: 'none', minHeight: 44, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 12px', borderRadius: 12, border: '1px solid var(--line)', lineHeight: 1.2, maxWidth: 220 }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--faint)' }}>Empresa</span>
               <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombreActiva}</span>
@@ -539,7 +546,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
               header (ver el comentario de arriba sobre el isolate de LeafletMap). */}
           <button type="button" onClick={() => setAcctOpen((v) => !v)} aria-label={`Mi cuenta · ${nombre}`} aria-haspopup="dialog" aria-expanded={acctOpen} style={{ flex: 'none', minHeight: 44, display: 'flex', alignItems: 'center', gap: 9, padding: isMobile ? 4 : '4px 10px 4px 5px', boxSizing: 'border-box', borderRadius: 12, border: `1px solid ${acctOpen ? 'var(--primary)' : 'var(--line)'}`, background: 'var(--surface2)', color: 'var(--text)', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
             <span aria-hidden="true" style={{ flex: 'none', width: 34, height: 34, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12 }}>{initials(nombre)}</span>
-            {!isMobile && (
+            {!isMobile && !angosto && (
               <>
                 <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, maxWidth: 160 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</span>
