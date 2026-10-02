@@ -156,7 +156,10 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   }
 
   return (
-    <div ref={colRef} style={{ ...sx('flex:1;min-height:0;display:flex;flex-direction:column'), overflowX: 'hidden', overflowY: compacto ? 'auto' : 'hidden', '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px' }}>
+    // (02/10/2026) Con el teclado abierto la botonera no se dibuja y mide 0, así que `VendedorView` deja
+    // `--nav-h` sin definir y todo cae al respaldo de 80 px: la barra del pedido flotaba 100 px sobre
+    // el teclado, partiendo los resultados en dos. Acá se lo pisa a 0 mientras el teclado esté abierto.
+    <div ref={colRef} style={{ ...sx('flex:1;min-height:0;display:flex;flex-direction:column'), overflowX: 'hidden', overflowY: compacto ? 'auto' : 'hidden', '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px', ...(teclado ? { '--nav-h': '0px' } : null) }}>
       {/* Cabecera colapsable. Se anima con `maxHeight` y no con `grid-template-rows:0fr`, que es más
           prolijo pero pide Chrome 107+: el parque tiene WebViews viejos y ahí no animaría nada. El
           techo es holgado — el header de visita mide ~100 px y el banner de consulta ~44.
