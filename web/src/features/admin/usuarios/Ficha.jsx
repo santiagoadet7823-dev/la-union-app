@@ -145,7 +145,7 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
       <div style={{ ...sx('display:flex;flex-direction:column;gap:var(--sp-4);max-width:560px'), padding: movil ? 'var(--sp-4)' : 0 }}>
         <EncabezadoFicha {...encabezadoProps} plano={movil} />
         <div style={{ ...tarjeta, ...sx('padding:var(--sp-4);font-size:var(--fs-sm);color:var(--muted);line-height:1.6') }}>
-          La cuenta se crea cuando guardes los cambios. Después vas a poder ver su actividad, su teléfono y su recorrido acá, y cargarle el código ERP en Asignaciones.
+          La cuenta se crea cuando guardes los cambios. Después vas a poder ver su actividad, su teléfono y su recorrido acá, y cambiarle el código ERP en Asignaciones.
         </div>
       </div>
     )

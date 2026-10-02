@@ -410,14 +410,16 @@ export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes,
             {!f.categorias.length && <div style={sx('font-size:11.5px;padding:7px 10px;border-radius:8px;background:var(--surface2);color:var(--muted)')}>Sin marcar: usa el horario general de la empresa.</div>}
           </div>
         )}
-        {/* Código ERP en UN solo lugar (06 D8, 01/10/2026, bloque C9): ya no se pide acá. El
-            único editor es la ficha (Asignaciones → Código ERP), que además muestra el código
-            EFECTIVO con el que salen los pedidos (`codigoVendedorErp`). Un alta guardada sin
-            código queda con sus pedidos retenidos hasta que se cargue (db/74), igual que antes si
-            se dejaba vacío. La planilla de organización sigue siendo la carga masiva. */}
-        {f.rol === 'vendedor' && (
-          <div style={sx('font-size:var(--fs-sm);line-height:1.45;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--surface2);color:var(--muted)')}>
-            El código ERP del vendedor se carga en su ficha, en Asignaciones, después de guardar el alta. Sin código, sus pedidos no salen a facturar.
+        {/* Código ERP en el alta (01/10/2026, revisión de C9): sigue siendo OPCIONAL acá, como
+            siempre —`guardarLote` lo manda a `crear-usuario`—, para no partir el alta en dos pasos.
+            Después del alta el único editor es la ficha (Asignaciones → Código ERP, que muestra el
+            código efectivo). Sin código, `pedido_exportable` deja sus pedidos "Retenido" (db/74). */}
+        <label style={{ ...lbl, maxWidth: 220 }}><span>Código ERP · opcional</span>
+          <input value={f.numero} onChange={(ev) => set({ numero: ev.target.value.replace(/[^\d]/g, '') })} placeholder="sin código" inputMode="numeric" className="lu-input" style={{ ...inp, ...mono, fontSize: 16 }} />
+        </label>
+        {!f.numero && (f.rol === 'vendedor' || f.rol === 'encargado') && (
+          <div role="note" style={sx('font-size:var(--fs-sm);line-height:1.45;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--warning-tint);color:var(--text)')}>
+            Sin código ERP, sus pedidos quedan retenidos y no salen a facturar. Lo podés cargar ahora o después en su ficha.
           </div>
         )}
       </div>

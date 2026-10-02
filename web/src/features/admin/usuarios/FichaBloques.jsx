@@ -438,8 +438,9 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
         ) : null)}
       </div>
       {/* Código ERP en UN solo lugar (06 D8, 01/10/2026): este campo de la ficha es el único editor
-          de `numero`. El alta ya no lo pide (Dialogos.jsx) y la planilla de organización (Zonas →
-          Cargar planilla) queda como carga MASIVA. Si la planilla dejó un código con letras en
+          de `numero` de una cuenta que ya existe. El alta lo sigue pidiendo como opcional (primer
+          valor, mismo camino de guardado) y la planilla de organización (Zonas → Cargar planilla)
+          queda como carga MASIVA. Si la planilla dejó un código con letras en
           `codigo_erp`, ése es el que sale en los pedidos (`codigoVendedorErp`) y manda sobre este
           número: se avisa para que nadie crea que lo cambió. */}
       {solo === 'numero' && (
