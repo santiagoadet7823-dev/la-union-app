@@ -506,6 +506,21 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
     return apilarAtras(() => setInmersivo(false))
   }, [inmersivo])
 
+  // (02/10/2026) ATRÁS con la tarjeta del pin (o la del comercio de cartera) abierta: la cierra,
+  // como cualquier hoja (regla 26). No se apilaba y el atrás minimizaba la app con la tarjeta
+  // todavía abierta (informe 09 del emulador). Que no se oculte al entrar en inmersivo (arriba) es
+  // otra cosa: tiene ✕ y se comporta como hoja, así que el atrás también la cierra.
+  const hayPin = !!pin
+  const hayComercio = !!comercioSel && !pin
+  useEffect(() => {
+    if (!hayPin) return undefined
+    return apilarAtras(() => setPinId(null))
+  }, [hayPin])
+  useEffect(() => {
+    if (!hayComercio) return undefined
+    return apilarAtras(soltarComercio)
+  }, [hayComercio, soltarComercio])
+
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--map-bg)', color: 'var(--text)', fontFamily: 'var(--font-body)', overflow: 'hidden', userSelect: 'none' }}>
 
