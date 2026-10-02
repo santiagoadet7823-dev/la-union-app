@@ -134,11 +134,12 @@ button.lu-fila:disabled { cursor: default; opacity: 0.5; }
   pointer-events: none;
   transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.lu-rail-btn[aria-current='page']::before { opacity: 0.16; }
-.lu-rail-btn:active::before { opacity: 0.2; }
+/* 0.22 y no 0.16 (revisión C7): en Claro la placa crema sobre grafito casi no se distinguía. */
+.lu-rail-btn[aria-current='page']::before { opacity: 0.22; }
+.lu-rail-btn:active::before { opacity: 0.26; }
 @media (hover: hover) {
-  .lu-rail-btn:hover::before { opacity: 0.09; }
-  .lu-rail-btn[aria-current='page']:hover::before { opacity: 0.16; }
+  .lu-rail-btn:hover::before { opacity: 0.1; }
+  .lu-rail-btn[aria-current='page']:hover::before { opacity: 0.22; }
 }
 .lu-rail-btn > * { position: relative; }
 .lu-rail-sep { flex: none; height: 1px; background: var(--rail-fg); opacity: 0.16; }

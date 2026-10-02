@@ -127,10 +127,17 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     const mq = window.matchMedia?.(MQ_ANGOSTO)
     if (!mq) return undefined
     const f = () => setAngosto(mq.matches)
-    mq.addEventListener?.('change', f)
-    return () => mq.removeEventListener?.('change', f)
+    // Safari < 14 no tiene addEventListener en MediaQueryList: ahí está el addListener viejo.
+    if (mq.addEventListener) mq.addEventListener('change', f)
+    else mq.addListener?.(f)
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', f)
+      else mq.removeListener?.(f)
+    }
   }, [])
   const railRef = useRef(null)
+  const hamburguesaRef = useRef(null)
+  const drawerEstuvoAbierto = useRef(false)
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [, tick] = useState(0)
@@ -406,9 +413,16 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     return n
   })
 
-  // Drawer (pantallas chicas): al abrir, el foco va al rail; Escape lo cierra.
+  // Drawer (pantallas chicas): al abrir, el foco va al rail; Escape lo cierra. Al cerrarse (Escape,
+  // scrim o elegir un destino) el foco VUELVE a la hamburguesa: si no, quedaba en <body> y el
+  // próximo Tab arrancaba desde el principio de la página (revisión C7, 02/10/2026).
   useEffect(() => {
-    if (!drawerOpen) return undefined
+    if (!drawerOpen) {
+      if (drawerEstuvoAbierto.current) hamburguesaRef.current?.focus({ preventScroll: true })
+      drawerEstuvoAbierto.current = false
+      return undefined
+    }
+    drawerEstuvoAbierto.current = true
     railRef.current?.focus({ preventScroll: true })
     const onKey = (e) => { if (e.key === 'Escape') setDrawerOpen(false) }
     window.addEventListener('keydown', onKey)
@@ -425,19 +439,19 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
     { k: 'mapa', etiqueta: 'Mapa', Icono: Mapa, activo: view === 'mapa', badge: nAvisos, badgeAria: `${nAvisos} incidencia${nAvisos === 1 ? '' : 's'} abierta${nAvisos === 1 ? '' : 's'}`, onClick: () => irA('mapa') },
     { k: 'dash', etiqueta: 'Dashboard', Icono: Dashboard, activo: view === 'dash', onClick: () => irA('dash') },
     ...(gestionGrupos.length
-      ? [{ k: 'gestion', etiqueta: 'Gestión', Icono: Gestion, activo: esGestion, expandido: isMobile ? undefined : (esGestion && panelGestion), onClick: irGestion }]
+      ? [{ k: 'gestion', etiqueta: 'Gestión', Icono: Gestion, activo: esGestion, expandido: isMobile ? undefined : (esGestion && panelGestion), controla: isMobile || (esGestion && panelGestion) ? 'panel-gestion' : undefined, onClick: irGestion }]
       : []),
   ]
 
   // Panel contextual de Gestión: la lista agrupada COMPARTIDA con la APK y el panel de dirección
   // (`ListaGestion`, regla 31), con la pantalla abierta marcada. Ancho = el del sidebar viejo.
   const panelGestionNodo = gestionGrupos.length > 0 && (
-    <aside id="panel-gestion" aria-label="Gestión" style={{ flex: 'none', width: SIDEBAR_W, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--surface)', borderRight: '1px solid var(--line)' }}>
+    <nav id="panel-gestion" aria-label="Gestión" style={{ flex: 'none', width: SIDEBAR_W, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--surface)', borderRight: '1px solid var(--line)' }}>
       <div style={{ flex: 'none', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid var(--line)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 17 }}>Gestión</div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 10px 16px' }}>
         <ListaGestion rol={role} permisos={permisos} activa={esGestion ? view : null} chevron={false} onAbrir={irA} />
       </div>
-    </aside>
+    </nav>
   )
 
   return (
@@ -454,9 +468,15 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
           {drawerOpen && (
             <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', background: 'var(--scrim)' }} />
           )}
+          {/* Cerrado: `inert` (Chrome 102+) Y `visibility:hidden`. El piso del proyecto es Chrome 79
+              (.browserslistrc; la tablet del encargado): ahí `inert` no existe y, solo con el
+              translate, se podía tabular a ~15 controles invisibles y TalkBack los leía. La
+              visibilidad cambia DESPUÉS de la transición al cerrar, para que se vea salir.
+              `overflow:hidden` + el desplazamiento extra de 40 px: con pantallas de menos de 344 px
+              el `maxWidth` recorta el panel y el -100% solo dejaba asomar su borde. */}
           <div
             inert={drawerOpen ? undefined : true}
-            style={{ position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', display: 'flex', maxWidth: 'calc(100vw - 40px)', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }}
+            style={{ position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', display: 'flex', maxWidth: 'calc(100vw - 40px)', overflow: 'hidden', visibility: drawerOpen ? 'visible' : 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(calc(-100% - 40px))', transition: 'transform .22s ease, visibility 0s linear ' + (drawerOpen ? '0s' : '.22s'), boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }}
           >
             <RailEscritorio destinos={destinosRail} navRef={railRef} style={{ height: '100%' }} />
             {panelGestionNodo}
@@ -469,8 +489,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         </div>
       )}
 
-      {/* ===== COLUMNA DERECHA (topbar + contenido) ===== */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* ===== COLUMNA DERECHA (topbar + contenido) =====
+          Con el drawer abierto el fondo queda `inert` (+ `aria-hidden` para Chrome < 102): Tab no
+          sale del drawer hacia lo que está detrás del scrim. */}
+      <div
+        inert={isMobile && drawerOpen ? true : undefined}
+        aria-hidden={isMobile && drawerOpen ? true : undefined}
+        style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
+      >
 
         {/* ===== TOPBAR ===== */}
         {/* 20/07/2026 — Este header estaba en `zIndex: 1200` con un comentario que explicaba
@@ -486,7 +512,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         <header style={{ flex: 'none', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '8px 12px' : '8px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)' }}>
           {/* Hamburguesa (solo mobile) */}
           {isMobile && (
-            <button type="button" onClick={() => setDrawerOpen(true)} aria-label="Menú" aria-expanded={drawerOpen} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 44, height: 44, padding: 0, border: '1px solid var(--line)', borderRadius: 12, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
+            <button ref={hamburguesaRef} type="button" onClick={() => setDrawerOpen(true)} aria-label="Menú" aria-expanded={drawerOpen} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 44, height: 44, padding: 0, border: '1px solid var(--line)', borderRadius: 12, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
               <Menu size={20} />
             </button>
           )}

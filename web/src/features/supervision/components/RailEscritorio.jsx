@@ -25,7 +25,8 @@ import { ChevronLeft, ChevronRight } from '../../../components/icons'
  *   - destinos    [{ k, etiqueta, Icono, activo, badge, badgeAria, expandido, onClick }]
  *                 `badge`: número (0/null = sin badge). `badgeAria`: cómo se lee ("3 avisos abiertos").
  *                 `expandido`: bool o undefined; si viene, el botón lleva `aria-expanded` (Gestión
- *                 abre/cierra su panel).
+ *                 abre/cierra su panel). `controla`: id del panel que abre (`aria-controls`), solo
+ *                 cuando ese panel está en el DOM.
  *   - abierto     bool: rail expandido
  *   - onAlternar  () => void, o null para no dibujar el botón (en el drawer no tiene sentido)
  *   - navRef      ref al <nav> (el drawer le pasa el foco al abrir)
@@ -83,7 +84,7 @@ export default function RailEscritorio({ destinos, abierto = false, onAlternar =
 }
 
 function BotonRail({ d, abierto }) {
-  const { etiqueta, Icono, activo, badge, badgeAria, expandido, onClick } = d
+  const { etiqueta, Icono, activo, badge, badgeAria, expandido, controla, onClick } = d
   const hayBadge = !!badge
   const textoBadge = badge > 99 ? '99+' : String(badge)
   return (
@@ -93,6 +94,7 @@ function BotonRail({ d, abierto }) {
       onClick={onClick}
       aria-current={activo ? 'page' : undefined}
       aria-expanded={expandido === undefined ? undefined : expandido}
+      aria-controls={controla}
       // El badge se lee en el nombre: el número solo, sin contexto, no dice nada.
       aria-label={hayBadge ? `${etiqueta}, ${badgeAria || textoBadge}` : undefined}
       title={abierto ? undefined : etiqueta}
