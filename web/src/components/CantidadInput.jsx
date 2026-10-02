@@ -20,10 +20,27 @@ import { sx } from '../lib/sx'
  * texto (`txt`), y recién al salir o al confirmar se convierte en número. `txt === null` significa
  * "no se está editando": ahí manda `qty`, y el número se actualiza solo si lo mueven el − o el +.
  *
- * props: { qty, onCambiar, alto, fuente, flex, minAncho }
+ * props: { qty, onCambiar, alto, fuente, flex, minAncho, caja }
+ *
+ * 🎨 REDISEÑO C10 (01/10/2026, hoja "Catálogo Vendedor" 1h/1i y brief v2 §4.3/§4.6):
+ * - `alto` pasa de 34 a 44 por defecto: el campo ES un objetivo táctil (abre el teclado numérico)
+ *   y 34 quedaba debajo del mínimo de 44. En reposo es transparente y sin borde, así que en el
+ *   carrito y en la edición del pedido el cambio no se ve: sólo crece el área que se puede tocar.
+ * - `fuente` nunca baja de 16 px (se fuerza con `Math.max`): con menos, Safari de iPhone hace zoom
+ *   de la página entera al enfocar el campo, y la PWA se usa en iPhone (decisión 5 del dueño).
+ * - `caja` (nuevo, lo usa la grilla del catálogo): el número va en una caja de 52 px con borde, y
+ *   "en el carrito" se marca con borde de acento + tinte + número en tinta, no sólo con color de
+ *   texto. Sin `caja` el campo se ve exactamente como antes.
+ * - Con `flex`, `minAncho` puede ser 0: en la tarjeta de 161 px de la grilla (360 px de pantalla)
+ *   entre el − y el + de 44 quedan ~33 px para el número. Es la excepción documentada en la hoja:
+ *   el campo mide 52 de alto pero menos de 44 de ancho, y alcanza para tres cifras.
  */
-export default function CantidadInput({ qty, onCambiar, alto = 34, fuente = 14, flex = false, minAncho = 26 }) {
+export default function CantidadInput({ qty, onCambiar, alto = 44, fuente = 16, flex = false, minAncho = 26, caja = false }) {
   const [txt, setTxt] = useState(null)
+  // `txt !== null` es "se está editando" (ver arriba): sirve también de foco para la caja, porque
+  // un borde inline le gana a `.lu-cant:focus` de index.css y la caja no se marcaría al tocarla.
+  const editando = txt !== null
+  const enCarrito = qty > 0
 
   const comprometer = () => {
     if (txt === null) return
@@ -72,14 +89,21 @@ export default function CantidadInput({ qty, onCambiar, alto = 34, fuente = 14, 
       style={{
         ...sx('text-align:center;border:1px solid transparent;border-radius:8px;background:transparent;' +
               'font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600;padding:0'),
-        height: alto,
-        fontSize: fuente,
+        // `min-height` y no `height`: con la letra del sistema al doble (informe 08: crece el texto,
+        // no las cajas) el número no se recorta, la caja crece.
+        minHeight: alto,
+        fontSize: Math.max(16, fuente),
         flex: flex ? 1 : 'none',
         width: flex ? undefined : minAncho + 12,
         minWidth: minAncho,
-        color: qty > 0 ? 'var(--deep)' : 'var(--faint)',
-        // El borde aparece sólo al enfocar: en reposo tiene que verse como el número que era antes,
-        // o la grilla se llena de cajitas.
+        color: caja ? (enCarrito ? 'var(--text)' : 'var(--faint)') : (enCarrito ? 'var(--deep)' : 'var(--faint)'),
+        // Sin `caja`, el borde aparece sólo al enfocar: en reposo tiene que verse como el número que
+        // era antes, o el carrito se llena de cajitas. Con `caja`, el borde es parte del estado.
+        ...(caja ? {
+          borderRadius: 'var(--r-md)',
+          borderColor: editando || enCarrito ? 'var(--primary)' : 'var(--line2)',
+          background: editando ? 'var(--surface)' : (enCarrito ? 'var(--primary-tint)' : 'transparent'),
+        } : null),
         outline: 'none',
       }}
       className="lu-cant"
