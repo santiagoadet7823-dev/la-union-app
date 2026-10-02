@@ -14,7 +14,14 @@ import { Contraste, Moon, Sun } from './icons'
  * Variantes:
  *   - `completo`: 3 columnas con ícono arriba y rótulo abajo, más una línea de ayuda que dice qué
  *     hace la opción marcada ("Sigue el modo del teléfono · ahora: oscuro"). Menú de cuenta.
- *   - `iconos`: 3 botones de 44×44 solo con ícono (`aria-label` con el nombre). Login y Pendiente.
+ *   - `iconos`: 3 botones de 44×44 solo con ícono (`aria-label` con el nombre). Login, Pendiente y
+ *     el rail del escritorio.
+ *
+ * Para el rail de íconos (`RailEscritorio`, 02/10/2026) la variante de íconos acepta dos props más:
+ *   - `vertical`   apila las tres opciones (el rail mide 72 px y no entran de costado)
+ *   - `enConsola`  el rail es oscuro en los dos temas (--console-bg): sin la bandeja --surface2 y con
+ *                  la opción marcada RELLENA en --console-fg. La bandeja clara dentro del rail oscuro
+ *                  se leía como un parche; y la marca rellena no depende del tono (forma, no color).
  *
  * Accesibilidad: `radiogroup` + `radio` con `aria-checked` y foco itinerante (solo la opción marcada
  * entra con Tab); ← → ↑ ↓ mueven Y marcan, Inicio/Fin van a los extremos; Espacio/Enter los da el
@@ -39,7 +46,7 @@ function ayuda(preferencia, sistemaOscuro) {
   return 'Claro fijo. Es el tema por defecto.'
 }
 
-export default function SelectorTema({ variante = 'completo' }) {
+export default function SelectorTema({ variante = 'completo', vertical = false, enConsola = false }) {
   const { preferencia, setPreferencia, theme, isDark, sistemaOscuro, autoDisponible } = useTheme()
   const refs = useRef([])
   const idAyuda = useId()
@@ -100,7 +107,11 @@ export default function SelectorTema({ variante = 'completo' }) {
   const marcada = OPCIONES.findIndex((o) => o.id === efectiva)
 
   const grupo = iconos
-    ? { ...sx('display:flex;padding:4px;border-radius:var(--r-md);background:var(--surface2)'), '--gx': '4px' }
+    ? {
+        ...sx('display:flex;padding:4px;border-radius:var(--r-md)'),
+        background: enConsola ? 'transparent' : 'var(--surface2)',
+        ...(vertical ? { flexDirection: 'column', '--gy': '4px' } : { '--gx': '4px' }),
+      }
     : sx('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;border-radius:var(--r-md);background:var(--surface2)')
 
   return (
@@ -132,11 +143,11 @@ export default function SelectorTema({ variante = 'completo' }) {
                   ? sx('width:44px;height:44px;flex:none;display:grid;place-items:center;padding:0')
                   : sx('min-height:3.5rem;min-width:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 4px;text-align:center')),
                 ...sx('box-sizing:border-box;border-radius:var(--r-sm);font-family:inherit;font-size:var(--fs-xs);line-height:1.2'),
-                background: on ? 'var(--surface)' : 'transparent',
-                color: on ? 'var(--text)' : 'var(--muted)',
+                background: on ? (enConsola ? 'var(--console-fg)' : 'var(--surface)') : 'transparent',
+                color: on ? (enConsola ? 'var(--console-bg)' : 'var(--text)') : (enConsola ? 'var(--rail-fg)' : 'var(--muted)'),
                 fontWeight: on ? 600 : 500,
-                boxShadow: on ? 'var(--shadow)' : 'none',
-                border: `1px solid ${on && isDark ? 'var(--line2)' : 'transparent'}`,
+                boxShadow: on && !enConsola ? 'var(--shadow)' : 'none',
+                border: `1px solid ${on && isDark && !enConsola ? 'var(--line2)' : 'transparent'}`,
                 opacity: ok ? 1 : 0.5,
                 cursor: ok ? 'pointer' : 'not-allowed',
               }}
