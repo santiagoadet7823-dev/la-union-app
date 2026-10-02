@@ -7,6 +7,9 @@ import { sumarDias } from '../../../lib/comparar'
 import { normalizarPerfil, resumenPerfil, BASE as GPS_BASE } from '../../../services/gpsPerfil'
 import { inicioProgramado } from '../../../services/tracking'
 import LeafletMap from '../../../components/LeafletMap'
+import { PildoraEstado, GrupoLista, FilaLista } from '../../../components/ui'
+import { ChevronRight } from '../../../components/icons'
+import { codigoVendedorErp } from '../../../lib/asciiPedidos'
 import { comercioCercano } from '../../supervision/dwells'
 import {
   ROL_UNO, ROLES_EDITAN_CATALOGO, esRastreado, esPendiente, nivelTexto, textoValor, valorDe, valorOriginal,
@@ -14,8 +17,8 @@ import {
 } from './modelo'
 import {
   Avatar, Segmentado, ChipEstado, Skeleton, CampoEditable, Opcion, Interruptor,
-  IcoReloj, IcoOk, IcoExpandir, IcoPlay, IcoMapa, IcoInforme, IcoSinRastreo, IcoAviso,
-  mono, display, tarjeta, rotulo, tituloTarjeta,
+  IcoReloj, IcoExpandir, IcoPlay, IcoMapa, IcoInforme, IcoSinRastreo, IcoAviso,
+  mono, display, tarjeta, rotulo, tituloTarjeta, pildoraDe, frescura,
 } from './ui'
 
 /**
@@ -82,69 +85,184 @@ function Spark({ serie }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Encabezado
 // ─────────────────────────────────────────────────────────────────────────────
-export function EncabezadoFicha({ i, empresaNombre, onDeshacerDel, onQuitarAlta, aprobar, compacto }) {
+/**
+ * Cabecera de la ficha (01/10/2026, bloque C9; hoja "Ficha de Persona" 6b/6d): avatar con el anillo
+ * de su color de trazo, nombre, chip de rol NEUTRO (el rol no es un estado: no lleva color) y la
+ * línea de estado en vivo con `PildoraEstado` (glifo + texto, nunca solo color). Debajo, el
+ * contacto en mono y los avisos de borrador (se elimina / alta nueva / pendiente de aprobar).
+ *
+ * Reemplaza al "hero" de 104-132 px con el color de la persona mezclado al 22 % (`color-mix`, que
+ * el rediseño no admite y que el WebView de Chrome 79 de la tablet no entiende).
+ *
+ * `children` va adentro de la misma tarjeta, debajo de la identidad: en el escritorio (6d) los tres
+ * números y las tarjetas de destino viven en la tarjeta de la cabecera. `plano` = sin tarjeta
+ * (celular, 6b: la cabecera va sobre el fondo).
+ */
+export function EncabezadoFicha({ i, empresaNombre, onDeshacerDel, onQuitarAlta, aprobar, plano = false, children }) {
   const p = i.p
-  const heroBg = `color-mix(in oklab, ${i.color} 22%, var(--surface2))`
-  const sub = [ROL_UNO[i.rolEf] || 'Sin rol', i.rolEf === 'encargado' ? nivelTexto(i.nivelEf) : null, empresaNombre[p.id_empresa] || (p.id_empresa ? null : 'Sin empresa')].filter(Boolean).join(' · ')
+  const nombre = p.nombre || identidadVisible(p.email)
+  const pil = pildoraDe(i.estado)
+  const rolTxt = [ROL_UNO[i.rolEf] || 'Sin rol', i.rolEf === 'encargado' ? nivelTexto(i.nivelEf) : null].filter(Boolean).join(' · ')
+  const empresa = empresaNombre[p.id_empresa] || (p.id_empresa ? null : 'Sin empresa')
+  const fresco = frescura(i.ultimo?.ultimo_ts)
   return (
-    <div style={{ ...tarjeta, overflow: 'hidden' }}>
-      <div style={{ ...sx('position:relative;display:grid;place-items:center'), height: compacto ? 104 : 132, background: heroBg }}>
-        <Avatar nombre={p.nombre || identidadVisible(p.email)} color={i.color} size={compacto ? 68 : 84} fs={compacto ? 23 : 28} borde={3} style={{ background: 'var(--surface)' }} />
-        <div style={sx('position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:6px;padding:5px 9px;border-radius:99px;background:var(--surface);font-size:11px;font-weight:600;white-space:nowrap;max-width:calc(100% - 100px);overflow:hidden;text-overflow:ellipsis')}>
-          <span style={{ ...sx('flex:none;width:7px;height:7px;border-radius:99px'), background: i.estado.dot }} />{i.estado.t}
-        </div>
-        {esRastreado(i.rolEf) && (
-          <div title="Color de trazo en los mapas" style={sx('position:absolute;top:12px;right:12px;display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:99px;background:var(--surface);font-size:10.5px;color:var(--muted)')}>
-            <span style={{ ...sx('width:14px;height:4px;border-radius:2px'), background: i.color }} />trazo
+    <section aria-label={`Ficha de ${nombre}`} style={{ ...sx('display:flex;flex-direction:column;gap:var(--sp-4);min-width:0'), ...(plano ? null : { ...tarjeta, borderRadius: 'var(--r-lg)', padding: 'var(--sp-4)' }) }}>
+      <div style={sx('display:flex;align-items:flex-start;gap:var(--sp-3);min-width:0')}>
+        <Avatar nombre={nombre} color={i.color} size={56} fs={18} borde={3} />
+        <div style={sx('flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px')}>
+          <h2 style={{ ...display, ...sx('margin:0;font-size:var(--fs-xl);font-weight:600;line-height:1.2;overflow-wrap:anywhere'), textDecoration: i.del ? 'line-through' : 'none' }}>{nombre}</h2>
+          <div style={sx('display:flex;flex-wrap:wrap;align-items:center;gap:6px var(--sp-2)')}>
+            <span style={sx('display:inline-flex;align-items:center;min-height:1.5rem;padding:2px var(--sp-2);border-radius:var(--r-pill);background:var(--surface2);border:1px solid var(--line);font-size:var(--fs-xs);font-weight:600;line-height:1.2;color:var(--text)')}>{rolTxt}</span>
+            <PildoraEstado tipo={pil.tipo}>{pil.t}</PildoraEstado>
+            {fresco && i.estado.k !== 'calle' && <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted)')}>último punto hace {fresco}</span>}
           </div>
-        )}
-      </div>
-      <div style={sx('padding:14px 16px 16px;display:flex;flex-direction:column;gap:4px')}>
-        <div style={{ ...display, ...sx('font-weight:700;font-size:21px;line-height:1.15'), textDecoration: i.del ? 'line-through' : 'none' }}>{p.nombre || identidadVisible(p.email)}</div>
-        <div style={sx('font-size:12.5px;color:var(--muted)')}>{sub}</div>
-        <div style={{ ...mono, ...sx('display:flex;flex-direction:column;gap:3px;margin-top:8px;font-size:11px;color:var(--muted);word-break:break-all') }}>
-          {/* Sin email real (db/78): mostrar la dirección sintética como si fuera un contacto de
-              verdad confundiría — se rotula "Usuario" y se muestra solo la parte que la persona
-              tipea al entrar. */}
-          {p.email && (esEmailSintetico(p.email)
-            ? <span>Usuario: {identidadVisible(p.email)}</span>
-            : <span>{p.email}</span>)}
-          {p.telefono && <span>{p.telefono}</span>}
-        </div>
-        {i.del && (
-          <div style={sx('margin-top:10px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;background:var(--danger-tint);border:1px solid var(--danger)')}>
-            <div style={sx('flex:1;font-size:12px;line-height:1.4')}>
-              <b style={sx('color:var(--danger)')}>{i.del === 'purgar' ? 'Se purgará al guardar' : 'Se eliminará al guardar'}</b><br />
-              {i.del === 'purgar' ? 'Cuenta, recorridos y visitas. Los pedidos quedan.' : 'Sus pedidos y recorridos quedan como “Usuario eliminado”.'}
+          {(empresa || esRastreado(i.rolEf)) && (
+            <div style={sx('display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--sp-3);font-size:var(--fs-xs);color:var(--muted);line-height:1.3')}>
+              {empresa && <span>{empresa}</span>}
+              {esRastreado(i.rolEf) && (
+                <span title="Color de trazo en los mapas" style={sx('display:inline-flex;align-items:center;gap:5px')}>
+                  <span aria-hidden="true" style={{ ...sx('width:14px;height:4px;border-radius:2px'), background: i.color }} />trazo en el mapa
+                </span>
+              )}
             </div>
-            {onDeshacerDel && <button type="button" onClick={onDeshacerDel} className="lu-press" style={btnChico}>Deshacer</button>}
+          )}
+          <div style={{ ...mono, ...sx('display:flex;flex-direction:column;gap:2px;font-size:var(--fs-xs);color:var(--muted);overflow-wrap:anywhere') }}>
+            {/* Sin email real (db/78): mostrar la dirección sintética como si fuera un contacto de
+                verdad confundiría — se rotula "Usuario" y se muestra solo la parte que la persona
+                tipea al entrar. */}
+            {p.email && (esEmailSintetico(p.email)
+              ? <span>Usuario: {identidadVisible(p.email)}</span>
+              : <span>{p.email}</span>)}
+            {p.telefono && <span>{p.telefono}</span>}
           </div>
-        )}
-        {i.nuevo && (
-          <div style={sx('margin-top:10px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;background:var(--primary-tint);border:1px solid var(--primary)')}>
-            <div style={sx('flex:1;font-size:12px;line-height:1.4')}><b>Alta nueva</b><br />Se crea al guardar los cambios.</div>
-            {onQuitarAlta && <button type="button" onClick={onQuitarAlta} className="lu-press" style={btnChico}>Quitar alta</button>}
-          </div>
-        )}
-        {esPendiente(p) && (
-          <div style={sx('margin-top:10px;display:flex;flex-direction:column;gap:9px;padding:11px 12px;border-radius:11px;background:var(--warning-tint)')}>
-            <div style={sx('font-size:12px;line-height:1.45')}>
-              Entró con Google el {new Date(p.created_at).toLocaleDateString('es-AR')} y todavía nadie le dio acceso. {aprobar ? 'Elegí su rol en Asignaciones y aprobalo.' : ''}
-            </div>
-            {aprobar && (
-              <button type="button" onClick={aprobar.go} disabled={!aprobar.puede} className="lu-press"
-                style={{ ...sx('min-height:44px;border-radius:9px;border:0;cursor:pointer;font-size:12.5px;font-weight:600'), background: aprobar.aprobado ? 'var(--success-tint)' : aprobar.puede ? 'var(--primary)' : 'var(--line)', color: aprobar.aprobado ? 'var(--text)' : aprobar.puede ? 'var(--on-primary)' : 'var(--muted)', cursor: aprobar.puede ? 'pointer' : 'not-allowed' }}>
-                {aprobar.aprobado ? 'Aprobado al guardar · deshacer' : aprobar.puede ? 'Aprobar acceso' : 'Elegí un rol para aprobar'}
-              </button>
-            )}
-          </div>
-        )}
+        </div>
       </div>
+      {i.del && (
+        <div role="status" style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);padding:var(--sp-3);border-radius:var(--r-md);background:var(--danger-tint);border:1px solid var(--danger)')}>
+          <div style={sx('flex:1 1 180px;font-size:var(--fs-sm);line-height:1.4')}>
+            <b style={sx('color:var(--danger)')}>{i.del === 'purgar' ? 'Se purgará al guardar' : 'Se eliminará al guardar'}</b><br />
+            {i.del === 'purgar' ? 'Cuenta, recorridos y visitas. Los pedidos quedan.' : 'Sus pedidos y recorridos quedan como “Usuario eliminado”.'}
+          </div>
+          {onDeshacerDel && <button type="button" onClick={onDeshacerDel} className="lu-ui-btn" style={btnChico}>Deshacer</button>}
+        </div>
+      )}
+      {i.nuevo && (
+        <div role="status" style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);padding:var(--sp-3);border-radius:var(--r-md);background:var(--primary-tint);border:1px solid var(--primary)')}>
+          <div style={sx('flex:1 1 180px;font-size:var(--fs-sm);line-height:1.4')}><b>Alta nueva</b><br />Se crea al guardar los cambios.</div>
+          {onQuitarAlta && <button type="button" onClick={onQuitarAlta} className="lu-ui-btn" style={btnChico}>Quitar alta</button>}
+        </div>
+      )}
+      {esPendiente(p) && (
+        <div style={sx('display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-3);border-radius:var(--r-md);background:var(--warning-tint);border:1px solid var(--warning)')}>
+          <div style={sx('font-size:var(--fs-sm);line-height:1.45')}>
+            Entró con Google el {new Date(p.created_at).toLocaleDateString('es-AR')} y todavía nadie le dio acceso. {aprobar ? 'Elegí su rol en Asignaciones y aprobalo.' : ''}
+          </div>
+          {aprobar && (
+            <button type="button" onClick={aprobar.go} disabled={!aprobar.puede} className="lu-ui-btn"
+              style={{ ...sx('min-height:2.75rem;padding:var(--sp-1) var(--sp-3);border-radius:var(--r-md);border:0;font-family:inherit;font-size:var(--fs-md);font-weight:600'), background: aprobar.aprobado ? 'var(--success-tint)' : aprobar.puede ? 'var(--primary)' : 'var(--line)', color: aprobar.aprobado ? 'var(--text)' : aprobar.puede ? 'var(--on-primary)' : 'var(--muted)', cursor: aprobar.puede ? 'pointer' : 'not-allowed' }}>
+              {aprobar.aprobado ? '✓ Aprobado al guardar · deshacer' : aprobar.puede ? 'Aprobar acceso' : 'Elegí un rol para aprobar'}
+            </button>
+          )}
+        </div>
+      )}
+      {children}
+    </section>
+  )
+}
+
+const btnChico = sx('flex:none;min-height:2.75rem;padding:0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);cursor:pointer;font-family:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text)')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tres números y tarjetas de destino (01/10/2026, bloque C9)
+// ─────────────────────────────────────────────────────────────────────────────
+const pesosCorto = (v) => {
+  if (v == null || !Number.isFinite(Number(v))) return null
+  const n = Math.round(Number(v))
+  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 2 })}M`
+  if (Math.abs(n) >= 1e4) return `$${Math.round(n / 1e3).toLocaleString('es-AR')}k`
+  return fmtPesos(n)
+}
+
+/**
+ * KM HOY · VENDIDO · SEÑAL (hoja 6b/6d), en mono tabular. Siguen al período elegido en la hoja de
+ * actividad y lo dicen en el rótulo ("KM 7 DÍAS"): un número sin su período se lee mal.
+ * Sin dato = "—" en `--faint`, nunca 0 (principio "sin dato ≠ cero" de KpiCard).
+ * El tamaño del número es `min(rem, vw)` (brief §2.2): con la letra al doble crece el rem y no el
+ * vw, así "$1,49M" no se sale de su tercio de 360 px.
+ */
+export function TresNumeros({ i, f, rastreado }) {
+  const per = f.periodo
+  const suf = per.k === 'hoy' ? 'HOY' : `${per.dias} DÍAS`
+  const a = f.actividad
+  const ven = f.ventas
+  const km = rastreado && a && !f.fueraDeAlcance && a.per?.dias ? km1(a.per.km) : null
+  const vendido = ven && !ven.cargando && ven.per ? pesosCorto(ven.per.monto) : null
+  const celdas = rastreado
+    ? [
+      { l: `KM ${suf}`, v: km, sr: km ? `${km} kilómetros` : null },
+      { l: per.k === 'hoy' ? 'VENDIDO' : `VENDIDO ${suf}`, v: vendido },
+      { l: 'SEÑAL', v: frescura(i.ultimo?.ultimo_ts), sr: i.ultimo?.ultimo_ts ? `último punto hace ${frescura(i.ultimo.ultimo_ts)}` : null },
+    ]
+    : [
+      { l: per.k === 'hoy' ? 'VENDIDO' : `VENDIDO ${suf}`, v: vendido },
+      { l: per.k === 'hoy' ? 'PEDIDOS' : `PEDIDOS ${suf}`, v: ven?.per && !ven.cargando ? String(ven.per.pedidos) : null },
+      { l: 'EN DISTAT DESDE', v: i.p.created_at ? new Date(i.p.created_at).toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }).replace('.', '') : null },
+    ]
+  return (
+    <div role="group" aria-label="Resumen" style={sx('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);overflow:hidden')}>
+      {celdas.map((c, k) => (
+        <div key={c.l} style={{ ...sx('min-width:0;display:flex;flex-direction:column;gap:4px;padding:var(--sp-3)'), borderLeft: k ? '1px solid var(--line)' : 0 }}>
+          <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);letter-spacing:.04em;color:var(--muted);line-height:1.25;overflow-wrap:anywhere')}>{c.l}</span>
+          <span style={{ ...mono, ...sx('font-weight:600;line-height:1.15;overflow-wrap:anywhere'), fontSize: 'min(1.25rem, 5.4vw)', color: c.v ? 'var(--text)' : 'var(--faint)' }}>
+            {c.v
+              ? (c.sr ? <><span aria-hidden="true">{c.v}</span><span className="lu-ui-oculto">{c.sr}</span></> : c.v)
+              : <><span aria-hidden="true">—</span><span className="lu-ui-oculto">sin dato</span></>}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
 
-const btnChico = sx('min-height:36px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);cursor:pointer;font-size:11.5px;font-weight:600;color:var(--text)')
+/**
+ * Tarjetas que LLEVAN a otra pantalla en vez de copiarla (06 D1: la ficha repetía Monitoreo,
+ * Reportes, Dashboard y Pedidos). Celular (6b): baldosas de 2 × 2 con ícono y chevron arriba,
+ * rótulo y contador abajo. Escritorio (6d): filas de 2 × 2 con ícono, rótulo, contador y chevron.
+ *
+ * items: [{ k, l, icono, valor?, sr?, go }]
+ */
+export function TarjetasDestino({ items, baldosa = true }) {
+  if (!items.length) return null
+  return (
+    <div style={sx('display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2)')}>
+      {items.map((x) => (
+        <button key={x.k} type="button" onClick={x.go} className="lu-ui-btn" aria-label={x.sr ? `${x.l}, ${x.sr}` : undefined}
+          style={{ ...sx('min-width:0;display:flex;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);color:var(--text);font-family:inherit;text-align:left;cursor:pointer'), ...(baldosa ? sx('flex-direction:column;justify-content:space-between;gap:var(--sp-3);min-height:4.5rem;padding:var(--sp-3)') : sx('align-items:center;gap:var(--sp-3);min-height:3rem;padding:var(--sp-2) var(--sp-3)')) }}>
+          {baldosa ? (
+            <>
+              <span style={sx('display:flex;align-items:center;justify-content:space-between;color:var(--muted)')}>
+                <span aria-hidden="true" style={sx('display:grid')}>{x.icono}</span>
+                <span aria-hidden="true" style={sx('display:grid')}><IcoChevronDer /></span>
+              </span>
+              <span style={sx('display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px var(--sp-2)')}>
+                <span style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.25')}>{x.l}</span>
+                {x.valor != null && <span aria-hidden={x.sr ? 'true' : undefined} style={{ ...mono, ...sx('font-size:var(--fs-sm);color:var(--muted)') }}>{x.valor}</span>}
+              </span>
+            </>
+          ) : (
+            <>
+              <span aria-hidden="true" style={sx('flex:none;display:grid;color:var(--muted)')}>{x.icono}</span>
+              <span style={sx('flex:1;min-width:0;font-size:var(--fs-md);font-weight:500;line-height:1.25')}>{x.l}</span>
+              {x.valor != null && <span aria-hidden={x.sr ? 'true' : undefined} style={{ ...mono, ...sx('flex:none;font-size:var(--fs-sm);color:var(--muted)') }}>{x.valor}</span>}
+              <span aria-hidden="true" style={sx('flex:none;display:grid')}><IcoChevronDer /></span>
+            </>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+const IcoChevronDer = () => <ChevronRight size={18} color="var(--faint)" />
 
 /** "En DisT-At desde" + Efectividad o % de meta (reemplazan a "Experiencia" y "Rating" de la referencia). */
 export function TarjetasIdentidad({ i, ventas }) {
@@ -181,8 +299,15 @@ export function TarjetasIdentidad({ i, ventas }) {
  * `perm` dice qué puede tocar QUIEN MIRA sobre ESTA persona; lo arma Ficha.jsx con la matriz §3
  * del brief. Lo que no se puede tocar se muestra como TEXTO, nunca como control deshabilitado
  * (restricción 11, P7): un selector gris que no se toca es un control muerto.
+ *
+ * `solo` (01/10/2026, bloque C9): la ficha ya no muestra este bloque entero. Muestra la LISTA de
+ * Asignaciones (`ListaAsignaciones`, abajo) y cada fila abre una hoja con UNA parte de este
+ * bloque: 'zonas' | 'rol' (con el nivel) | 'id_empresa' | 'categorias' | 'numero' | 'catalogo' |
+ * 'color_trazo' | 'gps_perfil'. Sin `solo` se dibuja todo, como antes. Los editores son los
+ * mismos: no hay un segundo lugar donde se edite cada campo.
  */
-export function BloqueAsignaciones({ i, perm, ctx, bor }) {
+export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
+  const ver = (c) => !solo || solo === c
   const p = i.p
   const cambios = bor.b.cambios
   const ch = (campo) => !!cambios[p.id] && campo in cambios[p.id]
@@ -204,14 +329,16 @@ export function BloqueAsignaciones({ i, perm, ctx, bor }) {
   const gps = v('gps_perfil')
 
   return (
-    <div style={{ ...tarjeta, ...sx('border-radius:16px;padding:14px 12px 10px;display:flex;flex-direction:column;gap:4px') }}>
-      <div style={sx('display:flex;align-items:center;padding:0 4px 6px')}>
-        <div style={{ ...tituloTarjeta, flex: 1 }}>Asignaciones</div>
-        {!perm.algo && <span style={sx('font-size:10.5px;color:var(--muted)')}>Solo lectura</span>}
-      </div>
+    <div style={solo ? sx('display:flex;flex-direction:column;gap:4px') : { ...tarjeta, ...sx('border-radius:16px;padding:14px 12px 10px;display:flex;flex-direction:column;gap:4px') }}>
+      {!solo && (
+        <div style={sx('display:flex;align-items:center;padding:0 4px 6px')}>
+          <div style={{ ...tituloTarjeta, flex: 1 }}>Asignaciones</div>
+          {!perm.algo && <span style={sx('font-size:var(--fs-xs);color:var(--muted)')}>Solo lectura</span>}
+        </div>
+      )}
 
-      {(i.zonas.length > 0 || i.cubre.length > 0 || i.cubierta.length > 0 || rolEf === 'vendedor') && (
-        <div style={sx('padding:8px 4px 10px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid var(--line);margin-bottom:4px')}>
+      {ver('zonas') && (i.zonas.length > 0 || i.cubre.length > 0 || i.cubierta.length > 0 || rolEf === 'vendedor' || solo === 'zonas') && (
+        <div style={{ ...sx('padding:8px 4px 10px;display:flex;flex-direction:column;gap:7px'), ...(solo ? null : sx('border-bottom:1px solid var(--line);margin-bottom:4px')) }}>
           <div style={sx('display:flex;align-items:center;gap:8px')}>
             <span style={{ ...rotulo, flex: 1 }}>Zonas</span>
             {i.cartera != null && <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap')}>Cartera hoy <b style={{ ...mono, color: 'var(--text)' }}>{i.cartera}</b> clientes</span>}
@@ -253,13 +380,13 @@ export function BloqueAsignaciones({ i, perm, ctx, bor }) {
         </div>
       )}
 
-      {campo('rol', 'Rol', perm.rol ? (
+      {ver('rol') && campo('rol', 'Rol', perm.rol ? (
         <div style={sx('display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:4px')}>
           {ctx.rolesDisponibles.map((r) => <Opcion key={r} on={rolEf === r} onClick={() => set('rol', r)}>{ROL_UNO[r]}</Opcion>)}
         </div>
       ) : null)}
 
-      {rolEf === 'encargado' && campo('nivel', 'Nivel de encargado', perm.rol ? (
+      {ver('rol') && rolEf === 'encargado' && campo('nivel', 'Nivel de encargado', perm.rol ? (
         <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:6px')}>
           {[{ n: 1, l: 'Los vendedores', s: 'No ve a otros encargados' }, { n: 2, l: 'Todo el equipo', s: 'Incluye encargados' }].map((o) => (
             <Opcion key={o.n} on={v('nivel') === o.n} onClick={() => set('nivel', o.n)} alto={44} style={{ textAlign: 'left', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-start' }}>
@@ -269,7 +396,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor }) {
         </div>
       ) : null)}
 
-      {ctx.esSuper && campo('id_empresa', 'Empresa', perm.empresa ? (
+      {ver('id_empresa') && ctx.esSuper && campo('id_empresa', 'Empresa', perm.empresa ? (
         <div style={sx('display:flex;flex-direction:column;gap:4px')}>
           {ctx.empresas.map((e) => (
             <Opcion key={e.id} on={empEf === e.id} onClick={() => set('id_empresa', e.id)} style={{ textAlign: 'left', padding: '0 10px' }}>{e.nombre}</Opcion>
@@ -277,7 +404,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor }) {
         </div>
       ) : null, null, ' · los horarios se reinician')}
 
-      {esRastreado(rolEf) && campo('categorias', 'Horarios de rastreo', (
+      {ver('categorias') && esRastreado(rolEf) && campo('categorias', 'Horarios de rastreo', (
         <div style={sx('display:flex;flex-direction:column;gap:4px')}>
           {catsEmpresa.map((c) => {
             const on = catsSel.includes(c.id)
@@ -296,21 +423,37 @@ export function BloqueAsignaciones({ i, perm, ctx, bor }) {
         </div>
       ))}
 
-      <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:4px')}>
-        {campo('numero', 'Código ERP', perm.erp ? (
+      <div style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px')}>
+        {ver('numero') && campo('numero', 'Código ERP', perm.erp ? (
           <input value={v('numero')} onChange={(e) => set('numero', e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" placeholder="sin código"
             title="Código del vendedor en el sistema de gestión. Sin esto, sus pedidos no salen a facturar."
-            className="lu-input" style={{ ...mono, ...sx('height:40px;width:100%;box-sizing:border-box;padding:0 10px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);font-size:13px;color:var(--text)') }} />
+            aria-label="Código ERP del vendedor (solo números)"
+            className="lu-input" style={{ ...mono, ...sx('min-height:2.75rem;width:100%;box-sizing:border-box;padding:0 10px;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);font-size:16px;color:var(--text)') }} />
         ) : null, <span style={mono}>{txt('numero', v('numero'))}</span>)}
-        {catalogoAplica && campo('catalogo', 'Catálogo', perm.catalogo ? (
+        {ver('catalogo') && catalogoAplica && campo('catalogo', 'Catálogo', perm.catalogo ? (
           <Interruptor on={!!v('catalogo')} onClick={() => set('catalogo', !v('catalogo'))} label={v('catalogo') ? 'Puede editar' : 'No edita'} />
         ) : null)}
       </div>
+      {/* Código ERP en UN solo lugar (06 D8, 01/10/2026): este campo de la ficha es el único editor
+          de `numero`. El alta ya no lo pide (Dialogos.jsx) y la planilla de organización (Zonas →
+          Cargar planilla) queda como carga MASIVA. Si la planilla dejó un código con letras en
+          `codigo_erp`, ése es el que sale en los pedidos (`codigoVendedorErp`) y manda sobre este
+          número: se avisa para que nadie crea que lo cambió. */}
+      {solo === 'numero' && (
+        <div style={sx('display:flex;flex-direction:column;gap:6px;padding:0 8px;font-size:var(--fs-sm);line-height:1.45;color:var(--muted)')}>
+          <span>Sale en los pedidos como <b style={{ ...mono, color: 'var(--text)' }}>{codigoVendedorErp({ codigo_erp: p.codigo_erp, numero: v('numero') }) || 'sin código'}</b>. Sin código, sus pedidos no salen a facturar.</span>
+          {String(p.codigo_erp ?? '').trim() && (
+            <span style={sx('padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--info-tint);color:var(--text)')}>
+              Tiene el código <b style={mono}>{String(p.codigo_erp).trim()}</b> cargado por planilla, y ése manda sobre el número de acá. Para cambiarlo, volvé a cargar la planilla del equipo.
+            </span>
+          )}
+        </div>
+      )}
 
       {perm.tecnico && esRastreado(rolEf) && (
         <>
-          <div style={{ ...rotulo, fontSize: 10, margin: '6px 4px 0', paddingTop: 10, borderTop: '1px solid var(--line)' }}>Técnico · solo superadmin</div>
-          {campo('color_trazo', 'Color de trazo', (
+          {!solo && <div style={{ ...rotulo, fontSize: 11, margin: '6px 4px 0', paddingTop: 10, borderTop: '1px solid var(--line)' }}>Técnico · solo superadmin</div>}
+          {ver('color_trazo') && campo('color_trazo', 'Color de trazo', (
             <div style={sx('display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:5px')}>
               <button type="button" onClick={() => set('color_trazo', null)} title="Automático" className="lu-press"
                 style={{ ...sx('aspect-ratio:1;border-radius:7px;background:var(--surface2);cursor:pointer;font-size:9px;font-weight:700;color:var(--muted);padding:0'), border: `1.5px solid ${!v('color_trazo') ? 'var(--text)' : 'var(--line2)'}` }}>A</button>
@@ -320,11 +463,84 @@ export function BloqueAsignaciones({ i, perm, ctx, bor }) {
               ))}
             </div>
           ))}
-          {campo('gps_perfil', 'Perfil de GPS', <EditorGps valor={gps} original={normalizarPerfil(p.gps_perfil)} onChange={(x) => set('gps_perfil', x)} estado={i.estadoDisp} />)}
+          {ver('gps_perfil') && campo('gps_perfil', 'Perfil de GPS', <EditorGps valor={gps} original={normalizarPerfil(p.gps_perfil)} onChange={(x) => set('gps_perfil', x)} estado={i.estadoDisp} />)}
         </>
       )}
     </div>
   )
+}
+
+/**
+ * Asignaciones como LISTA AGRUPADA (01/10/2026, bloque C9; hoja 6b/6d): Zona · Código ERP ·
+ * Categoría de rastreo, y además lo que la ficha ya dejaba tocar (rol, empresa, catálogo, color y
+ * perfil de GPS) para no perder nada. Cada fila dice el valor actual; si se puede tocar, abre la
+ * hoja con el editor de `BloqueAsignaciones` para ese campo (`onEditar(campo)`); si no, es una
+ * fila de solo lectura (sin chevron, que prometería una pantalla que no existe).
+ *
+ * Un campo con cambio en el borrador lo dice en texto ("Sin guardar · antes: Vendedor"), no solo
+ * con un punto de color.
+ */
+export function ListaAsignaciones({ i, perm, ctx, bor, onEditar }) {
+  const p = i.p
+  const cambios = bor.b.cambios
+  const v = (c) => valorDe(p, cambios, c)
+  const ch = (c) => !!cambios[p.id] && c in cambios[p.id]
+  const txt = (c, val) => textoValor(c, val, ctx)
+  const antes = (c) => (ch(c) ? `Sin guardar · antes: ${txt(c, valorOriginal(p, c))}` : null)
+  const rolEf = v('rol')
+  const empEf = v('id_empresa') || p.id_empresa
+  const catsSel = v('categorias') || []
+  const catNombre = (id) => ctx.categoriaNombre?.[id] || ctx.categorias.find((c) => c.id === id)?.nombre
+  const catalogoAplica = rolEf && !ROLES_EDITAN_CATALOGO.includes(rolEf)
+  const erpEf = codigoVendedorErp({ codigo_erp: p.codigo_erp, numero: v('numero') })
+  const erpPlanilla = !!String(p.codigo_erp ?? '').trim()
+  const muestraZonas = i.zonas.length > 0 || i.cubre.length > 0 || i.cubierta.length > 0 || rolEf === 'vendedor'
+  const coberturasCanceladas = i.cubierta.filter((c) => bor.b.cob[c.idCob]).length
+  const gps = v('gps_perfil')
+  const abrir = (c, puede) => (puede ? () => onEditar(c) : undefined)
+
+  return (
+    <GrupoLista titulo="Asignaciones" extra={perm.algo ? null : 'solo lectura'}>
+      {muestraZonas && (
+        <FilaLista etiqueta={i.zonas.length > 1 ? 'Zonas' : 'Zona'}
+          valor={i.zonas.length ? i.zonas.map((z) => z.nombre).join(', ') : 'Sin zona'}
+          detalle={[
+            i.cartera != null ? `Cartera hoy: ${i.cartera} clientes` : null,
+            i.cubre.length ? `Cubre ${i.cubre.map((z) => z.nombre).join(', ')} hoy` : null,
+            i.cubierta.length ? `${i.cubierta.length === 1 ? 'La cubre otra persona hoy' : `${i.cubierta.length} coberturas de otros hoy`}${coberturasCanceladas ? ' · cancelación sin guardar' : ''}` : null,
+          ].filter(Boolean).join(' · ') || null}
+          onClick={() => onEditar('zonas')} />
+      )}
+      <FilaLista etiqueta="Rol" valor={[ROL_UNO[rolEf] || 'Sin rol', rolEf === 'encargado' ? nivelTexto(v('nivel')) : null].filter(Boolean).join(' · ')}
+        detalle={antes('rol') || antes('nivel')} onClick={abrir('rol', perm.rol)} />
+      {ctx.esSuper && (
+        <FilaLista etiqueta="Empresa" valor={ctx.empresaNombre[empEf] || 'Sin empresa'} detalle={antes('id_empresa')} onClick={abrir('id_empresa', perm.empresa)} />
+      )}
+      <FilaLista etiqueta="Código ERP" valor={erpEf || 'Sin código'} valorMono={!!erpEf}
+        detalle={antes('numero') || (erpPlanilla ? 'Cargado por planilla: manda sobre el número' : erpEf ? 'Así sale en los pedidos' : 'Sin código: sus pedidos no salen a facturar')}
+        onClick={abrir('numero', perm.erp)} />
+      {esRastreado(rolEf) && (
+        <FilaLista etiqueta="Categoría de rastreo" valor={catsSel.length ? catsSel.map(catNombre).filter(Boolean).join(', ') : 'Horario general'}
+          detalle={antes('categorias')} onClick={() => onEditar('categorias')} />
+      )}
+      {catalogoAplica && (
+        <FilaLista etiqueta="Catálogo" valor={v('catalogo') ? 'Puede editar' : 'No edita'} detalle={antes('catalogo')} onClick={abrir('catalogo', perm.catalogo)} />
+      )}
+      {perm.tecnico && esRastreado(rolEf) && (
+        <>
+          <FilaLista etiqueta="Color de trazo" detalle={antes('color_trazo') || 'Técnico · solo superadmin'} onClick={() => onEditar('color_trazo')}
+            extremo={<span style={sx('flex:none;display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--muted)')}>{v('color_trazo') ? 'Fijo' : 'Automático'}<span aria-hidden="true" style={{ ...sx('width:18px;height:6px;border-radius:3px'), background: i.color }} /></span>} />
+          <FilaLista etiqueta="Perfil de GPS" valor={gps ? ({ intensivo: 'Intensivo', ahorro: 'Ahorro', simple: 'Simple' }[gps.modo] || 'Propio') : 'Auto'}
+            detalle={antes('gps_perfil') || 'Técnico · solo superadmin'} onClick={() => onEditar('gps_perfil')} />
+        </>
+      )}
+    </GrupoLista>
+  )
+}
+
+export const TITULO_CAMPO = {
+  zonas: 'Zonas', rol: 'Rol', id_empresa: 'Empresa', numero: 'Código ERP', categorias: 'Categoría de rastreo',
+  catalogo: 'Catálogo', color_trazo: 'Color de trazo', gps_perfil: 'Perfil de GPS',
 }
 
 const DIAS = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -373,60 +589,48 @@ function EditorGps({ valor, original, onChange, estado }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zona de peligro
+// Cuenta
 // ─────────────────────────────────────────────────────────────────────────────
-export function ZonaPeligro({ i, perm, onDesactivar, onReactivar, onEliminar, onResetearPass, resetPidiendo, onResetearMfa, resetMfaPidiendo }) {
+/**
+ * Cuenta (01/10/2026, bloque C9; hoja 6d): reemplaza a la "Zona de peligro" con borde rojo. Lista
+ * agrupada con lo que NO destruye arriba (Restablecer contraseña, Verificación en 2 pasos) y lo
+ * destructivo AL FINAL en `--danger` (Desactivar cuenta, Eliminar persona, Purgar datos).
+ *
+ * Mismas condiciones y mismos caminos que antes (`perm` de Ficha.jsx, db/77-80):
+ *  - Desactivar, Eliminar y Purgar abren `DialogoPeligro` (Dialogos.jsx), que ya pedía confirmar
+ *    —y escribir el nombre para eliminar/purgar— y van al borrador, no al servidor.
+ *  - Restablecer contraseña y 2FA son INMEDIATOS contra el servidor (Edge Functions) y no tienen
+ *    deshacer; el resultado sale en `ResultadoReset` / `ResultadoResetMfa`.
+ *  - Eliminar y Purgar no están en el celular (decisión de la entrega v1.5: irreversibles).
+ */
+export function ListaCuenta({ i, perm, movil, esSuperYPuede, onDesactivar, onReactivar, onEliminar, onResetearPass, resetPidiendo, onResetearMfa, resetMfaPidiendo }) {
   if (!perm.peligro) return null
   const activoEf = i.activoEf
   return (
-    <div style={sx('border:1px solid var(--danger);border-radius:16px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px;background:var(--surface)')}>
-      <div style={{ ...display, ...sx('font-weight:600;font-size:14px;color:var(--danger)') }}>Zona de peligro</div>
-      {perm.bloqueo && <div style={sx('font-size:12px;line-height:1.5;padding:10px 11px;border-radius:10px;background:var(--surface2)')}>{perm.bloqueo}</div>}
+    <GrupoLista titulo="Cuenta">
+      {perm.bloqueo && <FilaLista etiqueta="No disponible" detalle={perm.bloqueo} />}
       {perm.resetearPass && (
-        <div style={sx('display:flex;align-items:center;gap:10px')}>
-          <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>
-            Le genera una contraseña nueva YA — se la pasás vos. Tiene que cambiarla al entrar.
-          </div>
-          <button type="button" onClick={onResetearPass} disabled={resetPidiendo} className="lu-press"
-            style={{ ...sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)'), ...(resetPidiendo ? { opacity: 0.6, cursor: 'not-allowed' } : null) }}>
-            {resetPidiendo ? 'Reseteando…' : 'Resetear contraseña'}
-          </button>
-        </div>
+        <FilaLista etiqueta="Restablecer contraseña" detalle="Le genera una contraseña nueva ya: se la pasás vos y la cambia al entrar."
+          valor={resetPidiendo ? 'Reseteando…' : null} deshabilitada={resetPidiendo} onClick={onResetearPass} />
       )}
       {perm.resetearMfa && (
-        <div style={sx('display:flex;align-items:center;gap:10px')}>
-          <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>
-            Le borra la verificación en dos pasos YA. Tiene que activar una nueva al entrar.
-          </div>
-          <button type="button" onClick={onResetearMfa} disabled={resetMfaPidiendo} className="lu-press"
-            style={{ ...sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)'), ...(resetMfaPidiendo ? { opacity: 0.6, cursor: 'not-allowed' } : null) }}>
-            {resetMfaPidiendo ? 'Reseteando…' : 'Resetear 2FA'}
-          </button>
-        </div>
+        <FilaLista etiqueta="Verificación en 2 pasos" detalle="Restablecer: le borra la verificación ya y activa una nueva al entrar."
+          valor={resetMfaPidiendo ? 'Reseteando…' : null} deshabilitada={resetMfaPidiendo} onClick={onResetearMfa} />
       )}
-      {perm.desactivar && (
-        <div style={sx('display:flex;align-items:center;gap:10px')}>
-          <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>
-            {activoEf ? 'No puede entrar hasta que lo reactives. No borra nada.' : 'Está desactivado. Al reactivarlo vuelve a entrar con su cuenta de siempre.'}
-          </div>
-          <button type="button" onClick={activoEf ? onDesactivar : onReactivar} className="lu-press" style={sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text)')}>
-            {activoEf ? 'Desactivar' : 'Reactivar'}
-          </button>
-        </div>
+      {perm.desactivar && (activoEf
+        ? <FilaLista etiqueta="Desactivar cuenta" detalle="No puede entrar hasta que la reactives. No borra nada." destructiva onClick={onDesactivar} />
+        : <FilaLista etiqueta="Reactivar cuenta" detalle="Vuelve a entrar con su cuenta de siempre." onClick={onReactivar} />
       )}
       {perm.eliminar && !i.del && (
         <>
-          <div style={sx('display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--line)')}>
-            <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>Borra la cuenta. Sus ventas y recorridos quedan como “Usuario eliminado”.</div>
-            <button type="button" onClick={() => onEliminar('eliminar')} className="lu-press" style={sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:1px solid var(--danger);background:transparent;color:var(--danger);cursor:pointer;font-size:12px;font-weight:600')}>Eliminar</button>
-          </div>
-          <div style={sx('display:flex;align-items:center;gap:10px')}>
-            <div style={sx('flex:1;font-size:11.5px;color:var(--muted);line-height:1.4')}>Además borra recorridos GPS y visitas. Los pedidos quedan.</div>
-            <button type="button" onClick={() => onEliminar('purgar')} className="lu-press" style={sx('flex:none;min-height:40px;padding:0 12px;border-radius:9px;border:0;background:var(--danger);color:var(--on-danger);cursor:pointer;font-size:12px;font-weight:600')}>Purgar</button>
-          </div>
+          <FilaLista etiqueta="Eliminar persona" detalle="Borra su acceso; los pedidos y recorridos quedan como “Usuario eliminado”." destructiva onClick={() => onEliminar('eliminar')} />
+          <FilaLista etiqueta="Purgar datos" detalle="Además borra recorridos GPS y visitas. Los pedidos quedan." destructiva onClick={() => onEliminar('purgar')} />
         </>
       )}
-    </div>
+      {movil && esSuperYPuede && (
+        <FilaLista etiqueta="Eliminar y purgar" detalle="Se hacen desde una computadora: son irreversibles y piden confirmar escribiendo el nombre." />
+      )}
+    </GrupoLista>
   )
 }
 
@@ -653,6 +857,16 @@ const cmpVer = (a, b) => {
   return 0
 }
 
+/**
+ * Teléfono (01/10/2026, bloque C9; hoja 6b/6d): el estado del teléfono como lista agrupada, que es
+ * el ÚNICO detalle por teléfono de la app (brief §3 módulo 7). Mismos datos que la tarjeta
+ * "Teléfono y alertas" de antes —modelo, versión, batería, GPS, permisos, red, cola, último punto y
+ * alertas abiertas—, pero lo que está MAL lo dice una `PildoraEstado` con glifo y texto ("Apagado",
+ * "Sin 2º plano", "Hay 1.44.1"), no un punto de color solo.
+ *
+ * Las filas no navegan (no hay otra pantalla de teléfono a la que ir): van sin chevron.
+ * La hoja muestra "Android 13": `estado_dispositivo` no trae la versión de Android, no se inventa.
+ */
 export function TelefonoAlertas({ i, f }) {
   const e = i.estadoDisp
   const t = f.telefono || {}
@@ -660,52 +874,40 @@ export function TelefonoAlertas({ i, f }) {
   const edad = e?.updated_at ? hace(e.updated_at) : null
   const viejo = e?.updated_at && Date.now() - new Date(e.updated_at).getTime() > 30 * 60000
   const atrasada = e?.app_version && t.latest && cmpVer(e.app_version, t.latest) < 0
-  const filas = e ? [
-    { k: 'Último punto', v: ultimoTs ? `${hhmm(ultimoTs)} · ${hace(ultimoTs) || 'recién'}` : 'Sin puntos hoy', dot: ultimoTs ? 'var(--success)' : 'var(--faint)' },
-    { k: 'GPS', v: e.gps_ok ? `Encendido${e.gps_desde ? ' desde ' + hhmm(e.gps_desde) : ''}` : 'Apagado', dot: e.gps_ok ? 'var(--success)' : 'var(--danger)' },
-    { k: 'Permisos', v: [e.permiso === 'granted' || e.permiso === 'always' ? 'Ubicación' : `Ubicación: ${e.permiso || '—'}`, e.bg_ok ? '2º plano' : 'sin 2º plano', e.notif_permiso === 'granted' ? 'avisos' : 'sin avisos'].join(' · '), dot: e.bg_ok ? 'var(--success)' : 'var(--warning)' },
-    { k: 'Batería', v: t.ultimoPunto?.bateria != null ? `${Math.round(t.ultimoPunto.bateria <= 1 ? t.ultimoPunto.bateria * 100 : t.ultimoPunto.bateria)} % (último punto)` : 'Sin dato: viaja con cada punto', dot: 'var(--muted)' },
-    { k: 'Red', v: e.red ? e.red : '—', dot: e.red === 'none' || e.red === 'sin_red' ? 'var(--danger)' : 'var(--muted)' },
-    { k: 'Cola', v: `${e.cola_pendiente ?? 0} puntos por enviar`, dot: (e.cola_pendiente || 0) > 200 ? 'var(--warning)' : 'var(--muted)', mono: true },
-    { k: 'Versión', v: `${e.app_version || '—'}${atrasada ? ` · hay ${t.latest}` : ''}`, dot: atrasada ? 'var(--warning)' : 'var(--muted)', mono: true },
-    { k: 'Modelo', v: [e.fabricante, e.modelo].filter(Boolean).join(' ') || '—', dot: 'var(--muted)' },
-  ] : []
+  const bat = t.ultimoPunto?.bateria
+  const permUbic = e && (e.permiso === 'granted' || e.permiso === 'always')
+  const sinRed = e && (e.red === 'none' || e.red === 'sin_red')
+  const cola = e?.cola_pendiente ?? 0
   return (
-    <div style={{ ...tarjeta, ...sx('padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px') }}>
-      <div style={sx('display:flex;align-items:baseline;gap:8px')}>
-        <div style={{ ...tituloTarjeta, flex: 1 }}>Teléfono y alertas</div>
-        {edad && <span style={{ ...mono, fontSize: 10.5, color: viejo ? 'var(--warning)' : 'var(--muted)', whiteSpace: 'nowrap' }}>reportó {edad}</span>}
-      </div>
-      {i.alertas.map((al) => (
-        <div key={al.id} style={sx('display:flex;gap:10px;padding:10px 11px;border-radius:11px;background:var(--danger-tint)')}>
-          <span style={sx('flex:none;width:8px;height:8px;margin-top:5px;border-radius:99px;background:var(--danger)')} />
-          <div style={sx('flex:1')}>
-            <div style={sx('font-size:12.5px;font-weight:600')}>{ALERTA_TXT[al.tipo] || al.tipo}</div>
-            <div style={sx('font-size:11px;color:var(--muted);margin-top:2px')}>Desde las {hhmm(al.desde)}{al.minutos ? ` · ${al.minutos} min` : ''}{al.motivo ? ` · ${al.motivo}` : ''}</div>
-          </div>
-        </div>
-      ))}
-      {!i.alertas.length && (
-        <div style={sx('display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:9px 11px;border-radius:11px;background:var(--surface2)')}>
-          <span style={sx('color:var(--success);display:inline-grid')}><IcoOk size={14} /></span>Sin alertas abiertas
-        </div>
-      )}
+    <GrupoLista titulo="Teléfono" extra={edad ? `reportó ${edad}` : null}>
       {e ? (
-        <div style={sx('display:flex;flex-direction:column;border-radius:12px;border:1px solid var(--line);overflow:hidden')}>
-          {filas.map((r) => (
-            <div key={r.k} style={sx('display:flex;align-items:center;gap:10px;min-height:36px;padding:0 11px;border-top:1px solid var(--line);margin-top:-1px')}>
-              <span style={sx('flex:none;width:88px;font-size:11px;color:var(--muted)')}>{r.k}</span>
-              <span style={{ ...sx('flex:none;width:7px;height:7px;border-radius:99px'), background: r.dot }} />
-              <span style={{ ...sx('flex:1;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), ...(r.mono ? mono : null) }}>{r.v}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <FilaLista etiqueta={[e.fabricante, e.modelo].filter(Boolean).join(' ') || 'Modelo sin dato'}
+            detalle={viejo ? 'Hace más de 30 min que no manda su estado' : 'Versión de la app'}
+            extremo={atrasada
+              ? <span style={sx('flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px')}><span style={{ ...mono, fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>APK {e.app_version}</span><PildoraEstado tipo="aviso">Hay {t.latest}</PildoraEstado></span>
+              : <span style={{ ...mono, ...sx('flex:none;font-size:var(--fs-sm);color:var(--muted)') }}>{e.app_version ? `APK ${e.app_version}` : '—'}</span>} />
+          <FilaLista etiqueta="Batería" detalle={bat != null ? 'Del último punto' : 'Sin dato: viaja con cada punto'}
+            valor={bat != null ? `${Math.round(bat <= 1 ? bat * 100 : bat)} %` : '—'} valorMono />
+          <FilaLista etiqueta="GPS" detalle={e.gps_ok && e.gps_desde ? `Encendido desde ${hhmm(e.gps_desde)}` : null}
+            extremo={<PildoraEstado tipo={e.gps_ok ? 'ok' : 'error'}>{e.gps_ok ? 'Encendido' : 'Apagado'}</PildoraEstado>} />
+          <FilaLista etiqueta="Permisos" detalle={[permUbic ? 'Ubicación' : `Ubicación: ${e.permiso || '—'}`, e.notif_permiso === 'granted' ? 'avisos' : 'sin avisos'].join(' · ')}
+            extremo={<PildoraEstado tipo={e.bg_ok ? 'ok' : 'aviso'}>{e.bg_ok ? '2º plano' : 'Sin 2º plano'}</PildoraEstado>} />
+          <FilaLista etiqueta="Red" extremo={sinRed ? <PildoraEstado tipo="error">Sin red</PildoraEstado> : undefined} valor={sinRed ? null : (e.red || '—')} />
+          <FilaLista etiqueta="Cola" detalle="Puntos guardados en el teléfono por enviar"
+            extremo={cola > 200 ? <PildoraEstado tipo="aviso">{cola} puntos</PildoraEstado> : undefined} valor={cola > 200 ? null : `${cola}`} valorMono />
+          <FilaLista etiqueta="Último punto" valor={ultimoTs ? `${hhmm(ultimoTs)} · ${hace(ultimoTs) || 'recién'}` : 'Sin puntos hoy'} valorMono={!!ultimoTs} />
+        </>
       ) : (
-        <div style={sx('font-size:12px;color:var(--muted);line-height:1.5;padding:10px 12px;border-radius:10px;border:1.5px dashed var(--line2)')}>
-          Este teléfono todavía no mandó su estado. Aparece cuando abra la app con la cuenta.
-        </div>
+        <FilaLista etiqueta="Sin estado todavía" detalle="Este teléfono todavía no mandó su estado. Aparece cuando abra la app con la cuenta." />
       )}
-    </div>
+      {i.alertas.map((al) => (
+        <FilaLista key={al.id} etiqueta={ALERTA_TXT[al.tipo] || al.tipo}
+          detalle={`Desde las ${hhmm(al.desde)}${al.minutos ? ` · ${al.minutos} min` : ''}${al.motivo ? ` · ${al.motivo}` : ''}`}
+          extremo={<PildoraEstado tipo="error">Alerta</PildoraEstado>} />
+      ))}
+      {!i.alertas.length && <FilaLista etiqueta="Alertas" extremo={<PildoraEstado tipo="ok">Sin alertas abiertas</PildoraEstado>} />}
+    </GrupoLista>
   )
 }
 

@@ -51,7 +51,9 @@ export default function useUsuariosDatos({ activo = true } = {}) {
       const desdeHoy = new Date(hoy + 'T00:00:00').toISOString()
       const [perf, asig, emps, cats, est, zon, cob, ale, ult, cli] = await Promise.all([
         supabase.from('perfiles')
-          .select('id, nombre, email, usuario, telefono, rol, activo, id_empresa, numero, color_trazo, permisos, gps_perfil, nivel, created_at, foto_url, sistema')
+          // `codigo_erp` (db/62, 01/10/2026): solo LECTURA, para que la ficha muestre el código
+          // efectivo de los pedidos (`codigoVendedorErp`) y no solo `numero` (06 D8).
+          .select('id, nombre, email, usuario, telefono, rol, activo, id_empresa, numero, codigo_erp, color_trazo, permisos, gps_perfil, nivel, created_at, foto_url, sistema')
           .order('nombre', { ascending: true }),
         supabase.from('perfiles_categorias_rastreo').select('id_usuario, id_categoria'),
         supabase.from('empresas').select('id, nombre').order('nombre'),
