@@ -520,6 +520,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // mide (incluye la safe-area); `HEADER_H` queda como respaldo del primer cuadro.
   const [headerRef, headerAlto] = useAltoMedido()
   const bajoHeader = (extra = 0) => (headerAlto ? `${headerAlto + extra}px` : safeTop(HEADER_H + extra))
+  // Lo mismo abajo con la barra (`NAV_H` = 56; medida: 57 con letra 1,0, 61 con 1,5 y 67 con 2,0):
+  // la tarjeta del pin quedaba con su último renglón debajo de la barra. Incluye la safe-area.
+  const [navRef, navAlto] = useAltoMedido()
+  const sobreNav = (extra = 0) => (navAlto ? `${navAlto + extra}px` : safeBottom(NAV_H + extra))
   const hayComercio = !!comercioSel && !pin
   useEffect(() => {
     if (!hayPin) return undefined
@@ -537,7 +541,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           isolation:isolate crea un stacking context propio → confina los z-index internos
           de Leaflet (panes/controles 200–1000) DEBAJO del chrome (header/chips/nav), si no
           el mapa tapa los menús. */}
-      <div style={{ position: 'absolute', top: inmersivo ? 0 : bajoHeader(), bottom: inmersivo ? 0 : safeBottom(NAV_H), left: 0, right: 0, isolation: 'isolate' }}>
+      <div style={{ position: 'absolute', top: inmersivo ? 0 : bajoHeader(), bottom: inmersivo ? 0 : sobreNav(), left: 0, right: 0, isolation: 'isolate' }}>
         <LeafletMap
           theme={theme}
           height="100%"
@@ -675,7 +679,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {section === 'mapa' && (
       <RailMapa
         compacto={inmersivo}
-        style={{ position: 'absolute', right: 12, bottom: safeBottom(inmersivo ? 14 + RAIL_W + 8 : NAV_H + 14), zIndex: 'var(--z-chrome)' }}
+        style={{ position: 'absolute', right: 12, bottom: inmersivo ? safeBottom(14 + RAIL_W + 8) : sobreNav(14), zIndex: 'var(--z-chrome)' }}
         filter={filter}
         vendCount={vendCount}
         repCount={repCount}
@@ -733,7 +737,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {section === 'mapa' && (
       <div style={{
         position: 'absolute', left: 14, right: RAIL_W + 24,
-        bottom: safeBottom(inmersivo ? 14 : NAV_H + 14),
+        bottom: inmersivo ? safeBottom(14) : sobreNav(14),
         zIndex: 'var(--z-chrome)', pointerEvents: 'none',
         display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start',
       }}>
@@ -816,7 +820,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
       {datePop && (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setDatePop(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), ...plano, borderRadius: 14, padding: '10px 12px' }} className="lu-rise">
+          <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: sobreNav(14), ...plano, borderRadius: 14, padding: '10px 12px' }} className="lu-rise">
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
             <input
               type="date" value={fecha} max={hoyStr()} autoFocus
@@ -835,6 +839,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           abierto no se dibuja (useTecladoAbierto, adentro de NavInferior). */}
       {!inmersivo && (
         <NavInferior
+          ref={navRef}
           items={destinos}
           activo={section}
           onCambiar={irADestino}
@@ -850,7 +855,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         <div
           key={section}
           className="lu-rise"
-          style={{ position: 'absolute', top: bajoHeader(), bottom: safeBottom(NAV_H), left: 0, right: 0, zIndex: 'var(--z-chrome)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bg-app)', padding: '16px 14px 24px', boxSizing: 'border-box' }}
+          style={{ position: 'absolute', top: bajoHeader(), bottom: sobreNav(), left: 0, right: 0, zIndex: 'var(--z-chrome)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bg-app)', padding: '16px 14px 24px', boxSizing: 'border-box' }}
         >
           {section === 'equipo' && (
             <>
