@@ -196,7 +196,7 @@ export default function CarritoSheet({
         <div style={sx('margin-top:16px;padding-top:14px;border-top:1px dashed var(--line2)')}>
           <div style={sx('display:flex;align-items:center;gap:7px;margin-bottom:9px')}>
             <span style={sx('width:6px;height:6px;flex:none;border-radius:99px;background:var(--warning)')} />
-            <span style={sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;color:var(--muted)')}>INTENCIÓN DE COMPRA</span>
+            <span style={sx('font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--muted)')}>INTENCIÓN DE COMPRA</span>
           </div>
           <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.45;margin-bottom:10px')}>
             Lo sacó del pedido. Tocá el + para volver a sumarlo con la cantidad que tenía.

@@ -108,7 +108,7 @@ export default function EspejoTablet({ red, error, abriendo, fotos, bt, onCerrar
                 O sin cámara: en la tablet, <b>Buscar por Bluetooth</b>
               </div>
             )}
-            <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>
+            <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>
               {red.ssid} · {red.ip}:{red.puerto}
             </div>
 

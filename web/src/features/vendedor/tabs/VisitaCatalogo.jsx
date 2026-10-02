@@ -121,7 +121,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
       {visitC ? (
         <div style={sx('flex:none;background:var(--surface);border-bottom:1px solid var(--line);padding:12px 14px')}>
           <div style={sx('display:flex;justify-content:space-between;align-items:center')}>
-            <div style={sx('display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--primary)')}>
+            <div style={sx('display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--primary)')}>
               <span style={sx('width:7px;height:7px;border-radius:99px;background:var(--primary);animation:lu-blink 1.4s infinite')} />VISITA EN CURSO
             </div>
             <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--text)')}>{timer}</div>
@@ -265,7 +265,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           <div style={sx('flex:none;padding:0 14px 10px')}>
             <div style={sx('display:flex;align-items:center;gap:6px;margin-bottom:7px')}>
               <span style={sx('width:6px;height:6px;flex:none;border-radius:99px;background:var(--primary)')} />
-              <span style={sx('font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--muted)')}>LO QUE MÁS LLEVA</span>
+              <span style={sx('font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--muted)')}>LO QUE MÁS LLEVA</span>
             </div>
             <div className="lu-chips" style={sx('display:flex;gap:7px;overflow-x:auto')}>
               {sugerencias.map((p) => {

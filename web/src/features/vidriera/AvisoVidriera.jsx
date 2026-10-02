@@ -50,7 +50,7 @@ export default function AvisoVidriera({ aviso, comercio, onSumar, onDescartar })
         pointerEvents: 'auto',
       }}>
         <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px')}>
-          <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)')}>
+          <div style={sx('font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)')}>
             El cliente está mirando{comercio?.name ? ` · ${comercio.name}` : ''}
           </div>
           <button onClick={onDescartar} aria-label="Descartar"
