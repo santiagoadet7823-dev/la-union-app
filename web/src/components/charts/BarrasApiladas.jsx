@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtDiaCorto, fmtDiaLargo } from './formato'
+import { fmtDiaCorto, fmtDiaLargo, FS_MIN } from './formato'
 
 /**
  * Barras por día apiladas por serie (vendedor, categoría…), en divs: una columna por día, los
@@ -12,6 +12,11 @@ import { fmtDiaCorto, fmtDiaLargo } from './formato'
  *
  * Al pasar el mouse (o tocar) una columna, abajo se lee el detalle de ese día. Sin tooltip
  * flotante: en un teléfono el dedo tapa lo que señala.
+ *
+ * 🎨 Excepción a "neutros + un acento" (decisión 6, 01/10/2026): apilar por PERSONA necesita un
+ * color por segmento, y ese color es el de identidad de la persona (`colorPorId`, el mismo del
+ * mapa), no uno inventado para el gráfico. Va siempre con leyenda de nombre, y el detalle del día
+ * lista cada segmento con nombre y monto: la identidad nunca es color solo.
  *
  * @param {Array<{dia:string, sinDato?:boolean, valores:Record<string,number>}>} dias  en orden cronológico
  * @param {Array<{id:string, label:string, color:string}>} series  orden fijo de apilado
@@ -33,10 +38,10 @@ export default function BarrasApiladas({ dias = [], series = [], formato = (v) =
   return (
     <div>
       {series.length > 1 && (
-        <div style={sx('display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px;font-size:var(--fs-2xs);color:var(--muted)')}>
+        <div style={{ ...sx('display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px;color:var(--muted)'), fontSize: FS_MIN }}>
           {series.map((s) => (
             <span key={s.id} style={sx('display:inline-flex;align-items:center;gap:5px')}>
-              <span style={{ ...sx('width:9px;height:9px;border-radius:2px'), background: s.color }} />{s.label}
+              <span aria-hidden="true" style={{ ...sx('width:9px;height:9px;border-radius:2px;flex:none'), background: s.color }} />{s.label}
             </span>
           ))}
         </div>
@@ -67,14 +72,24 @@ export default function BarrasApiladas({ dias = [], series = [], formato = (v) =
           )
         })}
       </div>
-      <div style={sx('display:flex;gap:3px;margin-top:4px;font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint)')}>
-        {dias.map((d, i) => (
-          <span key={d.dia} style={sx('flex:1;min-width:0;text-align:center;overflow:hidden;white-space:nowrap')}>
-            {muchos ? (i % Math.ceil(dias.length / 6) === 0 ? fmtDiaCorto(d.dia) : '') : fmtDiaCorto(d.dia)}
-          </span>
-        ))}
+      {/* Eje: solo el número de día (01/10/2026). "25/09" medía 33 px en columnas de 39 y con la
+          letra del sistema al doble se cortaba; el mes lo dicen el título de la tarjeta y el
+          detalle del día de abajo. Con muchos días se rotula uno de cada N y ese rótulo puede
+          salirse de su columna (las vecinas van vacías): antes quedaba recortado en el mes.
+          Las dos últimas columnas no se rotulan: ahí el rótulo no tiene vecinas a la derecha. */}
+      <div style={{ ...sx('display:flex;gap:3px;margin-top:4px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint)'), fontSize: FS_MIN }}>
+        {dias.map((d, i) => {
+          // Con muchos días el rótulo sale de su columna hacia la derecha: en las dos últimas no
+          // hay lugar y generaba scroll horizontal (revisión del 01/10/2026), así que no se rotulan.
+          const visible = !muchos || (i % Math.ceil(dias.length / 6) === 0 && i < dias.length - 2)
+          return (
+            <span key={d.dia} style={{ ...sx('flex:1;min-width:0;white-space:nowrap'), textAlign: muchos ? 'left' : 'center', overflow: muchos ? 'visible' : 'hidden' }}>
+              {visible ? fmtDiaCorto(d.dia).slice(0, 2) : ''}
+            </span>
+          )
+        })}
       </div>
-      <div style={sx('margin-top:8px;min-height:18px;font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px')}>
+      <div style={{ ...sx('margin-top:8px;min-height:18px;font-family:var(--font-mono);color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px'), fontSize: FS_MIN }}>
         {diaSel ? (
           diaSel.sinDato ? <span>{fmtDiaLargo(diaSel.dia)} · sin registro</span> : (
             <>

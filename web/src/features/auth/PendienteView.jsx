@@ -76,7 +76,8 @@ export default function PendienteView() {
               ? 'Entraste bien, pero todavía nadie te asignó rol ni empresa. Es el paso normal para una cuenta nueva.'
               : 'Entraste bien, pero tu cuenta está desactivada. Un administrador tiene que habilitarla de nuevo.'}
           </div>
-          <div style={sx('padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface2);font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis')}>
+          {/* Dato secundario: puede cortarse con elipsis, pero con `title` para leerlo entero. */}
+          <div title={identidadVisible(user?.email)} style={sx('padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface2);font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-sizing:border-box')}>
             {identidadVisible(user?.email)}
           </div>
         </div>
@@ -84,7 +85,7 @@ export default function PendienteView() {
         {/* Qué pasa ahora. Explicar el proceso es la mitad del trabajo de esta pantalla: sin esto,
             "esperá" se lee como "algo salió mal". */}
         <div style={sx('margin-top:26px;border:1px solid var(--line);background:var(--surface);border-radius:var(--r-lg);padding:16px')}>
-          <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.06em;text-transform:uppercase')}>Qué pasa ahora</div>
+          <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.08em;text-transform:uppercase')}>Qué pasa ahora</div>
           <div style={sx('display:flex;flex-direction:column;gap:14px;margin-top:12px')}>
             <Paso tono="success">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7" /></svg>
@@ -111,7 +112,9 @@ export default function PendienteView() {
           </button>
           <button onClick={() => signOut()} className="lu-press"
             style={sx('width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:var(--r-md);border:1px solid var(--line);background:transparent;font-size:var(--fs-md);font-weight:600;color:var(--muted);cursor:pointer')}>
-            Salir
+            {/* "Volver al ingreso" y no "Salir" (hoja Ingreso v3, 01/10/2026): dice adónde lleva.
+                Hace lo mismo de siempre, `signOut()`. */}
+            Volver al ingreso
           </button>
 
           {/* Solo si hay un teléfono cargado de verdad (empresa o global). */}
