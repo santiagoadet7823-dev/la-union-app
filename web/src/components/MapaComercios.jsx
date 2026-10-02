@@ -9,6 +9,7 @@ import { useDevice } from '../context/DeviceContext'
 import { ROUTE_COLOR, CENTRO } from '../data/demoGeo'
 import { apilarAtras } from '../services/atras'
 import { Muestra } from './MuestraEstado'
+import { usableBasemaps, getBasemap, setBasemap, basemapById, onBasemapChange } from '../services/maps/basemap'
 
 /**
  * EL MAPA DE COMERCIOS DE UN ROL MÓVIL: pines tocables, tarjeta del tocado, pantalla completa,
@@ -46,6 +47,10 @@ import { Muestra } from './MuestraEstado'
  *   vacio           { titulo, detalle } cuando no hay un solo punto ubicado
  *   encuadrarPuntos al primer render con puntos, encuadrarlos todos (para listas cortas)
  *   alSalirDePantallaCompleta  se llama al cerrarla desde afuera (p. ej. antes de abrir una hoja)
+ *   botonEstilo     (01/10/2026, C10) el selector de mapa base va como botón REDONDO de 44 en la
+ *                   columna de controles de la derecha (`BotonEstiloMapa`), en vez del control de
+ *                   Leaflet de 34 px arriba a la derecha, pegado a la píldora de la leyenda. Hoja
+ *                   "Mapa del Repartidor" 3b. Por defecto apagado: el vendedor sigue como estaba.
  */
 
 // Radio del punto de comercio en los zooms lejanos (de cerca es un pin, ver `LeafletMap`). 4 es el
@@ -70,6 +75,7 @@ export default function MapaComercios({
   alto = '70vh',
   abiertoRef = null,
   encuadrarPuntos = false,
+  botonEstilo = false,
 }) {
   const { theme } = useTheme()
   const { isMobile } = useDevice()
@@ -151,6 +157,7 @@ export default function MapaComercios({
           optimize={optimize}
           roundtrip={roundtrip}
           onRouteInfo={onRouteInfo}
+          basemapControl={!botonEstilo}
           edgePadding={{ top: 16, right: 16, bottom: (selId ? ALTO_TARJETA : 0) + 72, left: 16 }}
         />
       </ErrorBoundary>
@@ -160,6 +167,7 @@ export default function MapaComercios({
       {/* Controles flotantes. El contenedor NO recibe toques (regla 30): sólo los botones. Sin
           esto, la franja de 44 px de ancho por todo el alto se tragaría los toques del mapa. */}
       <div style={{ position: 'absolute', right: 12, bottom: abajo, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 'var(--z-chrome)', pointerEvents: 'none' }}>
+        {botonEstilo && <BotonEstiloMapa />}
         <button
           onClick={() => { if (live) enfocar([live]) }}
           disabled={!live}
@@ -188,6 +196,55 @@ export default function MapaComercios({
 }
 
 /**
+ * EL SELECTOR DE MAPA BASE COMO BOTÓN REDONDO DE 44 (01/10/2026, C10 — hoja "Mapa del Repartidor"
+ * 3b). Es el mismo menú que el control de Leaflet (`crearControlBasemap` en LeafletMap): las capas
+ * usables y, al pie, el CRÉDITO del proveedor de tiles. 🔴 El crédito no es decoración: la política
+ * de uso de los tiles de OSM lo exige, y como el cartel de atribución de Leaflet está apagado
+ * (`attributionControl: false`), este menú es el único lugar donde vive. Si alguien lo saca, hay
+ * que volver a poner la atribución en otro lado.
+ * La elección es global (`services/maps/basemap`): cambia todos los mapas abiertos, igual que antes.
+ */
+function BotonEstiloMapa() {
+  const [abierto, setAbierto] = useState(false)
+  const [actual, setActual] = useState(getBasemap)
+  useEffect(() => onBasemapChange(setActual), [])
+  const opciones = usableBasemaps()
+  if (opciones.length < 2) return null
+  const credito = basemapById(actual).opts?.attribution || ''
+  return (
+    <div style={{ position: 'relative', pointerEvents: 'auto' }}>
+      {abierto && (
+        <div className="lu-rise" role="menu" style={{ ...sx('position:absolute;right:52px;bottom:0;min-width:190px;max-width:230px;display:flex;flex-direction:column;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);box-shadow:var(--shadow-lg);overflow:hidden') }}>
+          {opciones.map((b) => {
+            const on = b.id === actual
+            return (
+              <button key={b.id} type="button" role="menuitemradio" aria-checked={on}
+                onClick={() => { setBasemap(b.id); setAbierto(false) }}
+                style={{ ...sx('min-height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;border:0;font-family:inherit;font-size:13px;text-align:left;cursor:pointer'), background: on ? 'var(--primary-tint)' : 'transparent', color: on ? 'var(--deep)' : 'var(--text)', fontWeight: on ? 600 : 500 }}>
+                <span aria-hidden="true" style={sx('width:14px;display:grid;flex:none')}>{on ? '✓' : ''}</span>{b.label}
+              </button>
+            )
+          })}
+          {/* innerHTML: los `attribution` de la config traen entidades (&copy;) y enlaces. */}
+          <div style={sx('padding:6px 12px 8px;border-top:1px solid var(--line);font-family:var(--font-mono);font-size:11px;line-height:1.4;color:var(--faint)')} dangerouslySetInnerHTML={{ __html: credito }} />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        className="lu-press"
+        aria-label="Cambiar el mapa base"
+        aria-expanded={abierto}
+        title="Cambiar el mapa base"
+        style={sx('width:44px;height:44px;display:grid;place-items:center;padding:0;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--surface);color:var(--text);box-shadow:var(--shadow-lg);cursor:pointer')}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2" /><polyline points="2 15.5 12 22 22 15.5" /></svg>
+      </button>
+    </div>
+  )
+}
+
+/**
  * La leyenda plegable, arriba a la izquierda: la píldora con los contadores y, desplegada, qué
  * significa cada color. Un código de cinco colores no se aprende sin leerlo una vez; a la segunda
  * jornada estorba, así que se pliega y la elección se recuerda.
@@ -195,7 +252,10 @@ export default function MapaComercios({
  * `items` es `[{ color, glifo, hueco, etiqueta }]` y `resumen` el contenido de la píldora: los dos
  * los arma el llamador, porque los estados de VISITA y los de ENTREGA no son la misma lista.
  */
-export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo = null }) {
+// `tactil` (01/10/2026, C10): el botón de la píldora mide 44 de alto (la píldora visible sigue en
+// 30, centrada), como el `Chip` de components/ui. Opcional para no mover la leyenda de las
+// supervisiones, que la posicionan con `estilo` contando con la caja de 30.
+export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo = null, tactil = false }) {
   const [abierta, setAbierta] = useState(() => {
     // Un `localStorage` que no se puede leer (ventana privada, datos bloqueados) no puede tumbar
     // el mapa: sin él la leyenda simplemente arranca abierta.
@@ -220,7 +280,7 @@ export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo =
         className="lu-press"
         aria-expanded={abierta}
         title={abierta ? 'Ocultar la referencia de colores' : 'Ver qué significa cada color'}
-        style={{ ...sx('display:flex;align-items:center;gap:7px;max-width:100%;min-height:30px;padding:0 10px;border-radius:var(--r-pill);border:.5px solid var(--glass-brd);background:var(--glass-strong);box-shadow:var(--shadow);font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--text);cursor:pointer;pointer-events:auto;white-space:nowrap;overflow:hidden') }}
+        style={{ ...sx('display:flex;align-items:center;gap:7px;max-width:100%;min-height:30px;padding:0 10px;border-radius:var(--r-pill);border:.5px solid var(--glass-brd);background:var(--glass-strong);box-shadow:var(--shadow);font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--text);cursor:pointer;pointer-events:auto;white-space:nowrap;overflow:hidden'), ...(tactil ? { minHeight: 44, fontSize: 11, padding: '0 12px' } : null) }}
       >
         <span style={{ color: 'var(--faint)' }}>{abierta ? '▾' : '▸'}</span>
         {resumen}
@@ -237,14 +297,14 @@ export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo =
               no llega al zoom. `pie` queda afuera del scroll: siempre visible. */}
           <div style={sx('display:flex;flex-direction:column;gap:4px;max-height:176px;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto')}>
             {items.map((it) => (
-              <div key={it.etiqueta} style={sx('display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--text);white-space:nowrap;flex:none')}>
+              <div key={it.etiqueta} style={{ ...sx('display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--text);white-space:nowrap;flex:none'), ...(tactil ? { fontSize: 11 } : null) }}>
                 <Muestra color={it.color} glifo={it.glifo} hueco={it.hueco} />
                 {it.etiqueta}
               </div>
             ))}
           </div>
           {pie && (
-            <div style={sx('margin-top:4px;padding-top:6px;border-top:1px solid var(--line);font-size:10px;color:var(--muted);max-width:190px;line-height:1.4;white-space:normal')}>
+            <div style={{ ...sx('margin-top:4px;padding-top:6px;border-top:1px solid var(--line);font-size:10px;color:var(--muted);max-width:190px;line-height:1.4;white-space:normal'), ...(tactil ? { fontSize: 11 } : null) }}>
               {pie}
             </div>
           )}

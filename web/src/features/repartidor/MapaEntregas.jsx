@@ -98,7 +98,9 @@ export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
   const ruta = useMemo(() => {
     if (!recorrido || !livePos) return null
     const paradas = ubicadas
-      .filter((d) => d.status !== 'entregado' && recorrido.orden?.[d.id] != null)
+      // (01/10/2026, C10) `no_entregado` tampoco se dibuja: es una parada cerrada, igual que en el
+      // cálculo de `RepartidorView` (`abierta`). Antes sólo se excluía `entregado`.
+      .filter((d) => (d.status === 'pendiente' || d.status === 'en_camino') && recorrido.orden?.[d.id] != null)
       .sort((a, b) => recorrido.orden[a.id] - recorrido.orden[b.id])
       .map((d) => ({ lat: d.lat, lng: d.lng }))
     return paradas.length ? [livePos, ...paradas] : null
@@ -106,6 +108,10 @@ export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
 
   const leyenda = (
     <LeyendaMapa
+      tactil
+      // Sin el control de Leaflet arriba a la derecha (va `botonEstilo`), la píldora puede usar
+      // todo el ancho: con 44 px de alto y 11 px de letra, en el margen viejo se cortaba "entregadas".
+      estilo={{ right: 12 }}
       claveMemoria={K_LEYENDA}
       items={ORDEN_LEYENDA.map((k) => ({ ...pintar(k, isDark), etiqueta: COLOR_ENTREGA[k].etiqueta }))}
       resumen={<>
@@ -129,6 +135,10 @@ export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
       leyenda={leyenda}
       alto="60vh"
       encuadrarPuntos
+      // Hoja "Mapa del Repartidor" 3b: el estilo del mapa es un botón redondo de 44 en la columna
+      // de la derecha, separado de la píldora de paradas (antes, un control de 34 px arriba a la
+      // derecha pegado a ella).
+      botonEstilo
       vacio={{ titulo: 'Ninguna entrega ubicada', detalle: 'Los comercios sin coordenada no se pueden dibujar. Se ubican desde la ficha del cliente.' }}
     >
       {(estilo) => sel && (
@@ -161,14 +171,15 @@ function TarjetaEntrega({ d, color, etiqueta, distancia, onCerrar, onAbrir, styl
             {d.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>#{d.numero}</span>
           </div>
           <div style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:6px')}>
-            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:10.5px;font-weight:600'), border: `1px solid ${color}`, color }}>
+            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:600'), border: `1px solid ${color}`, color }}>
               <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: color }} />{etiqueta}
             </span>
             <span style={sx('font-size:11px;font-family:var(--font-mono);color:var(--muted)')}>{fmtPesos(d.monto)} · {kgFmt(d.kg)}</span>
             {dist && <span style={sx('font-size:11px;font-family:var(--font-mono);color:var(--muted)')}>{dist}</span>}
           </div>
         </div>
-        <button onClick={onCerrar} aria-label="Cerrar" style={sx('flex:none;width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:transparent;display:grid;place-items:center;cursor:pointer;color:var(--muted)')}>
+        {/* 44×44 (antes 26): con guantes, una ✕ de 26 no se acierta (brief v2 §4.3). */}
+        <button onClick={onCerrar} aria-label="Cerrar" style={sx('flex:none;width:44px;height:44px;margin:-6px -6px 0 0;border-radius:var(--r-md);border:1px solid var(--line);background:transparent;display:grid;place-items:center;cursor:pointer;color:var(--muted)')}>
           <X size={13} />
         </button>
       </div>
