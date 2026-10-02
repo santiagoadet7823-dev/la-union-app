@@ -14,13 +14,17 @@ import { guardarLote } from './usuarios/guardarLote'
 import {
   ROLES_ADMIN, ROLES_SUPER, ROLES_RASTREADOS, ROL_UNO, ROL_GRUPO, estadoPersona, colorDe, valorDe, generarPassword,
 } from './usuarios/modelo'
-import Arbol, { FilaPersona } from './usuarios/Arbol'
+import Arbol, { ListaEquipo } from './usuarios/Arbol'
 import Ficha from './usuarios/Ficha'
 import ResumenEmpresa from './usuarios/ResumenEmpresa'
 import { BarraCambios, PanelResultado, Revision, DialogoPeligro, AltaUsuario, AvisoDescartar } from './usuarios/Dialogos'
-import { IcoAtras, mono, display } from './usuarios/ui'
+import { IcoAtras, IcoQr, IcoMapa, mono } from './usuarios/ui'
+import { EstadoVacio } from '../../components/ui'
 
 const ReplayJornada = lazy(() => import('./components/ReplayJornada'))
+// "Invitar por QR" (01/10/2026, bloque C9): el MISMO InvitarModal que abre Gestión → Invitar,
+// ahora también desde la cabecera de Equipo (06 §2: el alta de gente vivía lejos de la lista).
+const InvitarModal = lazy(() => import('../../components/InvitarModal'))
 
 /**
  * MENÚ USUARIOS v1.5 (24/09/2026) — de planilla de altas a ficha de cada persona.
@@ -80,8 +84,11 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
   // ── Estado de navegación ──
   const [sel, setSel] = useState(null)          // { tipo: 'empresa' | 'persona', id }
   const [vistaMovil, setVistaMovil] = useState('lista')
-  const [tab, setTab] = useState('resumen')
-  const [periodo, setPeriodo] = useState(soloLectura ? 'hoy' : '7')
+  // Sin pestañas desde el 01/10/2026 (bloque C9): la ficha es una sola columna con tarjetas que
+  // abren hojas o pantallas. El período arranca en HOY para todos porque los tres números de la
+  // cabecera de la ficha son "de hoy" en la hoja (KM HOY · VENDIDO · SEÑAL); si se elige otro en
+  // la hoja de actividad, los rótulos de esos números lo dicen ("KM 7 DÍAS").
+  const [periodo, setPeriodo] = useState('hoy')
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState(null)
   const [zonaFiltro, setZonaFiltro] = useState(null)
@@ -95,6 +102,9 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
   const [replay, setReplay] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [resultado, setResultado] = useState(null)
+  const [invitar, setInvitar] = useState(false)
+  const [invitarMontado, setInvitarMontado] = useState(false) // el lazy se baja recién al primer uso
+  const abrirInvitar = useCallback(() => { setInvitarMontado(true); setInvitar(true) }, [])
 
   // ─────────────────────────────────────────────────────────────────────────
   // Modelo de la vista
@@ -229,7 +239,7 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
   }), [m, datos, esSuper, v.rolesDisponibles, idEmpresa, onIrA, onVerEnMapa])
 
   const abrirPersona = useCallback((id) => {
-    setSel({ tipo: 'persona', id }); setVistaMovil('ficha'); setTab('resumen')
+    setSel({ tipo: 'persona', id }); setVistaMovil('ficha')
   }, [])
   const abrirEmpresa = useCallback((id) => {
     setSel({ tipo: 'empresa', id }); setVistaMovil('ficha')
@@ -282,12 +292,14 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
     </div>
   )
 
+  // Carga y error de la PRIMERA lectura (hoja "Cuenta y Navegación" 5c-5f): esqueleto con la forma
+  // de la lista —no un "Cargando…" suelto— y, si falla, el banner con causa y Reintentar.
   if (!m) {
     return (
-      <div ref={raizRef} style={sx('padding:40px;text-align:center;color:var(--muted);font-family:var(--font-mono);font-size:12px')}>
-        {cargando ? 'Cargando usuarios…' : (
-          <>No se pudo cargar la lista de usuarios.<br /><button type="button" onClick={recargar} className="lu-press" style={sx('margin-top:12px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;color:var(--text)')}>Reintentar</button></>
-        )}
+      <div ref={raizRef} style={sx('display:flex;flex-direction:column;gap:var(--sp-4);padding:var(--sp-4);max-width:640px')}>
+        {cargando
+          ? <EstadoVacio variante="carga" etiqueta="Cargando equipo" filas={6} />
+          : <EstadoVacio variante="error" causa={sinRed ? 'red' : 'servidor'} titulo="No se pudo cargar el equipo" onReintentar={recargar} />}
       </div>
     )
   }
@@ -314,7 +326,7 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
 
   const contenido = personaSel ? (
     <Ficha key={personaSel.p.id} i={personaSel} v={v} ctx={ctx} bor={bor} periodo={periodo} setPeriodo={setPeriodo}
-      layout={movil ? 'movil' : 'escritorio'} ancho={movil ? ancho : anchoFicha} tab={tab} setTab={setTab}
+      layout={movil ? 'movil' : 'escritorio'} ancho={movil ? ancho : anchoFicha}
       onPeligro={setPeligro} onReplay={(dia) => setReplay({ i: personaSel, dia })} clientes={clientesCatalogo} tema={theme} />
   ) : empresaSel ? (
     <ResumenEmpresa e={empresaSel} v={v} onPersona={abrirPersona} onCrear={onCrear} onIrA={onIrA} soloLectura={soloLectura} />
@@ -328,8 +340,12 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
     <PanelResultado res={resultado} onCerrar={() => setResultado(null)} onReintentar={() => { setResultado(null); setRevisar(true) }} />
   )
 
-  // Migas de pan (P1): Empresa / Rol / Persona.
+  // Migas de pan (P1): Gestión › Equipo › Empresa › Rol › Persona. "Usuarios" pasó a llamarse
+  // "Equipo" (decisión 8 del dueño, 30/09/2026; 06 D9). La clave de gestión sigue siendo
+  // `usuarios`: solo cambia lo que se lee.
   const migas = [
+    { l: 'Gestión' },
+    { l: 'Equipo', go: personaSel && !esSuper ? () => abrirEmpresa(empSelId) : null },
     esSuper && empSelId && { l: m.empresaNombre[empSelId] || (empSelId === '_sin' ? 'Sin empresa' : 'Empresa'), go: () => abrirEmpresa(empSelId) },
     personaSel && { l: ROL_GRUPO[personaSel.rolEf] || 'Sin rol' },
     personaSel && { l: personaSel.p.nombre || identidadVisible(personaSel.p.email) },
@@ -361,58 +377,42 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
           </Suspense>
         )}
       </Overlay>
+      {invitarMontado && (
+        <Suspense fallback={null}>
+          <InvitarModal open={invitar} onClose={() => setInvitar(false)} onToast={onToast} />
+        </Suspense>
+      )}
     </>
   )
 
   // ── Celular: lista → ficha a pantalla completa ──
+  // Hoja "Ficha de Persona" 6a/6c (lista) y 6b (ficha). La ficha lleva una barra "‹ Ficha" con
+  // el título centrado (brief §3 módulo 6: pantalla abierta = volver / título centrado); las migas
+  // completas quedan para el escritorio, en el celular no entran sin cortarse.
   if (movil) {
     const enFicha = vistaMovil === 'ficha' && (personaSel || empresaSel)
-    const eq = m.empresas[0]
     return (
-      <div ref={raizRef} style={{ ...sx('display:flex;flex-direction:column;min-height:100%;position:relative'), paddingBottom: bor.resumen.n && !soloLectura ? 96 : 0 }}>
+      <div ref={raizRef} style={{ ...sx('display:flex;flex-direction:column;min-height:100%;position:relative;background:var(--bg-app);color:var(--text)'), paddingBottom: bor.resumen.n && !soloLectura ? 96 : 0 }}>
         {enFicha ? (
           <>
-            <div style={sx('display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--surface)')}>
-              <button type="button" onClick={() => setVistaMovil('lista')} className="lu-press" aria-label="Volver a la lista"
-                style={sx('display:flex;align-items:center;gap:4px;min-height:44px;padding:0 12px 0 6px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted)')}>
-                <IcoAtras />{soloLectura ? 'Equipo' : 'Lista'}
+            <div style={sx('position:sticky;top:0;z-index:2;display:grid;grid-template-columns:2.75rem minmax(0,1fr) 2.75rem;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line);background:var(--surface)')}>
+              <button type="button" onClick={() => setVistaMovil('lista')} className="lu-ui-btn" aria-label={soloLectura ? 'Volver a Mi equipo' : 'Volver a Equipo'}
+                style={sx('display:grid;place-items:center;min-width:2.75rem;min-height:2.75rem;border-radius:var(--r-md);border:0;background:transparent;cursor:pointer;color:var(--text)')}>
+                <IcoAtras size={20} />
               </button>
-              <div style={sx('flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{migas.map((x) => x.l).join(' / ')}</div>
+              <div style={sx('min-width:0;text-align:center;font-size:var(--fs-md);font-weight:600;line-height:1.25;overflow-wrap:anywhere')}>
+                {personaSel ? 'Ficha' : (empresaSel?.nombre || 'Empresa')}
+              </div>
+              <span aria-hidden="true" />
             </div>
             <div style={empresaSel ? sx('padding:12px') : undefined}>{contenido}</div>
           </>
         ) : (
-          <>
-            <div style={sx('display:flex;align-items:center;gap:8px;padding:10px 12px 0;flex-wrap:wrap')}>
-              <div style={{ ...display, ...sx('flex:1;font-weight:700;font-size:18px') }}>{soloLectura ? 'Mi equipo' : 'Personas'}</div>
-              {conexion}
-            </div>
-            {soloLectura && eq && (
-              <div style={sx('display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 12px 0')}>
-                {[
-                  { l: 'En la calle', n: eq.items.filter((i) => i.estado.k === 'calle').length, c: 'var(--success)' },
-                  { l: 'Sin reportar', n: eq.items.filter((i) => i.estado.k === 'sinrep').length, c: 'var(--danger)' },
-                  { l: 'Sin datos hoy', n: eq.items.filter((i) => i.estado.k === 'nodata').length, c: 'var(--faint)' },
-                ].map((x) => (
-                  <div key={x.l} style={sx('padding:10px;border-radius:12px;background:var(--surface);border:1px solid var(--line)')}>
-                    <div style={{ ...mono, fontWeight: 600, fontSize: 20, color: x.n ? x.c : 'var(--faint)' }}>{x.n}</div>
-                    <div style={sx('font-size:11px;color:var(--muted)')}>{x.l}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {soloLectura && eq ? (
-              <div style={sx('padding:10px 12px 20px;display:flex;flex-direction:column;gap:2px')}>
-                {[...eq.items].sort((a, b) => (b.alertas.length - a.alertas.length) || String(a.p.nombre).localeCompare(String(b.p.nombre))).map((i) => (
-                  <FilaPersona key={i.p.id} i={i} onClick={() => abrirPersona(i.p.id)} alto={56}
-                    sub={`${ROL_UNO[i.p.rol]} · ${i.estado.t}${i.alertas.length ? ` · ${i.alertas.length} ${i.alertas.length === 1 ? 'alerta' : 'alertas'}` : ''}`} />
-                ))}
-                {!eq.items.length && <div style={sx('padding:20px 4px;font-size:12.5px;color:var(--muted);line-height:1.5')}>Todavía no tenés personas a cargo. Las asigna un admin según tu nivel.</div>}
-              </div>
-            ) : (
-              <div style={sx('flex:1;min-height:60vh')}>{arbol}</div>
-            )}
-          </>
+          <ListaEquipo empresas={m.empresas} nivelEmpresa={esSuper} selEmpresa={empSelId} onEmpresa={abrirEmpresa} onPersona={abrirPersona}
+            onAgregar={onCrear ? () => onCrear('', empSelId) : null} onInvitar={abrirInvitar} soloLectura={soloLectura}
+            q={q} setQ={setQ} filtro={filtro} setFiltro={setFiltro} zonaFiltro={zonaFiltro} setZonaFiltro={setZonaFiltro}
+            agruparModo={agruparModo} setAgruparModo={setAgruparModo}
+            red={{ error: !!error, sinRed, actualizadoTs, onReintentar: recargar }} />
         )}
         {!soloLectura && (bor.resumen.n > 0 || resultado) && (
           <div style={sx('position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:var(--z-chrome);display:flex;flex-direction:column;gap:8px')}>
@@ -432,19 +432,36 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
         {arbol}
       </div>
       <div style={sx('flex:1;min-width:0;position:relative;display:flex;flex-direction:column')}>
-        <div style={sx('flex:none;display:flex;align-items:center;gap:10px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--surface)')}>
-          <div style={sx('flex:1;min-width:0;display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden')}>
-            {migas.map((x, k) => (
-              <span key={k} style={sx('display:flex;align-items:center;gap:5px;min-width:0')}>
-                {k > 0 && <span style={sx('color:var(--faint)')}>/</span>}
-                {x.go ? <button type="button" onClick={x.go} style={sx('border:0;background:transparent;padding:4px 0;cursor:pointer;color:var(--deep);font-weight:600;font-size:12px')}>{x.l}</button>
-                  : <span style={{ color: k === migas.length - 1 ? 'var(--text)' : 'var(--muted)', fontWeight: k === migas.length - 1 ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.l}</span>}
-              </span>
-            ))}
+        {/* Barra de arriba (hoja 6d): migas "Gestión › Equipo" chicas, el nombre de lo abierto
+            grande y las acciones a la derecha. Los botones de las migas miden 44 de alto con margen
+            negativo: el área se toca entera y la barra no crece. */}
+        <div style={sx('flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--line);background:var(--surface)')}>
+          <div style={sx('flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+            <nav aria-label="Migas" style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:0 6px;font-size:var(--fs-xs);color:var(--muted);line-height:1.3')}>
+              {migas.slice(0, -1).map((x, k) => (
+                <span key={k} style={sx('display:flex;align-items:center;gap:6px;min-width:0')}>
+                  {k > 0 && <span aria-hidden="true" style={sx('color:var(--faint)')}>›</span>}
+                  {x.go
+                    ? <button type="button" onClick={x.go} style={sx('min-height:2.75rem;margin:-0.875rem 0;border:0;background:transparent;padding:0 2px;cursor:pointer;color:var(--deep);font-weight:600;font-size:var(--fs-xs);font-family:inherit')}>{x.l}</button>
+                    : <span>{x.l}</span>}
+                </span>
+              ))}
+            </nav>
+            <h1 style={sx('margin:0;font-size:var(--fs-lg);font-weight:600;line-height:1.25;overflow-wrap:anywhere')}>{migas[migas.length - 1]?.l}</h1>
           </div>
           {conexion}
-          <button type="button" onClick={recargar} disabled={cargando} className="lu-press" title="Actualizar"
-            style={sx('min-height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:600;color:var(--muted)')}>{cargando ? 'Actualizando…' : '↻ Actualizar'}</button>
+          {personaSel && !personaSel.nuevo && onVerEnMapa && ROLES_RASTREADOS.includes(personaSel.rolEf) && (
+            <button type="button" onClick={() => onVerEnMapa(personaSel.p.id)} className="lu-ui-btn"
+              style={sx('flex:none;display:flex;align-items:center;gap:var(--sp-2);min-height:2.75rem;padding:0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);cursor:pointer;font-family:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text)')}>
+              <span aria-hidden="true" style={sx('display:grid')}><IcoMapa size={18} /></span>Ver en el mapa
+            </button>
+          )}
+          <button type="button" onClick={abrirInvitar} className="lu-ui-btn"
+            style={sx('flex:none;display:flex;align-items:center;gap:var(--sp-2);min-height:2.75rem;padding:0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);cursor:pointer;font-family:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text)')}>
+            <span aria-hidden="true" style={sx('display:grid')}><IcoQr size={18} /></span>Invitar por QR
+          </button>
+          <button type="button" onClick={recargar} disabled={cargando} className="lu-ui-btn"
+            style={sx('flex:none;min-height:2.75rem;padding:0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface2);cursor:pointer;font-family:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--muted)')}>{cargando ? 'Actualizando…' : '↻ Actualizar'}</button>
         </div>
         <div style={{ ...sx('flex:1;overflow:auto;padding:18px 20px'), paddingBottom: bor.resumen.n || resultado ? 110 : 24 }}>
           {contenido}

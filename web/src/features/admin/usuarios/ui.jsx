@@ -123,3 +123,45 @@ export const IcoInforme = (p) => <I d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12
 export const IcoEdificio = (p) => <I d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h6" sw={2} {...p} />
 export const IcoSinRastreo = (p) => <I {...p}><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 11.9-5" /><path d="M19 9.5c0 5.3-7 11.5-7 11.5" /><path d="m3 3 18 18" /></I>
 export const IcoAtras = (p) => <I d="m15 18-6-6 6-6" {...p} />
+// Equipo y ficha (01/10/2026): los de la hoja "Ficha de Persona" (6a-6d).
+export const IcoQr = (p) => <I {...p}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 14v.01M14 21h3M21 18v3h-1" /></I>
+export const IcoBarras = (p) => <I d="M4 20h16M7 16v-5M12 16V7M17 16v-8" {...p} />
+export const IcoCarrito = (p) => <I {...p}><path d="M3 4h2l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2" /><circle cx="9.5" cy="20" r="1.2" /><circle cx="17" cy="20" r="1.2" /></I>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado de una persona como PÍLDORA (01/10/2026, bloque C9 "Equipo y ficha")
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Traduce `estadoPersona()` (modelo.js) a la `PildoraEstado` de components/ui: glifo + texto,
+ * nunca solo color (brief v2 §2.7, criterio C2). Lo usan la lista del equipo y la cabecera de la
+ * ficha, para que las dos digan lo mismo con las mismas palabras.
+ *
+ * 🔴 Solo se nombra lo que el dato SABE. La hoja dibuja "En visita" y "Fuera de jornada", pero
+ * la pantalla no tiene esos datos: `ultimo_punto_equipo` trae la hora del último punto, no la
+ * parada en curso ni el horario. Por eso "en la calle" (punto de hace ≤ 10 min) se lee "En ruta",
+ * "sin reportar" (aviso que abrió el servidor en `alertas_equipo`) se lee "Sin señal", y el resto
+ * conserva el texto honesto de `estadoPersona` ("Último punto 10:12", "Sin datos hoy").
+ */
+const PILDORA = {
+  calle: { tipo: 'ok', t: () => 'En ruta' },
+  sinrep: { tipo: 'error', t: () => 'Sin señal' },
+  pend: { tipo: 'aviso', t: () => 'Pendiente' },
+  nuevo: { tipo: 'info', t: () => 'Alta nueva' },
+}
+export function pildoraDe(estado) {
+  const x = PILDORA[estado?.k]
+  return x ? { tipo: x.tipo, t: x.t() } : { tipo: 'neutro', t: estado?.t || 'Sin datos' }
+}
+
+/**
+ * Frescura del último punto, corta y en mono: "ahora", "4 min", "3 h". `null` sin punto (los
+ * puntos que lee esta pantalla son solo de HOY: `useUsuariosDatos` pide desde las 00:00).
+ */
+export function frescura(ts, ahora = Date.now()) {
+  if (!ts) return null
+  const min = Math.floor((ahora - new Date(ts).getTime()) / 60000)
+  if (!Number.isFinite(min) || min < 0) return null
+  if (min < 1) return 'ahora'
+  if (min < 60) return `${min} min`
+  return `${Math.floor(min / 60)} h`
+}
