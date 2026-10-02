@@ -367,7 +367,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
                 <span style={{ flex: 1, textDecoration: cancelada ? 'line-through' : 'none' }}>Hoy <b>{c.zona}</b> la cubre {c.por} · vence 23:59</span>
                 {perm.coberturas && (
                   <button type="button" onClick={() => (cancelada ? bor.quitarCob(c.idCob) : bor.cancelarCob(c.idCob, { zona: c.zona, por: c.por, pid: p.id }))} className="lu-press"
-                    style={sx('border:0;background:transparent;cursor:pointer;font-size:11px;font-weight:600;color:var(--deep);padding:6px;min-height:32px')}>{cancelada ? 'Deshacer' : 'Cancelar'}</button>
+                    style={sx('border:0;background:transparent;cursor:pointer;font-size:11px;font-weight:600;color:var(--deep);padding:0 var(--sp-2);min-height:2.75rem;min-width:2.75rem')}>{cancelada ? 'Deshacer' : 'Cancelar'}</button>
                 )}
               </div>
             )
@@ -376,7 +376,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
             <div style={sx('font-size:11.5px;line-height:1.45;padding:8px 10px;border-radius:9px;background:var(--warning-tint)')}>Sin zona asignada. Su cartera solo tiene los clientes asignados directo.</div>
           )}
           {ctx.onIrA && perm.irAZonas && (
-            <button type="button" onClick={() => ctx.onIrA('zonas')} className="lu-press" style={sx('align-self:flex-start;border:0;background:transparent;font-size:11.5px;font-weight:600;color:var(--deep);cursor:pointer;padding:6px 0;min-height:32px')}>
+            <button type="button" onClick={() => ctx.onIrA('zonas')} className="lu-press" style={sx('align-self:flex-start;border:0;background:transparent;font-size:11.5px;font-weight:600;color:var(--deep);cursor:pointer;padding:0;min-height:2.75rem')}>
               {i.zonas.length ? 'Cambiar zonas en Zonas ↗' : 'Asignar en Zonas ↗'}
             </button>
           )}
@@ -576,11 +576,11 @@ function EditorGps({ valor, original, onChange, estado }) {
         <div style={sx('display:flex;align-items:center;gap:8px;flex-wrap:wrap')}>
           <label style={sx('display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)')}>Cada
             <input type="number" min="2" max="60" value={valor.intervalo_s} onChange={(e) => onChange(normalizarPerfil({ ...valor, intervalo_s: Number(e.target.value) || 5 }))}
-              className="lu-input" style={{ ...mono, ...sx('width:58px;height:36px;padding:0 8px;border-radius:8px;border:1px solid var(--line2);background:var(--surface2);color:var(--text);font-size:12.5px') }} />s
+              className="lu-input" style={{ ...mono, ...sx('width:4.5rem;min-height:2.75rem;padding:0 8px;border-radius:8px;border:1px solid var(--line2);background:var(--surface2);color:var(--text);font-size:16px') }} />s
           </label>
           {valor.modo !== 'simple' && (
-            <label style={sx('display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);cursor:pointer;min-height:36px')}>
-              <input type="checkbox" checked={valor.fijar_cadencia} onChange={(e) => onChange(normalizarPerfil({ ...valor, fijar_cadencia: e.target.checked }))} />Fijar la cadencia
+            <label style={sx('display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);cursor:pointer;min-height:2.75rem;padding-right:var(--sp-2)')}>
+              <input type="checkbox" style={sx('width:20px;height:20px')} checked={valor.fijar_cadencia} onChange={(e) => onChange(normalizarPerfil({ ...valor, fijar_cadencia: e.target.checked }))} />Fijar la cadencia
             </label>
           )}
         </div>

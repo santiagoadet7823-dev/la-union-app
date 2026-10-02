@@ -76,7 +76,7 @@ export function CampoEditable({ label, cambiado, antes, onDeshacer, extra, child
       {cambiado && (
         <div style={sx('display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);min-width:0')}>
           <span style={sx('flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>antes: <s>{antes}</s>{extra}</span>
-          <button type="button" onClick={onDeshacer} className="lu-press" style={sx('border:0;background:transparent;cursor:pointer;font-size:11px;font-weight:600;color:var(--deep);padding:6px 4px;min-height:32px')}>Deshacer</button>
+          <button type="button" onClick={onDeshacer} className="lu-press" style={sx('border:0;background:transparent;cursor:pointer;font-size:11px;font-weight:600;color:var(--deep);padding:0 var(--sp-2);min-height:2.75rem;min-width:2.75rem')}>Deshacer</button>
         </div>
       )}
     </div>
@@ -96,7 +96,7 @@ export function Opcion({ on, onClick, children, alto = 36, style }) {
 export function Interruptor({ on, onClick, label }) {
   return (
     <button type="button" onClick={onClick} role="switch" aria-checked={on} className="lu-press"
-      style={sx('display:flex;align-items:center;gap:8px;min-height:38px;border:0;background:transparent;cursor:pointer;padding:0;color:var(--text)')}>
+      style={sx('display:flex;align-items:center;gap:8px;min-height:2.75rem;border:0;background:transparent;cursor:pointer;padding:0;color:var(--text)')}>
       <span style={{ ...sx('flex:none;width:40px;height:24px;border-radius:99px;position:relative'), background: on ? 'var(--primary)' : 'var(--line2)' }}>
         <span style={{ ...sx('position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:99px;background:var(--surface);transition:transform .15s cubic-bezier(.23,1,.32,1)'), transform: `translateX(${on ? 16 : 0}px)` }} />
       </span>

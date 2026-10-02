@@ -4,7 +4,7 @@ import { hoyStr } from '../../../lib/format'
 import { supabase } from '../../../services/supabase'
 import { identidadVisible } from '../../../context/AuthContext'
 import Overlay from '../../../components/Overlay'
-import { esPendiente, esRastreado, traducirError } from './modelo'
+import { esPendiente, esRastreado, traducirError, PERIODOS } from './modelo'
 import { leerErrorInvoke } from './guardarLote'
 import useFichaPersona, { useRecorridoDia } from './useFichaPersona'
 import {
@@ -12,7 +12,7 @@ import {
   ListaCuenta, BloqueActividad, Historial, PedidosAnulados, TelefonoAlertas, RecorridoCard, SinRastreo,
 } from './FichaBloques'
 import { ResultadoReset, ResultadoResetMfa, ConfirmarAccion } from './Dialogos'
-import { tarjeta, IcoMapa, IcoInforme, IcoBarras, IcoCarrito, IcoPlay } from './ui'
+import { tarjeta, Segmentado, IcoMapa, IcoInforme, IcoBarras, IcoCarrito, IcoPlay } from './ui'
 
 /**
  * La ficha de una persona (brief v1.5 P2, P7, P8; rediseño v2 §3 módulo 7, bloque C9 del
@@ -209,6 +209,13 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
     </div>
   ) : hojaVista === 'jornada' && rastreado ? (
     <div style={sx('display:flex;flex-direction:column;gap:var(--sp-4)')}>
+      {/* Período también acá (revisión de C9): con "7 días" o más el historial lista las jornadas
+          y tocar una la muestra en el mapa y la deja lista para "Reproducir jornada", sin pasar
+          por la hoja Dashboard. Es el MISMO período de la ficha (un solo estado en UsuariosView). */}
+      <div style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3)')}>
+        <span style={sx('flex:1 1 140px;font-size:var(--fs-sm);color:var(--muted);line-height:1.35')}>{periodo === 'hoy' ? 'Hoy' : 'Elegí un día en el historial para verlo y reproducirlo'}</span>
+        <Segmentado opciones={PERIODOS} valor={periodo} onChange={setPeriodo} alto={44} />
+      </div>
       <RecorridoCard i={i} r={r} dia={diaSel} tema={tema} alto={movil ? Math.round(Math.min(420, Math.max(260, ancho * 0.8))) : 340} onExpandir={onExpandir} clientes={clientes} />
       <TarjetasDestino items={accesosJornada} baldosa={false} />
       <Historial i={i} f={f} cfg={f.cfgRastreo} diaSel={diaSel} onDia={periodo === 'hoy' ? null : setDiaSel} recorridoHoy={diaSel === hoy ? r : null} clientes={clientes} />
