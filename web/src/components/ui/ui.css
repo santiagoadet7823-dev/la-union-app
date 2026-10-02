@@ -104,3 +104,12 @@ button.lu-fila:disabled { cursor: default; opacity: 0.5; }
   .lu-nav-btn:active .lu-nav-pildora,
   .lu-ui-btn:active { transform: none; }
 }
+
+/* --- Zoom de Leaflet a 44 px (01/10/2026) ---------------------------------------------------
+   Los botones +/− de Leaflet miden 30 px (34 en `.leaflet-touch`): debajo del mínimo táctil del
+   brief (§4.3). Se agrandan acá y no en LeafletMap porque son markup del propio Leaflet.
+   Especificidad de tres clases a propósito: la hoja de Leaflet carga después y su
+   `.leaflet-touch .leaflet-bar a` (30 px) le ganaba a una regla de dos. */
+.leaflet-container.leaflet-touch .leaflet-bar a,
+.leaflet-container .leaflet-bar a.leaflet-control-zoom-in,
+.leaflet-container .leaflet-bar a.leaflet-control-zoom-out { width: 44px; height: 44px; line-height: 44px; font-size: 20px; }

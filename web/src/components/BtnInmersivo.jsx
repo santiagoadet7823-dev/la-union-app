@@ -1,4 +1,3 @@
-import { glassBlur } from '../lib/glass'
 
 /**
  * Botón "ver el mapa a pantalla completa / volver".
@@ -34,10 +33,12 @@ export default function BtnInmersivo({ activo, onToggle, style, queExpande = 'el
         borderRadius: 'var(--r-md)',
         cursor: 'pointer',
         color: 'var(--text)',
-        background: 'var(--glass-bg)',
-        ...glassBlur,
-        border: '0.5px solid var(--glass-brd)',
-        boxShadow: 'var(--shadow-lg)',
+        // Plano (01/10/2026), como los demás botones del rail: el vidrio de la pantalla del mapa lo
+        // gasta el header (presupuesto de 2 capas, brief v2 §2.5). Ver RailBtn en RailMapa.
+        padding: 0,
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
+        boxShadow: 'var(--shadow)',
         ...style,
       }}
     >

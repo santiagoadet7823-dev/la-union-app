@@ -276,14 +276,16 @@ export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo =
   })
 
   return (
-    // ⚠️ `left: 54` y no 12: arriba a la izquierda de TODOS estos mapas vive el control de zoom de
+    // ⚠️ `left: 66` y no 12: arriba a la izquierda de TODOS estos mapas vive el control de zoom de
     // Leaflet (`zoomControl: interactive`, por defecto encendido), que además pinta por encima —
     // está dentro del stacking context del mapa, con z-index 1000 contra los 100 de `--z-chrome`.
     // Con `left: 12` la píldora de contadores quedaba debajo de los botones +/−.
     // `estilo` lo corre de ahí si el llamador tiene otra cosa en esa esquina.
     // La regla 30: el contenedor NO recibe eventos y sólo el botón de plegar los toma, para no
     // comerse el arrastre del mapa debajo.
-    <div style={{ position: 'absolute', left: 54, top: 12, right: 12 + 44 + 12, zIndex: 'var(--z-chrome)', pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, ...estilo }}>
+    // 66 desde el 01/10/2026: el zoom pasó de 30 a 44 px (components/ui/ui.css, mínimo táctil),
+    // así que su borde derecho está en ~58 y no en ~44.
+    <div style={{ position: 'absolute', left: 66, top: 12, right: 12 + 44 + 12, zIndex: 'var(--z-chrome)', pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, ...estilo }}>
       <button
         onClick={alternar}
         className="lu-press"

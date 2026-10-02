@@ -12,17 +12,16 @@ import { construirFines, construirHitosTransporte, construirInicios, construirLe
 import useSnapConectores from './useSnapConectores'
 import MetricasEquipo, { kmDeTrazo, metricasParadas } from './MetricasEquipo'
 import { apilarAtras } from '../../services/atras'
-import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
+import { GESTION_TITLES } from '../../lib/gestion'
+import { etiquetaRol } from '../../lib/roles'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
 import useRecorridosDelDia, { textoDeErrorRecorridos } from '../../hooks/useRecorridosDelDia'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
 import AlertasEquipo from '../../components/AlertasEquipo'
-import SelectorEmpresa from '../../components/SelectorEmpresa'
 import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
-import Overlay from '../../components/Overlay'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
@@ -31,10 +30,10 @@ import RailMapa, { RAIL_W } from './components/RailMapa'
 import TarjetaPin from './components/TarjetaPin'
 import GestionHost from '../../components/GestionHost'
 import DespachoGestion from './components/DespachoGestion'
-import SelectorTema from '../../components/SelectorTema'
-import { Alerta, AlertaCirculo, Check, ChevronRight, GestIcon, Lock, LogOut, Mapa, Profile } from '../../components/icons'
-import { App as CapApp } from '@capacitor/app'
-import { APP_VERSION } from '../../version'
+import ListaGestion from './components/ListaGestion'
+import MenuCuenta from '../perfil/MenuCuenta'
+import { NavInferior } from '../../components/ui'
+import { Alerta, AlertaCirculo, Check, Dashboard, Equipo, Gestion, Mapa } from '../../components/icons'
 
 // Las vistas de gestión (Clientes, Zonas, Catálogo, …) se despachan desde un módulo compartido con
 // SupervisionDesktop y PanelDireccion: acá solo se dice CUÁL abrir, no cómo construirla (regla 31).
@@ -44,9 +43,7 @@ import LeyendaCartera from './components/LeyendaCartera'
 import TarjetaComercio from './components/TarjetaComercio'
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
-const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
-// Mismo modal que abre MiCuenta (cambiar la PROPIA contraseña): acá no se duplica lógica, solo se abre.
-const CambiarContrasenaModal = lazy(() => import('../perfil/CambiarContrasenaModal'))
+// Mi perfil y Cambiar contraseña los abre el menú de cuenta único (perfil/MenuCuenta, 01/10/2026).
 // Pulso de ventas con gráficos (16/09/2026): el mismo módulo que PanelDireccion y la consola de
 // PC, en su layout compacto. Lazy: sólo baja al abrir el sheet, y la librería de gráficos aparte.
 const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
@@ -67,7 +64,7 @@ const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
  *   - onIrAJornada () => void | null   (solo encargado: volver a "Mi jornada")
  *
  * Las funciones de gestión (Clientes, Zonas, Catálogo, Faltante, Invitar, Usuarios,
- * Empresas) se abren NATIVAS desde el botón "Menú" (GestionHost). Ya no se navega al
+ * Empresas) se abren NATIVAS desde el destino "Gestión" de la barra (antes, el botón "Menú"; GestionHost). Ya no se navega al
  * AdminView de escritorio (PWA) desde la APK.
  */
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
@@ -81,29 +78,38 @@ const PIN_ZOOM_KEY = 'lu-pin-zoom' // tamaño elegido para la tarjeta del pin (1
 const safeTop = (px) => `calc(${px}px + env(safe-area-inset-top))`
 const safeBottom = (px) => `calc(${px}px + env(safe-area-inset-bottom))`
 
-const glass = glassBlur // alias local: este archivo lo usa ~10 veces como `...glass`
+// 🩸 PRESUPUESTO DE VIDRIO (01/10/2026, brief v2 §2.5 y hoja 10a): como máximo DOS capas con
+// `backdrop-filter` por pantalla, y solo sobre el mapa. Este archivo llegó a tener ~10 (`...glass`
+// en el header, la barra de abajo, el panel de cuenta, el menú "+", el aviso de GPS, los tres
+// estados del mapa, el popover de fecha y el toast) y además cada botón del rail traía el suyo
+// (RailMapa): el efecto más caro que hay en un Samsung de gama baja, multiplicado (regla 28 y el
+// bug del 20/07/2026). Ahora el vidrio queda en el HEADER y nada más; todo lo demás es superficie
+// plana (--surface + borde --line; la sombra solo existe en Claro porque --shadow es `none` en
+// Oscuro). Si algo nuevo necesita vidrio, se cuenta contra este presupuesto.
+const glass = glassBlur
+const plano = { background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: 'var(--shadow)' }
 
 
-// Acciones de gestión que abren en pantalla nativa (GestionHost) desde el botón "Menú".
+// Acciones de gestión que abren en pantalla nativa (GestionHost) desde el destino "Gestión" (lista agrupada, ListaGestion).
 // Reemplazan al viejo "Panel de gestión" (AdminView / PWA). Gate por rol: Usuarios solo
 // admin/superadmin; Empresas solo superadmin; el resto para todo gestor (incl. encargado).
 
 export default function SupervisionMovil({ role = 'encargado', onIrAJornada = null }) {
   const { theme, isDark } = useTheme()
-  const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
+  const { perfil, user, idEmpresa } = useAuth()
   const { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   // 🚨 SCOPE de LECTURA (regla 11): todo lo que CONSULTA usa `idEmpresaActiva`; la escritura de
   // GPS sigue clavada a `useAuth().idEmpresa` en GpsContext, que esta pantalla no toca.
-  const { idEmpresaActiva, puedeCambiarScope, empresasDisponibles, setEmpresaActiva, esOverride, nombreActiva } = useTenant()
+  const { idEmpresaActiva, empresasDisponibles, setEmpresaActiva, esOverride, nombreActiva } = useTenant()
   const base = useEmpresaBase(idEmpresaActiva) // dónde abre el mapa (depósito de la empresa)
   // Incidentes abiertos del equipo (los abre el cron `alertas-equipo`, acá solo se leen).
   const avisos = useAlertasEquipo()
-  const [section, setSection] = useState('mapa') // 'mapa' | 'dash'
+  // Destino de la barra inferior (01/10/2026): 'mapa' | 'equipo' | 'dash' | 'gestion'.
+  const [section, setSection] = useState('mapa')
   const [filter, setFilter] = useState(null)     // null | 'v' | 'r'
   const [pinId, setPinId] = useState(null)
   const [foco, setFoco] = useState(null)         // { id, nonce } — usuario a enfocar en el mapa
   const [acctOpen, setAcctOpen] = useState(false)
-  const [plusOpen, setPlusOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   // 🩸 PRENDIDO POR DEFECTO desde el 03/08/2026 (antes arrancaba en crudo). Con un motor por modo
@@ -123,11 +129,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   const [fitDone, setFitDone] = useState(false)  // encuadrar el mapa solo la 1ª vez
   const [fecha, setFecha] = useState(hoyStr)      // día visualizado en el mapa (default hoy)
   const [gestion, setGestion] = useState(null)   // vista de gestión abierta (Clientes, Zonas, …) o null
-  const [apkVer, setApkVer] = useState(null)     // versión nativa del APK (para distinguir el fix nativo del OTA)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
-  const [modalPerfil, setModalPerfil] = useState(false)
-  const [modalPass, setModalPass] = useState(false)
   const [datePop, setDatePop] = useState(false)  // fallback: popover con el <input date> inline
   const [inmersivo, setInmersivo] = useState(false) // mapa a pantalla completa, sin chrome
   // SEGUIMIENTO: id de la persona a la que la cámara se queda pegada, o null.
@@ -147,9 +150,6 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   })
   const toastRef = useRef(null)
   const dateRef = useRef(null)                   // <input type="date"> oculto (picker nativo)
-
-  // Ítems del menú de gestión visibles para el rol actual.
-  const gestionItems = useMemo(() => itemsDeGestion(role, permisos), [role, permisos])
 
   const esHoy = fecha === hoyStr()
 
@@ -198,8 +198,8 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // rail, bottom-nav y el sheet completo) una vez por segundo, compitiendo con las
   // animaciones. Ahora cada etiqueta se refresca sola: ver components/HaceSegundos.jsx.
   useEffect(() => () => clearTimeout(toastRef.current), [])
-  // Versión nativa del APK (App.getInfo). En web/PWA falla → queda null (solo se muestra la web).
-  useEffect(() => { CapApp.getInfo().then((i) => setApkVer(i?.version || null)).catch(() => {}) }, [])
+  // La versión nativa del APK (App.getInfo) ya no se pide acá: la muestra el menú de cuenta único,
+  // junto con el estado de la OTA que este panel no mostraba (perfil/MenuCuenta).
 
   function showToast(m) {
     clearTimeout(toastRef.current)
@@ -459,9 +459,34 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   }
 
   const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
-  const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
-  const title = section === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard total'
-  const cerrarTodo = () => { setPlusOpen(false); setAcctOpen(false); setDatePop(false); setPinId(null) }
+  const roleLabel = role ? etiquetaRol(role) : 'Supervisión' // tabla única: lib/roles.js
+  const title = { mapa: 'Monitoreo en vivo', equipo: 'Equipo', dash: 'Dashboard', gestion: 'Gestión' }[section] || 'Monitoreo en vivo'
+  const cerrarTodo = () => { setAcctOpen(false); setDatePop(false); setPinId(null) }
+
+  // BARRA INFERIOR (01/10/2026, decisión del dueño sobre la pregunta 7 del brief v2; hojas
+  // "Cuenta y Navegación" 3c/3d y 4a). Mapa · Equipo · Dashboard · Gestión:
+  //   - "Equipo" sale de partir el viejo Dashboard (informe 06 D3/D4): el estado del equipo y la
+  //     lista de quién está en la calle, que ya existían, sin ningún dato nuevo.
+  //   - "Dashboard" queda con los números: ventas (DashboardEquipo) y rendimiento del día.
+  //   - "Gestión" reemplaza al botón "Menú" (el popover de vidrio "+"): la lista agrupada
+  //     Operación / Equipo / Sistema, la misma que el panel de dirección (ListaGestion).
+  // Los tres son PANELES entre el header y la barra, no hojas: la barra queda a la vista y se cambia
+  // de destino con un toque, como en la hoja. El mapa sigue montado debajo (no se pierde el
+  // encuadre ni el día elegido).
+  const destinos = [
+    { k: 'mapa', etiqueta: 'Mapa', icono: Mapa },
+    { k: 'equipo', etiqueta: 'Equipo', icono: Equipo },
+    { k: 'dash', etiqueta: 'Dashboard', icono: Dashboard },
+    { k: 'gestion', etiqueta: 'Gestión', icono: Gestion },
+  ]
+  const irADestino = (k) => { cerrarTodo(); setSection(k) }
+
+  // ATRÁS de Android parado en Equipo, Dashboard o Gestión: vuelve al mapa (reglas 26-27). Es lo
+  // que hacía el Overlay del viejo sheet del Dashboard; sin esto el atrás minimizaba la app.
+  useEffect(() => {
+    if (section === 'mapa') return undefined
+    return apilarAtras(() => setSection('mapa'))
+  }, [section])
 
   // Modo INMERSIVO: el mapa a pantalla completa, sin header, sin rail y sin bottom-nav.
   //
@@ -520,10 +545,10 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             bottom: 24 + (pin ? (pinK > 1 ? 150 : 84) : 0) + (inmersivo ? 96 : 0),
             left: 16,
           }}
-          onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); soltarComercio(); setPlusOpen(false); setAcctOpen(false) } }}
+          onMarkerClick={(i) => { const m = moversFil[i]; if (m) { setPinId(m.id); soltarComercio(); setAcctOpen(false) } }}
           // Tocar un comercio de la capa de cartera: su tarjeta reemplaza a la del móvil (una sola
           // tarjeta abajo, si no se tapa el mapa).
-          onClientClick={(i) => { elegirComercio(i); setPinId(null); setPlusOpen(false); setAcctOpen(false) }}
+          onClientClick={(i) => { elegirComercio(i); setPinId(null); setAcctOpen(false) }}
         />
 
         {/* Referencia de colores de la capa de cartera (sólo en modo estado). Va DENTRO de la capa
@@ -536,19 +561,19 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         {/* Con puntos YA en pantalla (falló un tick de 60 s, no la carga) el aviso es una píldora ámbar
             arriba, que no tapa el recorrido: el mapa está bien, sólo no se actualizó. */}
         {recorridosError && Object.keys(byUserCrudo).length ? (
-          <div onClick={() => recargarPosiciones()} style={{ position: 'absolute', left: '50%', top: 10, transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--warning)', borderRadius: 999, padding: '7px 12px', boxShadow: 'var(--shadow-lg)', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+          <button type="button" onClick={() => recargarPosiciones()} style={{ position: 'absolute', left: '50%', top: 10, transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, ...plano, border: '1px solid var(--warning)', borderRadius: 999, padding: '7px 14px', color: 'var(--text)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, textAlign: 'left', cursor: 'pointer' }}>
             <AlertaCirculo size={14} color="var(--warning)" style={{ flex: 'none' }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Sin actualizar{recorridosAt ? <> · <HaceSegundos ts={recorridosAt} /></> : ''} · tocá para reintentar</span>
-          </div>
+            <span>Sin actualizar{recorridosAt ? <> · <HaceSegundos ts={recorridosAt} /></> : ''} · tocá para reintentar</span>
+          </button>
         ) : recorridosError ? (
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 250, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--danger)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 250, textAlign: 'center', ...plano, border: '1px solid var(--danger)', borderRadius: 16, padding: '20px 18px' }}>
             <AlertaCirculo size={34} w={1.5} color="var(--danger)" style={{ marginBottom: 8 }} />
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, color: 'var(--danger)' }}>No se pudieron cargar las ubicaciones</div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{textoDeErrorRecorridos(recorridosError)}</div>
-            <button onClick={() => recargarPosiciones()} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 10, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
+            <button onClick={() => recargarPosiciones()} style={{ marginTop: 12, minHeight: 44, padding: '8px 16px', borderRadius: 10, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Reintentar</button>
           </div>
         ) : !mapMarkers.length && !trails.length && (
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 240, textAlign: 'center', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 16, padding: '20px 18px', boxShadow: 'var(--shadow-lg)' }}>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 240, textAlign: 'center', ...plano, borderRadius: 16, padding: '20px 18px' }}>
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8 }}><path d="M12 21s-7-6.7-7-11a7 7 0 0 1 14 0c0 4.3-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></svg>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14 }}>{esHoy ? 'Sin personal en la calle' : 'Sin recorridos ese día'}</div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>{esHoy ? 'Cuando vendedores o repartidores inicien jornada, aparecerán acá en vivo.' : 'No hay recorridos registrados para la fecha elegida. Probá con otro día o volvé a “Hoy”.'}</div>
@@ -563,13 +588,14 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           <Logo size={34} radius={11} />
           <div style={{ textAlign: 'center', lineHeight: 1.15 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15 }}>{title}</div>
-            <div style={{ fontSize: 9.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 1 }}>
+            {/* 11 px (01/10/2026): piso de texto del brief (decisión 15); era 9,5. */}
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 5, marginTop: 1 }}>
               <span style={{ width: 5, height: 5, borderRadius: 99, background: mqttOn ? 'var(--success)' : 'var(--faint)', animation: mqttOn ? 'lu-blink 2s infinite' : 'none' }} />{roleLabel} · en vivo
             </div>
             {/* Mirando OTRA empresa: el aviso va en el header y no escondido en un menú, porque de
                 otro modo es facilísimo sacar conclusiones sobre el equipo equivocado. */}
             {esOverride && (
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.04em', color: 'var(--warning)', fontFamily: 'var(--font-mono)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.04em', color: 'var(--warning)', fontFamily: 'var(--font-mono)', marginTop: 2, overflowWrap: 'anywhere', maxWidth: 170 }}>
                 {nombreActiva || 'otra empresa'}
               </div>
             )}
@@ -585,79 +611,26 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
               onMarcarVista={avisos.marcarVista}
               onEnfocar={enfocarAviso}
             />
-            <div onClick={() => { setAcctOpen((v) => !v); setPlusOpen(false); setPinId(null) }} style={{ width: 34, height: 34, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12.5, position: 'relative' }}>
+            <button type="button" aria-label="Mi cuenta" aria-haspopup="dialog" aria-expanded={acctOpen} onClick={() => { setAcctOpen((v) => !v); setPinId(null) }} style={{ width: 44, height: 44, flex: 'none', padding: 0, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, position: 'relative' }}>
               {initials(nombre)}
-              <span style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--glass-bg)' }} />
-            </div>
+              <span style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--surface)' }} />
+            </button>
           </div>
         </div>
       </div>
       )}
 
-      {/* ===== PANEL DE CUENTA ===== */}
-      {acctOpen && (
-        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setAcctOpen(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', top: safeTop(HEADER_H + 8), right: 12, left: 56, background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }} className="lu-rise">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '15px 15px 13px' }}>
-              <div style={{ width: 46, height: 46, flex: 'none', borderRadius: 14, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17 }}>{initials(nombre)}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{roleLabel} · {identidadVisible(user?.email)}</div>
-                <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>App v{APP_VERSION}{apkVer ? ` · APK ${apkVer}` : ''}</div>
-              </div>
-            </div>
-            <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
-            {/* Selector de empresa (solo superadmin con más de una). Va en el menú de cuenta y no
-                en el rail: es una decisión de sesión, no un control del mapa que se toque seguido. */}
-            {puedeCambiarScope && (
-              <div style={{ padding: '10px 12px 4px' }}>
-                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Estás mirando</div>
-                <SelectorEmpresa style={{ width: '100%' }} />
-              </div>
-            )}
-            <div style={{ padding: 6 }}>
-              {onIrAJornada && (
-                <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
-                  <div style={acctIconBox}><Mapa size={15} /></div>
-                  <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
-                  <ChevronRight />
-                </div>
-              )}
-              <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
-                <div style={acctIconBox}><Profile size={15} /></div>
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
-                <ChevronRight />
-              </div>
-              {/* Igual que en MiCuenta: lo ven todos los roles, cada uno cambia SU contraseña. */}
-              <div onClick={() => { setAcctOpen(false); setModalPass(true) }} style={acctItem}>
-                <div style={acctIconBox}><Lock size={15} /></div>
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Cambiar contraseña</span>
-                <ChevronRight />
-              </div>
-              <div onClick={() => { setAcctOpen(false); showToast('Ayuda y soporte · próximamente') }} style={acctItem}>
-                <div style={acctIconBox}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.4-1.4 1-1.4 2M12 17h.01" /></svg></div>
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ayuda y soporte</span>
-                <ChevronRight />
-              </div>
-            </div>
-            <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
-            <div style={{ padding: '13px 15px' }}>
-              <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 9 }}>Apariencia</div>
-              <SelectorTema />
-            </div>
-            <div style={{ height: '0.5px', background: 'var(--glass-brd)' }} />
-            <div onClick={() => signOut()} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', cursor: 'pointer', color: 'var(--danger)', minHeight: 44, boxSizing: 'border-box' }}>
-              <LogOut size={16} />
-              <span style={{ fontSize: 13.5, fontWeight: 600 }}>Cerrar sesión</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ===== MENÚ DE CUENTA =====
+          El único (perfil/MenuCuenta, 01/10/2026), como hoja inferior. Reemplaza al panel de vidrio
+          que vivía acá: le faltaban "Cambiar contraseña" (se sumó después a mano), "Compartir
+          ubicación" para el encargado y el estado de la OTA, y tenía un "Ayuda y soporte" que era un
+          stub. Sin fila "Vista": esto es la APK. El selector de empresa (superadmin) y "Ir a mi
+          jornada" (encargado) siguen adentro. */}
+      <MenuCuenta open={acctOpen} onClose={() => setAcctOpen(false)} onToast={showToast} onIrAJornada={onIrAJornada} />
 
       {/* ===== ALERTA GPS APAGADO (si hay) ===== */}
       {Object.values(gpsOff).length > 0 && section === 'mapa' && !inmersivo && (
-        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', ...glass, border: '0.5px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
           <Alerta size={15} style={{ flex: 'none' }} />
           {Object.values(gpsOff).map((u) => `${u.nombre} (${u.rol})`).join(', ')} · GPS desactivado
         </div>
@@ -672,6 +645,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           clientes, paradas, calles y el selector de fecha — justo cuando el mapa es lo único que
           se está mirando. Ahora pasa a modo `compacto`: quedan los controles de LECTURA y se van
           los de operación (filtros por rol, sincronizar). */}
+      {section === 'mapa' && (
       <RailMapa
         compacto={inmersivo}
         style={{ position: 'absolute', right: 12, bottom: safeBottom(inmersivo ? 14 + RAIL_W + 8 : NAV_H + 14), zIndex: 'var(--z-chrome)' }}
@@ -702,6 +676,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         onSync={doSync}
         onInmersivo={entrarInmersivo}
       />
+      )}
 
       {/* En inmersivo queda ESTE botón y nada más. Se posiciona contra el borde real de la
           pantalla (ya no hay bottom-nav que lo empuje) respetando la safe-area. */}
@@ -728,6 +703,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           `pointerEvents:'none'` en el contenedor (regla 30): ocupa todo el ancho a esta altura y
           sin esto se tragaría los toques del mapa donde no hay contenido. Cada hija se lo vuelve
           a encender. */}
+      {section === 'mapa' && (
       <div style={{
         position: 'absolute', left: 14, right: RAIL_W + 24,
         bottom: safeBottom(inmersivo ? 14 : NAV_H + 14),
@@ -806,116 +782,105 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           />
         )}
       </div>
+      )}
 
       {/* Fallback final del selector de fecha: WebView sin showPicker() ni click() programático
           → input inline visible para que el usuario lo toque él mismo. */}
       {datePop && (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setDatePop(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 14, boxShadow: 'var(--shadow-lg)', padding: '10px 12px' }} className="lu-rise">
+          <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), ...plano, borderRadius: 14, padding: '10px 12px' }} className="lu-rise">
             <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
             <input
               type="date" value={fecha} max={hoyStr()} autoFocus
               onChange={(e) => cambiarFecha(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', minHeight: 32, colorScheme: isDark ? 'dark' : 'light' }}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', minHeight: 44, colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
         </div>
       )}
 
-      {/* ===== BOTTOM NAV ===== */}
+      {/* ===== BARRA INFERIOR =====
+          `NavInferior` (components/ui), la misma de todos los roles: reemplaza al `NavBtn` propio
+          (un <div onClick> sin foco ni rol, copia del de MarketingView). PLANA, no de vidrio: el
+          vidrio de esta pantalla lo gasta el header (ver el presupuesto arriba), y la barra no
+          está SOBRE el mapa sino debajo (la capa del mapa termina en NAV_H). Con el teclado
+          abierto no se dibuja (useTecladoAbierto, adentro de NavInferior). */}
       {!inmersivo && (
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around', padding: '8px 10px 8px' }}>
-          <NavBtn active={section === 'mapa'} label="Mapa" onClick={() => { setSection('mapa'); cerrarTodo() }}>
-            <Mapa size={22} />
-          </NavBtn>
-          <NavBtn active={section === 'dash'} label="Dashboard" onClick={() => { setSection('dash'); setPlusOpen(false); setAcctOpen(false); setPinId(null) }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" rx="1" /><rect x="12.5" y="8" width="3" height="10" rx="1" /><rect x="18" y="5" width="3" height="13" rx="1" /></svg>
-          </NavBtn>
-          <NavBtn active={plusOpen} label="Menú" onClick={() => { setPlusOpen((v) => !v); setPinId(null); setAcctOpen(false) }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M3 12h11M3 18h11" /><path d="M18 15v6M15 18h6" /></svg>
-          </NavBtn>
-        </div>
-      </div>
+        <NavInferior
+          items={destinos}
+          activo={section}
+          onCambiar={irADestino}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-chrome)' }}
+        />
       )}
 
-      {/* ===== MENÚ "+" (encargado) ===== */}
-      {plusOpen && (
-        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setPlusOpen(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', right: 12, bottom: safeBottom(NAV_H + 28), width: 236, maxHeight: 'calc(100vh - 180px)', overflowY: 'auto', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 18, boxShadow: 'var(--shadow-lg)', padding: 7 }} className="lu-rise">
-            <div style={{ padding: '8px 10px 6px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>Gestión</div>
-            {gestionItems.map((it) => (
-              <div key={it.key} onClick={() => { setPlusOpen(false); setGestion(it.key) }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 10px', borderRadius: 12, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box' }}>
-                <div style={{ width: 34, height: 34, flex: 'none', borderRadius: 10, background: 'var(--surface2)', color: 'var(--deep)', display: 'grid', placeItems: 'center' }}><GestIcon k={it.key} size={16} /></div>
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>{it.label}</span>
-                <ChevronRight />
+      {/* ===== DESTINOS EQUIPO · DASHBOARD · GESTIÓN =====
+          Paneles planos entre el header y la barra (ver `destinos`). Tapan el mapa, que sigue
+          montado debajo. Antes el Dashboard era un sheet de vidrio (`Overlay glass`) con los cuatro
+          bloques juntos, y tres de ellos eran la misma lista de personas (informe 06 D3/D4). */}
+      {!inmersivo && section !== 'mapa' && (
+        <div
+          key={section}
+          className="lu-rise"
+          style={{ position: 'absolute', top: safeTop(HEADER_H), bottom: safeBottom(NAV_H), left: 0, right: 0, zIndex: 'var(--z-chrome)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bg-app)', padding: '16px 14px 24px', boxSizing: 'border-box' }}
+        >
+          {section === 'equipo' && (
+            <>
+              {/* Informe: por qué no llega la señal (lo ve también el panel de dirección). Click en
+                  una persona → vuelve al mapa y encuadra su recorrido. */}
+              <div style={{ marginBottom: 12 }}><EstadoEquipo onSelectUsuario={enfocarUsuario} /></div>
+
+              {/* Equipo en la calle (real) */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                  <span style={sheetLabel}>Equipo en la calle</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: 'var(--deep)' }}>{moversArr.length} en vivo</span>
+                </div>
+                {moversArr.length === 0 ? (
+                  <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--muted)' }}>Nadie está compartiendo ubicación ahora.</div>
+                ) : moversArr.map((m) => (
+                  <button type="button" key={m.id} onClick={() => enfocarUsuario(m.id)} className="lu-press" title="Ver su recorrido en el mapa" style={{ width: '100%', minHeight: 48, display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', background: 'transparent', border: 'none', borderBottom: '1px solid var(--line)', color: 'var(--text)', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                    <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere' }}>{nombres[m.id] || m.rol}</span>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{m.rol}</span>
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}><HaceSegundos ts={m.ts} /></span>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
+
+          {section === 'dash' && (
+            <>
+              {/* Ventas del período con gráficos: vendido, pedidos, ticket, la serie por día y los
+                  estados. Sólo se monta con el destino abierto: cerrado no consulta nada. */}
+              <div style={{ marginBottom: 12 }}>
+                <Suspense fallback={<div className="lu-sk" style={{ height: 160, borderRadius: 16, background: 'var(--sk)' }} />}>
+                  <DashboardEquipo layout="compacto" horizonte="hoy" nombres={nombres} onAbrirPersona={enfocarUsuario} activo={!!idEmpresaActiva} />
+                </Suspense>
+              </div>
+
+              {/* Métricas reales del día: km + tiempo de parada por persona (Feature B). */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  <span style={sheetLabel}>Rendimiento del día</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>km · tiempo de parada</span>
+                </div>
+                <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={enfocarUsuario} />
+              </div>
+            </>
+          )}
+
+          {section === 'gestion' && (
+            <ListaGestion onAbrir={setGestion} />
+          )}
         </div>
       )}
 
-      {/* ===== BOTTOM-SHEET · DASHBOARD =====
-           Antes esto entraba con `lu-rise .26s` = translateY(18px). Un panel que ocupa
-           el 78% de la pantalla deslizando 18 píxeles se lee como un parpadeo, no como
-           una hoja que sube — era la animación "fea" del dashboard. Ahora usa el Overlay
-           compartido (variant="sheet" → translateY(100%) con la curva de drawer iOS), y
-           además gana lo que ningún overlay de la app tenía: animación de SALIDA. */}
-      <Overlay
-        open={section === 'dash'}
-        onClose={() => setSection('mapa')}
-        variant="sheet"
-        glass
-        title="Dashboard"
-        subtitle="Jornada en curso"
-      >
-      {/* Ventas del período con gráficos: vendido, pedidos, ticket, la serie por día y los estados.
-          Sólo se monta con el sheet abierto: cerrado no consulta nada. */}
-      {section === 'dash' && (
-        <div style={{ marginBottom: 10 }}>
-          <Suspense fallback={<div className="lu-sk" style={{ height: 160, borderRadius: 16, background: 'var(--sk)' }} />}>
-            <DashboardEquipo layout="compacto" horizonte="hoy" nombres={nombres} onAbrirPersona={enfocarUsuario} activo={!!idEmpresaActiva} />
-          </Suspense>
-        </div>
-      )}
-
-      {/* Informe: por qué no llega la señal (lo ve también el panel de dirección). Click en una
-          persona → cierra el sheet y encuadra su recorrido. */}
-      <div style={{ marginBottom: 10 }}><EstadoEquipo onSelectUsuario={enfocarUsuario} /></div>
-
-      {/* Equipo en la calle (real) */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-          <span style={sheetLabel}>Equipo en la calle</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: 'var(--deep)' }}>{moversArr.length} en vivo</span>
-        </div>
-        {moversArr.length === 0 ? (
-          <div style={{ padding: '10px 2px', fontSize: 12, color: 'var(--faint)' }}>Nadie está compartiendo ubicación ahora.</div>
-        ) : moversArr.map((m) => (
-          <div key={m.id} onClick={() => enfocarUsuario(m.id)} className="lu-press" role="button" title="Ver su recorrido en el mapa" style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
-            <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[m.id] || m.rol}</div>
-              <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{m.rol}</div>
-            </div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}><HaceSegundos ts={m.ts} /></div>
-          </div>
-        ))}
-      </div>
-
-      {/* Métricas reales del día: km + tiempo de parada por persona (Feature B). */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={sheetLabel}>Rendimiento del día</span>
-          <span style={{ fontSize: 10, color: 'var(--faint)' }}>km · tiempo de parada</span>
-        </div>
-        <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={enfocarUsuario} />
-      </div>
-      </Overlay>
-
-      {/* ===== GESTIÓN (pantalla nativa, abierta desde el botón "Menú") ===== */}
+      {/* ===== GESTIÓN (pantalla nativa, abierta desde el destino "Gestión") ===== */}
       {/* 'invitar' NO usa GestionHost: es una ventana flotante (InvitarModal), se maneja abajo. */}
       {gestion && gestion !== 'invitar' && (
         <GestionHost title={GESTION_TITLES[gestion]} onClose={() => { setGestion(null); setModalCliente(false); setModalProducto(false) }}>
@@ -947,19 +912,17 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* Modales de alta (se abren desde Clientes / Catálogo). Van por Overlay, que
           los pone en --z-modal (500), por encima del GestionHost (--z-screen, 400). */}
-      {(modalCliente || modalProducto || modalPerfil || modalPass) && (
+      {(modalCliente || modalProducto) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
           {/* `true` = alta; un objeto producto = edición (mismo patrón que AdminView). */}
           {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} producto={modalProducto === true ? null : modalProducto} />}
-          {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
-          {modalPass && <CambiarContrasenaModal onClose={() => setModalPass(false)} onToast={showToast} />}
         </Suspense>
       )}
 
       {/* ===== TOAST ===== */}
       {toast && (
-        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 14), left: 16, right: 16, zIndex: 'var(--z-toast)', background: 'var(--glass-strong)', ...glass, border: '0.5px solid var(--glass-brd)', borderRadius: 13, boxShadow: 'var(--shadow-lg)', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9 }} className="lu-rise">
+        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 14), left: 16, right: 16, zIndex: 'var(--z-toast)', ...plano, borderRadius: 13, padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9 }} className="lu-rise">
           <Check size={16} color="var(--success)" />
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
@@ -969,24 +932,4 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 }
 
 // ---- piezas chicas ----
-const acctItem = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', borderRadius: 11, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box', color: 'var(--text)' }
-const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', display: 'grid', placeItems: 'center' }
-const sheetLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--faint)' }
-
-// Íconos de las acciones de gestión del menú "+".
-/**
- * Botón del rail vertical. 44×44 (área táctil mínima), mismo glass/sombra que tenían los
- * chips de la franja vieja.
- *   - on    → activo: se pinta con `color` sólido y texto blanco.
- *   - dim   → hay otro filtro activo: se apaga a --faint.
- *   - badge → conteo (0 no se muestra) en una píldora chica sobre el botón.
- */
-function NavBtn({ active, label, onClick, children }) {
-  return (
-    <div onClick={onClick} className="lu-press" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '5px 0', cursor: 'pointer', color: active ? 'var(--primary)' : 'var(--muted)', transition: 'transform 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1)' }}>
-      {/* Píldora de tinte detrás del ícono activo (ver el mismo caso en VendedorView): el color solo no alcanza con el acento azul acero. */}
-      <span style={{ display: 'grid', placeItems: 'center', padding: '0 14px', borderRadius: 99, background: active ? 'var(--primary-tint)' : 'transparent' }}>{children}</span>
-      <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
-    </div>
-  )
-}
+const sheetLabel = { fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }

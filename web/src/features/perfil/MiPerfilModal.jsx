@@ -6,6 +6,7 @@ import { subirAvatar } from '../../services/data/productoImagen'
 import Overlay from '../../components/Overlay'
 import { Field, inputStyle } from '../../components/form'
 import { btnSecundario, btnPrimario, apagado } from '../../lib/botones'
+import { etiquetaRol } from '../../lib/roles'
 
 /**
  * Edición del PROPIO perfil (nombre + teléfono). Reutilizable en las 3 shells
@@ -21,7 +22,8 @@ import { btnSecundario, btnPrimario, apagado } from '../../lib/botones'
  *
  * props: { onClose, onToast }
  */
-const ROLE_LABEL = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin', vendedor: 'Vendedor', repartidor: 'Repartidor' }
+// El nombre del rol sale de `lib/roles.js` (01/10/2026): esta tabla era una de cuatro copias y no
+// tenía marketing.
 
 export default function MiPerfilModal({ onClose, onToast }) {
   const { perfil, user, rol, actualizarMiPerfil } = useAuth()
@@ -113,7 +115,7 @@ export default function MiPerfilModal({ onClose, onToast }) {
 
       <Field label="Cuenta">
         <div style={sx('display:flex;align-items:center;gap:8px;flex-wrap:wrap')}>
-          <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:600;color:var(--deep)'), background: 'var(--surface2)', border: '1px solid var(--line)' }}>{ROLE_LABEL[rol] || rol || '—'}</span>
+          <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:600;color:var(--deep)'), background: 'var(--surface2)', border: '1px solid var(--line)' }}>{etiquetaRol(rol)}</span>
           <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);word-break:break-all')}>{identidadVisible(user?.email)}</span>
         </div>
       </Field>

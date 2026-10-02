@@ -9,7 +9,6 @@ import PhoneFrame from './components/PhoneFrame'
 import GpsGate from './components/GpsGate'
 import ErrorBoundary from './components/ErrorBoundary'
 import UpdatePrompt from './components/UpdatePrompt'
-import DeviceBanner from './components/DeviceBanner'
 import SplashIntro, { yaSeVioHoy } from './components/SplashIntro'
 import LoginView from './features/auth/LoginView'
 import ParearTablet from './features/vidriera/ParearTablet'
@@ -382,10 +381,12 @@ export default function App() {
             <Gate />
           </ErrorBoundary>
           <UpdatePrompt />
-          {/* Celular/PC es una decisión de la WEB. Dentro de la APK no hay "PC" a la que cambiar: elegirla
-              dejaba el mockup 393×820 flotando en el teléfono y, sin el switch (MiCuenta lo oculta en
-              nativo), sin forma de volver. Ver `useDeviceMode`: en nativo el modo es siempre 'mobile'. */}
-          {!isNative() && <DeviceBanner />}
+          {/* 🩸 SIN `DeviceBanner` DESDE EL 01/10/2026 (decisión del dueño). Era el cartel "¿Celular o PC?"
+              del primer arranque: preguntaba algo que `useDeviceMode` ya detecta solo por ancho,
+              puntero y userAgent, prometía "el botón de dispositivo" de una topbar que ya no existía,
+              y llegó a mostrarse dentro de la APK (informe 06 D5). Celular/PC queda UNA sola vez, en
+              el menú de cuenta y solo en la web (perfil/MenuCuenta, fila "Vista"); la detección
+              automática y el override de `lu-device` siguen igual. */}
           {splash && <SplashIntro onDone={() => setSplash(false)} />}
         </AuthProvider>
       </DeviceProvider>

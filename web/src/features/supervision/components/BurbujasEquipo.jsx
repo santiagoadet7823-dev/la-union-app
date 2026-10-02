@@ -83,13 +83,16 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
             style={{
               display: 'flex', alignItems: 'center', gap: activo ? 8 : 0, flex: 'none',
               maxWidth: 190, cursor: 'pointer',
-              padding: activo ? '6px 11px 6px 6px' : 3,
+              // 7 + 30 + 7 = 44 de alto (01/10/2026): el mínimo táctil; antes medía 36.
+              padding: activo ? '7px 11px 7px 7px' : 7,
               borderRadius: 'var(--r-pill)',
-              background: 'var(--glass-strong)',
+              // Plana (01/10/2026): --surface en vez de --glass-strong, como todo lo que flota
+              // sobre el mapa salvo el header.
+              background: 'var(--surface)',
               // El anillo de la persona enfocada usa SU color, el mismo que su trazo en el mapa
               // y el mismo que su burbuja: es el hilo que une la lista con lo que se ve.
-              border: `1.5px solid ${activo ? c : 'var(--glass-brd)'}`,
-              boxShadow: 'var(--shadow-lg)',
+              border: `1.5px solid ${activo ? c : 'var(--line)'}`,
+              boxShadow: 'var(--shadow)',
               transition: 'border-color 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1)',
             }}
           >
@@ -140,8 +143,8 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
         pointerEvents: 'auto', cursor: 'pointer', maxWidth: '100%', boxSizing: 'border-box',
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         padding: '8px 12px', borderRadius: 'var(--r-lg)',
-        background: 'var(--glass-strong)',
-        border: '1px solid var(--glass-brd)',
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
         // Filete del color de la persona: el mismo hilo que ata la burbuja con su trazo.
         borderLeft: `3px solid ${colorPorId(abierta.id)}`,
         boxShadow: 'var(--shadow-lg)',
@@ -156,7 +159,7 @@ export default function BurbujasEquipo({ movers = [], nombres = {}, fotos = {}, 
           <Dato valor={String(resumen.paradas)} etiqueta={resumen.paradas === 1 ? 'parada' : 'paradas'} />
         </>
       ) : (
-        <span style={{ fontSize: 10.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>sin recorrido todavía</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>sin recorrido todavía</span>
       )}
       <Dato valor={<HaceSegundos ts={abierta.ts} />} etiqueta="última señal" />
       {/* Tramo de transporte abierto (17/09/2026, `useTramosTransporte().abiertos`). */}
@@ -182,7 +185,7 @@ function Dato({ valor, etiqueta }) {
   return (
     <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--deep)' }}>{valor}</span>
-      <span style={{ fontSize: 9.5, color: 'var(--muted)' }}>{etiqueta}</span>
+      <span style={{ fontSize: 11, color: 'var(--muted)' }}>{etiqueta}</span>
     </span>
   )
 }

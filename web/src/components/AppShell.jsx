@@ -1,21 +1,14 @@
 import { createContext, useContext, useMemo, useRef, useState } from 'react'
 import { useAuth, identidadVisible } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
-import { isNative } from '../services/platform'
 import Logo from './Logo'
-import { Check } from './icons'
-import MiCuenta from '../features/perfil/MiCuenta'
+import { Check, GestIcon } from './icons'
+import MenuCuenta from '../features/perfil/MenuCuenta'
+import { ROLE_COLOR, etiquetaRol } from '../lib/roles'
 import PrepararCatalogo from '../features/vidriera/PrepararCatalogo'
 import MisPedidosSheet from '../features/pedidos/MisPedidosSheet'
 import TableroSheet from '../features/metas/TableroSheet'
 
-const ROLE_META = {
-  superadmin: { label: 'Superadmin', color: 'var(--info)' },
-  admin: { label: 'Administrador', color: 'var(--primary)' },
-  encargado: { label: 'Encargado', color: 'var(--primary)' },
-  vendedor: { label: 'Vendedor', color: 'var(--success)' },
-  repartidor: { label: 'Repartidor', color: 'var(--warning)' },
-}
 
 /**
  * Esconder el chrome del shell desde una pantalla de adentro.
@@ -44,7 +37,8 @@ export function useChrome() {
 export default function AppShell({ children, encargadoVista = null, onCambiarVista }) {
   const { perfil, user, rol } = useAuth()
   const { isMobile } = useDevice()
-  const meta = ROLE_META[rol] || { label: rol || '—', color: 'var(--muted)' }
+  // Nombre y color del rol: una sola tabla en lib/roles.js (antes `ROLE_META` vivía acá, sin marketing).
+  const meta = { label: etiquetaRol(rol), color: ROLE_COLOR[rol] || 'var(--muted)' }
   const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
 
   const [acctOpen, setAcctOpen] = useState(false)
@@ -65,6 +59,19 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
     setToast(m)
     toastRef.current = setTimeout(() => setToast(null), 2800)
   }
+
+  // 🩸 "MIS PEDIDOS" VA EN EL MENÚ DE CUENTA POR EL MISMO MOTIVO QUE "PREPARAR CATÁLOGO" (20/08/2026).
+  // El lugar natural sería `vendedor/tabs/PerfilTab.jsx`, y ese archivo **no lo monta nadie**: el
+  // bottom nav del vendedor tiene tres pestañas (Inicio · Ruta · Catálogo) y ninguna es esa. Ponerlo
+  // ahí habría sido escribir la pantalla y que no se pudiera abrir — que es exactamente lo que ya
+  // pasó una vez con el espejo de fotos. El vendedor también, y no solo gestión: el que carga el
+  // pedido es el que se da cuenta del error, y hasta hoy no tenía cómo mirarlo de nuevo.
+  // MI TABLERO (03/09/2026): mismo lugar y mismo motivo. Sólo `vendedor`: el repartidor no vende, y
+  // una meta de venta en su menú sería una pantalla que nunca va a tener un número adentro.
+  const propiosVendedor = [
+    { k: 'pedidos', etiqueta: 'Mis pedidos', detalle: 'Revisar, corregir y anular', icono: <GestIcon k="pedidos" size={18} />, onClick: () => setMisPedidos(true) },
+    { k: 'tablero', etiqueta: 'Mi tablero', detalle: 'Metas, qué vendés y a quién dejaste de ver', icono: <GestIcon k="reportes" size={18} />, onClick: () => setMisMetas(true) },
+  ]
 
   return (
     <ChromeContext.Provider value={chrome}>
@@ -142,70 +149,32 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
 
         {/* Cuenta: UN solo botón (avatar) que abre el menú tipo admin — perfil, tema, vista y
             cerrar sesión adentro. Reemplaza los botones sueltos que había acá. */}
-        <div onClick={() => setAcctOpen(true)} title="Mi cuenta" style={{ flex: 'none', width: 36, height: 36, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{nombre.slice(0, 2).toUpperCase()}</div>
+        <button type="button" onClick={() => setAcctOpen(true)} title="Mi cuenta" aria-label="Mi cuenta" aria-haspopup="dialog" aria-expanded={acctOpen} style={{ flex: 'none', width: 44, height: 44, padding: 0, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{nombre.slice(0, 2).toUpperCase()}</button>
       </header>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
 
-      {acctOpen && (
-        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
-          <div onClick={() => setAcctOpen(false)} className="lu-modal-scrim" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
-          <div style={{ position: 'absolute', top: 60, right: 12, width: 'min(320px, calc(100% - 24px))', maxHeight: 'calc(100vh - 80px)', overflowY: 'auto' }}>
-            {/* 🩸 "PREPARAR CATÁLOGO" VIVE ACÁ PORQUE ANTES NO VIVÍA EN NINGÚN LADO (18/08/2026).
-                La tarjeta estaba escrita en `vendedor/tabs/PerfilTab.jsx`, y ese archivo **no lo
-                monta nadie**: el bottom nav del vendedor tiene tres pestañas (Inicio · Ruta ·
-                Catálogo) y ninguna es esa. O sea que el ÚNICO camino para llenar el espejo de fotos
-                —lo que la tablet del cliente necesita para no mostrar una grilla gris— era código
-                muerto desde que se escribió. Se cuelga del menú de cuenta, que es la superficie de
-                ajustes que el vendedor sí tiene, y llega desde cualquier pantalla.
-                Solo `vendedor`: el repartidor no abre la vidriera y no tiene por qué ver un botón
-                que baja 13 MB de fotos con sus datos. La tarjeta además se esconde sola en la PWA y
-                cuando el catálogo no tiene fotos. */}
-            {rol === 'vendedor' && <PrepararCatalogo onToast={showToast} />}
-            {/* 🩸 "MIS PEDIDOS" VA ACÁ POR EL MISMO MOTIVO QUE "PREPARAR CATÁLOGO" (20/08/2026).
-                El lugar natural sería `vendedor/tabs/PerfilTab.jsx`, y ese archivo **no lo monta
-                nadie**: el bottom nav del vendedor tiene tres pestañas (Inicio · Ruta · Catálogo) y
-                ninguna es esa. Ponerlo ahí habría sido escribir la pantalla y que no se pudiera
-                abrir — que es exactamente lo que ya pasó una vez con el espejo de fotos.
-                El vendedor también, y no solo gestión: el que carga el pedido es el que se da cuenta
-                del error, y hasta hoy no tenía cómo mirarlo de nuevo. */}
-            {rol === 'vendedor' && (
-              <div
-                onClick={() => { setAcctOpen(false); setMisPedidos(true) }}
-                className="lu-press"
-                role="button"
-                style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: 'var(--shadow)', padding: '13px 15px', marginBottom: 10, cursor: 'pointer' }}
-              >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5h6M9 5a2 2 0 1 0 4 0M5 7h14v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" /><path d="M9 12h6M9 16h4" /></svg>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mis pedidos</div>
-                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Revisar, corregir y anular</div>
-                </div>
-              </div>
-            )}
-            {/* MIS METAS (03/09/2026). Mismo lugar y mismo motivo que los dos de arriba: el bottom
-                nav del vendedor tiene tres pestañas y `PerfilTab` no lo monta nadie, así que el menú
-                de cuenta es la única superficie propia que tiene — y llega desde cualquier pantalla.
-                Sólo `vendedor`: el repartidor no vende, y una meta de venta en su menú sería una
-                pantalla que nunca va a tener un número adentro. */}
-            {rol === 'vendedor' && (
-              <div
-                onClick={() => { setAcctOpen(false); setMisMetas(true) }}
-                className="lu-press"
-                role="button"
-                style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: 'var(--shadow)', padding: '13px 15px', marginBottom: 10, cursor: 'pointer' }}
-              >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.4" /></svg>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Mi tablero</div>
-                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>Metas, qué vendés y a quién dejaste de ver</div>
-                </div>
-              </div>
-            )}
-            <MiCuenta onToast={showToast} showDeviceToggle={!isNative()} />
-          </div>
-        </div>
-      )}
+      {/* MENÚ DE CUENTA ÚNICO (01/10/2026, features/perfil/MenuCuenta): hoja inferior en el celular,
+          popover en la PC. Lo propio del vendedor entra como "Mi trabajo"; las hojas que abre viven
+          ACÁ abajo, montadas siempre (ver el comentario del estado). */}
+      <MenuCuenta
+        open={acctOpen}
+        onClose={() => setAcctOpen(false)}
+        onToast={showToast}
+        presentacion={isMobile ? 'hoja' : 'popover'}
+        propios={rol === 'vendedor' ? propiosVendedor : null}
+        // 🩸 "PREPARAR CATÁLOGO" VIVE ACÁ PORQUE ANTES NO VIVÍA EN NINGÚN LADO (18/08/2026).
+        // La tarjeta estaba escrita en `vendedor/tabs/PerfilTab.jsx`, y ese archivo **no lo
+        // monta nadie**: el bottom nav del vendedor tiene tres pestañas (Inicio · Ruta ·
+        // Catálogo) y ninguna es esa. O sea que el ÚNICO camino para llenar el espejo de fotos
+        // —lo que la tablet del cliente necesita para no mostrar una grilla gris— era código
+        // muerto desde que se escribió. Se cuelga del menú de cuenta, que es la superficie de
+        // ajustes que el vendedor sí tiene, y llega desde cualquier pantalla.
+        // Solo `vendedor`: el repartidor no abre la vidriera y no tiene por qué ver un botón
+        // que baja 13 MB de fotos con sus datos. La tarjeta además se esconde sola en la PWA y
+        // cuando el catálogo no tiene fotos.
+        extra={rol === 'vendedor' ? <PrepararCatalogo onToast={showToast} /> : null}
+      />
 
       {/* Montada SIEMPRE (con `open`), afuera del menú de cuenta: ver el comentario del estado. */}
       {rol === 'vendedor' && (

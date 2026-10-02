@@ -41,7 +41,9 @@ function crearControlBasemap(getId, position) {
     wrap.style.cssText = 'background:var(--surface,#FCFBF8);border-radius:8px;overflow:hidden;box-shadow:0 1px 5px rgba(0,0,0,.3)'
     const btn = L.DomUtil.create('a', '', wrap)
     btn.href = '#'; btn.title = 'Cambiar mapa'
-    btn.style.cssText = 'display:grid;place-items:center;width:34px;height:34px;color:var(--text,#2E3A44)'
+    btn.setAttribute('role', 'button'); btn.setAttribute('aria-label', 'Cambiar mapa')
+    // 44 px (01/10/2026): mínimo táctil del brief (§4.3); medía 34.
+    btn.style.cssText = 'display:grid;place-items:center;width:44px;height:44px;color:var(--text,#2E3A44)'
     btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>'
     const menu = L.DomUtil.create('div', '', wrap)
     menu.style.cssText = 'display:none;border-top:1px solid var(--line,#DDE4E1)'

@@ -1,4 +1,3 @@
-import { glassBlur } from '../../../lib/glass'
 import { hoyStr } from '../../../lib/format'
 import BtnInmersivo from '../../../components/BtnInmersivo'
 import PistaBoton from '../../../components/PistaBoton'
@@ -25,8 +24,6 @@ import { Calendario, Check, Pin, Refrescar, Reloj, Truck } from '../../../compon
  * en vez de comprimirlos.
  */
 export const RAIL_W = 44 // lado de los botones (área táctil mínima)
-
-const glass = glassBlur
 
 export default function RailMapa({
   compacto = false,
@@ -178,16 +175,29 @@ export default function RailMapa({
   )
 }
 
+/**
+ * Botón del rail. 44×44 (área táctil mínima).
+ *
+ * 🩸 PLANO DESDE EL 01/10/2026 (brief v2 §2.5, hoja "Supervisión APK" 10a). Hasta acá cada botón
+ * traía su propio `backdrop-filter` (`...glassBlur`): con el rail entero eran 7-8 capas de
+ * desenfoque apiladas sobre Leaflet, el efecto más caro que hay en un teléfono de gama baja, y la
+ * pantalla tenía además el del header, la barra y los avisos. El presupuesto ahora es UNA capa de
+ * vidrio (el header) y todo lo que flota sobre el mapa es superficie plana: --surface + borde
+ * --line, y la sombra solo en Claro (--shadow vale `none` en Oscuro; el borde sostiene la forma).
+ * Es un <button> real (antes un <div role="button">: sin foco por teclado).
+ */
 export function RailBtn({ on, dim, color, badge, title, onClick, children }) {
   return (
-    <div
-      onClick={onClick} title={title} role="button" aria-pressed={!!on}
+    <button
+      type="button"
+      onClick={onClick} title={title} aria-label={title} aria-pressed={!!on}
       className="lu-press"
       style={{
         position: 'relative', width: RAIL_W, height: RAIL_W, flex: 'none', boxSizing: 'border-box',
+        padding: 0, margin: 0, fontFamily: 'inherit',
         borderRadius: 'var(--r-md)', display: 'grid', placeItems: 'center', cursor: 'pointer',
-        background: on ? color : 'var(--glass-bg)',
-        border: `0.5px solid ${on ? 'transparent' : 'var(--glass-brd)'}`,
+        background: on ? color : 'var(--surface)',
+        border: `1px solid ${on ? 'transparent' : 'var(--line)'}`,
         color: on ? 'var(--on-primary)' : (dim ? 'var(--faint)' : 'var(--text)'),
         opacity: dim && !on ? 0.72 : 1,
         // El cambio de filtro conmutaba background/border/color/opacity de golpe.
@@ -195,13 +205,15 @@ export function RailBtn({ on, dim, color, badge, title, onClick, children }) {
         // ⚠️ `transform` va SÍ o SÍ en esta lista: el estilo inline pisa entero al
         // `transition` de .lu-press, así que sin él el scale saltaría sin animar.
         transition: 'transform 160ms cubic-bezier(.23,1,.32,1), background 160ms cubic-bezier(.23,1,.32,1), border-color 160ms cubic-bezier(.23,1,.32,1), color 160ms cubic-bezier(.23,1,.32,1), opacity 160ms cubic-bezier(.23,1,.32,1)',
-        boxShadow: 'var(--shadow-lg)', ...glass,
+        boxShadow: 'var(--shadow)',
       }}
     >
       {children}
       {badge > 0 && (
-        <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', boxSizing: 'border-box', borderRadius: 99, background: on ? 'var(--surface)' : color, color: on ? color : 'var(--on-primary)', border: '1.5px solid var(--surface)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{badge}</span>
+        // 11 px y no 9,5: piso de texto del brief (decisión 15). `minHeight` y no `height`: con letra
+        // grande el número crece y la píldora con él (informe 08: el textZoom no agranda cajas).
+        <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, minHeight: 18, padding: '0 4px', boxSizing: 'border-box', borderRadius: 99, background: on ? 'var(--surface)' : color, color: on ? color : 'var(--on-primary)', border: '1.5px solid var(--surface)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{badge}</span>
       )}
-    </div>
+    </button>
   )
 }
