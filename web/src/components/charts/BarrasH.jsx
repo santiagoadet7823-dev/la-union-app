@@ -41,19 +41,27 @@ export default function BarrasH({ filas = [], formato = (v) => String(v), max, s
           tabIndex={f.onClick ? 0 : undefined}
           className={f.onClick ? 'lu-press' : undefined}
           role={f.onClick ? 'button' : undefined}
-          style={{ ...sx('display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;align-content:center'), cursor: f.onClick ? 'pointer' : 'default', minHeight: f.onClick ? 44 : undefined }}
+          // Flex con wrap y no grilla: el nombre pide 14ch y el monto va a la derecha. `ch` crece con
+          // la letra del sistema (informe 08), así que con letra grande el monto baja a su propio
+          // renglón en vez de dejarle al nombre una columna de una palabra.
+          style={{ ...sx('display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;align-content:center'), cursor: f.onClick ? 'pointer' : 'default', minHeight: f.onClick ? 44 : undefined }}
         >
-          <div style={sx('display:flex;align-items:center;gap:2px 8px;min-width:0;flex-wrap:wrap')}>
-            <span aria-hidden="true" style={{ ...sx('width:9px;height:9px;border-radius:99px;flex:none'), background: f.color || 'var(--primary)' }} />
-            <span style={sx('font-size:var(--fs-sm);font-weight:600;color:var(--text);min-width:0;overflow-wrap:anywhere;line-height:1.3')}>{f.label}</span>
-            {/* El dato secundario va SIEMPRE en su propio renglón, alineado con el nombre: si se
-                acomodaba al lado cuando entraba, cada fila del ranking quedaba distinta. */}
-            {f.secundario && <span style={{ ...sx('flex-basis:100%;padding-left:17px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint)'), fontSize: FS_MIN }}>{f.secundario}</span>}
+          {/* Punto + nombre en una fila SIN wrap: si el nombre no entra, parte el texto y el punto
+              queda a su lado (con wrap el nombre bajaba entero y el punto quedaba solo en un
+              renglón, revisión del 01/10/2026). El dato secundario va SIEMPRE en su propio
+              renglón, alineado con el nombre: si se acomodaba al lado cuando entraba, cada fila
+              del ranking quedaba distinta. */}
+          <div style={sx('flex:1 1 14ch;min-width:0')}>
+            <div style={sx('display:flex;align-items:center;gap:8px;min-width:0')}>
+              <span aria-hidden="true" style={{ ...sx('width:9px;height:9px;border-radius:99px;flex:none'), background: f.color || 'var(--primary)' }} />
+              <span style={sx('flex:1 1 0%;min-width:0;font-size:var(--fs-sm);font-weight:600;color:var(--text);overflow-wrap:break-word;line-height:1.3')}>{f.label}</span>
+            </div>
+            {f.secundario && <div style={{ ...sx('padding-left:17px;margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint);overflow-wrap:break-word'), fontSize: FS_MIN }}>{f.secundario}</div>}
           </div>
-          <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--fs-sm);font-weight:600;color:var(--text);text-align:right')}>
+          <div style={sx('margin-left:auto;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--fs-sm);font-weight:600;color:var(--text);text-align:right')}>
             {formato(f.valor)}
           </div>
-          <div style={sx('grid-column:1 / -1;height:6px;border-radius:3px;background:var(--bar);overflow:hidden')}>
+          <div style={sx('flex:1 1 100%;height:6px;border-radius:3px;background:var(--bar);overflow:hidden')}>
             <div style={{ ...sx('height:100%;border-radius:3px;transition:width .3s ease'), width: `${Math.max(1.5, (f.valor / tope) * 100)}%`, background: colorBarra(f, i) }} />
           </div>
         </div>

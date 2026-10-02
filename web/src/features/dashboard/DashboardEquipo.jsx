@@ -137,7 +137,11 @@ export default function DashboardEquipo({
   }
 
   const kpis = (
-    <div style={sx(`display:grid;gap:${esPc ? 12 : 10}px;grid-template-columns:repeat(auto-fit,minmax(${esPc ? 200 : 150}px,1fr))`)}>
+    // Ancho mínimo de columna en `ch` de la mono a 14 px (8,4 px): 18ch ≈ 150 px, 24ch ≈ 200 px.
+    // `ch` es lo único que crece con la letra del sistema en el WebView (informe 08: `px`/`rem`
+    // no), así que con la letra al doble la grilla pasa sola a UNA columna y el número no tiene
+    // que partirse en media tarjeta (revisión del 01/10/2026).
+    <div style={sx(`display:grid;gap:${esPc ? 12 : 10}px;font-family:var(--font-mono);font-size:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,${esPc ? 24 : 18}ch),1fr))`)}>
       {/* En el celular "Vendido" es el KPI principal y va a ancho completo (brief v2 §2.8: uno
           principal + los demás de a 2). "$ 4.860.000" no entra en media tarjeta de 360. */}
       <MiniKpi label="Vendido" valor={v.loading ? '—' : fmtPesos(Math.round(v.total.monto))} comp={cmp.monto} style={esPc ? undefined : { gridColumn: '1 / -1' }} />

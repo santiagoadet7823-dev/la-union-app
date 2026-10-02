@@ -84,10 +84,14 @@ export default function Dona({ datos = [], formato = (v) => String(v), centroLab
             <title>{`${p.label}: ${formato(p.valor)} (${Math.round(p.frac * 100)} %)`}</title>
           </path>
         ))}
-        <text x="50" y="48" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: Math.max(12, px(14)), fontWeight: 700, fill: 'var(--text)' }}>
+        {/* Número y rótulo se separan desde el CENTRO, no con una distancia fija: el número apoya
+            su línea de base apenas arriba del centro y crece hacia arriba; el rótulo cuelga
+            (`hanging`) apenas abajo y crece hacia abajo. Con la letra del sistema al doble "142"
+            se montaba sobre "pedidos" (revisión del 01/10/2026); así no se tocan a ningún tamaño. */}
+        <text x="50" y={50 - px(1)} textAnchor="middle" dominantBaseline="alphabetic" style={{ fontFamily: 'var(--font-mono)', fontSize: Math.max(12, px(14)), fontWeight: 700, fill: 'var(--text)' }}>
           {sel ? `${Math.round(sel.frac * 100)} %` : formato(porciones.total)}
         </text>
-        <text x="50" y={48 + px(16)} textAnchor="middle" style={{ fontFamily: 'var(--font-body)', fontSize: px(11), fill: 'var(--faint)' }}>
+        <text x="50" y={50 + px(4)} textAnchor="middle" dominantBaseline="hanging" style={{ fontFamily: 'var(--font-body)', fontSize: px(11), fill: 'var(--faint)' }}>
           {sel ? recortar(sel.label, 12) : centroLabel}
         </text>
       </svg>
@@ -98,12 +102,18 @@ export default function Dona({ datos = [], formato = (v) => String(v), centroLab
             key={p.label}
             onMouseEnter={() => setActiva(i)}
             onMouseLeave={() => setActiva(null)}
-            style={{ ...sx('display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);line-height:1.3;cursor:default'), opacity: activa == null || activa === i ? 1 : 0.5 }}
+            // Rótulo (pide 9ch) y números (a la derecha) con wrap: con letra grande los números bajan
+            // a su renglón en vez de partir "Almacén" en "Alm/acén". `ch` crece con la letra.
+            style={{ ...sx('display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;font-size:var(--fs-xs);line-height:1.3;cursor:default'), opacity: activa == null || activa === i ? 1 : 0.5 }}
           >
-            <span style={{ ...sx('width:9px;height:9px;border-radius:2px;flex:none'), background: p.color }} />
-            <span style={sx('flex:1;min-width:0;overflow-wrap:break-word;color:var(--text)')}>{p.label}</span>
-            <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--muted);flex:none')}>{formato(p.valor)}</span>
-            <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint);min-width:34px;text-align:right;flex:none')}>{Math.round(p.frac * 100)} %</span>
+            <span style={sx('flex:1 1 9ch;min-width:0;display:flex;align-items:center;gap:8px')}>
+              <span aria-hidden="true" style={{ ...sx('width:9px;height:9px;border-radius:2px;flex:none'), background: p.color }} />
+              <span style={sx('flex:1 1 0%;min-width:0;overflow-wrap:break-word;color:var(--text)')}>{p.label}</span>
+            </span>
+            <span style={sx('margin-left:auto;display:flex;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
+              <span style={sx('color:var(--muted)')}>{formato(p.valor)}</span>
+              <span style={sx('color:var(--faint);min-width:34px;margin-left:8px;text-align:right')}>{Math.round(p.frac * 100)} %</span>
+            </span>
           </li>
         ))}
       </ul>

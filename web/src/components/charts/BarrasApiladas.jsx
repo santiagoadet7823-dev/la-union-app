@@ -75,10 +75,13 @@ export default function BarrasApiladas({ dias = [], series = [], formato = (v) =
       {/* Eje: solo el número de día (01/10/2026). "25/09" medía 33 px en columnas de 39 y con la
           letra del sistema al doble se cortaba; el mes lo dicen el título de la tarjeta y el
           detalle del día de abajo. Con muchos días se rotula uno de cada N y ese rótulo puede
-          salirse de su columna (las vecinas van vacías): antes quedaba recortado en el mes. */}
+          salirse de su columna (las vecinas van vacías): antes quedaba recortado en el mes.
+          Las dos últimas columnas no se rotulan: ahí el rótulo no tiene vecinas a la derecha. */}
       <div style={{ ...sx('display:flex;gap:3px;margin-top:4px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint)'), fontSize: FS_MIN }}>
         {dias.map((d, i) => {
-          const visible = !muchos || i % Math.ceil(dias.length / 6) === 0
+          // Con muchos días el rótulo sale de su columna hacia la derecha: en las dos últimas no
+          // hay lugar y generaba scroll horizontal (revisión del 01/10/2026), así que no se rotulan.
+          const visible = !muchos || (i % Math.ceil(dias.length / 6) === 0 && i < dias.length - 2)
           return (
             <span key={d.dia} style={{ ...sx('flex:1;min-width:0;white-space:nowrap'), textAlign: muchos ? 'left' : 'center', overflow: muchos ? 'visible' : 'hidden' }}>
               {visible ? fmtDiaCorto(d.dia).slice(0, 2) : ''}
