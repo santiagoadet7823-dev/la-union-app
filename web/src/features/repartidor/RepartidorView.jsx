@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, kgFmt, horaActual } from '../../lib/format'
 import { Truck, Check, Pin } from '../../components/icons'
-import Logo from '../../components/Logo'
 import Overlay from '../../components/Overlay'
+import { PildoraEstado } from '../../components/ui'
 import BotonTransporte from '../../components/BotonTransporte'
 import { useTransporte } from '../../hooks/useTransporte'
 import { useGps } from '../../context/GpsContext'
@@ -13,8 +13,38 @@ import { obtenerRutaOptimaTSP } from '../../services/routing'
 import MapaEntregas from './MapaEntregas'
 import { Route } from '../../components/icons'
 
-const ORDER = { pendiente: 0, en_camino: 1, entregado: 2 }
-const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
+/**
+ * 🎨 REDISEÑO C10 (01/10/2026, hoja "Hoja de Entregas" 2c + 2d y "Mapa del Repartidor" 3c).
+ *
+ * El repartidor no navega un inventario: hace un RECORRIDO con una sola parada activa a la vez.
+ * Hasta hoy todas las entregas eran tarjetas iguales y la que importaba se distinguía por un borde
+ * de 1 px. Ahora la parada actual ocupa media pantalla (cliente y dirección grandes, cuántos
+ * artículos bajar, CTA de 56 px en el arco del pulgar) y el resto del día va en renglones.
+ *
+ * Qué se sacó y por qué (3c, "si le aparece el mapa piensa que lo vigilan"): el logo y el nombre
+ * repetidos (06 §2.1), la barra de progreso y las COORDENADAS CRUDAS del GPS. Eran para
+ * tranquilizar a la oficina, no para él; queda "Parada N de M" y una línea honesta de que la
+ * ubicación se comparte. Peso y monto bajan a un renglón con "Ver detalle".
+ *
+ * El orden: la entrega EN CAMINO va primero (es la actual), después las pendientes (en el orden
+ * del recorrido si se calculó), y al final las cerradas — no entregadas y entregadas. Antes
+ * "En camino" iba DESPUÉS de las pendientes y `no_entregado` no tenía lugar en el mapa: el
+ * `sort` comparaba `undefined` y daba NaN, así que un pedido que la oficina marcara "No
+ * entregado" desordenaba la lista entera.
+ */
+const ORDER = { en_camino: 0, pendiente: 1, no_entregado: 2, entregado: 3 }
+// Abierta = todavía hay que hacer algo. "No entregado" está CERRADA: no cuenta como entrega, pero
+// tampoco es trabajo pendiente para el recorrido (la oficina decide si se reprograma).
+const abierta = (d) => d.status === 'pendiente' || d.status === 'en_camino'
+
+// Abre el navegador GPS del teléfono (Google Maps o el que esté). Con coordenada va directo; sin
+// ella (el 70 % de la cartera todavía no está geolocalizada) se busca por la dirección. Es un
+// enlace común: en el APK lo atiende la app de mapas y en la PWA una pestaña nueva.
+function urlNavegar(d) {
+  if (d.lat != null && d.lng != null) return `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}`
+  if (d.loc) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.loc)}`
+  return null
+}
 
 export default function RepartidorView() {
   /**
@@ -44,6 +74,14 @@ export default function RepartidorView() {
   const [motivos, setMotivos] = useState({})
   const [hasInk, setHasInk] = useState(false)
   const [toast, setToast] = useState(null)
+  // La parada que el repartidor eligió hacer AHORA, fuera del orden (tocó un renglón de "Después").
+  // Él conoce la zona mejor que el algoritmo. Es sólo de esta pantalla: no se guarda en ningún
+  // lado (ver "Reordenar paradas" en el informe del bloque C10: persistirlo necesita base).
+  const [elegidaId, setElegidaId] = useState(null)
+  // Hojas secundarias: el remito completo ("Ver detalle") y la confirmación de "No pude entregar".
+  // Guardan el ID, y el cuerpo retiene el último valor para la animación de salida (ver `mdView`).
+  const [detalleId, setDetalleId] = useState(null)
+  const [noPudeId, setNoPudeId] = useState(null)
   /**
    * El recorrido óptimo. `{ orden: {idPedido: posición}, km, min }` o null.
    *
@@ -70,7 +108,6 @@ export default function RepartidorView() {
 
   // El repartidor emite su ubicación en vivo (GPS del contexto) para que el Admin lo siga.
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
-  const nombre = perfilAuth?.nombre || 'Repartidor'
 
   const canvasRef = useRef(null)
   const ctxRef = useRef(null)
@@ -110,7 +147,10 @@ export default function RepartidorView() {
     ctx.lineJoin = 'round'
     // Tinta y papel FIJOS (no `--text`/`--surface`): la firma se guarda como imagen con el lienzo
     // transparente, así que la tinta tiene que ser oscura también con el tema oscuro puesto.
-    ctx.strokeStyle = '#2E3A44'
+    // (01/10/2026, C10) El valor sale del token `--firma-tinta` de index.css, que NO sigue al
+    // tema; un `<canvas>` no entiende `var(--x)`, así que se lee resuelto. El literal queda sólo
+    // de respaldo por si el token no estuviera (es el mismo valor).
+    ctx.strokeStyle = getComputedStyle(el).getPropertyValue('--firma-tinta').trim() || '#2E3A44'
     ctxRef.current = ctx
     drawing.current = false
   }
@@ -152,7 +192,7 @@ export default function RepartidorView() {
    * de partida al terminar el reparto.
    */
   async function calcularRecorrido() {
-    const paradas = deliveries.filter((d) => d.status !== 'entregado' && d.lat != null && d.lng != null)
+    const paradas = deliveries.filter((d) => abierta(d) && d.lat != null && d.lng != null)
     if (!livePos) { showToast('Hace falta el GPS para ordenar el recorrido'); return }
     if (paradas.length < 2) { showToast('Con menos de dos paradas ubicadas no hay nada que ordenar'); return }
     setCalculando(true)
@@ -177,18 +217,24 @@ export default function RepartidorView() {
    * entregadas caen al fondo igual.
    */
   const sorted = [...deliveries].sort((a, b) => {
-    const e = ORDER[a.status] - ORDER[b.status]
+    const e = (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9)
     if (e !== 0) return e
-    if (recorrido && a.status !== 'entregado') {
+    if (recorrido && abierta(a)) {
       const pa = recorrido.orden[a.id], pb = recorrido.orden[b.id]
       if (pa != null && pb != null) return pa - pb
       if (pa != null) return -1
       if (pb != null) return 1
     }
-    return a.tomado.localeCompare(b.tomado)
+    return (a.tomado || '').localeCompare(b.tomado || '')
   })
-  const porEntregar = deliveries.filter((d) => d.status !== 'entregado').length
-  const progressPct = deliveries.length ? Math.round(((deliveries.length - porEntregar) / deliveries.length) * 100) : 0
+  const abiertas = sorted.filter(abierta)
+  const cerradas = sorted.filter((d) => !abierta(d))
+  // La parada actual: la que eligió a mano (si sigue abierta), si no la primera abierta — que por
+  // el orden de arriba es la que está EN CAMINO, o la próxima del recorrido.
+  const actual = abiertas.find((d) => d.id === elegidaId) || abiertas[0] || null
+  const despues = abiertas.filter((d) => d !== actual)
+  // "Parada N de M": N es la que se está haciendo (las cerradas + 1). Con todo cerrado no hay N.
+  const paradaN = actual ? cerradas.length + 1 : null
   const md = deliveries.find((d) => d.id === modal)
   // 🩸 El Overlay sigue montado durante los ~240 ms de la animación de salida, pero
   // `md` se vuelve undefined en el mismo frame en que `modal` pasa a null. Sin
@@ -197,41 +243,74 @@ export default function RepartidorView() {
   const mdRef = useRef(md)
   if (md) mdRef.current = md
   const mdView = md || mdRef.current
+  // Mismo patrón para las dos hojas nuevas.
+  const det = deliveries.find((d) => d.id === detalleId)
+  const detRef = useRef(det)
+  if (det) detRef.current = det
+  const detView = det || detRef.current
+  const np = deliveries.find((d) => d.id === noPudeId)
+  const npRef = useRef(np)
+  if (np) npRef.current = np
+  const npView = np || npRef.current
+
+  function marcarEnCamino(d) {
+    setStatus(d.id, 'en_camino')
+    abrirTransporte('reparto').catch(() => {})
+    marcarEstado(d, 'en_camino').catch(() => showToast('Se guardó local: sube al volver la señal'))
+    showToast(`${d.numero} marcado en camino`)
+  }
+
+  /**
+   * "NO PUDE ENTREGAR" (hoja 2d, pregunta 6): un camino de primera clase al lado de "Navegar", no
+   * escondido. Usa el estado `No entregado`, que ya existe en el CHECK de `pedidos.estado` (db/43)
+   * y en `marcarEstado`, y que la oficina ya ve y filtra en Pedidos. No pide firma y no cuenta
+   * como entrega.
+   * ⚠️ LO QUE NO HACE, a propósito: guardar el MOTIVO (comercio cerrado / cliente ausente /
+   * rechazo total / no pude llegar) ni la foto de respaldo de la hoja. `pedidos` no tiene una
+   * columna para eso — `motivo_no_venta` es "por qué el comercio no compró" (vendedor) y
+   * `motivo_anulacion` es otra cosa — y agregarla es una migración. Ofrecer cuatro botones que no
+   * se guardan sería prometer un respaldo que no existe (el mismo criterio que la firma, abajo).
+   */
+  function confirmarNoEntregado(d) {
+    setStatus(d.id, 'no_entregado')
+    setNoPudeId(null)
+    if (elegidaId === d.id) setElegidaId(null)
+    marcarEstado(d, 'no_entregado').catch(() => showToast('Se guardó local: sube al volver la señal'))
+    showToast(`${d.numero} quedó como no entregado`)
+  }
+
+  const arts = (d) => d.items.reduce((a, it) => a + it.gen, 0)
+  const nav = actual ? urlNavegar(actual) : null
 
   return (
     <div className="lu-mob" style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative')}>
-      {/* HEADER */}
-      <div style={sx('flex:none;padding:16px 16px 12px;background:var(--surface);border-bottom:1px solid var(--line)')}>
-        <div style={sx('display:flex;align-items:center;justify-content:space-between')}>
-          <div style={sx('display:flex;align-items:center;gap:8px')}>
-            <Logo size={26} radius={8} />
-            <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.04em')}>DisT-At</div>
-          </div>
-          <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {hoy()}</div>
-        </div>
-        <div style={sx('display:flex;justify-content:space-between;align-items:baseline;margin-top:12px')}>
+      {/* HEADER — sin logo ni nombre repetidos (06 §2.1) y sin barra de progreso: "Parada N de M"
+          dice lo mismo en el idioma del repartidor. */}
+      <div style={sx('flex:none;padding:14px 16px 12px;background:var(--surface);border-bottom:1px solid var(--line)')}>
+        <div style={sx('display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:18px')}>Hoja de entregas</div>
           <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)')}>
-            <span style={sx('color:var(--text);font-weight:600')}>{porEntregar}</span> de {deliveries.length} por entregar
+            {paradaN
+              ? <>Parada <b style={sx('color:var(--text);font-size:14px')}>{paradaN}</b> de {deliveries.length}</>
+              : deliveries.length ? 'Todo cerrado' : null}
           </div>
         </div>
-        <div style={sx('margin-top:10px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
-          <div style={{ ...sx('height:100%;border-radius:99px;background:var(--success);transition:width .4s'), width: `${progressPct}%` }} />
-        </div>
 
-        {/* GPS en vivo — el repartidor envía su ubicación al panel aunque no vea el mapa */}
+        {/* GPS en vivo — el repartidor envía su ubicación al panel aunque no vea el mapa.
+            (3c) Sin coordenadas crudas: "-24.78912, -65.41023" no le sirve a él y sí le dice
+            "te estamos mirando". Una línea gris y honesta, sin banner ni radar. */}
         {!livePos ? (
           <button
             onClick={() => pedirGps().catch(() => {})}
-            style={sx('width:100%;margin-top:12px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:13px;cursor:pointer')}
+            style={sx('width:100%;margin-top:12px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer')}
           >
             <Pin size={16} />
             {gpsError ? 'Reintentar — activar ubicación' : 'Activar GPS · enviar mi ubicación al panel'}
           </button>
         ) : (
-          <div style={sx('margin-top:12px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--success);font-family:var(--font-mono)')}>
-            <span style={{ width: 7, height: 7, borderRadius: 99, background: 'var(--success)', animation: 'lu-blink 1.6s infinite' }} />
-            Enviando ubicación en vivo · {livePos.lat.toFixed(5)}, {livePos.lng.toFixed(5)}
+          <div style={sx('margin-top:8px;display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);line-height:1.4')}>
+            <span aria-hidden="true" style={{ flex: 'none', width: 6, height: 6, borderRadius: 99, background: 'var(--success)', animation: 'lu-blink 2.4s infinite' }} />
+            Compartiendo tu ubicación con el panel
           </div>
         )}
 
@@ -239,13 +318,13 @@ export default function RepartidorView() {
 
         {/* El recorrido óptimo. Va en el header y no flotando sobre la lista: es una decisión que se
             toma UNA vez al arrancar el reparto, no algo que se toque todo el tiempo. */}
-        {deliveries.filter((d) => d.status !== 'entregado' && d.lat != null).length >= 2 && (
+        {abiertas.filter((d) => d.lat != null).length >= 2 && (
           <>
             <button
               onClick={calcularRecorrido}
               disabled={calculando}
               className="lu-press"
-              style={{ ...sx('width:100%;margin-top:10px;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;font-weight:600;font-size:13.5px;cursor:pointer'), border: '1px solid var(--line2)', background: recorrido ? 'var(--surface)' : 'var(--surface2)', color: 'var(--deep)', opacity: calculando ? 0.6 : 1 }}
+              style={{ ...sx('width:100%;margin-top:10px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer'), border: '1px solid var(--line2)', background: recorrido ? 'var(--surface)' : 'var(--surface2)', color: 'var(--deep)', opacity: calculando ? 0.6 : 1 }}
             >
               <Route />{calculando ? 'Calculando…' : recorrido ? 'Recalcular recorrido' : 'Ordenar por recorrido óptimo'}
             </button>
@@ -258,9 +337,9 @@ export default function RepartidorView() {
             )}
             {/* Las entregas sin ubicación NO entran en el cálculo y hay que decirlo: el 70 % de la
                 cartera todavía no está geolocalizada, así que este caso es la norma, no la excepción. */}
-            {deliveries.some((d) => d.status !== 'entregado' && d.lat == null) && (
+            {abiertas.some((d) => d.lat == null) && (
               <div style={sx('margin-top:6px;font-size:11px;color:var(--faint);line-height:1.45')}>
-                {deliveries.filter((d) => d.status !== 'entregado' && d.lat == null).length} comercio(s) sin ubicación quedan al final: no se pueden ordenar sin coordenadas.
+                {abiertas.filter((d) => d.lat == null).length} comercio(s) sin ubicación quedan al final: no se pueden ordenar sin coordenadas.
               </div>
             )}
           </>
@@ -268,7 +347,7 @@ export default function RepartidorView() {
       </div>
 
       {/* LISTA */}
-      <div style={sx('flex:1;overflow-y:auto;padding:12px 14px 28px')}>
+      <div style={sx('flex:1;overflow-y:auto;padding:12px 12px 28px')}>
         {/* EL MAPA DE LAS ENTREGAS. Va DENTRO del scroll y plegado por defecto: la hoja de
             entregas es la vista principal de este rol y el mapa es el complemento, no al revés.
             Sólo aparece si hay algo que dibujar — con la cartera sin geolocalizar del todo, un
@@ -279,7 +358,7 @@ export default function RepartidorView() {
               onClick={alternarMapa}
               className="lu-press"
               aria-expanded={mapaAbierto}
-              style={sx('width:100%;margin-bottom:10px;min-height:42px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);color:var(--deep);font-weight:600;font-size:13px;cursor:pointer')}
+              style={sx('width:100%;margin-bottom:10px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);color:var(--deep);font-weight:600;font-size:14px;cursor:pointer')}
             >
               <Pin size={15} />{mapaAbierto ? 'Ocultar el mapa' : 'Ver las entregas en el mapa'}
             </button>
@@ -297,7 +376,7 @@ export default function RepartidorView() {
         {errorEntregas && (
           <div style={sx('margin-top:20px;padding:14px;border:1px solid var(--danger);border-radius:14px;color:var(--danger);font-size:12.5px;line-height:1.5')}>
             No se pudo leer tu hoja de entregas: {errorEntregas}
-            <button onClick={recargar} style={sx('display:block;margin-top:10px;min-height:42px;padding:0 16px;border:1px solid var(--danger);border-radius:10px;background:transparent;color:var(--danger);font-size:12.5px;font-weight:600;cursor:pointer')}>Reintentar</button>
+            <button onClick={recargar} style={sx('display:block;margin-top:10px;min-height:44px;padding:0 16px;border:1px solid var(--danger);border-radius:10px;background:transparent;color:var(--danger);font-size:12.5px;font-weight:600;cursor:pointer')}>Reintentar</button>
           </div>
         )}
         {!cargandoEntregas && !errorEntregas && deliveries.length === 0 && (
@@ -309,60 +388,119 @@ export default function RepartidorView() {
             <div style={sx('font-size:12.5px;color:var(--muted);line-height:1.5')}>Cuando el panel te asigne pedidos vas a verlos acá. Mientras, tu ubicación se envía en vivo al panel.</div>
           </div>
         )}
-        {sorted.map((d) => {
-          const arts = d.items.reduce((a, it) => a + it.gen, 0)
-          const pill = d.status === 'pendiente' ? ['Pendiente', 'var(--warning)', 'var(--warning-tint)', 'none']
-            : d.status === 'en_camino' ? ['En camino', 'var(--info)', 'var(--info-tint)', 'lu-blink 1.6s infinite']
-            : ['Entregado', 'var(--success)', 'var(--success-tint)', 'none']
-          return (
-            <div key={d.id} style={{ ...sx('background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:14px;margin-bottom:10px'), border: `1px solid ${d.status === 'en_camino' ? 'var(--info)' : 'var(--line)'}` }}>
-              <div style={sx('display:flex;justify-content:space-between;align-items:flex-start;gap:8px')}>
-                <div style={sx('min-width:0')}>
-                  <div style={sx('font-weight:600;font-size:15px')}>{d.client}</div>
-                  <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}><span style={sx('font-family:var(--font-mono)')}>{d.numero}</span>{d.loc ? ' · ' + d.loc : ''}</div>
-                </div>
-                <div style={{ ...sx('flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600'), background: pill[2], color: pill[1] }}>
-                  <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1], animation: pill[3] }} />{pill[0]}
-                </div>
-              </div>
-              <div style={sx('display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px;margin:12px 0;padding:10px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
-                <Mini label="Artículos" value={arts} />
-                <Mini label="Peso" value={`${kgFmt(d.kg)} kg`} />
-                <Mini label="Monto" value={fmtPesos(d.monto)} color="var(--deep)" />
-              </div>
-              <div style={sx('display:flex;gap:12px;font-size:11px;color:var(--faint);font-family:var(--font-mono);font-variant-numeric:tabular-nums;margin-bottom:2px')}>
-                <span>Tomado {d.tomado}</span>
-                {d.entregado && <span style={sx('color:var(--success)')}>Entregado {d.entregado}</span>}
-              </div>
-              {d.status === 'pendiente' && (
-                <button onClick={() => { setStatus(d.id, 'en_camino'); abrirTransporte('reparto').catch(() => {}); marcarEstado(d, 'en_camino').catch(() => showToast('Se guardó local: sube al volver la señal')); showToast(`${d.numero} marcado en camino`) }} style={sx('width:100%;margin-top:10px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--info-tint);border:1px solid var(--info);color:var(--info);border-radius:12px;font-weight:600;font-size:15px;cursor:pointer')}>
-                  <Truck />Marcar en camino
-                </button>
+
+        {/* LA PARADA ACTUAL (2c). Se distingue por tamaño, posición y tipografía, no por un borde:
+            se lee desde el asiento, a contraluz. El estado va en PALABRAS ("ENTREGA EN CURSO"),
+            no sólo en el color del rótulo. */}
+        {actual && (
+          <div style={sx('background:var(--surface);border:1px solid var(--line);border-radius:var(--r-xl);padding:16px;box-shadow:var(--shadow-lg)')}>
+            <div style={{ ...sx('font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;font-weight:600'), color: actual.status === 'en_camino' ? 'var(--info)' : 'var(--deep)' }}>
+              {actual.status === 'en_camino' ? '» ENTREGA EN CURSO' : 'PRÓXIMA ENTREGA'}
+            </div>
+            <div style={sx('font-family:var(--font-display);font-weight:700;font-size:23px;line-height:1.15;margin-top:6px;word-break:break-word')}>{actual.client}</div>
+            <div style={sx('font-size:14px;color:var(--muted);margin-top:4px;word-break:break-word')}>
+              {actual.loc || 'Sin dirección cargada'} · <span style={sx('font-family:var(--font-mono)')}>{actual.numero}</span>
+            </div>
+            <div style={sx('display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:12px')}>
+              <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:700')}>{arts(actual)}</span>
+              <span style={sx('font-size:14px;color:var(--muted)')}>artículos · {actual.items.length} {actual.items.length === 1 ? 'línea' : 'líneas'}</span>
+            </div>
+            {/* Peso y monto no cambian ninguna decisión del repartidor (el camión ya está cargado):
+                bajan a un renglón, a un toque del remito completo. "Ver detalle" es un botón de
+                44 aunque se vea como un enlace. */}
+            <div style={sx('display:flex;align-items:center;flex-wrap:wrap;column-gap:4px;margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--faint)')}>
+              <span>{kgFmt(actual.kg)} kg · {fmtPesos(actual.monto)}</span>
+              <button type="button" onClick={() => setDetalleId(actual.id)} style={sx('min-height:44px;min-width:44px;padding:0 6px;border:0;background:transparent;font-family:var(--font-body);font-size:13px;font-weight:600;color:var(--deep);text-decoration:underline;text-underline-offset:3px;cursor:pointer')}>Ver detalle</button>
+            </div>
+
+            {/* UN solo control primario, siempre en el mismo lugar: 56 px de alto y ancho completo,
+                con aire alrededor para que un dedo con guante no caiga en otro control. */}
+            {actual.status === 'pendiente' && (
+              <button type="button" onClick={() => marcarEnCamino(actual)} className="lu-press" style={sx('width:100%;margin-top:12px;min-height:56px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--info-tint);border:1px solid var(--info);color:var(--info);border-radius:14px;font-weight:600;font-size:16px;cursor:pointer')}>
+                <Truck />Salir hacia esta parada
+              </button>
+            )}
+            {actual.status === 'en_camino' && (
+              <button type="button" onClick={() => openModal(actual)} className="lu-press" style={sx('width:100%;margin-top:12px;min-height:56px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--primary);color:var(--on-primary);border-radius:14px;font-weight:600;font-size:16px;cursor:pointer;border:none')}>
+                <Check color="currentColor" w={2.2} size={18} />Confirmar entrega
+              </button>
+            )}
+            <div style={sx('display:flex;gap:8px;margin-top:8px')}>
+              {nav ? (
+                <a href={nav} target="_blank" rel="noopener noreferrer" className="lu-press" style={sx('flex:1;min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 8px;border-radius:12px;border:1px solid var(--line2);font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;text-align:center')}>
+                  <Route />Navegar
+                </a>
+              ) : (
+                <button type="button" disabled title="Sin dirección ni ubicación cargada" style={sx('flex:1;min-width:0;min-height:48px;padding:0 8px;border-radius:12px;border:1px solid var(--line);background:transparent;font-size:14px;font-weight:600;color:var(--faint);opacity:.6')}>Sin dirección</button>
               )}
-              {d.status === 'en_camino' && (
-                <button onClick={() => openModal(d)} style={sx('width:100%;margin-top:10px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;border:none')}>
-                  <Check color="currentColor" w={2.2} size={18} />Confirmar entrega
-                </button>
-              )}
-              {d.status === 'entregado' && (
-                <div style={sx('margin-top:10px;display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--success);background:var(--success-tint);border-radius:12px')}>
-                  <div style={sx('flex:none;width:92px;height:44px;background:#FCFBF8;border:1px solid var(--line2);border-radius:8px;display:grid;place-items:center;overflow:hidden')}>
+              <button type="button" onClick={() => setNoPudeId(actual.id)} className="lu-press" style={sx('flex:1;min-width:0;min-height:48px;padding:0 8px;border-radius:12px;border:1px solid var(--line2);background:transparent;font-size:14px;font-weight:600;color:var(--danger);cursor:pointer;line-height:1.2')}>No pude entregar</button>
+            </div>
+          </div>
+        )}
+
+        {/* DESPUÉS: el resto del recorrido, como renglones. Tocar uno lo vuelve la parada actual
+            (la cambia sólo en esta pantalla): el repartidor conoce la zona. */}
+        {despues.length > 0 && (
+          <>
+            <div style={sx('font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:16px 4px 4px')}>
+              Después · {despues.length} {despues.length === 1 ? 'parada' : 'paradas'}
+            </div>
+            {despues.map((d, i) => (
+              <button key={d.id} type="button" onClick={() => setElegidaId(d.id)} className="lu-press"
+                aria-label={`Hacer ahora la entrega de ${d.client}`}
+                style={sx('width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:6px 4px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);font-family:inherit;text-align:left;cursor:pointer')}>
+                <span style={sx('flex:none;min-width:26px;min-height:26px;border-radius:8px;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted)')}>
+                  {recorrido?.orden?.[d.id] ?? (paradaN ? paradaN + i + 1 : i + 1)}
+                </span>
+                <span style={sx('flex:1;min-width:0')}>
+                  <span style={sx('display:block;font-size:14px;font-weight:600;word-break:break-word')}>{d.client}</span>
+                  <span style={sx('display:block;font-size:11px;color:var(--faint);word-break:break-word')}>{d.loc || 'Sin dirección'}</span>
+                </span>
+                <span style={sx('flex:none;font-family:var(--font-mono);font-size:12px;color:var(--muted)')}>{arts(d)} art.</span>
+              </button>
+            ))}
+          </>
+        )}
+
+        {/* CERRADAS: entregadas y no entregadas, distintas por GLIFO y texto además del color
+            (`PildoraEstado`), así al final del día no se confunden. */}
+        {cerradas.length > 0 && (
+          <>
+            <div style={sx('font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:16px 4px 4px')}>
+              Cerradas · {cerradas.length}
+            </div>
+            {cerradas.map((d) => (
+              <div key={d.id} style={sx('display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 4px;border-bottom:1px solid var(--line)')}>
+                {d.status === 'entregado' && (
+                  // La firma va sobre su papel fijo (tokens `--firma-*`): es la misma imagen en los
+                  // dos temas, tinta oscura sobre claro.
+                  <span style={sx('flex:none;width:64px;height:36px;background:var(--firma-papel);border:1px solid var(--line2);border-radius:8px;display:grid;place-items:center;overflow:hidden')}>
                     {d.firma ? <img src={d.firma} alt="firma" style={sx('width:100%;height:100%;object-fit:contain')} />
-                      : <svg viewBox="0 0 92 44" style={sx('width:100%;height:100%')}><path d="M12 30 C20 12, 28 34, 36 22 S52 10, 58 26 S74 34, 82 18" fill="none" stroke="#2E3A44" strokeWidth="1.6" strokeLinecap="round" /></svg>}
-                  </div>
-                  <div>
-                    <div style={sx('font-size:12.5px;font-weight:600;color:var(--success)')}>Entrega registrada</div>
+                      : <svg viewBox="0 0 92 44" aria-hidden="true" style={sx('width:100%;height:100%')}><path d="M12 30 C20 12, 28 34, 36 22 S52 10, 58 26 S74 34, 82 18" fill="none" stroke="var(--firma-tinta)" strokeWidth="1.6" strokeLinecap="round" /></svg>}
+                  </span>
+                )}
+                <span style={sx('flex:1;min-width:0')}>
+                  <span style={sx('display:block;font-size:13.5px;font-weight:600;word-break:break-word')}>{d.client}</span>
+                  <span style={sx('display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:3px')}>
+                    {d.status === 'entregado'
+                      ? <PildoraEstado tipo="ok">Entregado{d.entregado ? ` ${d.entregado}` : ''}</PildoraEstado>
+                      : <PildoraEstado tipo="aviso">No entregado</PildoraEstado>}
                     {/* Honesto a propósito: la entrega y las cantidades SÍ se guardan; la firma
                         todavía no sube (ver el comentario del botón de confirmar). Decir
                         "conformidad registrada" cuando la imagen se pierde al recargar es prometer
                         un respaldo que no existe. */}
-                    <div style={sx('font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{d.entregado} · firma sólo en este teléfono</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
+                    {d.status === 'entregado' && <span style={sx('font-size:11px;color:var(--muted)')}>firma sólo en este teléfono</span>}
+                  </span>
+                </span>
+                {/* Un "No pude entregar" tocado sin querer, con guantes, no puede ser definitivo
+                    desde la calle: vuelve a "en camino" y a la parada actual. */}
+                {d.status === 'no_entregado' && (
+                  <button type="button" onClick={() => { setElegidaId(d.id); marcarEnCamino(d) }} className="lu-press" style={sx('flex:none;min-height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:transparent;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer')}>Reintentar</button>
+                )}
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* MODAL DE ENTREGA — wizard de 2 pasos (cantidades → firma).
@@ -382,12 +520,12 @@ export default function RepartidorView() {
         }
         footer={step === 'cant' ? (
           <>
-            <button type="button" onClick={() => setModal(null)} className="lu-press" style={sx('flex:none;min-height:50px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
-            <button type="button" onClick={() => { setStep('firma'); setHasInk(false) }} className="lu-press" style={sx('flex:1;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);cursor:pointer;border:none')}>Continuar a firma</button>
+            <button type="button" onClick={() => setModal(null)} className="lu-press" style={sx('flex:none;min-height:56px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
+            <button type="button" onClick={() => { setStep('firma'); setHasInk(false) }} className="lu-press" style={sx('flex:1;min-height:56px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:var(--r-md);font-weight:600;font-size:16px;cursor:pointer;border:none')}>Continuar a firma</button>
           </>
         ) : (
           <>
-            <button type="button" onClick={() => setStep('cant')} className="lu-press" style={sx('flex:none;min-height:50px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-sm);color:var(--muted);cursor:pointer;background:transparent')}>Atrás</button>
+            <button type="button" onClick={() => setStep('cant')} className="lu-press" style={sx('flex:none;min-height:56px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);color:var(--muted);cursor:pointer;background:transparent')}>Atrás</button>
             <button
               type="button"
               className="lu-press"
@@ -414,7 +552,7 @@ export default function RepartidorView() {
                   .catch(() => showToast('Se guardó local: sube al volver la señal'))
                 showToast(`${md.numero} entregado${faltantes > 0 ? ` · ${faltantes} u. a reporte de faltante` : ' · completo'}`)
               }}
-              style={{ ...sx('flex:1;min-height:50px;display:grid;place-items:center;border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);border:none'), background: hasInk ? 'var(--primary)' : 'var(--surface2)', color: hasInk ? 'var(--on-primary)' : 'var(--faint)', cursor: hasInk ? 'pointer' : 'not-allowed' }}
+              style={{ ...sx('flex:1;min-height:56px;display:grid;place-items:center;border-radius:var(--r-md);font-weight:600;font-size:16px;border:none'), background: hasInk ? 'var(--primary)' : 'var(--surface2)', color: hasInk ? 'var(--on-primary)' : 'var(--faint)', cursor: hasInk ? 'pointer' : 'not-allowed' }}
             >Confirmar entrega</button>
           </>
         )}
@@ -437,20 +575,27 @@ export default function RepartidorView() {
                             <div style={sx('font-size:13px;font-weight:500')}>{it.name}</div>
                             <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);font-variant-numeric:tabular-nums;margin-top:2px')}>Pedido: {it.gen} u.</div>
                           </div>
-                          <div style={sx('display:flex;align-items:center;gap:2px')}>
-                            <button onClick={() => setQty((v) => ({ ...v, [k]: Math.max(0, (v[k] ?? it.gen) - 1) }))} style={stepBtn}>−</button>
+                          {/* (01/10/2026, C10) − y + de 44 con 8 px entre controles (brief v2 §4.3). */}
+                          <div style={sx('display:flex;align-items:center;gap:8px')}>
+                            <button type="button" aria-label="Entrega una unidad menos" onClick={() => setQty((v) => ({ ...v, [k]: Math.max(0, (v[k] ?? it.gen) - 1) }))} style={stepBtn}>−</button>
                             <div style={{ ...sx('width:38px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600'), color: short ? 'var(--warning)' : 'var(--text)' }}>{del}</div>
-                            <button onClick={() => setQty((v) => ({ ...v, [k]: Math.min(it.gen, (v[k] ?? it.gen) + 1) }))} style={stepBtn}>+</button>
+                            <button type="button" aria-label="Entrega una unidad más" onClick={() => setQty((v) => ({ ...v, [k]: Math.min(it.gen, (v[k] ?? it.gen) + 1) }))} style={stepBtn}>+</button>
                           </div>
                         </div>
                         {short && (
                           <div style={sx('margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)')}>
-                            <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--warning);margin-bottom:7px')}>Faltan {it.gen - del} u. — motivo</div>
-                            <div style={sx('display:flex;gap:6px;flex-wrap:wrap')}>
+                            <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--warning);margin-bottom:7px')}>Faltan {it.gen - del} u. — motivo</div>
+                            <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
                               {MOTIVO_CHIPS.map((label) => {
                                 const on = motivo === label
                                 return (
-                                  <div key={label} onClick={() => setMotivos((v) => ({ ...v, [i]: label }))} style={{ ...sx('padding:8px 13px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--warning)' : 'var(--line2)'}`, background: on ? 'var(--warning-tint)' : 'var(--surface)', color: on ? 'var(--warning)' : 'var(--muted)' }}>{label}</div>
+                                  // 🩸 (01/10/2026, C10) Acá decía `[i]: label` — la POSICIÓN de la línea — mientras
+                                  // el chip elegido se lee con `motivos[k]` y `guardarEntregado` guarda
+                                  // `motivos[it.idLinea]`. Con líneas reales (que siempre traen `idLinea`) el toque
+                                  // no hacía nada visible y se guardaba siempre "Sin stock": el motivo que alimenta
+                                  // el reporte de faltante mentía. Además: <button> de 44 con ✓ (no un div inerte
+                                  // para TalkBack, y el elegido no depende sólo del color).
+                                  <button type="button" key={label} aria-pressed={on} onClick={() => setMotivos((v) => ({ ...v, [k]: label }))} style={{ ...sx('min-height:44px;padding:0 14px;display:inline-flex;align-items:center;gap:5px;border-radius:99px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit'), border: `1px solid ${on ? 'var(--warning)' : 'var(--line2)'}`, background: on ? 'var(--warning-tint)' : 'var(--surface)', color: on ? 'var(--warning)' : 'var(--muted)' }}>{on && <Check size={14} color="currentColor" w={2} />}{label}</button>
                                 )
                               })}
                             </div>
@@ -466,17 +611,68 @@ export default function RepartidorView() {
             {mdView && step === 'firma' && (
               <>
                 <div style={sx('font-size:12px;color:var(--muted);margin-bottom:10px')}>Entregá el teléfono al receptor para que firme la conformidad.</div>
-                <div style={sx('position:relative;border:1px solid var(--line2);border-radius:var(--r-lg);overflow:hidden;background:#FCFBF8')}>
+                {/* EL PAPEL DE FIRMA: tinta oscura sobre claro en LOS DOS temas (hoja 2d). Los colores
+                    son los tokens `--firma-*` de index.css, que no siguen al tema — antes eran cuatro
+                    hex escritos acá (`#FCFBF8`, `#B0C2C6`, `#5A6D76` y la tinta del canvas). Alto de
+                    210: nadie firma bien en una franja de 44. */}
+                <div style={sx('position:relative;border:1.5px dashed var(--firma-guia);border-radius:var(--r-lg);overflow:hidden;background:var(--firma-papel)')}>
                   <canvas ref={initCanvas} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} style={sx('display:block;width:100%;height:210px;touch-action:none;cursor:crosshair')} />
-                  <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed #B0C2C6;pointer-events:none')} />
-                  {!hasInk && <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;pointer-events:none;color:#5A6D76;font-size:14px;font-weight:500')}>Firmá acá</div>}
+                  <div style={sx('position:absolute;left:24px;right:24px;bottom:42px;border-bottom:1.5px dashed var(--firma-guia);pointer-events:none')} />
+                  {!hasInk && <div style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;pointer-events:none;color:var(--firma-texto);font-size:14px;font-weight:500')}>Dibujá la firma con el dedo</div>}
                 </div>
                 <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:8px')}>
                   <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-family:var(--font-mono)')}>{kgFmt(mdView.kg)} kg · {fmtPesos(mdView.monto)}</div>
-                  <button type="button" onClick={clearSig} className="lu-press" style={sx('min-height:38px;padding:0 14px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Limpiar</button>
+                  <button type="button" onClick={clearSig} className="lu-press" style={sx('min-height:44px;padding:0 14px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Limpiar</button>
                 </div>
               </>
             )}
+      </Overlay>
+
+      {/* EL REMITO COMPLETO ("Ver detalle"): sólo lectura, línea por línea. */}
+      <Overlay
+        open={!!det}
+        onClose={() => setDetalleId(null)}
+        variant="sheet"
+        contained
+        title="Detalle de la entrega"
+        subtitle={detView ? `${detView.numero} · ${detView.client}` : ''}
+      >
+        {detView && (
+          <>
+            {detView.items.map((it, i) => (
+              <div key={it.idLinea ?? i} style={sx('display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:44px;padding:8px 0;border-bottom:1px solid var(--line)')}>
+                <span style={sx('flex:1;min-width:0;font-size:14px;word-break:break-word')}>{it.name}</span>
+                <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600')}>{it.gen} u.</span>
+              </div>
+            ))}
+            <div style={sx('margin-top:10px;display:flex;flex-wrap:wrap;gap:4px 12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)')}>
+              <span>{kgFmt(detView.kg)} kg</span>
+              <span>{fmtPesos(detView.monto)}</span>
+              {detView.tomado && <span>Tomado {detView.tomado}</span>}
+            </div>
+          </>
+        )}
+      </Overlay>
+
+      {/* "NO PUDE ENTREGAR": confirmación de un paso (ver `confirmarNoEntregado`). */}
+      <Overlay
+        open={!!np}
+        onClose={() => setNoPudeId(null)}
+        variant="sheet"
+        contained
+        title="No se pudo entregar"
+        subtitle={npView ? `${npView.numero} · ${npView.client}` : ''}
+        footer={
+          <>
+            <button type="button" onClick={() => setNoPudeId(null)} className="lu-press" style={sx('flex:none;min-height:56px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);color:var(--muted);cursor:pointer;background:transparent')}>Volver</button>
+            <button type="button" onClick={() => npView && confirmarNoEntregado(npView)} className="lu-press" style={sx('flex:1;min-height:56px;display:grid;place-items:center;background:var(--danger);color:var(--on-danger);border-radius:var(--r-md);font-weight:600;font-size:16px;cursor:pointer;border:none')}>Marcar como no entregado</button>
+          </>
+        }
+      >
+        <div style={sx('font-size:14px;color:var(--muted);line-height:1.55')}>
+          El pedido queda como <b style={sx('color:var(--text)')}>No entregado</b>: no pide firma y no cuenta como entrega. La oficina lo ve en Pedidos y decide si se reprograma.
+          <div style={sx('margin-top:8px')}>Si te equivocaste, desde <b style={sx('color:var(--text)')}>Cerradas</b> lo podés volver a intentar.</div>
+        </div>
       </Overlay>
 
       {toast && (
@@ -489,13 +685,4 @@ export default function RepartidorView() {
   )
 }
 
-const stepBtn = { ...sx('width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:19px;user-select:none;background:transparent') }
-
-function Mini({ label, value, color }) {
-  return (
-    <div>
-      <div style={sx('font-size:9.5px;color:var(--faint);font-family:Inter,sans-serif;text-transform:uppercase;letter-spacing:.06em')}>{label}</div>
-      <div style={{ ...sx('font-size:15px;font-weight:600;margin-top:1px'), color: color || 'inherit' }}>{value}</div>
-    </div>
-  )
-}
+const stepBtn = { ...sx('width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:19px;user-select:none;background:transparent') }
