@@ -91,7 +91,7 @@ export default function AvisoCuarentena({ tabla = null }) {
       {abierto && (
         <div style={sx('margin-top:7px;padding-top:7px;border-top:1px solid var(--line)')}>
           {items.map((m, i) => (
-            <div key={m.op_uid || i} style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);padding:3px 0')}>
+            <div key={m.op_uid || i} style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);padding:3px 0')}>
               <b>{m.op}</b> en <b>{m.table}</b>
               {m.id ? ` · ${String(m.id).slice(0, 8)}…` : ''}
               {/* El motivo es el que guardó `aislar()`: código y mensaje crudos de Postgres. Se

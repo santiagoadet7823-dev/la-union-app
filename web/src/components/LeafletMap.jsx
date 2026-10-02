@@ -63,7 +63,7 @@ function crearControlBasemap(getId, position) {
     // Crédito del proveedor, al pie del menú. Se actualiza al cambiar de capa porque cada una
     // tiene el suyo (OSM / Stadia + OpenMapTiles / satélite).
     const credito = L.DomUtil.create('div', '', menu)
-    credito.style.cssText = 'padding:6px 12px 7px;border-top:1px solid var(--line,#DDE4E1);font:400 9px/1.4 var(--font-mono,monospace);color:var(--faint,#5A6D76);max-width:190px'
+    credito.style.cssText = 'padding:6px 12px 7px;border-top:1px solid var(--line,#DDE4E1);font:400 11px/1.4 var(--font-mono,monospace);color:var(--faint,#5A6D76);max-width:190px'
 
     const pintarActivo = () => {
       const cur = getId()
@@ -107,6 +107,9 @@ function tintaSobre(hex) {
   return 1.05 / (L + 0.05) >= (L + 0.05) / 0.0546 ? '#fff' : '#0E0E10'
 }
 
+// (02/10/2026) Excepción al piso de 11 px: la abreviatura va a 10 px DENTRO de un pin fijo de
+// 22/26 px (borde de 2 incluido). Subirla sin agrandar el pin la pega a los bordes; lo mismo el
+// glifo de 7 px del círculo de 14 en `hitoIcon`.
 function pinIcon(color, label, labelColor, selected) {
   const size = selected ? 26 : 22
   const ring = selected ? '#7CB8C9' : '#ffffff'
@@ -218,7 +221,7 @@ function bubbleIcon(opts) {
     ? `<img src="${esc(foto)}" style="width:100%;height:100%;object-fit:cover;display:block" />`
     : `<div style="width:100%;height:100%;display:grid;place-items:center;background:${color || '#39638A'};color:${tintaSobre(color || '#39638A')};font-family:'IBM Plex Mono',monospace;font-size:${selected ? 15 : 13}px;font-weight:700">${esc(iniciales || '')}</div>`
   const label = nombre
-    ? `<div style="margin-bottom:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(46,58,68,.82);color:#fff;font-family:Inter,sans-serif;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:99px">${esc(nombre)}</div>`
+    ? `<div style="margin-bottom:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(46,58,68,.82);color:#fff;font-family:Inter,sans-serif;font-size:11px;line-height:14px;font-weight:600;padding:1px 7px;border-radius:99px">${esc(nombre)}</div>`
     : ''
   // Alto de referencia para el ancla: avatar + punta (la píldora del nombre queda por
   // encima y no debe correr el ancla). iconAnchor = tip de la punta sobre la coordenada.
@@ -237,7 +240,9 @@ function bubbleIcon(opts) {
       <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:${punta}px solid #fff;margin-top:-2px;filter:drop-shadow(0 2px 1px rgba(0,0,0,.3))"></div>
     </div>`
   const W = 130
-  const H = (nombre ? 17 : 0) + D + punta
+  // (02/10/2026) La píldora del nombre pasó de 9.5 a 11 px (piso de 11, decisión 15) con
+  // line-height fijo de 14: 1 + 14 + 1 de padding + 3 de margen = 19 (antes ~17).
+  const H = (nombre ? 19 : 0) + D + punta
   return L.divIcon({
     className: 'lu-bubble',
     html,
@@ -376,7 +381,7 @@ function hitoIcon({ hora, color, glifo, atenuado = false }) {
   const c = color || '#7CB8C9'
   return L.divIcon({
     className: 'lu-hito',
-    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#2E3A44;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:${tintaSobre(c)};font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
+    html: `<div style="position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;opacity:${atenuado ? 0.32 : 1};background:#fff;color:#2E3A44;border:2px solid ${c};border-radius:99px;padding:2px 7px 2px 3px;box-shadow:${atenuado ? 'none' : '0 2px 8px rgba(0,0,0,.45)'};font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;line-height:1.35"><span style="display:grid;place-items:center;flex:none;width:14px;height:14px;border-radius:50%;background:${c};color:${tintaSobre(c)};font-size:7px;line-height:1">${glifo}</span>${esc(hora || '')}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   })

@@ -101,7 +101,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, letterSpacing: '.04em', lineHeight: 1.1 }}>
                 DisT-At
               </div>
-              <div style={{ fontSize: 9, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>Distribuidora · Anta</div>
+              <div style={{ fontSize: 11, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>Distribuidora · Anta</div>
             </div>
           )}
         </div>
@@ -135,7 +135,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
           {!isMobile && (
             <div style={{ textAlign: 'right', lineHeight: 1.15 }}>
               <div style={{ fontSize: 12.5, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
-              <div style={{ fontSize: 9.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{identidadVisible(user?.email)}</div>
+              <div style={{ fontSize: 11, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{identidadVisible(user?.email)}</div>
             </div>
           )}
           <span style={{
