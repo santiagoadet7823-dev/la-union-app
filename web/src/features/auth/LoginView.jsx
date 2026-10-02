@@ -28,7 +28,26 @@ import { disponible as vidrieraDisponible } from '../../services/vidrieraTablet'
  *   - Recuperar la contraseña. Antes había que llamar al admin para que la cambiara a mano.
  *   - Tres errores con tres formas distintas (ver `clasificar`), en vez de un rectángulo rojo con
  *     el mensaje de la API en inglés — que además lo veía cualquier vendedor.
+ *
+ * RESTYLE v3 (01/10/2026, hoja `Ingreso.dc.html` + módulo 1 del brief estético v2). Solo forma:
+ * los flujos (Google, usuario/email, registro con código, recuperación, cuenta pendiente, sin red)
+ * son los mismos y llaman a lo mismo de AuthContext. Lo que cambió:
+ *   - Cada campo lleva su ETIQUETA visible arriba (`<label>` de verdad, no solo placeholder): el
+ *     placeholder desaparece al escribir y con sol de frente nadie recuerda qué pedía el campo.
+ *   - El alta propia muestra las reglas de la contraseña como lista con ✓ y texto (`Reglas`): el
+ *     estado lo dice la palabra y el glifo, el color solo acompaña.
+ *   - Nada por debajo de 11 px (detalle técnico, versión) y todos los toques ≥ 44 px ("Cerrar",
+ *     "Soy una tablet").
+ *   - ⚠️ Esta pantalla la abre la tablet con Chrome 79: nada de `gap` en flex, `inset` ni `dvh`.
+ *     La separación va con `--gx/--gy` (`index.css`, `[style*="--gx"] > * + *`).
  */
+
+/** Piso de 11 px para rótulos chicos mientras `--fs-2xs` siga en 10 px (decisión 15 del dueño).
+ * Cuando la escala pase a rem (0,6875 rem = 11 px) el `max` deja de hacer efecto solo. */
+const FS_MIN = 'max(11px, var(--fs-2xs))'
+
+/** Negro del isotipo: el mismo del splash nativo. Es color de MARCA, no de tema (07 §4.1). */
+const NEGRO_MARCA = '#0C0C0C'
 
 /** El detalle técnico existe para dar soporte por teléfono, no para que lo lea un vendedor. */
 function clasificar(mensaje) {
@@ -87,6 +106,13 @@ export default function LoginView({ onTablet }) {
   const [cargando, setCargando] = useState(null)   // 'google' | 'email' | null
   const [detalle, setDetalle] = useState(false)
   const [hoja, setHoja] = useState(null)           // 'recuperar' | 'enlace' | 'sin-email' | 'acceso' | 'registro' | null
+  // 🩸 Cierra SOLO si la hoja abierta sigue siendo esa (01/10/2026). `Overlay` avisa `onClose` al
+  // terminar su animación de salida también cuando lo cerró el padre (`open` pasó a false). Al
+  // pasar de una hoja a otra ("Solicitar acceso" → "Crear usuario y contraseña", "Recuperar" →
+  // "Enlace enviado" o "Esta cuenta no tiene email") la hoja que se iba llamaba `setHoja(null)`
+  // ~300 ms después y cerraba la que acababa de abrirse: el registro propio no se podía abrir
+  // desde el ingreso. Visto en la galería de capturas con clics reales.
+  const cerrarHoja = (nombre) => setHoja((h) => (h === nombre ? null : h))
   const [mailRecuperar, setMailRecuperar] = useState('')
   const [enviando, setEnviando] = useState(false)
 
@@ -183,7 +209,7 @@ export default function LoginView({ onTablet }) {
 
         {/* Marca. El isotipo va sobre su propio negro, el mismo del splash nativo. */}
         <div style={{ ...sx('display:flex;flex-direction:column;align-items:center;margin-top:6px'), '--gy': '10px' }}>
-          <div style={sx('width:64px;height:64px;border-radius:18px;background:#0C0C0C;display:grid;place-items:center;border:1px solid var(--line)')}>
+          <div style={{ ...sx('width:64px;height:64px;border-radius:18px;display:grid;place-items:center;border:1px solid var(--line)'), background: NEGRO_MARCA }}>
             <Isotipo size={44} />
           </div>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:var(--fs-xl);letter-spacing:.03em')}>DisT-At</div>
@@ -248,7 +274,7 @@ export default function LoginView({ onTablet }) {
                 Se había puesto para depurar un problema de login en los teléfonos y quedó en
                 producción. Sigue existiendo —hace falta para dar soporte— pero detrás de un gesto. */}
             {detalle && (
-              <div style={sx('margin-top:10px;padding:10px 12px;border-radius:var(--r-md);background:var(--surface2);font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--muted);line-height:1.6;word-break:break-word')}>
+              <div style={{ ...sx('margin-top:10px;padding:10px 12px;border-radius:var(--r-md);background:var(--surface2);font-family:var(--font-mono);color:var(--muted);line-height:1.6;word-break:break-word'), fontSize: FS_MIN }}>
                 {authError}
                 {authStatus ? <><br />{authStatus}</> : null}
                 <br />v{APP_VERSION}
@@ -269,7 +295,7 @@ export default function LoginView({ onTablet }) {
           {ultimo && ultimo.metodo === 'google' && !form && (
             <button onClick={entrarConGoogle} disabled={!hasSupabase || !!cargando} className="lu-press"
               style={{ ...sx('display:flex;align-items:center;width:100%;min-height:64px;padding:10px 16px;border:none;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);text-align:left;cursor:pointer;box-shadow:var(--shadow-lg)'), '--gx': '12px' }}>
-              <span style={sx('width:42px;height:42px;flex:none;border-radius:var(--r-pill);background:rgba(255,255,255,.9);color:#2E3A44;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:var(--fs-lg);overflow:hidden')}>
+              <span style={sx('width:42px;height:42px;flex:none;border-radius:var(--r-pill);background:rgba(255,255,255,.9);color:#2E3A44;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:var(--fs-md);overflow:hidden')}>
                 {ultimo.foto
                   ? <img src={ultimo.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : initials(ultimo.nombre || identidadVisible(ultimo.email))}
@@ -278,7 +304,7 @@ export default function LoginView({ onTablet }) {
                 <span style={sx('display:block;font-size:var(--fs-lg);font-weight:700;line-height:1.2')}>
                   Continuar como {(ultimo.nombre || identidadVisible(ultimo.email)).split(' ')[0]}
                 </span>
-                <span style={sx('display:block;font-size:var(--fs-sm);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{identidadVisible(ultimo.email)}</span>
+                <span title={identidadVisible(ultimo.email)} style={sx('display:block;font-size:var(--fs-sm);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{identidadVisible(ultimo.email)}</span>
               </span>
               {cargando === 'google'
                 ? <span className="lu-spin" style={sx('width:22px;height:22px;flex:none;border-radius:var(--r-pill);border:2.5px solid rgba(255,255,255,.35);border-top-color:var(--on-primary)')} />
@@ -300,39 +326,32 @@ export default function LoginView({ onTablet }) {
           {!form ? (
             <button onClick={() => setForm(true)} className="lu-press"
               style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line);color:var(--muted);font-size:var(--fs-md);font-weight:600;cursor:pointer'), '--gx': '8px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2.8" y="5" width="18.4" height="14" rx="2.6" /><path d="m3.6 6.6 8.4 6 8.4-6" /></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none' }}><rect x="2.8" y="5" width="18.4" height="14" rx="2.6" /><path d="m3.6 6.6 8.4 6 8.4-6" /></svg>
               <span>Ingresar con usuario y contraseña</span>
             </button>
           ) : (
             <form onSubmit={entrarConEmail} className="lu-rise" style={{ ...sx('display:flex;flex-direction:column;padding-top:4px'), '--gy': '10px' }}>
               <div style={sx('display:flex;align-items:center;justify-content:space-between')}>
-                <span style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.06em;text-transform:uppercase')}>Usuario y contraseña</span>
+                <span style={sx('font-size:var(--fs-xs);color:var(--faint);font-weight:600;letter-spacing:.08em;text-transform:uppercase')}>Usuario y contraseña</span>
                 <button type="button" onClick={() => setForm(false)}
-                  style={sx('min-height:32px;padding:0 8px;background:transparent;border:none;font-size:var(--fs-sm);color:var(--muted);cursor:pointer')}>Cerrar</button>
+                  style={sx('min-height:44px;padding:0 10px;margin-right:-10px;background:transparent;border:none;font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer')}>Cerrar</button>
               </div>
               {/* `type="text"` a propósito, no `email`: un nombre de usuario (cuentas sin email
                   real, db/78) no es una dirección válida y el navegador lo marcaría en rojo. */}
-              <input
-                type="text" autoComplete="username" placeholder="Usuario o email" aria-label="Usuario o email"
-                value={entrada} onChange={(e) => setEntrada(e.target.value)} disabled={!hasSupabase || !!cargando}
-                className="lu-input" style={campo}
-              />
-              <div style={sx('position:relative')}>
+              <Campo etiqueta="Usuario o email" id="lu-login-entrada">
                 <input
-                  type={verPass ? 'text' : 'password'} autoComplete="current-password" placeholder="Contraseña" aria-label="Contraseña"
-                  value={password} onChange={(e) => setPassword(e.target.value)} disabled={!hasSupabase || !!cargando}
-                  className="lu-input" style={{ ...campo, paddingRight: 58 }}
+                  id="lu-login-entrada" type="text" autoComplete="username"
+                  value={entrada} onChange={(e) => setEntrada(e.target.value)} disabled={!hasSupabase || !!cargando}
+                  className="lu-input" style={campo}
                 />
-                <button type="button" onClick={() => setVerPass((v) => !v)}
-                  aria-label={verPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} title={verPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  style={sx('position:absolute;right:4px;top:2px;width:48px;height:48px;display:grid;place-items:center;background:transparent;border:none;cursor:pointer;border-radius:var(--r-md)')}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={verPass ? 'var(--primary)' : 'var(--muted)'} strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M2 12s3.8-6.4 10-6.4S22 12 22 12s-3.8 6.4-10 6.4S2 12 2 12Z" /><circle cx="12" cy="12" r="2.8" />
-                    {verPass && <path d="M3 3l18 18" />}
-                  </svg>
-                </button>
-              </div>
-              <div style={{ ...sx('display:flex;align-items:center;justify-content:space-between'), '--gx': '8px' }}>
+              </Campo>
+              <Campo etiqueta="Contraseña" id="lu-login-pass">
+                <CampoClave
+                  id="lu-login-pass" autoComplete="current-password" visible={verPass} onVer={() => setVerPass((v) => !v)}
+                  value={password} onChange={(e) => setPassword(e.target.value)} disabled={!hasSupabase || !!cargando}
+                />
+              </Campo>
+              <div style={{ ...sx('display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap'), '--gx': '8px' }}>
                 <label style={{ ...sx('display:flex;align-items:center;min-height:44px;cursor:pointer;padding-right:8px'), '--gx': '10px' }}>
                   {/* Se persiste al tocarla, no al entrar: si alguien la apaga en un teléfono
                       prestado y después no llega a ingresar, igual quedó dicho que no se guarde. */}
@@ -381,30 +400,34 @@ export default function LoginView({ onTablet }) {
               una vez, y el vendedor sabe que existe. Solo aparece en la APK con los plugins. */}
           {vidrieraDisponible() && (
             <button onClick={onTablet} className="lu-press"
-              style={sx('background:none;border:none;font-size:var(--fs-sm);color:var(--muted);text-decoration:underline;cursor:pointer;padding:8px 4px;margin-top:2px')}>
+              style={sx('min-height:44px;background:none;border:none;font-size:var(--fs-sm);color:var(--muted);text-decoration:underline;cursor:pointer;padding:0 8px')}>
               Soy una tablet · escanear código
             </button>
           )}
-          <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint);margin-top:2px')}>v{APP_VERSION}</div>
+          <div style={{ ...sx('font-family:var(--font-mono);color:var(--faint);margin-top:2px'), fontSize: FS_MIN }}>v{APP_VERSION}</div>
         </div>
       </div>
 
       {/* ---- Hojas inferiores. Van por Overlay (§7): nunca un overlay a mano. ---- */}
-      <Overlay open={hoja === 'recuperar'} onClose={() => setHoja(null)} variant="sheet" title="Recuperar contraseña">
+      <Overlay open={hoja === 'recuperar'} onClose={() => cerrarHoja('recuperar')} variant="sheet" title="Recuperar contraseña">
         <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.55')}>
           Te mandamos un enlace al email para que pongas una nueva. Si entrás con Google no hace
           falta: esa cuenta no tiene contraseña.
         </div>
-        <input type="email" inputMode="email" placeholder="Tu email" aria-label="Tu email" autoFocus
-          value={mailRecuperar} onChange={(e) => setMailRecuperar(e.target.value)}
-          className="lu-input" style={{ ...campo, marginTop: 16 }} />
+        <div style={{ marginTop: 16 }}>
+          <Campo etiqueta="Tu email" id="lu-recuperar-mail">
+            <input id="lu-recuperar-mail" type="email" inputMode="email" autoComplete="email" placeholder="tu@email.com" autoFocus
+              value={mailRecuperar} onChange={(e) => setMailRecuperar(e.target.value)}
+              className="lu-input" style={campo} />
+          </Campo>
+        </div>
         <button onClick={pedirEnlace} disabled={enviando || !mailRecuperar.trim()} className="lu-press"
           style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;margin-top:12px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700'), cursor: enviando ? 'wait' : 'pointer', opacity: mailRecuperar.trim() ? 1 : 0.6 }}>
           {enviando ? 'Enviando…' : 'Enviar enlace'}
         </button>
       </Overlay>
 
-      <Overlay open={hoja === 'enlace'} onClose={() => setHoja(null)} variant="sheet" title="Enlace enviado">
+      <Overlay open={hoja === 'enlace'} onClose={() => cerrarHoja('enlace')} variant="sheet" title="Enlace enviado">
         <div style={sx('text-align:center;padding:4px 0 8px')}>
           <div style={sx('width:64px;height:64px;margin:0 auto 14px;border-radius:var(--r-pill);background:var(--success-tint);display:grid;place-items:center')}>
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7" /></svg>
@@ -425,7 +448,7 @@ export default function LoginView({ onTablet }) {
       {/* Cuentas sin email real (db/78): el enlace por mail no tiene a dónde llegar. La única
           salida es que un administrador la resetee desde el menú Usuarios (Edge Function
           resetear-contrasena) y le dicte la contraseña nueva por teléfono. */}
-      <Overlay open={hoja === 'sin-email'} onClose={() => setHoja(null)} variant="sheet" title="Esta cuenta no tiene email">
+      <Overlay open={hoja === 'sin-email'} onClose={() => cerrarHoja('sin-email')} variant="sheet" title="Esta cuenta no tiene email">
         <div style={sx('text-align:center;padding:4px 0 8px')}>
           <div style={sx('width:64px;height:64px;margin:0 auto 14px;border-radius:var(--r-pill);background:var(--warning-tint);display:grid;place-items:center')}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.8" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2.4" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /><path d="M12 15v2" /></svg>
@@ -447,7 +470,7 @@ export default function LoginView({ onTablet }) {
           también se puede crear un usuario y contraseña propios (Edge Function
           registrar-usuario) — los dos caminos terminan igual: una cuenta PENDIENTE (sin rol ni
           empresa) hasta que un administrador la revise y la asigne. */}
-      <Overlay open={hoja === 'acceso'} onClose={() => setHoja(null)} variant="sheet" title="Solicitar acceso">
+      <Overlay open={hoja === 'acceso'} onClose={() => cerrarHoja('acceso')} variant="sheet" title="Solicitar acceso">
         <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.6')}>
           DisT-At es privado de cada distribuidora. Entrá con tu cuenta de Google, o creá tu propio
           usuario y contraseña. En los dos casos tu cuenta queda pendiente hasta que un
@@ -467,53 +490,64 @@ export default function LoginView({ onTablet }) {
       {/* Alta propia. El código de invitación NO es una contraseña de verdad —es un freno contra
           cualquiera que encuentre la URL pública, no autenticación—, así que se lo dice tal cual:
           no hace falta esconder por qué se pide. */}
-      <Overlay open={hoja === 'registro'} onClose={() => setHoja(null)} variant="sheet" title="Crear tu cuenta">
+      <Overlay open={hoja === 'registro'} onClose={() => cerrarHoja('registro')} variant="sheet" title="Crear tu cuenta">
         <form onSubmit={registrarme} className="lu-rise" style={{ ...sx('display:flex;flex-direction:column'), '--gy': '10px' }}>
           <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.55')}>
             Elegí tu usuario y contraseña. Tu cuenta queda pendiente hasta que un administrador te
             la asigne a tu empresa.
           </div>
-          <input
-            type="text" autoComplete="username" placeholder="Elegí un usuario" aria-label="Elegí un usuario" autoFocus
-            value={regUsuario} onChange={(e) => setRegUsuario(e.target.value)} disabled={regEnviando}
-            className="lu-input" style={campo}
-          />
-          <input
-            type="text" autoComplete="name" placeholder="Tu nombre" aria-label="Tu nombre"
-            value={regNombre} onChange={(e) => setRegNombre(e.target.value)} disabled={regEnviando}
-            className="lu-input" style={campo}
-          />
-          <div style={sx('position:relative')}>
+          <Campo etiqueta="Usuario" id="lu-reg-usuario" ayuda="Minúsculas, números, punto, guion o guion bajo (3 a 30).">
             <input
-              type={regVerPass ? 'text' : 'password'} autoComplete="new-password" placeholder="Contraseña" aria-label="Contraseña"
-              value={regPassword} onChange={(e) => setRegPassword(e.target.value)} disabled={regEnviando}
-              className="lu-input" style={{ ...campo, paddingRight: 58 }}
+              id="lu-reg-usuario" type="text" autoComplete="username" placeholder="ej. juan.perez" autoFocus
+              autoCapitalize="none" spellCheck={false}
+              value={regUsuario} onChange={(e) => setRegUsuario(e.target.value)} disabled={regEnviando}
+              className="lu-input" style={campo}
             />
-            <button type="button" onClick={() => setRegVerPass((v) => !v)}
-              aria-label={regVerPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} title={regVerPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-              style={sx('position:absolute;right:4px;top:2px;width:48px;height:48px;display:grid;place-items:center;background:transparent;border:none;cursor:pointer;border-radius:var(--r-md)')}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={regVerPass ? 'var(--primary)' : 'var(--muted)'} strokeWidth="1.8" strokeLinecap="round">
-                <path d="M2 12s3.8-6.4 10-6.4S22 12 22 12s-3.8 6.4-10 6.4S2 12 2 12Z" /><circle cx="12" cy="12" r="2.8" />
-                {regVerPass && <path d="M3 3l18 18" />}
-              </svg>
-            </button>
-          </div>
-          <input
-            type={regVerPass ? 'text' : 'password'} autoComplete="new-password" placeholder="Repetí la contraseña" aria-label="Repetí la contraseña"
-            value={regPassword2} onChange={(e) => setRegPassword2(e.target.value)} disabled={regEnviando}
-            className="lu-input" style={campo}
-          />
-          <input
-            type="text" placeholder="Código de invitación" aria-label="Código de invitación"
-            value={regCodigo} onChange={(e) => setRegCodigo(e.target.value)} disabled={regEnviando}
-            className="lu-input" style={campo}
-          />
+          </Campo>
+          <Campo etiqueta="Tu nombre" id="lu-reg-nombre">
+            <input
+              id="lu-reg-nombre" type="text" autoComplete="name" placeholder="Nombre y apellido"
+              value={regNombre} onChange={(e) => setRegNombre(e.target.value)} disabled={regEnviando}
+              className="lu-input" style={campo}
+            />
+          </Campo>
+          <Campo etiqueta="Contraseña" id="lu-reg-pass">
+            <CampoClave
+              id="lu-reg-pass" autoComplete="new-password" visible={regVerPass} onVer={() => setRegVerPass((v) => !v)}
+              value={regPassword} onChange={(e) => setRegPassword(e.target.value)} disabled={regEnviando}
+            />
+          </Campo>
+          <Campo etiqueta="Repetí la contraseña" id="lu-reg-pass2">
+            <input
+              id="lu-reg-pass2" type={regVerPass ? 'text' : 'password'} autoComplete="new-password"
+              value={regPassword2} onChange={(e) => setRegPassword2(e.target.value)} disabled={regEnviando}
+              className="lu-input" style={campo}
+            />
+          </Campo>
+          {/* Medidor de reglas (brief v2, módulo 1-c): las MISMAS dos reglas que valida
+              `registrarme` (≥ 6 caracteres y coincidencia), a la vista mientras se escribe en vez
+              de enterarse al tocar "Crear cuenta". Solo informa: el botón no se bloquea, la
+              validación de siempre sigue siendo la que decide y la que muestra el error. */}
+          <Reglas reglas={[
+            { ok: regPassword.length >= 6, texto: 'Al menos 6 caracteres' },
+            { ok: regPassword.length > 0 && regPassword === regPassword2, texto: 'Las dos contraseñas coinciden' },
+          ]} />
+          <Campo etiqueta="Código de invitación" id="lu-reg-codigo">
+            <input
+              id="lu-reg-codigo" type="text" placeholder="A1B2C-D3E4F" autoCapitalize="characters" spellCheck={false}
+              value={regCodigo} onChange={(e) => setRegCodigo(e.target.value)} disabled={regEnviando}
+              className="lu-input" style={{ ...campo, fontFamily: 'var(--font-mono)', letterSpacing: '.04em' }}
+            />
+          </Campo>
           <div style={sx('font-size:var(--fs-xs);color:var(--faint);line-height:1.5')}>
             Te lo pasa tu administrador. Es de un solo uso: una vez que te registrás, ese código ya
             no sirve para nadie más.
           </div>
           {regError && (
-            <div style={sx('font-size:var(--fs-sm);color:var(--danger);line-height:1.5')}>{regError}</div>
+            <div role="alert" style={{ ...sx('display:flex;align-items:flex-start;font-size:var(--fs-sm);color:var(--danger);line-height:1.5'), '--gx': '8px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" style={{ flex: 'none', marginTop: 1 }}><circle cx="12" cy="12" r="9.2" /><path d="M12 7.5v5.2M12 16.3h.01" /></svg>
+              <span>{regError}</span>
+            </div>
           )}
           <button type="submit" disabled={regEnviando} className="lu-press"
             style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-lg);font-weight:700'), '--gx': '10px', cursor: regEnviando ? 'wait' : 'pointer', opacity: regEnviando ? 0.7 : 1 }}>
@@ -535,9 +569,60 @@ const campo = {
   fontFamily: 'var(--font-body)', fontSize: 'var(--fs-lg)', outline: 'none',
 }
 
+/** Etiqueta visible arriba del campo (01/10/2026). `<label htmlFor>` y no un div: el lector de
+ * pantalla la anuncia y tocar el rótulo enfoca el campo, que con una mano es un blanco más grande.
+ * `ayuda` va debajo, chica, para la regla que conviene saber antes de escribir. */
+function Campo({ etiqueta, id, ayuda, children }) {
+  return (
+    <div>
+      <label htmlFor={id} style={sx('display:block;font-size:var(--fs-xs);font-weight:600;color:var(--muted);line-height:1.35;margin-bottom:6px')}>{etiqueta}</label>
+      {children}
+      {ayuda && <div style={sx('font-size:var(--fs-xs);color:var(--faint);line-height:1.45;margin-top:5px')}>{ayuda}</div>}
+    </div>
+  )
+}
+
+/** Campo de contraseña con el ojito. El botón mide 48×48 dentro de un campo de 52. */
+function CampoClave({ id, visible, onVer, autoComplete, value, onChange, disabled }) {
+  const rotulo = visible ? 'Ocultar contraseña' : 'Mostrar contraseña'
+  return (
+    <div style={sx('position:relative')}>
+      <input
+        id={id} type={visible ? 'text' : 'password'} autoComplete={autoComplete}
+        value={value} onChange={onChange} disabled={disabled}
+        className="lu-input" style={{ ...campo, paddingRight: 58 }}
+      />
+      <button type="button" onClick={onVer} aria-label={rotulo} title={rotulo} aria-pressed={visible}
+        style={sx('position:absolute;right:2px;top:2px;width:48px;height:48px;display:grid;place-items:center;background:transparent;border:none;cursor:pointer;border-radius:var(--r-md)')}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={visible ? 'var(--primary)' : 'var(--muted)'} strokeWidth="1.8" strokeLinecap="round">
+          <path d="M2 12s3.8-6.4 10-6.4S22 12 22 12s-3.8 6.4-10 6.4S2 12 2 12Z" /><circle cx="12" cy="12" r="2.8" />
+          {visible && <path d="M3 3l18 18" />}
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+/** Lista de reglas con ✓ / círculo vacío y texto. Cumplida = ✓ en `--success` y texto en tinta;
+ * pendiente = círculo en `--faint`. La diferencia la lleva el glifo, no el color. */
+function Reglas({ reglas }) {
+  return (
+    <ul aria-label="Reglas de la contraseña" style={{ ...sx('list-style:none;margin:0;padding:0;display:flex;flex-direction:column'), '--gy': '4px' }}>
+      {reglas.map((r) => (
+        <li key={r.texto} style={{ ...sx('display:flex;align-items:center;font-size:var(--fs-sm);line-height:1.4'), '--gx': '8px', color: r.ok ? 'var(--text)' : 'var(--muted)' }}>
+          {r.ok
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none' }}><path d="m5 12.5 4.5 4.5L19 7" /></svg>
+            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2" aria-hidden="true" style={{ flex: 'none' }}><circle cx="12" cy="12" r="7" /></svg>}
+          <span>{r.texto}<span className="lu-ui-oculto">{r.ok ? ': cumplida' : ': pendiente'}</span></span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function GoogleIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true">
+    <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true" style={{ flex: 'none' }}>
       <path fill="#FFC107" d="M43.6 20.5h-1.9V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
       <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
       <path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.5l-6.6-5.6C29.7 34.5 27 35.5 24 35.5c-5.2 0-9.6-3.3-11.2-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
