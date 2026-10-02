@@ -162,8 +162,10 @@ export default function VendedorView() {
   // hacen crecer: el botón de confirmar quedaba tapado. Ver `useAltoMedido`.
   const [navRef, navAlto] = useAltoMedido()
 
+  // (02/10/2026) En el celular el alto es `100vh` MENOS la topbar del AppShell (`--chrome-h`, medida allá):
+  // con `100vh` a secas la página quedaba más alta que la pantalla y la botonera tapaba el CTA del pedido.
   return (
-    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600,
+    <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? 'calc(100vh - var(--chrome-h, 0px))' : '100%', minHeight: isMobile ? undefined : 600,
       /* 🩸 EN INMERSIVO `--nav-h` VA A 0 A MANO (09/09/2026). La botonera se esconde con
          `transform`, o sea que sigue MONTADA para poder animar la vuelta — y mientras esté montada
          `useAltoMedido` sigue midiendo sus ~80 px. Si no se pisa acá, la barra del pedido se apoya

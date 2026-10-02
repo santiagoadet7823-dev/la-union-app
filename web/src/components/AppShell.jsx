@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useRef, useState } from 'react'
 import { useAuth, identidadVisible } from '../context/AuthContext'
 import { useDevice } from '../context/DeviceContext'
+import { useAltoMedido } from '../hooks/useAltoMedido'
 import Logo from './Logo'
 import { Check, GestIcon } from './icons'
 import MenuCuenta from '../features/perfil/MenuCuenta'
@@ -51,6 +52,11 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
   // Lo prende el modo inmersivo del catálogo del vendedor (ver `useChrome` arriba).
   const [chromeOculto, setChromeOculto] = useState(false)
   const chrome = useMemo(() => ({ chromeOculto, setChromeOculto }), [chromeOculto])
+  // (02/10/2026) Alto MEDIDO de la topbar, publicado como `--chrome-h` para que la pantalla del vendedor
+  // (`VendedorView`, `100vh` en el celular) descuente lo que ocupa esta barra. Sin esto la página medía
+  // 100vh + la topbar (857 px en 360×800) y la botonera fija tapaba el "Confirmar pedido y finalizar
+  // visita" hasta que se scrolleaba el documento (criterio B2). En inmersivo la barra no ocupa nada: 0.
+  const [headerRef, headerAlto] = useAltoMedido()
 
   const [toast, setToast] = useState(null)
   const toastRef = useRef(null)
@@ -75,12 +81,13 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
 
   return (
     <ChromeContext.Provider value={chrome}>
-    <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', '--chrome-h': chromeOculto ? '0px' : `${headerAlto}px` }}>
       {/* Al esconderse no se desmonta: se colapsa el alto y se desliza hacia arriba, para que la
           animación de vuelta tenga desde dónde entrar. `overflow:hidden` es lo que evita que el
           contenido asome mientras el alto va a 0, y `visibility` lo saca del foco por teclado —
           un header invisible pero tabulable es una trampa para quien navega a ciegas. */}
       <header
+        ref={headerRef}
         aria-hidden={chromeOculto}
         style={{
           flex: 'none', minHeight: chromeOculto ? 0 : 52, height: chromeOculto ? 0 : undefined,
