@@ -22,6 +22,7 @@ import AlertasEquipo from '../../components/AlertasEquipo'
 import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
 import Logo from '../../components/Logo'
+import { useAltoMedido } from '../../hooks/useAltoMedido'
 import HaceSegundos from '../../components/HaceSegundos'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
@@ -511,6 +512,14 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
   // todavía abierta (informe 09 del emulador). Que no se oculte al entrar en inmersivo (arriba) es
   // otra cosa: tiene ✕ y se comporta como hoja, así que el atrás también la cierra.
   const hayPin = !!pin
+
+  // (02/10/2026) ALTO MEDIDO DEL HEADER (informe 09 del emulador). Todo lo que va debajo del header
+  // (el mapa con sus controles de zoom y capas, los paneles, el aviso de GPS y el toast) arrancaba en
+  // `HEADER_H` = 56 px fijos. Con letra del sistema 1,5 el header mide más y lo de abajo le tapaba el
+  // subtítulo ("Administrador · en vivo"); el header, a su vez, tapaba el "+" del zoom. Ahora se
+  // mide (incluye la safe-area); `HEADER_H` queda como respaldo del primer cuadro.
+  const [headerRef, headerAlto] = useAltoMedido()
+  const bajoHeader = (extra = 0) => (headerAlto ? `${headerAlto + extra}px` : safeTop(HEADER_H + extra))
   const hayComercio = !!comercioSel && !pin
   useEffect(() => {
     if (!hayPin) return undefined
@@ -528,7 +537,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
           isolation:isolate crea un stacking context propio → confina los z-index internos
           de Leaflet (panes/controles 200–1000) DEBAJO del chrome (header/chips/nav), si no
           el mapa tapa los menús. */}
-      <div style={{ position: 'absolute', top: inmersivo ? 0 : safeTop(HEADER_H), bottom: inmersivo ? 0 : safeBottom(NAV_H), left: 0, right: 0, isolation: 'isolate' }}>
+      <div style={{ position: 'absolute', top: inmersivo ? 0 : bajoHeader(), bottom: inmersivo ? 0 : safeBottom(NAV_H), left: 0, right: 0, isolation: 'isolate' }}>
         <LeafletMap
           theme={theme}
           height="100%"
@@ -598,10 +607,13 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== HEADER GLASS ===== */}
       {!inmersivo && (
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
+      <div ref={headerRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 'var(--z-chrome)', background: 'var(--glass-bg)', ...glass, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
+        {/* (02/10/2026) `gap` con margen en el bloque del título (no `gap` de flex: Chrome < 84) y el
+            título con `flex:1;min-width:0`: con letra 2,0 parte en renglones dentro de su columna en
+            vez de empujar los botones o encimarse con el subtítulo. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 11px' }}>
           <Logo size={34} radius={11} />
-          <div style={{ textAlign: 'center', lineHeight: 1.15 }}>
+          <div style={{ flex: '1 1 0', minWidth: 0, margin: '0 8px', textAlign: 'center', lineHeight: 1.15, overflowWrap: 'anywhere' }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15 }}>{title}</div>
             {/* 11 px (01/10/2026): piso de texto del brief (decisión 15); era 9,5. */}
             <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 5, marginTop: 1 }}>
@@ -645,7 +657,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== ALERTA GPS APAGADO (si hay) ===== */}
       {Object.values(gpsOff).length > 0 && section === 'mapa' && !inmersivo && (
-        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ position: 'absolute', top: bajoHeader(16), left: 14, right: 14, zIndex: 'var(--z-chrome)', background: 'var(--danger-tint)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 12, padding: '9px 12px', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, boxShadow: 'var(--shadow-lg)' }}>
           <Alerta size={15} style={{ flex: 'none' }} />
           {Object.values(gpsOff).map((u) => `${u.nombre} (${u.rol})`).join(', ')} · GPS desactivado
         </div>
@@ -838,7 +850,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         <div
           key={section}
           className="lu-rise"
-          style={{ position: 'absolute', top: safeTop(HEADER_H), bottom: safeBottom(NAV_H), left: 0, right: 0, zIndex: 'var(--z-chrome)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bg-app)', padding: '16px 14px 24px', boxSizing: 'border-box' }}
+          style={{ position: 'absolute', top: bajoHeader(), bottom: safeBottom(NAV_H), left: 0, right: 0, zIndex: 'var(--z-chrome)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bg-app)', padding: '16px 14px 24px', boxSizing: 'border-box' }}
         >
           {section === 'equipo' && (
             <>
@@ -937,7 +949,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
 
       {/* ===== TOAST ===== */}
       {toast && (
-        <div style={{ position: 'absolute', top: safeTop(HEADER_H + 14), left: 16, right: 16, zIndex: 'var(--z-toast)', ...plano, borderRadius: 13, padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9 }} className="lu-rise">
+        <div style={{ position: 'absolute', top: bajoHeader(14), left: 16, right: 16, zIndex: 'var(--z-toast)', ...plano, borderRadius: 13, padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 9 }} className="lu-rise">
           <Check size={16} color="var(--success)" />
           <span style={{ fontSize: 12.5, fontWeight: 500 }}>{toast}</span>
         </div>
