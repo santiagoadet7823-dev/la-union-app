@@ -11,7 +11,7 @@ import {
   EncabezadoFicha, TresNumeros, TarjetasDestino, TarjetasIdentidad, BloqueAsignaciones, ListaAsignaciones, TITULO_CAMPO,
   ListaCuenta, BloqueActividad, Historial, PedidosAnulados, TelefonoAlertas, RecorridoCard, SinRastreo,
 } from './FichaBloques'
-import { ResultadoReset, ResultadoResetMfa } from './Dialogos'
+import { ResultadoReset, ResultadoResetMfa, ConfirmarAccion } from './Dialogos'
 import { tarjeta, IcoMapa, IcoInforme, IcoBarras, IcoCarrito, IcoPlay } from './ui'
 
 /**
@@ -112,6 +112,8 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
   // Reseteo de 2FA por un admin (db/80, Edge Function mfa-resetear). Mismo criterio que
   // resetearPass: inmediato contra el servidor, sin borrador — no hay "deshacer" un factor borrado.
   const [resetMfa, setResetMfa] = useState(null) // null | 'pidiendo' | { ok: true } | { error }
+  // Confirmación antes de las dos acciones inmediatas (revisión de C9): null | 'pass' | 'mfa'.
+  const [confirmar, setConfirmar] = useState(null)
   async function resetearMfa() {
     setResetMfa('pidiendo')
     const { data, error } = await supabase.functions.invoke('mfa-resetear', { body: { id: p.id } })
@@ -177,8 +179,14 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
         onDesactivar={() => onPeligro({ i, modo: 'desactivar' })}
         onReactivar={() => bor.setCampo(p, 'activo', true)}
         onEliminar={(modo) => onPeligro({ i, modo })}
-        onResetearPass={resetearPass} resetPidiendo={reset === 'pidiendo'}
-        onResetearMfa={resetearMfa} resetMfaPidiendo={resetMfa === 'pidiendo'} />
+        onResetearPass={() => setConfirmar('pass')} resetPidiendo={reset === 'pidiendo'}
+        onResetearMfa={() => setConfirmar('mfa')} resetMfaPidiendo={resetMfa === 'pidiendo'} />
+      <ConfirmarAccion
+        pedido={confirmar === 'pass' ? { titulo: 'Restablecer contraseña', texto: `¿Restablecer la contraseña de ${nombre}? La actual deja de funcionar ya.`, etiqueta: 'Restablecer' }
+          : confirmar === 'mfa' ? { titulo: 'Verificación en 2 pasos', texto: `¿Quitar la verificación en 2 pasos de ${nombre}? Va a tener que configurarla de nuevo.`, etiqueta: 'Quitar verificación' }
+            : null}
+        onClose={() => setConfirmar(null)}
+        onConfirmar={() => { const que = confirmar; setConfirmar(null); if (que === 'pass') resetearPass(); else if (que === 'mfa') resetearMfa() }} />
       <ResultadoReset resultado={reset} onClose={() => setReset(null)} />
       <ResultadoResetMfa resultado={resetMfa} onClose={() => setResetMfa(null)} />
     </>

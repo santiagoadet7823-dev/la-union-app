@@ -478,6 +478,31 @@ export function ResultadoReset({ resultado, onClose }) {
   )
 }
 
+/**
+ * Confirmación corta de una acción INMEDIATA contra el servidor (01/10/2026, revisión de C9):
+ * "Restablecer contraseña" y "Verificación en 2 pasos" son filas de la lista Cuenta y llaman a una
+ * Edge Function sin borrador ni deshacer. Un toque de más dejaba a la persona sin poder entrar.
+ *
+ * `pedido`: null | { titulo, texto, etiqueta }. Se retiene el último para la animación de salida
+ * (mismo criterio que DialogoPeligro). `onConfirmar` lo llama el padre y cierra él.
+ */
+export function ConfirmarAccion({ pedido, onClose, onConfirmar }) {
+  const ref = useRef(pedido)
+  if (pedido) ref.current = pedido
+  const e = ref.current
+  return (
+    <Overlay open={!!pedido} onClose={onClose} maxWidth={440} title={e?.titulo || ''}
+      footer={
+        <div style={sx('display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--sp-2);width:100%')}>
+          <button type="button" onClick={onClose} className="lu-press" style={btnSec}>Cancelar</button>
+          <button type="button" onClick={onConfirmar} className="lu-press" style={btnPri(true)}>{e?.etiqueta || 'Confirmar'}</button>
+        </div>
+      }>
+      <div style={sx('font-size:var(--fs-md);line-height:1.5;color:var(--text)')}>{e?.texto}</div>
+    </Overlay>
+  )
+}
+
 /** Resultado de mfa-resetear (db/80): a diferencia de la contraseña, acá no hay ningún valor que
  * copiar — solo confirma que el factor se borró. Mismo criterio de Overlay siempre montado. */
 export function ResultadoResetMfa({ resultado, onClose }) {

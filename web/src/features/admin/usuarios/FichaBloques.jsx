@@ -604,7 +604,9 @@ function EditorGps({ valor, original, onChange, estado }) {
  *  - Desactivar, Eliminar y Purgar abren `DialogoPeligro` (Dialogos.jsx), que ya pedía confirmar
  *    —y escribir el nombre para eliminar/purgar— y van al borrador, no al servidor.
  *  - Restablecer contraseña y 2FA son INMEDIATOS contra el servidor (Edge Functions) y no tienen
- *    deshacer; el resultado sale en `ResultadoReset` / `ResultadoResetMfa`.
+ *    deshacer: Ficha.jsx pide confirmar con `ConfirmarAccion` antes de llamar; el resultado sale en
+ *    `ResultadoReset` / `ResultadoResetMfa`. Las filas que HACEN algo (no abren otra pantalla) van
+ *    sin chevron.
  *  - Eliminar y Purgar no están en el celular (decisión de la entrega v1.5: irreversibles).
  */
 export function ListaCuenta({ i, perm, movil, esSuperYPuede, onDesactivar, onReactivar, onEliminar, onResetearPass, resetPidiendo, onResetearMfa, resetMfaPidiendo }) {
@@ -615,15 +617,15 @@ export function ListaCuenta({ i, perm, movil, esSuperYPuede, onDesactivar, onRea
       {perm.bloqueo && <FilaLista etiqueta="No disponible" detalle={perm.bloqueo} />}
       {perm.resetearPass && (
         <FilaLista etiqueta="Restablecer contraseña" detalle="Le genera una contraseña nueva ya: se la pasás vos y la cambia al entrar."
-          valor={resetPidiendo ? 'Reseteando…' : null} deshabilitada={resetPidiendo} onClick={onResetearPass} />
+          valor={resetPidiendo ? 'Reseteando…' : null} deshabilitada={resetPidiendo} onClick={onResetearPass} chevron={false} />
       )}
       {perm.resetearMfa && (
         <FilaLista etiqueta="Verificación en 2 pasos" detalle="Restablecer: le borra la verificación ya y activa una nueva al entrar."
-          valor={resetMfaPidiendo ? 'Reseteando…' : null} deshabilitada={resetMfaPidiendo} onClick={onResetearMfa} />
+          valor={resetMfaPidiendo ? 'Reseteando…' : null} deshabilitada={resetMfaPidiendo} onClick={onResetearMfa} chevron={false} />
       )}
       {perm.desactivar && (activoEf
         ? <FilaLista etiqueta="Desactivar cuenta" detalle="No puede entrar hasta que la reactives. No borra nada." destructiva onClick={onDesactivar} />
-        : <FilaLista etiqueta="Reactivar cuenta" detalle="Vuelve a entrar con su cuenta de siempre." onClick={onReactivar} />
+        : <FilaLista etiqueta="Reactivar cuenta" detalle="Vuelve a entrar con su cuenta de siempre (al guardar)." onClick={onReactivar} chevron={false} />
       )}
       {perm.eliminar && !i.del && (
         <>
