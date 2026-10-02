@@ -254,7 +254,7 @@ export default function PedidosView({ onToast }) {
         <select
           value={filtroVendedor}
           onChange={(e) => setFiltroVendedor(e.target.value)}
-          style={sx('padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px')}
+          style={sx('padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')}
         >
           <option value="">Todas las personas</option>
           {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -266,7 +266,7 @@ export default function PedidosView({ onToast }) {
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar número, comercio o persona"
           aria-label="Buscar pedidos"
-          style={sx('flex:1;min-width:170px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px')}
+          style={sx('flex:1;min-width:170px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')}
         />
 
         {/* Para facturar en el sistema del cliente. Va con los filtros y no arriba del todo porque
@@ -345,7 +345,7 @@ export default function PedidosView({ onToast }) {
           <select
             value={filtroRepartidor}
             onChange={(e) => setFiltroRepartidor(e.target.value)}
-            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:11.5px')}
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(11.5px, var(--piso-entrada))')}
           >
             <option value="">Cualquier repartidor</option>
             <option value="sin">Sin repartidor</option>
@@ -364,7 +364,7 @@ export default function PedidosView({ onToast }) {
               if (l && l.ts < desde) setRango('30')
             }}
             title="Exportación al sistema de gestión (ERP)"
-            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:11.5px')}
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(11.5px, var(--piso-entrada))')}
           >
             <option value="">ERP: todos</option>
             <option value="sin">Sin exportar</option>

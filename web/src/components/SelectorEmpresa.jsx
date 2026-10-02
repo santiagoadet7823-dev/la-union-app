@@ -41,7 +41,7 @@ export default function SelectorEmpresa({ style, compacto = false }) {
           // Sin `outline:'none'` (02/10/2026): pisaba el anillo de :focus-visible y con teclado no se
           // veía dónde estaba el foco.
           background: 'transparent', border: 'none', color: 'inherit',
-          fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer',
+          fontSize: 'max(12px, var(--piso-entrada))', fontWeight: 600, fontFamily: 'var(--font-body)', cursor: 'pointer',
           maxWidth: compacto ? 110 : 180,
         }}
       >

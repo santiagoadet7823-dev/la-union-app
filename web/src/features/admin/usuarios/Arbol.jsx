@@ -155,7 +155,7 @@ export default function Arbol({
         <label style={sx('display:flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:11px;border:1px solid var(--line2);background:var(--surface2);color:var(--faint)')}>
           <IcoBuscar />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={nivelEmpresa ? 'Buscar en todas las empresas' : 'Buscar por nombre, email, código o zona'}
-            style={sx('flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:13px;color:var(--text);font-family:var(--font-body)')} />
+            style={sx('flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:max(13px, var(--piso-entrada));color:var(--text);font-family:var(--font-body)')} />
           {buscando && <button type="button" onClick={() => setQ('')} aria-label="Limpiar búsqueda" style={sx('border:0;background:transparent;cursor:pointer;color:var(--faint);font-size:15px;padding:8px;min-width:32px')}>✕</button>}
         </label>
         <div style={sx('display:flex;align-items:center;gap:8px')}>
@@ -176,7 +176,7 @@ export default function Arbol({
           })}
           {zonasTodas.length > 0 && (
             <select value={zonaFiltro || ''} onChange={(e) => setZonaFiltro(e.target.value || null)} aria-label="Filtrar por zona"
-              style={{ ...sx('height:30px;padding:0 8px;border-radius:99px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--font-body);max-width:150px'), border: `1px solid ${zonaFiltro ? 'var(--primary)' : 'var(--line2)'}`, background: zonaFiltro ? 'var(--primary-tint)' : 'transparent', color: zonaFiltro ? 'var(--deep)' : 'var(--muted)' }}>
+              style={{ ...sx('height:30px;padding:0 8px;border-radius:99px;font-size:max(11.5px, var(--piso-entrada));font-weight:600;cursor:pointer;font-family:var(--font-body);max-width:150px'), border: `1px solid ${zonaFiltro ? 'var(--primary)' : 'var(--line2)'}`, background: zonaFiltro ? 'var(--primary-tint)' : 'transparent', color: zonaFiltro ? 'var(--deep)' : 'var(--muted)' }}>
               <option value="">Zona: todas</option>
               {zonasTodas.map((z) => <option key={z.id} value={z.id}>{nivelEmpresa ? `${z.nombre} · ${z.empNombre}` : z.nombre}</option>)}
             </select>
@@ -368,7 +368,7 @@ export function ListaEquipo({
           )}
           {zonasTodas.length > 0 && (
             <select value={zonaFiltro || ''} onChange={(e) => setZonaFiltro(e.target.value || null)} aria-label="Filtrar por zona"
-              style={{ ...sx('flex:none;min-height:2.75rem;max-width:12rem;padding:0 var(--sp-3);border-radius:var(--r-pill);font-family:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;border-width:1px;border-style:solid'), borderColor: zonaFiltro ? 'var(--primary)' : 'var(--line2)', background: zonaFiltro ? 'var(--primary-tint)' : 'var(--surface)', color: 'var(--text)' }}>
+              style={{ ...sx('flex:none;min-height:2.75rem;max-width:12rem;padding:0 var(--sp-3);border-radius:var(--r-pill);font-family:inherit;font-size:max(var(--fs-sm), var(--piso-entrada));font-weight:600;cursor:pointer;border-width:1px;border-style:solid'), borderColor: zonaFiltro ? 'var(--primary)' : 'var(--line2)', background: zonaFiltro ? 'var(--primary-tint)' : 'var(--surface)', color: 'var(--text)' }}>
               <option value="">Zona: todas</option>
               {zonasTodas.map((z) => <option key={z.id} value={z.id}>{nivelEmpresa ? `${z.nombre} · ${z.empNombre}` : z.nombre}</option>)}
             </select>

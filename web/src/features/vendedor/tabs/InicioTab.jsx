@@ -172,7 +172,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
               {...propsBusqueda}
               placeholder="Buscar comercio o código…"
               aria-label="Buscar entre mis clientes"
-              style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}
+              style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:max(13px, var(--piso-entrada));color:var(--text)')}
             />
             {buscaCli && (
               <button onClick={() => setBuscaCli('')} aria-label="Limpiar búsqueda"

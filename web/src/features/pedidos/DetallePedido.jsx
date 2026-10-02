@@ -183,7 +183,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                   placeholder="Por qué se anula (obligatorio)"
-                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
+                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:max(13px, var(--piso-entrada))')}
                 />
                 <button
                   onClick={alAnular}
@@ -320,7 +320,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                     value={pedido.id_repartidor || ''}
                     disabled={asignando}
                     onChange={(e) => alAsignar(e.target.value || null)}
-                    style={sx('width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px')}
+                    style={sx('width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada))')}
                   >
                     <option value="">Sin asignar</option>
                     {repartidores.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}

@@ -168,7 +168,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                   placeholder="Por qué se anula (obligatorio)"
-                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
+                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:max(13px, var(--piso-entrada))')}
                 />
               </>
             )}

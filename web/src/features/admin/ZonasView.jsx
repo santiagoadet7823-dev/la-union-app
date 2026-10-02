@@ -29,8 +29,8 @@ const panel = { ...sx('background:var(--surface);border:1px solid var(--line);bo
 const label10 = { ...sx('font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 // Sin `outline:none`: al ser estilo inline le ganaba al :focus-visible global y
 // dejaba los campos inalcanzables por teclado. El foco lo maneja `.lu-input`.
-const inp = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)') }
-const selectStyle = { ...sx('width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-family:var(--font-body);cursor:pointer') }
+const inp = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body)') }
+const selectStyle = { ...sx('width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--text);font-size:max(12px, var(--piso-entrada));font-family:var(--font-body);cursor:pointer') }
 const btnPrimario = { ...sx('padding:8px 14px;border:none;border-radius:var(--r-sm);background:var(--primary);color:var(--on-primary);font-size:12.5px;font-weight:700;cursor:pointer') }
 const btnSuave = { ...sx('padding:8px 12px;border:none;border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer') }
 const btnIcono = { ...sx('display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--muted);cursor:pointer;flex:none') }

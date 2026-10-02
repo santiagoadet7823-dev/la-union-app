@@ -794,7 +794,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
             <input
               type="date" value={fecha} max={hoyStr()} autoFocus
               onChange={(e) => cambiarFecha(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', minHeight: 44, colorScheme: isDark ? 'dark' : 'light' }}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 'max(14px, var(--piso-entrada))', fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', minHeight: 44, colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
         </div>

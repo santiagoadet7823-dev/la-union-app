@@ -119,7 +119,7 @@ export default function CompartirUbicacion() {
           <select
             value={elegida} onChange={(e) => setElegida(e.target.value)}
             aria-label="Empresa con la que compartir"
-            style={sx('flex:1;min-width:150px;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:var(--fs-sm)')}
+            style={sx('flex:1;min-width:150px;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:max(var(--fs-sm), var(--piso-entrada))')}
           >
             <option value="">Elegí una empresa…</option>
             {disponibles.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}

@@ -243,4 +243,4 @@ function Stat({ label, value, mono }) {
   )
 }
 
-const selectStyle = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body);cursor:pointer') }
+const selectStyle = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body);cursor:pointer') }

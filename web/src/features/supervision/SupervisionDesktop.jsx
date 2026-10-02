@@ -640,7 +640,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Selector de fecha */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : 'var(--on-primary)' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
                       <Calendario size={14} style={{ flex: 'none' }} />
-                      <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
+                      <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 'max(12px, var(--piso-entrada))', fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
                       {!esHoy && <span onClick={() => cambiarFecha(hoyStr())} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
                     </div>
                     {/* 🩸 El toggle "Calles" se retiró el 18/08/2026. Los encargados no entendían qué

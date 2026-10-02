@@ -17,7 +17,7 @@ import { Bell } from '../../components/icons'
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
 const grid = { display: 'grid', gridTemplateColumns: '1.6fr 140px 160px 140px', gap: 10, alignItems: 'center' }
-const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;font-family:var(--font-mono)') }
+const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(14px, var(--piso-entrada));font-family:var(--font-mono)') }
 
 export default function EmpresasView({ onToast }) {
   const { isMobile } = useDevice()
@@ -335,7 +335,7 @@ export default function EmpresasView({ onToast }) {
 
         <div style={{ ...sx('display:flex;gap:8px;margin-bottom:16px'), flexDirection: isMobile ? 'column' : 'row' }}>
           <input value={nueva} onChange={(e) => setNueva(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crear()} placeholder="Nombre de la nueva empresa…"
-            style={sx('flex:1;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px')} className="lu-input" />
+            style={sx('flex:1;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada))')} className="lu-input" />
           <button disabled={creando || !nueva.trim()} onClick={crear} style={sx('padding:10px 16px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             + Crear empresa
           </button>

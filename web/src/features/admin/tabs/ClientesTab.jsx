@@ -216,7 +216,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
             onChange={(e) => setBusqueda(e.target.value)}
             {...propsBusqueda}
             placeholder="Buscar por nombre, código, localidad o zona…"
-            style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}
+            style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:max(13px, var(--piso-entrada));color:var(--text)')}
           />
           {busqueda && (
             <button onClick={() => setBusqueda('')} aria-label="Limpiar búsqueda"

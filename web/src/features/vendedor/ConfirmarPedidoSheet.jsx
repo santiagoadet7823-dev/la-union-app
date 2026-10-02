@@ -130,7 +130,7 @@ export default function ConfirmarPedidoSheet({
             value={fechaEntrega}
             min={isoLocal(new Date())}
             onChange={(e) => setFechaEntrega(e.target.value)}
-            style={sx('padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:13px;font-family:inherit')}
+            style={sx('padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:inherit')}
           />
         </div>
       </div>
@@ -143,7 +143,7 @@ export default function ConfirmarPedidoSheet({
           onChange={(e) => setObservaciones(e.target.value)}
           rows={3}
           placeholder="Opcional — llega al sistema de gestión con el pedido"
-          style={sx('width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:14px;font-family:inherit;resize:vertical')}
+          style={sx('width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:max(14px, var(--piso-entrada));font-family:inherit;resize:vertical')}
         />
       </div>
     </Overlay>
