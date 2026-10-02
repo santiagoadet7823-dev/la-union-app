@@ -14,6 +14,7 @@ import EstadoCatalogo from '../../catalog/EstadoCatalogo'
 import { descargarArchivo } from '../../../services/download'
 import { Bajar, Basura, Editar, ImagenVacia, Mas, Subir } from '../../../components/icons'
 import AvisoScopeCatalogo from '../../../components/AvisoScopeCatalogo'
+import { Chip, PildoraEstado } from '../../../components/ui'
 
 // Grilla del catálogo (escritorio): foto · código · descripción · categoría · precio · unid. · nivel · acciones.
 // El CÓDIGO va visible y temprano: es la llave con la que se parean las fotos (el archivo se
@@ -37,6 +38,58 @@ function Thumb({ src }) {
   )
 }
 
+/**
+ * 🎨 LOS PROBLEMAS DE CADA PRODUCTO, A LA VISTA (01/10/2026, C10 — hoja "Marketing" 8a/8b).
+ * Hasta hoy "le falta la foto" sólo se veía como un cuadrado gris en la miniatura, y "no tiene
+ * precio" como un `$ 0` que parece un dato. Con los contadores del tablero se podía FILTRAR por
+ * cada problema, pero no verlo en la fila. Van como `PildoraEstado` (glifo + texto + tinte: el
+ * color nunca es la única señal) y con el mismo criterio que los contadores (`!p.imagen`,
+ * `!p.price`, `!p.marca`), para que el número de arriba y las píldoras de abajo no se contradigan.
+ */
+function Problemas({ p }) {
+  const lista = []
+  if (!p.imagen) lista.push(<PildoraEstado key="f" tipo="aviso">Sin foto</PildoraEstado>)
+  if (!p.price) lista.push(<PildoraEstado key="p" tipo="error" glifo="$">Sin precio</PildoraEstado>)
+  if (!p.marca) lista.push(<PildoraEstado key="m" tipo="info">Sin marca</PildoraEstado>)
+  if (!lista.length) return null
+  return <span style={sx('display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;white-space:normal')}>{lista}</span>
+}
+
+/**
+ * La grilla de 2 columnas del celular (hoja "Marketing" 8b, brief v2 §3 módulo 8 (e)). Es para
+ * el trabajo de fotos: se ve de un vistazo qué producto no tiene imagen. Cada tarjeta lleva el
+ * botón de editar de 44 px sobre la foto; dar de baja y eliminar siguen en la vista de lista, que
+ * es la de siempre (acá no hay lugar para tres botones sin que se toquen).
+ */
+function TarjetaGrilla({ p, onEditar }) {
+  return (
+    <div style={sx('border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);overflow:hidden;display:flex;flex-direction:column;min-width:0')}>
+      {/* `padding-top:100%` y no `aspect-ratio`: el WebView viejo no lo entiende (mismo criterio
+          que la grilla del vendedor). */}
+      <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2);border-bottom:1px solid var(--line)')}>
+        {p.imagen
+          ? <img src={p.imagen} alt="" loading="lazy" style={sx('position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover')} />
+          : <span style={sx('position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:var(--faint)')}><ImagenVacia size={28} /></span>}
+        {onEditar && (
+          <button type="button" onClick={() => onEditar(p)} aria-label={`Editar ${p.name || 'producto'}`} className="lu-press"
+            style={sx('position:absolute;right:6px;bottom:6px;width:44px;height:44px;display:grid;place-items:center;padding:0;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line2);color:var(--text);cursor:pointer;box-shadow:var(--shadow)')}>
+            <Editar size={16} />
+          </button>
+        )}
+      </div>
+      <div style={sx('padding:8px 10px 10px;display:flex;flex-direction:column;gap:4px;min-width:0')}>
+        <span style={{ ...sx('font-size:13px;font-weight:600;line-height:1.25;min-height:2.5em;word-break:break-word'), display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</span>
+        <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);word-break:break-word')}>
+          {p.codigo || '—'} · {p.price ? fmtPesos(p.price) : 'sin precio'}
+        </span>
+        <Problemas p={p} />
+      </div>
+    </div>
+  )
+}
+
+const K_VISTA = 'lu-catalogo-vista'
+
 function PrecioCelda({ p }) {
   const enOferta = p.oferta && p.precioOferta != null
   // Los escalones se muestran ACÁ porque ésta es la pantalla desde la que marketing controla la
@@ -49,7 +102,7 @@ function PrecioCelda({ p }) {
       <span style={sx('display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.25')}>
         {enOferta ? (
           <>
-            <span style={sx('font-size:10px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.price)}</span>
+            <span style={sx('font-size:11px;color:var(--faint);text-decoration:line-through')}>{fmtPesos(p.price)}</span>
             <span style={sx('color:var(--warning)')}>{fmtPesos(p.precioOferta)}</span>
           </>
         ) : (
@@ -58,7 +111,7 @@ function PrecioCelda({ p }) {
         {escalas.length > 0 && (
           <span
             title={escalas.map((e) => `Desde ${e.desde} u: ${fmtPesos(e.precio)} c/u`).join('\n')}
-            style={sx('font-size:9.5px;font-weight:500;color:var(--muted)')}
+            style={sx('font-size:11px;font-weight:500;color:var(--muted)')}
           >
             {escalas.map((e) => `${e.desde}+`).join(' · ')}
           </span>
@@ -94,6 +147,16 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   const [catsOpen, setCatsOpen] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('todos') // todos | sin-foto | sin-precio | sin-marca | descontinuados
+  // Lista o grilla de 2 columnas (sólo celular). Se recuerda: es una preferencia de cómo trabaja
+  // cada uno, y un `localStorage` bloqueado no puede tumbar la pantalla (arranca en lista).
+  const [vista, setVista] = useState(() => {
+    try { return localStorage.getItem(K_VISTA) === 'grilla' ? 'grilla' : 'lista' } catch (_) { return 'lista' }
+  })
+  const alternarVista = () => setVista((v) => {
+    const n = v === 'grilla' ? 'lista' : 'grilla'
+    try { localStorage.setItem(K_VISTA, n) } catch (_) { /* sin persistir, igual funciona */ }
+    return n
+  })
 
   const puedeEditar = ['admin', 'encargado', 'superadmin', 'marketing'].includes(rol)
     || (Array.isArray(permisos) && permisos.includes('catalogo'))
@@ -231,7 +294,13 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     onToast?.(`"${p.name}" queda fuera del catálogo`)
   }
 
-  const btnIcono = sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:9px;cursor:pointer;background:transparent')
+  // (01/10/2026, C10) En el celular las acciones de fila miden 44 (brief v2 §4.3) con 8 px entre
+  // ellas: ahí van en su propio renglón al pie de la tarjeta y sobra lugar. En escritorio quedan en
+  // 34 — puntero fino, y la columna de acciones de `catGrid` mide 92 px.
+  const ladoAccion = isMobile ? 44 : 34
+  const btnIcono = { ...sx('display:grid;place-items:center;border:1px solid var(--line2);border-radius:9px;cursor:pointer;background:transparent'), width: ladoAccion, height: ladoAccion }
+  const btnTexto = { ...sx('padding:0 12px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer'), minHeight: ladoAccion }
+  const filaAcciones = { ...sx('display:flex;align-items:center;justify-content:flex-end'), gap: isMobile ? 8 : 6 }
 
   /* El interruptor de habilitado/deshabilitado.
    *
@@ -271,7 +340,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     if (!puedeEditar) return null
     if (p.descontinuado) {
       return (
-        <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
+        <div style={filaAcciones}>
           <Interruptor on={false} onToggle={() => reactivar(p)} titulo={`Habilitar "${p.name}"`} />
           <button onClick={() => onEditarProducto?.(p)} title="Editar" style={{ ...btnIcono, color: 'var(--deep)' }}>
             <Editar size={15} />
@@ -281,14 +350,14 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     }
     if (confirmDel === p.id) {
       return (
-        <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
-          <button onClick={() => eliminar(p)} style={sx('height:34px;padding:0 10px;border:none;border-radius:9px;background:var(--danger);color:var(--on-danger);font-size:12px;font-weight:600;cursor:pointer')}>Eliminar</button>
-          <button onClick={() => setConfirmDel(null)} style={sx('height:34px;padding:0 10px;border:1px solid var(--line2);border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer')}>No</button>
+        <div style={filaAcciones}>
+          <button onClick={() => eliminar(p)} style={{ ...btnTexto, border: 'none', background: 'var(--danger)', color: 'var(--on-danger)' }}>Eliminar</button>
+          <button onClick={() => setConfirmDel(null)} style={{ ...btnTexto, border: '1px solid var(--line2)', background: 'transparent', color: 'var(--muted)' }}>No</button>
         </div>
       )
     }
     return (
-      <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
+      <div style={filaAcciones}>
         <Interruptor on onToggle={() => deshabilitar(p)} titulo={`Deshabilitar "${p.name}" (no se borra, deja de verse)`} />
         <button onClick={() => onEditarProducto?.(p)} title="Editar" style={{ ...btnIcono, color: 'var(--deep)' }}>
           <Editar size={15} />
@@ -308,28 +377,28 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
             Ver el encabezado del componente — los dos números que faltaban cuando la cola se tapó. */}
         <EstadoCatalogo />
         <div style={sx('display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px')}>
-          <div style={label10}>
+          <div style={{ ...label10, fontSize: 11 }}>
             Catálogo · {visibles.length === productos.length ? `${productos.length} productos` : `${visibles.length} de ${productos.length}`}
           </div>
           <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
             {puedeEditar && (
-              <button onClick={() => setCatsOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <button onClick={() => setCatsOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;min-height:44px;font-size:12.5px;font-weight:600;cursor:pointer')}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h18M3 12h18M3 17h18" /></svg>Categorías
               </button>
             )}
-            <button onClick={exportarCatalogo} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+            <button onClick={exportarCatalogo} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;min-height:44px;font-size:12.5px;font-weight:600;cursor:pointer')}>
               <Bajar size={13} />Descargar planilla
             </button>
             {/* Todo lo que ESCRIBE queda detrás del gate. Descargar la planilla no: es lectura de lo
                 que la pantalla ya está mostrando. */}
             {puedeEditar && <>
-              <button onClick={() => setImportOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <button onClick={() => setImportOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;min-height:44px;font-size:12.5px;font-weight:600;cursor:pointer')}>
                 <Subir size={13} />Importar planilla
               </button>
-              <button onClick={() => setFotosOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <button onClick={() => setFotosOpen(true)} style={sx('display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;min-height:44px;font-size:12.5px;font-weight:600;cursor:pointer')}>
                 <ImagenVacia size={13} w={2} />Cargar fotos
               </button>
-              <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer')}>
+              <button onClick={onNuevoProducto} style={sx('display:flex;align-items:center;gap:7px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 13px;min-height:44px;font-size:12.5px;font-weight:600;cursor:pointer')}>
                 <Mas size={13} w={2.5} />Nuevo producto
               </button>
             </>}
@@ -341,33 +410,48 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
           <EmptyState titulo="El catálogo está vacío" texto="Cargá los productos de la distribuidora con “Nuevo producto”. Los vendedores los verán al tomar pedidos." />
         ) : (
           <>
-            <div style={sx('display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px')}>
+            {/* 🎨 (01/10/2026, C10) Buscador de 44 (antes 36) y, en el celular, letra de 16 para que
+                Safari de iPhone no haga zoom al enfocarlo. Los filtros pasan a `Chip` (44 táctil,
+                ✓ en el elegido, el número en mono): antes el elegido era un botón lleno de acento
+                y el estado se leía sólo por el color. */}
+            <div style={sx('display:flex;gap:8px;align-items:center;margin-bottom:8px')}>
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 {...propsBusqueda}
                 placeholder="Buscar por descripción, código o categoría…"
-                style={sx('flex:1;min-width:220px;height:36px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box')}
+                style={{ ...sx('flex:1;min-width:0;min-height:44px;padding:0 12px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);box-sizing:border-box'), fontSize: isMobile ? 16 : 13 }}
               />
+              {isMobile && (
+                <button type="button" onClick={alternarVista} className="lu-press"
+                  aria-label={vista === 'grilla' ? 'Ver como lista' : 'Ver como grilla de fotos'}
+                  title={vista === 'grilla' ? 'Ver como lista' : 'Ver como grilla de fotos'}
+                  style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;padding:0;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--muted);cursor:pointer')}>
+                  {vista === 'grilla'
+                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></svg>}
+                </button>
+              )}
+            </div>
+            <div className="lu-chips" style={{ ...sx('display:flex;gap:8px;margin-bottom:10px;scrollbar-width:none'), flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', flex: 'none' }}>
               {[
-                { k: 'todos', t: `Todos (${vigentes.length})` },
-                { k: 'sin-foto', t: `Sin foto (${sinFoto})` },
-                { k: 'sin-precio', t: `Sin precio (${sinPrecio})` },
-                { k: 'sin-marca', t: `Sin marca (${sinMarca})` },
-                ...(deBaja ? [{ k: 'descontinuados', t: `De baja (${deBaja})` }] : []),
-              ].map(({ k, t }) => (
-                <button key={k} onClick={() => setFiltro(k)} style={{
-                  ...sx('height:36px;padding:0 12px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap'),
-                  border: `1px solid ${filtro === k ? 'var(--primary)' : 'var(--line2)'}`,
-                  background: filtro === k ? 'var(--primary)' : 'transparent',
-                  color: filtro === k ? 'var(--on-primary)' : 'var(--muted)',
-                }}>{t}</button>
+                { k: 'todos', t: 'Todos', n: vigentes.length },
+                { k: 'sin-foto', t: 'Sin foto', n: sinFoto },
+                { k: 'sin-precio', t: 'Sin precio', n: sinPrecio },
+                { k: 'sin-marca', t: 'Sin marca', n: sinMarca },
+                ...(deBaja ? [{ k: 'descontinuados', t: 'De baja', n: deBaja }] : []),
+              ].map(({ k, t, n }) => (
+                <Chip key={k} seleccionado={filtro === k} onClick={() => setFiltro(k)} contador={n}>{t}</Chip>
               ))}
             </div>
 
             {visibles.length === 0 ? (
               <div style={sx('padding:34px;text-align:center;color:var(--faint);font-size:13px')}>
                 Ningún producto coincide con la búsqueda.
+              </div>
+            ) : isMobile && vista === 'grilla' ? (
+              <div style={sx('display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px')}>
+                {visibles.map((p) => <TarjetaGrilla key={p.id} p={p} onEditar={puedeEditar ? onEditarProducto : null} />)}
               </div>
             ) : (<>
             <CabeceraTabla grid={catGrid} isMobile={isMobile} columnas={[
@@ -384,10 +468,11 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
                   // que se lee junto al nombre, y una novena columna dejaría la tabla sin aire.
                   { label: 'Descripción', titulo: true, contenido: (
                     <span>
-                      {p.marca && <span style={sx('margin-right:7px;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--surface2);border-radius:99px;padding:2px 7px;vertical-align:middle')}>{p.marca}</span>}
+                      {p.marca && <span style={sx('margin-right:7px;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border-radius:99px;padding:2px 7px;vertical-align:middle')}>{p.marca}</span>}
                       {p.name}
-                      {p.oferta && <span style={sx('margin-left:7px;font-size:9.5px;font-weight:700;color:var(--warning);border:1px solid var(--warning);border-radius:99px;padding:1px 6px;vertical-align:middle')}>OFERTA</span>}
-                      {p.destacado && <span style={sx('margin-left:7px;font-size:9.5px;font-weight:700;color:var(--primary);border:1px solid var(--primary);border-radius:99px;padding:1px 6px;vertical-align:middle')}>DESTACADO</span>}
+                      {p.oferta && <span style={sx('margin-left:7px;font-size:11px;font-weight:700;color:var(--warning);border:1px solid var(--warning);border-radius:99px;padding:1px 6px;vertical-align:middle')}>OFERTA</span>}
+                      {p.destacado && <span style={sx('margin-left:7px;font-size:11px;font-weight:700;color:var(--primary);border:1px solid var(--primary);border-radius:99px;padding:1px 6px;vertical-align:middle')}>DESTACADO</span>}
+                      <Problemas p={p} />
                     </span>
                   ), estilo: sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') },
                   { label: 'Categoría', contenido: p.cat, estilo: sx('color:var(--muted)') },

@@ -5,6 +5,7 @@ import { escaleraDe, precioPara } from '../lib/precios'
 import { ImagenVacia, Search } from './icons'
 import { propsBusqueda } from './form'
 import CantidadInput from './CantidadInput'
+import { Chip } from './ui'
 import FichaProducto from '../features/vendedor/FichaProducto'
 
 /**
@@ -128,37 +129,39 @@ export default function GrillaCatalogo({
       <div style={sx('flex:none;padding:12px 14px 8px;display:flex;align-items:center;gap:8px')}>
         {/* El input va sin borde ni outline a propósito: el foco lo marca este
             contenedor con .lu-campo (:focus-within). Ver index.css. */}
-        <div className="lu-campo" style={sx('flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:44px')}>
+        {/* (01/10/2026, C10) `min-height` en vez de `height` y letra de 16: con menos de 16 px
+            Safari de iPhone hace zoom de la página al enfocar el buscador (brief v2 §4.6). */}
+        <div className="lu-campo" style={sx('flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-md);padding:0 12px;min-height:44px')}>
           <Search />
-          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:13.5px;color:var(--text)')} />
+          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;min-width:0;min-height:42px;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:16px;color:var(--text)')} />
         </div>
         {accionBuscador}
       </div>
 
       {children}
 
-      {/* Chips de categoría: scroll horizontal. Ofertas filtra los productos en oferta. */}
+      {/* Chips de categoría: scroll horizontal. Ofertas filtra los productos en oferta.
+          🎨 (01/10/2026, C10) Pasan a ser el `Chip` de components/ui: el área táctil es de 44 px
+          (antes 32) aunque la píldora visible mida 36, y el elegido lleva ✓ además del tinte (el
+          estado no depende sólo del color). La fila lleva `flex:none` por lo que explica el JSDoc
+          de `Chip`: con letra grande la columna la aplastaba hasta hacerla desaparecer.
+          ⚠️ Destacados apagado iba con BORDE de acento ("es el único chip que hay que aprender a
+          tocar, y uno gris entre quince categorías grises no se ve"). `Chip` no tiene borde por
+          variante, así que esa señal la sigue dando el ◆ en el color de acento (y el ★ de Ofertas en
+          ocre): un glifo de color, no un chip gris más. */}
       {productos.length > 0 && (
-        <div className="lu-chips" style={sx('flex:none;display:flex;gap:7px;overflow-x:auto;padding:2px 14px 10px;scrollbar-width:none;-ms-overflow-style:none')}>
+        <div className="lu-chips" style={sx('flex:none;display:flex;gap:8px;overflow-x:auto;padding:0 14px 6px;scrollbar-width:none;-ms-overflow-style:none')}>
           {chips.map((c) => {
-            const on = catFilter === c
             const esOfertas = c === 'Ofertas'
             const esDestacados = c === 'Destacados'
             return (
-              <button
-                key={c}
-                onClick={() => setCatFilter(c)}
-                style={{
-                  ...sx('flex:none;min-height:32px;padding:0 13px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap'),
-                  // Destacados apagado ya va con borde de color: es el único chip que hay que
-                  // aprender a tocar, y uno gris entre quince categorías grises no se ve.
-                  border: `1px solid ${on || esDestacados ? 'var(--primary)' : 'var(--line2)'}`,
-                  background: on ? 'var(--primary-tint)' : 'transparent',
-                  color: on ? 'var(--deep)' : (esOfertas ? 'var(--warning)' : (esDestacados ? 'var(--primary)' : 'var(--muted)')),
-                }}
-              >
-                {esOfertas ? '★ Ofertas' : (esDestacados ? '◆ Destacados' : c)}
-              </button>
+              <Chip key={c} seleccionado={catFilter === c} onClick={() => setCatFilter(c)}>
+                {esOfertas
+                  ? <><span aria-hidden="true" style={sx('color:var(--warning)')}>★</span> Ofertas</>
+                  : esDestacados
+                    ? <><span aria-hidden="true" style={sx('color:var(--primary)')}>◆</span> Destacados</>
+                    : c}
+              </Chip>
             )
           })}
         </div>
@@ -224,17 +227,30 @@ export default function GrillaCatalogo({
                         <ImagenVacia size={30} />
                       </div>
                     )}
+                    {/* (01/10/2026, C10) Rótulos de la foto a 11 px: el mínimo del brief (decisión
+                        15). A 9,5 no se leían al sol. */}
                     {enOferta && (
-                      <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:var(--on-warning);font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
+                      <span style={sx('position:absolute;top:6px;left:6px;background:var(--warning);color:var(--on-warning);font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>OFERTA</span>
                     )}
                     {/* El rombo marca el destacado en el resto de los filtros: dentro de Destacados
                         lo son todos y repetirlo 20 veces es ruido. Va abajo de OFERTA cuando hay las
                         dos, que es el caso más común (algo que no rota y encima está en promoción). */}
                     {p.destacado && !enDestacados && (
-                      <span style={{ ...sx('position:absolute;left:6px;background:var(--primary);color:var(--on-primary);font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)'), top: enOferta ? 28 : 6 }}>◆</span>
+                      <span style={{ ...sx('position:absolute;left:6px;background:var(--primary);color:var(--on-primary);font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.25)'), top: enOferta ? 31 : 6 }}>◆</span>
                     )}
+                    {/* 🎨 CONTADOR "EN EL CARRITO" (01/10/2026, decisión 14 del dueño: número en tinta
+                        con punto de estado). Antes era un círculo de acento lleno con el número en
+                        blanco: con el acento azul acero se confundía con el ◆ de destacado y con el
+                        marco azul del nivel 2. Ahora es superficie + número en `--text` + punto de
+                        acento, como la hoja 1h. `min-width`/`min-height` y no medidas fijas: con
+                        "120" o con letra grande el contador crece en vez de cortar el número. */}
                     {qty > 0 && (
-                      <span style={sx('position:absolute;top:6px;right:6px;width:22px;height:22px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:99px;font-family:var(--font-mono);font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.25)')}>{qty}</span>
+                      <span
+                        title={`${qty} en el pedido`}
+                        style={sx('position:absolute;top:6px;right:6px;min-height:24px;min-width:24px;box-sizing:border-box;padding:0 8px 0 6px;display:flex;align-items:center;gap:5px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;box-shadow:0 0 0 2px var(--surface)')}
+                      >
+                        <span aria-hidden="true" style={sx('flex:none;width:7px;height:7px;border-radius:var(--r-pill);background:var(--primary)')} />{qty}
+                      </span>
                     )}
                     {/* "MIRÁ ESTE": se lo abre grande en la tablet del cliente. Solo aparece con la
                         vidriera viva — fuera de eso no hay a dónde mandarlo. Va abajo a la derecha
@@ -244,7 +260,9 @@ export default function GrillaCatalogo({
                         onClick={(e) => { e.stopPropagation(); onMostrar(p) }}
                         className="lu-press"
                         title="Mostrárselo en la tablet"
-                        style={sx('position:absolute;right:6px;bottom:6px;width:30px;height:30px;display:grid;place-items:center;border:none;border-radius:9px;background:var(--glass-strong);color:var(--deep);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.25)')}
+                        aria-label="Mostrárselo en la tablet"
+                        // 44×44 (antes 30): es un objetivo táctil como cualquier otro (brief v2 §4.3).
+                        style={sx('position:absolute;right:6px;bottom:6px;width:44px;height:44px;display:grid;place-items:center;border:none;border-radius:var(--r-md);background:var(--glass-strong);color:var(--deep);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.25)')}
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="14" rx="2" /><path d="M8 21h8" /></svg>
                       </button>
@@ -277,7 +295,9 @@ export default function GrillaCatalogo({
                             <span
                               key={e.desde}
                               style={{
-                                ...sx('padding:1px 5px;border-radius:6px;font-size:9.5px;line-height:1.5;white-space:nowrap'),
+                                // 11 px (antes 9,5): mínimo del brief. Con dos escalones largos la
+                                // fila parte en dos renglones (`flex-wrap`), no se corta.
+                                ...sx('padding:1px 5px;border-radius:6px;font-size:11px;line-height:1.5;white-space:nowrap'),
                                 background: activo ? 'var(--success-tint)' : 'var(--surface2)',
                                 color: activo ? 'var(--success)' : 'var(--muted)',
                                 fontWeight: activo ? 700 : 500,
@@ -289,22 +309,29 @@ export default function GrillaCatalogo({
                     )}
 
                     {(p.unidades != null || p.kg > 0) && (
-                      <div style={sx('margin-top:2px;font-size:10.5px;color:var(--faint);font-family:var(--font-mono)')}>
+                      <div style={sx('margin-top:2px;font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
                         {[p.unidades != null ? `×${p.unidades} u` : null, p.kg > 0 ? `${String(p.kg).replace('.', ',')} kg` : null].filter(Boolean).join(' · ')}
                       </div>
                     )}
 
-                    {/* Stepper compacto (es la pantalla de toma de pedido). */}
-                    <div style={sx('margin-top:9px;display:flex;align-items:center;justify-content:space-between;gap:6px')}>
+                    {/* STEPPER (es la pantalla de toma de pedido).
+                        🎨 (01/10/2026, C10, hoja "Catálogo Vendedor" 1h/1i) Pasa de botones de 34×34
+                        a − y + de 44×52 con 8 px entre controles (brief v2 §4.3: 44 mínimo y 8 de
+                        separación entre objetivos contiguos), y el número a una caja de 52 que abre
+                        el teclado numérico (`CantidadInput caja`). El + va lleno de acento: es la
+                        acción frecuente. En la tarjeta de 161 px el número queda en ~33 px de ancho:
+                        excepción documentada en la hoja (alcanza para tres cifras). `stretch` y no
+                        `center`: si la letra grande agranda el número, los tres crecen juntos. */}
+                    <div style={sx('margin-top:9px;display:flex;align-items:stretch;gap:8px')}>
                       {/* `stopPropagation` porque la tarjeta ENTERA es un botón: sin esto, tocar el
                           − o el + abriría también el zoom encima (y con la vidriera viva le mandaría
                           el producto a la tablet cada vez que el vendedor sube una unidad).
                           🔴 Desde el 09/09/2026 esto ya no es la precaución de un solo filtro: la
                           tarjeta es tocable en toda la grilla, así que sin estas tres líneas el
                           stepper queda inservible en la pantalla entera, no en un rincón. */}
-                      <button onClick={(e) => { e.stopPropagation(); addCart(p.id, -1) }} disabled={qty === 0} style={{ ...sx('width:34px;height:34px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;font-size:18px;user-select:none;background:transparent'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
-                      <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} flex />
-                      <button onClick={(e) => { e.stopPropagation(); addCart(p.id, 1) }} style={sx('width:34px;height:34px;flex:none;display:grid;place-items:center;background:var(--primary-tint);border:1px solid var(--primary);border-radius:10px;cursor:pointer;color:var(--deep);font-size:17px;user-select:none')}>+</button>
+                      <button type="button" aria-label="Quitar una unidad" onClick={(e) => { e.stopPropagation(); addCart(p.id, -1) }} disabled={qty === 0} style={{ ...sx('width:44px;min-height:52px;flex:none;display:grid;place-items:center;padding:0;border:1px solid var(--line2);border-radius:var(--r-md);font-size:19px;user-select:none;background:transparent;font-family:inherit'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
+                      <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} flex caja alto={52} minAncho={0} />
+                      <button type="button" aria-label="Agregar una unidad" onClick={(e) => { e.stopPropagation(); addCart(p.id, 1) }} style={sx('width:44px;min-height:52px;flex:none;display:grid;place-items:center;padding:0;background:var(--primary);border:1px solid var(--primary);border-radius:var(--r-md);cursor:pointer;color:var(--on-primary);font-size:19px;font-weight:600;user-select:none;font-family:inherit')}>+</button>
                     </div>
                   </div>
                 </div>

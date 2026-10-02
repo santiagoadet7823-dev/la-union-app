@@ -133,6 +133,22 @@
                          acciones que pueden dispararse desde un modal */
 }
 
+/* --- PAPEL DE FIRMA: una superficie que NO sigue al tema (01/10/2026, C10) ---
+   El pad de firma del repartidor es papel: tinta oscura sobre blanco en Claro Y en Oscuro (hoja
+   "Hoja de Entregas" 2d, brief v2 §3 módulo 10). La firma se exporta como PNG y viaja a otra
+   pantalla, así que no puede depender del tema de quien la tomó. Por eso estos tokens van en
+   `:root` y no en los bloques de tema: son los valores de Claro (--surface, --text, --line2,
+   --faint) repetidos a propósito, no colores nuevos. Hasta hoy estaban escritos a mano dentro de
+   RepartidorView (`#FCFBF8`, `#2E3A44`, `#B0C2C6`, `#5A6D76`). Si la paleta de Claro cambia,
+   cambian acá también. --firma-texto sobre --firma-papel es el --faint de Claro sobre su
+   --surface: ya calibrado a 4,5:1. */
+:root {
+  --firma-papel: #fcfbf8;
+  --firma-tinta: #2e3a44;
+  --firma-guia: #758b95;
+  --firma-texto: #5a6d76;
+}
+
 /* --- LIGHT: azul pizarra y crema (paleta del dueño) ---
    Paleta 29/09/2026 (propuesta 07). Cada valor es un color exacto de la paleta, salvo los marcados
    (D) = DERIVADOS: la paleta no tiene el escalón que hacía falta para llegar a WCAG (texto 4.5:1,
