@@ -275,7 +275,9 @@ function TarjetaCliente({ c, i, isNext, alTocar, onEditarCliente }) {
               hasta 43 caracteres la tarjeta se estiraba a varios renglones y la lista se
               volvía ilegible. El espacio para el nombre se gana ACHICANDO EL BOTÓN (ver
               abajo), no dejando crecer la tarjeta. */}
-          <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
+          {/* (02/10/2026) Nombre en hasta 2 renglones, no elipsis en 1: con la letra del sistema a 1,5 se
+              cortaban casi todos (criterio B2; regla de truncado del brief v2 §2.2). */}
+          <div style={{ ...sx('font-weight:600;font-size:13.5px;line-height:1.3;overflow-wrap:anywhere'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.name}</div>
           {!c.activo && <span style={sx('flex:none;font-size:11px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
           {c.cubierta && c.zonaAbrev && <span style={{ ...sx('flex:none;font-size:11px;font-weight:700;color:#fff;border-radius:99px;padding:2px 6px;font-family:var(--font-mono)'), background: c.zonaColor || 'var(--muted)' }} title="Zona que cubrís hoy">{c.zonaAbrev}</span>}
           {c.sinDueno && <span style={sx('flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:99px;padding:2px 6px')}>SIN DUEÑO</span>}

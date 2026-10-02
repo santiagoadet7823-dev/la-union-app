@@ -374,7 +374,9 @@ export default function Overlay({
                 {title}
               </div>
               {subtitle && (
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                // (02/10/2026) El subtítulo parte en renglones en vez de cortarse con elipsis: en los diálogos
+                // lleva la consecuencia ("No puede entrar hasta que lo reactives…") y con letra a 1,5 se perdía (B2).
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
                   {subtitle}
                 </div>
               )}
