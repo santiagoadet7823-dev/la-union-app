@@ -92,7 +92,7 @@ function SinDato({ titulo, texto }) {
 function Titulo({ children, ayuda }) {
   return (
     <div style={sx('margin:18px 0 8px')}>
-      <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')}>{children}</div>
+      <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')}>{children}</div>
       {ayuda && <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px')}>{ayuda}</div>}
     </div>
   )
@@ -186,7 +186,7 @@ function ComparaMes({ actual, previo }) {
               <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700')}>
                 {fmtValor(clave, a)}
               </div>
-              <div style={{ ...sx('font-size:10.5px;font-family:var(--font-mono)'), color: delta == null ? 'var(--faint)' : delta >= 0 ? 'var(--success)' : 'var(--warning)' }}>
+              <div style={{ ...sx('font-size:11px;font-family:var(--font-mono)'), color: delta == null ? 'var(--faint)' : delta >= 0 ? 'var(--success)' : 'var(--warning)' }}>
                 {delta == null ? 'sin base' : `${delta >= 0 ? '+' : ''}${Math.round(delta)}% vs mes anterior`}
               </div>
             </div>
@@ -343,7 +343,7 @@ export default function TableroSheet({ open, onCerrar, onToast }) {
                         <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:700')}>{fmtPesos(p.monto)}</span>
                       </div>
                       <BarraRanking pct={(Number(p.monto) / maxMonto) * 100} />
-                      <div style={sx('font-size:10.5px;color:var(--faint);margin-top:3px;font-family:var(--font-mono)')}>
+                      <div style={sx('font-size:11px;color:var(--faint);margin-top:3px;font-family:var(--font-mono)')}>
                         {p.unidades} u · {p.pedidos} {p.pedidos === 1 ? 'pedido' : 'pedidos'}
                       </div>
                     </div>
@@ -378,7 +378,7 @@ export default function TableroSheet({ open, onCerrar, onToast }) {
                     <div key={o.id_producto} style={sx('display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)')}>
                       <div style={sx('flex:1;min-width:0')}>
                         <div style={sx('font-size:12.5px;line-height:1.35')}>{o.descripcion}</div>
-                        <div style={sx('font-size:10.5px;color:var(--faint);margin-top:2px')}>
+                        <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>
                           {o.categoria || 'Sin categoría'} · lo venden {o.vendedores} {o.vendedores === 1 ? 'compañero' : 'compañeros'}
                         </div>
                       </div>
@@ -420,7 +420,7 @@ export default function TableroSheet({ open, onCerrar, onToast }) {
                     <div key={c.id_cliente} style={sx('display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)')}>
                       <div style={sx('flex:1;min-width:0')}>
                         <div style={sx('font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{c.nombre}</div>
-                        <div style={sx('font-size:10.5px;color:var(--faint);margin-top:2px')}>
+                        <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>
                           {c.localidad || 'Sin localidad'} · {c.compras} {c.compras === 1 ? 'compra' : 'compras'} · {fmtPesos(c.monto_historico)}
                         </div>
                       </div>

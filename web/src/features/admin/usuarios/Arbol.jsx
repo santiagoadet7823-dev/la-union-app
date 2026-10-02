@@ -52,11 +52,11 @@ export function FilaPersona({ i, sel, onClick, etiqueta, alto = 46, sub }) {
       <Avatar nombre={i.p.nombre || identidadVisible(i.p.email)} color={i.color} dot={i.estado.dot} />
       <div style={sx('flex:1;min-width:0')}>
         <div style={{ ...sx('font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), textDecoration: tachada ? 'line-through' : 'none' }}>{i.p.nombre || identidadVisible(i.p.email)}</div>
-        <div style={sx('font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{sub ?? i.sub}</div>
+        <div style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{sub ?? i.sub}</div>
       </div>
-      {etiqueta && <span style={sx('flex:none;font-size:10.5px;font-weight:600;padding:3px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{etiqueta}</span>}
-      {i.nCambios > 0 && !tachada && <span title="Cambios sin guardar" style={{ ...mono, ...sx('flex:none;font-size:10px;font-weight:600;min-width:18px;text-align:center;padding:2px 5px;border-radius:99px;background:var(--primary);color:var(--on-primary);box-sizing:border-box') }}>{i.nCambios}</span>}
-      {tachada && <span style={sx('flex:none;font-size:9.5px;font-weight:700;padding:3px 6px;border-radius:6px;background:var(--danger-tint);color:var(--danger)')}>{i.del === 'purgar' ? 'SE PURGA' : 'SE ELIMINA'}</span>}
+      {etiqueta && <span style={sx('flex:none;font-size:11px;font-weight:600;padding:3px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{etiqueta}</span>}
+      {i.nCambios > 0 && !tachada && <span title="Cambios sin guardar" style={{ ...mono, ...sx('flex:none;font-size:11px;font-weight:600;min-width:18px;text-align:center;padding:2px 5px;border-radius:99px;background:var(--primary);color:var(--on-primary);box-sizing:border-box') }}>{i.nCambios}</span>}
+      {tachada && <span style={sx('flex:none;font-size:11px;font-weight:700;padding:3px 6px;border-radius:6px;background:var(--danger-tint);color:var(--danger)')}>{i.del === 'purgar' ? 'SE PURGA' : 'SE ELIMINA'}</span>}
     </div>
   )
 }
@@ -100,7 +100,7 @@ function Grupo({ g, abierto, onToggle, selId, onPersona, agruparModo, onAgregar 
           {g.aviso && <IcoAviso size={12} />}
           <span style={{ ...rotulo, flex: 1, fontSize: 11, color: g.aviso ? 'var(--text)' : 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.l}</span>
           {cambios && <span style={sx('width:7px;height:7px;border-radius:99px;background:var(--primary)')} />}
-          <span style={{ ...mono, fontSize: 10.5 }}>{g.aviso ? g.zonasSin.length : g.filas.length}</span>
+          <span style={{ ...mono, fontSize: 11 }}>{g.aviso ? g.zonasSin.length : g.filas.length}</span>
         </div>
         {onAgregar && g.rol && (
           <button type="button" onClick={() => onAgregar(g.rol)} title={`Crear ${ROL_UNO[g.rol]?.toLowerCase()}`} className="lu-press"
@@ -170,7 +170,7 @@ export default function Arbol({
             return (
               <button key={f.k} type="button" onClick={() => setFiltro(on ? null : f.k)} className="lu-press"
                 style={{ ...sx('white-space:nowrap;display:flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:99px;font-size:11.5px;font-weight:600;cursor:pointer'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line2)'}`, background: on ? 'var(--primary)' : 'transparent', color: on ? 'var(--on-primary)' : 'var(--muted)' }}>
-                {f.l}<span style={{ ...mono, fontSize: 10.5, opacity: 0.75 }}>{n}</span>
+                {f.l}<span style={{ ...mono, fontSize: 11, opacity: 0.75 }}>{n}</span>
               </button>
             )
           })}
@@ -187,7 +187,7 @@ export default function Arbol({
       <div style={sx('flex:1;overflow:auto;padding:10px 10px 110px')}>
         {buscando ? (
           <>
-            <div style={{ ...rotulo, fontSize: 10, padding: '6px 8px 8px' }}>{resultados.length ? `${resultados.length} ${resultados.length === 1 ? 'persona' : 'personas'}` : 'Sin resultados'}</div>
+            <div style={{ ...rotulo, fontSize: 11, padding: '6px 8px 8px' }}>{resultados.length ? `${resultados.length} ${resultados.length === 1 ? 'persona' : 'personas'}` : 'Sin resultados'}</div>
             {resultados.map((i) => (
               <FilaPersona key={i.p.id} i={i} sel={selPersona === i.p.id} onClick={() => onPersona(i.p.id)} etiqueta={nivelEmpresa ? i.empNombre : null} alto={48} />
             ))}
@@ -204,8 +204,8 @@ export default function Arbol({
             {nivelEmpresa && (
               <div style={sx('display:flex;align-items:center;gap:9px;padding:8px 8px 10px;margin-bottom:4px;border-bottom:1px dashed var(--line2)')}>
                 <div style={sx('width:26px;height:26px;border-radius:8px;border:1.5px dashed var(--line2);display:grid;place-items:center;color:var(--faint)')}><IcoEdificio size={13} /></div>
-                <div style={sx('flex:1;min-width:0')}><div style={sx('font-size:12.5px;font-weight:600;color:var(--muted)')}>Corporación</div><div style={sx('font-size:10px;color:var(--faint)')}>Agrupa empresas de un mismo cliente</div></div>
-                <span style={sx('font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:3px 6px;border-radius:5px;border:1px dashed var(--line2);color:var(--faint);white-space:nowrap')}>Horizonte 2</span>
+                <div style={sx('flex:1;min-width:0')}><div style={sx('font-size:12.5px;font-weight:600;color:var(--muted)')}>Corporación</div><div style={sx('font-size:11px;color:var(--faint)')}>Agrupa empresas de un mismo cliente</div></div>
+                <span style={sx('font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:3px 6px;border-radius:5px;border:1px dashed var(--line2);color:var(--faint);white-space:nowrap')}>Horizonte 2</span>
               </div>
             )}
             {empresas.map((e) => {
@@ -223,16 +223,16 @@ export default function Arbol({
                       <div style={sx('flex:1;min-width:0;padding:9px 10px 9px 0;display:flex;flex-direction:column;gap:5px')}>
                         <div style={sx('display:flex;align-items:center;gap:7px')}>
                           <span style={{ ...display, ...sx('font-weight:600;font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis') }}>{e.nombre}</span>
-                          {cambiosEmp > 0 && <span style={{ ...mono, ...sx('font-size:10px;font-weight:600;padding:2px 6px;border-radius:99px;background:var(--primary);color:var(--on-primary)') }}>{cambiosEmp}</span>}
+                          {cambiosEmp > 0 && <span style={{ ...mono, ...sx('font-size:11px;font-weight:600;padding:2px 6px;border-radius:99px;background:var(--primary);color:var(--on-primary)') }}>{cambiosEmp}</span>}
                         </div>
-                        <div style={{ ...mono, ...sx('display:flex;flex-wrap:wrap;gap:4px 9px;font-size:10.5px;color:var(--muted);white-space:nowrap') }}>
+                        <div style={{ ...mono, ...sx('display:flex;flex-wrap:wrap;gap:4px 9px;font-size:11px;color:var(--muted);white-space:nowrap') }}>
                           <span>{e.contadores.n} personas</span>
                           <span style={sx('display:flex;align-items:center;gap:4px')}><span style={sx('width:6px;height:6px;border-radius:99px;background:var(--success)')} />{e.contadores.calle} en la calle</span>
                           {e.contadores.pend > 0 && <span style={sx('display:flex;align-items:center;gap:4px')}><span style={sx('width:6px;height:6px;border-radius:99px;background:var(--warning)')} />{e.contadores.pend} pend.</span>}
                           {e.contadores.alertas > 0 && <span style={sx('display:flex;align-items:center;gap:4px')}><span style={sx('width:6px;height:6px;border-radius:99px;background:var(--danger)')} />{e.contadores.alertas} alertas</span>}
                         </div>
                         {e.zonasSin.length > 0 && (
-                          <div style={sx('display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:var(--text)')}>
+                          <div style={sx('display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text)')}>
                             <IcoAviso size={12} />{e.zonasSin.length === 1 ? '1 zona sin vendedor' : `${e.zonasSin.length} zonas sin vendedor`}
                           </div>
                         )}

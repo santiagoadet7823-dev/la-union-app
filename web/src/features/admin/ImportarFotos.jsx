@@ -157,7 +157,7 @@ export default function ImportarFotos({ onClose, onToast }) {
       subida: { t: 'Subida ✓', c: 'var(--success)', b: 'var(--success-tint)' },
       error: { t: error || 'Error', c: 'var(--danger)', b: 'var(--danger-tint)' },
     }[estado] || { t: estado, c: 'var(--muted)', b: 'var(--surface2)' }
-    return <span title={error || undefined} style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%'), color: map.c, background: map.b }}>{map.t}</span>
+    return <span title={error || undefined} style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%'), color: map.c, background: map.b }}>{map.t}</span>
   }
 
   const grid = { display: 'grid', gridTemplateColumns: '110px 1fr 130px', gap: 8 }
@@ -237,7 +237,7 @@ export default function ImportarFotos({ onClose, onToast }) {
             )}
 
             <div style={sx('border:1px solid var(--line);border-radius:12px;overflow:hidden')}>
-              <div style={{ ...grid, ...sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
+              <div style={{ ...grid, ...sx('padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
                 <span>Archivo</span><span>Producto</span><span>Estado</span>
               </div>
               <div style={{ maxHeight: 380, overflow: 'auto' }}>

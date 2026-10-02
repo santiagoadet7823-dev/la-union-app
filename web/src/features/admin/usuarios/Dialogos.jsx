@@ -172,7 +172,7 @@ export function Revision({ open, onClose, bor, porId, info, ctx, sinRed, guardan
           return (
             <div key={pid} style={sx('border:1px solid var(--line);border-radius:14px;overflow:hidden')}>
               <div style={sx('display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2)')}>
-                <Avatar nombre={p.nombre || identidadVisible(p.email)} color={colorDe(p)} size={28} fs={10} />
+                <Avatar nombre={p.nombre || identidadVisible(p.email)} color={colorDe(p)} size={28} fs={11} />
                 <span style={sx('flex:1;font-weight:600')}>{p.nombre || identidadVisible(p.email)}</span>
                 <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap')}>{ctx.empresaNombre[p.id_empresa] || ''}</span>
               </div>

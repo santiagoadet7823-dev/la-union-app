@@ -354,7 +354,7 @@ export default function EmpresasView({ onToast }) {
                   <span style={sx('font-weight:600')}>{e.nombre}</span>
                   <span style={sx('text-align:right;font-family:var(--font-mono);color:var(--muted)')}>{e.usuarios}</span>
                   <span>
-                    <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), color: e.activo ? 'var(--success)' : 'var(--danger)', background: e.activo ? 'var(--success-tint)' : 'var(--danger-tint)' }}>
+                    <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600'), color: e.activo ? 'var(--success)' : 'var(--danger)', background: e.activo ? 'var(--success-tint)' : 'var(--danger-tint)' }}>
                       <span style={{ ...sx('width:5px;height:5px;border-radius:99px'), background: e.activo ? 'var(--success)' : 'var(--danger)' }} />
                       {e.activo ? 'Activa' : 'Inactiva'}
                     </span>
@@ -423,7 +423,7 @@ function Metrica({ valor, etiqueta, sub }) {
     <div style={sx('background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px 14px')}>
       <div style={sx('font-family:var(--font-mono);font-weight:700;font-size:20px;color:var(--deep)')}>{valor}</div>
       <div style={sx('font-size:11px;font-weight:600;color:var(--muted);margin-top:2px')}>{etiqueta}</div>
-      {sub && <div style={sx('font-size:10px;color:var(--faint);margin-top:2px')}>{sub}</div>}
+      {sub && <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{sub}</div>}
     </div>
   )
 }
@@ -459,7 +459,7 @@ function PanelPlan({ plan }) {
     <div style={panel}>
       <div style={sx('display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px')}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Estado del plan · Supabase Pro</div>
-        <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:700'), color, background: 'var(--surface2)', border: '1px solid var(--line)' }}>
+        <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700'), color, background: 'var(--surface2)', border: '1px solid var(--line)' }}>
           {pct.toFixed(pct < 10 ? 1 : 0)}% de la base
         </span>
       </div>

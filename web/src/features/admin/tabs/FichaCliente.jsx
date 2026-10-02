@@ -186,7 +186,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
               </select>
             </div>
           </div>
-          <div style={sx('font-size:10.5px;color:var(--faint);line-height:1.4')}>Al cambiar la zona, el cliente hereda el vendedor dueño de esa zona.</div>
+          <div style={sx('font-size:11px;color:var(--faint);line-height:1.4')}>Al cambiar la zona, el cliente hereda el vendedor dueño de esa zona.</div>
         </div>
       )}
 

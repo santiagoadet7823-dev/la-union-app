@@ -112,12 +112,12 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   )
 
   const chipEstado = (c) => (c.activo ? (
-    <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:var(--r-pill);font-size:10.5px;font-weight:600'), background: 'var(--success-tint)', color: 'var(--success)' }}>
+    <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:var(--r-pill);font-size:11px;font-weight:600'), background: 'var(--success-tint)', color: 'var(--success)' }}>
       <span style={{ ...sx('width:5px;height:5px;border-radius:var(--r-pill)'), background: 'var(--success)' }} />Confirmado
     </span>
   ) : (
     <button onClick={async () => { const { ok, error } = await updateCliente(c.id, { activo: true }); onToast(ok ? `${c.name} confirmado` : 'Error: ' + (error?.message || '')) }}
-      className="lu-press" style={sx('display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border:1px solid var(--warning);border-radius:var(--r-pill);background:var(--warning-tint);color:var(--warning);font-size:10.5px;font-weight:700;cursor:pointer')}>
+      className="lu-press" style={sx('display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border:1px solid var(--warning);border-radius:var(--r-pill);background:var(--warning-tint);color:var(--warning);font-size:11px;font-weight:700;cursor:pointer')}>
       <Check size={11} w={3} />Confirmar
     </button>
   ))
@@ -151,17 +151,17 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         <div style={{ ...sx('display:flex;justify-content:space-between;margin-bottom:14px;gap:10px'), flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={sx('display:flex;align-items:center;gap:10px;flex-wrap:wrap')}>
             <div style={label10}>Clientes · {cartera.length}</div>
-            {porConfirmar > 0 && <span style={sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:var(--r-pill);font-size:10.5px;font-weight:600;color:var(--warning);background:var(--warning-tint)')}>{porConfirmar} por confirmar</span>}
+            {porConfirmar > 0 && <span style={sx('display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:var(--r-pill);font-size:11px;font-weight:600;color:var(--warning);background:var(--warning-tint)')}>{porConfirmar} por confirmar</span>}
             {sinUbicar > 0 && (
               <button onClick={() => setSoloSinUbicar((v) => !v)} aria-pressed={soloSinUbicar} title="Filtrar clientes sin ubicación en el mapa"
-                style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--r-pill);font-size:10.5px;font-weight:600;cursor:pointer'), color: soloSinUbicar ? 'var(--on-primary)' : 'var(--info)', background: soloSinUbicar ? 'var(--primary)' : 'var(--surface2)', border: '1px solid var(--line)' }}>
+                style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--r-pill);font-size:11px;font-weight:600;cursor:pointer'), color: soloSinUbicar ? 'var(--on-primary)' : 'var(--info)', background: soloSinUbicar ? 'var(--primary)' : 'var(--surface2)', border: '1px solid var(--line)' }}>
                 {sinUbicar} sin ubicar
               </button>
             )}
             {archivados > 0 && (
               <button onClick={() => { setVerArchivados((v) => !v); setSel(new Set()) }} aria-pressed={verArchivados}
                 title="El archivado no borra: los clientes siguen en la base y se pueden devolver a la cartera"
-                style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--r-pill);font-size:10.5px;font-weight:600;cursor:pointer'), color: verArchivados ? 'var(--on-primary)' : 'var(--muted)', background: verArchivados ? 'var(--muted)' : 'var(--surface2)', border: '1px solid var(--line)' }}>
+                style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--r-pill);font-size:11px;font-weight:600;cursor:pointer'), color: verArchivados ? 'var(--on-primary)' : 'var(--muted)', background: verArchivados ? 'var(--muted)' : 'var(--surface2)', border: '1px solid var(--line)' }}>
                 {archivados} archivado{archivados === 1 ? '' : 's'}
               </button>
             )}
@@ -190,7 +190,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                     <input type="checkbox" checked={completarHuecos} onChange={(e) => setCompletarHuecos(e.target.checked)} style={sx('margin:0')} />
                     Completar códigos libres (filas lila)
                   </label>
-                  <div style={sx('padding:2px 10px 4px;font-size:10.5px;color:var(--faint);line-height:1.4')}>
+                  <div style={sx('padding:2px 10px 4px;font-size:11px;color:var(--faint);line-height:1.4')}>
                     Ordenada por código, archivados incluidos. Los colores están en la hoja «Leyenda». Editala y volvé a subirla por “Importar planilla”.
                   </div>
                 </div>
@@ -317,7 +317,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         ) : (
           /* ===== PC: tabla ===== */
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, ...sx('padding:8px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
               {/* Hueco del ancho de la casilla, para que los encabezados no se corran respecto
                   de las filas cuando el modo selección está activo. */}
               {seleccionando && <span style={{ width: 20, flex: 'none' }} />}
@@ -352,7 +352,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                       <span style={{ width: 9, height: 9, borderRadius: 99, flex: 'none', background: z?.color || 'var(--line2)' }} />
                       <span style={sx('overflow:hidden;text-overflow:ellipsis')}>{z ? `${z.abrev ? z.abrev + ' · ' : ''}${z.nombre}` : '—'}</span>
                     </span>
-                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.04em')}>{c.dias || '—'}</span>
+                    <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.04em')}>{c.dias || '—'}</span>
                     <span style={sx('color:var(--muted);font-size:12px')}>{c.frecuencia || '—'}</span>
                     <span onClick={(e) => e.stopPropagation()}>{chipEstado(c)}</span>
                     </div>

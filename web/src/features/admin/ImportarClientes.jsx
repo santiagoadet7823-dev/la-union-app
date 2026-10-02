@@ -286,7 +286,7 @@ export default function ImportarClientes({ onClose, onToast }) {
       'sin-nombre': { t: 'Sin nombre', c: 'var(--danger)', b: 'var(--danger-tint)' },
       vacia: { t: 'Código libre', c: 'var(--muted)', b: 'var(--surface2)' },
     }[estado] || { t: estado, c: 'var(--muted)', b: 'var(--surface2)' }
-    return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap'), color: map.c, background: map.b }}>{map.t}</span>
+    return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap'), color: map.c, background: map.b }}>{map.t}</span>
   }
 
   // Con la tilde prendida y bajas contadas, el botón se habilita aunque ninguna fila cambie: la
@@ -373,7 +373,7 @@ export default function ImportarClientes({ onClose, onToast }) {
 
             {/* Tabla de previsualización */}
             <div style={sx('border:1px solid var(--line);border-radius:12px;overflow:hidden')}>
-              <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 130px 130px', gap: 8, ...sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 130px 130px', gap: 8, ...sx('padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
               <span>Código</span><span>Nombre</span><span>Zona → Vendedor</span><span>Estado</span>
               </div>
               <div style={{ maxHeight: 360, overflow: 'auto' }}>

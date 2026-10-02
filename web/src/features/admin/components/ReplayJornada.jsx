@@ -20,7 +20,7 @@ import LeafletMap from '../../../components/LeafletMap'
  */
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
-const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
+const label10 = { ...sx('font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 const VELOCIDADES = [1, 2, 4, 8]
 const TICK_MS = 350
 
@@ -237,7 +237,7 @@ export default function ReplayJornada({ onToast, userId: userIdInicial = '', fec
 function Stat({ label, value, mono }) {
   return (
     <div style={sx('padding:10px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:12px')}>
-      <div style={sx('font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em')}>{label}</div>
+      <div style={sx('font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em')}>{label}</div>
       <div style={{ ...sx('font-size:15px;font-weight:600;margin-top:3px'), fontFamily: mono ? 'var(--font-mono)' : 'inherit' }}>{value}</div>
     </div>
   )

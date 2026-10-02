@@ -156,11 +156,11 @@ const PILL = {
 }
 const Pill = ({ estado }) => {
   const p = PILL[estado] || { t: estado, c: 'var(--muted)', b: 'var(--surface2)' }
-  return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap'), color: p.c, background: p.b }}>{p.t}</span>
+  return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap'), color: p.c, background: p.b }}>{p.t}</span>
 }
 const chip = (color, bg) => ({ ...sx('padding:5px 11px;border-radius:99px'), color, background: bg })
 const GRID = '44px 1fr 1.2fr 150px'
-const celdaCabecera = sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)')
+const celdaCabecera = sx('padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)')
 const celdaFila = sx('padding:9px 12px;font-size:12px;border-bottom:1px solid var(--line)')
 const recorte = sx('white-space:nowrap;overflow:hidden;text-overflow:ellipsis')
 const Flecha = ({ de, a }) => <><span style={sx('color:var(--faint)')}>{de || '—'}</span> → <b style={sx('color:var(--text)')}>{a || '—'}</b></>
@@ -329,7 +329,7 @@ export default function ImportarOrganizacion({ idEmpresaActiva, onClose, onToast
 
             <Tabla titulo="Rol" cab={['Nombre', 'Código ERP', 'Estado']} filas={filasEquipo} celdas={(f) => (
               <>
-                <span style={sx('font-size:10.5px;color:var(--muted)')}>{f.persona?.rol === 'encargado' ? 'enc.' : f.persona ? 'vend.' : '—'}</span>
+                <span style={sx('font-size:11px;color:var(--muted)')}>{f.persona?.rol === 'encargado' ? 'enc.' : f.persona ? 'vend.' : '—'}</span>
                 <span style={{ ...sx('font-weight:500'), ...recorte }}>{f.persona?.nombre || f.nombre || <span style={sx('color:var(--faint)')}>(fila {f.fila})</span>}</span>
                 <span style={{ ...sx('font-size:11.5px;color:var(--muted);font-family:var(--font-mono)'), ...recorte }}>{f.estado === 'update' ? <Flecha de={f.de || 'sin código'} a={f.a} /> : (f.texto || <span style={sx('color:var(--faint)')}>(vacío)</span>)}</span>
               </>

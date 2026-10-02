@@ -76,7 +76,7 @@ export default function GuiaFotos({ abierta = false, compacta = false }) {
           <div style={sx('display:flex;flex-direction:column;gap:1px;border:1px solid var(--line);border-radius:10px;overflow:hidden')}>
             {REGLAS.map((r) => (
               <div key={r.k} style={sx('display:grid;grid-template-columns:88px 1fr;gap:10px;padding:8px 11px;background:var(--surface2);font-size:12px;align-items:baseline')}>
-                <span style={sx('font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)')}>{r.k}</span>
+                <span style={sx('font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)')}>{r.k}</span>
                 <span>
                   <b style={sx('font-weight:600')}>{r.v}</b>
                   <span style={sx('display:block;color:var(--muted);font-size:11.5px;margin-top:1px')}>{r.d}</span>
@@ -86,7 +86,7 @@ export default function GuiaFotos({ abierta = false, compacta = false }) {
           </div>
 
           <div>
-            <div style={sx('font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:6px')}>Nunca</div>
+            <div style={sx('font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:6px')}>Nunca</div>
             <div style={sx('display:flex;flex-wrap:wrap;gap:6px')}>
               {PROHIBIDO.map((p) => (
                 <span key={p} style={{ ...sx('padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600'), color: 'var(--danger)', background: 'var(--danger-tint)' }}>{p}</span>
@@ -97,7 +97,7 @@ export default function GuiaFotos({ abierta = false, compacta = false }) {
           {!compacta && (
             <div>
               <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px')}>
-                <span style={sx('font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)')}>Prompt para el generador de imágenes</span>
+                <span style={sx('font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)')}>Prompt para el generador de imágenes</span>
                 <button type="button" onClick={copiar} style={sx('padding:3px 10px;border:1px solid var(--line2);border-radius:99px;background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer')}>
                   {copiado ? 'Copiado ✓' : 'Copiar'}
                 </button>

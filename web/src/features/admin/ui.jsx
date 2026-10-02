@@ -6,8 +6,8 @@ import { sx } from '../../lib/sx'
  * AdminView; extraídos para que el shell y cada tab los importen.
  */
 export const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
-export const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
-export const miniLbl = { ...sx('color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.05em;display:block') }
+export const label10 = { ...sx('font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
+export const miniLbl = { ...sx('color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.05em;display:block') }
 export const fieldLabel = { ...sx('font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px') }
 
 export const asignGrid = { display: 'grid', gridTemplateColumns: '40px 110px 1.5fr 1fr 80px 110px 120px', gap: 10 }
@@ -66,7 +66,7 @@ export function FilaTabla({ grid, isMobile, celdas, acciones }) {
 export function CabeceraTabla({ grid, isMobile, columnas }) {
   if (isMobile) return null
   return (
-    <div style={{ ...grid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
+    <div style={{ ...grid, ...sx('padding:8px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
       {columnas.map((c, i) => <span key={i} style={c.align === 'right' ? sx('text-align:right') : undefined}>{c.label ?? c}</span>)}
     </div>
   )
@@ -85,7 +85,7 @@ export function EmptyState({ titulo, texto }) {
 export function MiniStat({ label, value, color, span }) {
   return (
     <div style={{ ...sx('padding:10px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:12px'), gridColumn: span ? 'span 2' : undefined }}>
-      <div style={sx('font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em')}>{label}</div>
+      <div style={sx('font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em')}>{label}</div>
       <div style={{ ...sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600;margin-top:2px'), color: color || 'inherit' }}>{value}</div>
     </div>
   )
