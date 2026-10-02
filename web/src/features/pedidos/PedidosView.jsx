@@ -395,16 +395,16 @@ export default function PedidosView({ onToast }) {
       {!enPapelera ? (
         <div style={sx('display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
           <div>
-            <div style={sx('font-size:10.5px;color:var(--faint)')}>{hayFiltro ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
+            <div style={sx('font-size:11px;color:var(--faint)')}>{hayFiltro ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
             <div style={sx('font-size:19px;font-weight:700')}>{pedidos.length}{hayFiltro ? <span style={sx('font-size:11px;color:var(--faint);font-weight:400')}> de {activos.length}</span> : null}</div>
           </div>
           <div>
-            <div style={sx('font-size:10.5px;color:var(--faint)')}>Vendido</div>
+            <div style={sx('font-size:11px;color:var(--faint)')}>Vendido</div>
             <div style={sx('font-size:19px;font-weight:700')}>{fmtPesos(totalVendido)}</div>
           </div>
           {anulados.length > 0 && (
             <div>
-              <div style={sx('font-size:10.5px;color:var(--faint)')}>Anulados</div>
+              <div style={sx('font-size:11px;color:var(--faint)')}>Anulados</div>
               <div style={sx('font-size:19px;font-weight:700;color:var(--danger)')}>{anulados.length}</div>
             </div>
           )}
@@ -484,18 +484,18 @@ export default function PedidosView({ onToast }) {
                     sólo va en la lista viva; en la papelera el estado es siempre "Anulado" y ya lo
                     dice la línea roja de abajo. */}
                 {!anulado && (
-                  <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
+                  <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
                     {p.estado}
                   </span>
                 )}
                 {p.exportado_ts && (
-                  <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
+                  <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
                     ERP{p.export_lote ? ` #${p.export_lote}` : ''}
                   </span>
                 )}
                 {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta. */}
                 {motivoRetencion(p) && (
-                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
+                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
                     Retenido · {TEXTO_RETENCION[motivoRetencion(p)]}
                   </span>
                 )}
@@ -509,7 +509,7 @@ export default function PedidosView({ onToast }) {
                 </span>
               </div>
               {anulado && (
-                <div style={sx('font-size:10.5px;color:var(--danger);margin-top:3px')}>
+                <div style={sx('font-size:11px;color:var(--danger);margin-top:3px')}>
                   ANULADO{p.motivo_anulacion ? ` · ${p.motivo_anulacion}` : ''}
                 </div>
               )}
@@ -518,7 +518,7 @@ export default function PedidosView({ onToast }) {
                   para siempre es lo único de esta pantalla que tiene urgencia real. */}
               {anulado && enPapelera && (
                 <div style={{
-                  ...sx('font-size:10.5px;margin-top:2px;font-family:var(--font-mono)'),
+                  ...sx('font-size:11px;margin-top:2px;font-family:var(--font-mono)'),
                   color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
                   fontWeight: porVencer(p) ? 600 : 400,
                 }}>
