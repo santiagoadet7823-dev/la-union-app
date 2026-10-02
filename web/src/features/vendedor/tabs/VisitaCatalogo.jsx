@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { fmtPesos, hace } from '../../../lib/format'
 import ConfirmarPedidoSheet from '../ConfirmarPedidoSheet'
@@ -9,6 +9,7 @@ import BtnInmersivo from '../../../components/BtnInmersivo'
 import EspejoTablet from '../../vidriera/EspejoTablet'
 import AvisoVidriera from '../../vidriera/AvisoVidriera'
 import { useAltoMedido } from '../../../hooks/useAltoMedido'
+import { useTecladoAbierto } from '../../../hooks/useTecladoAbierto'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useSugeridos, useUltimoPedido } from '../useSugeridos'
 
@@ -50,6 +51,58 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   const [pedidoRef, pedidoAlto] = useAltoMedido()
 
   const { catalogoMeta } = useCatalog()
+
+  // (02/10/2026) TECLADO ABIERTO (informe 09 del emulador, B5). Con el teclado el viewport queda en
+  // ~430 px y la barra del pedido tapaba TODOS los resultados de la búsqueda. Mientras está abierto
+  // se pliega lo mismo que en inmersivo (header de la visita, aviso de catálogo viejo, sugeridos) y la
+  // barra del pedido queda solo con el CTA (B5 pide el CTA a la vista); el renglón de "sin pedir" no
+  // se dibuja. El buscador no se mueve: es lo que tiene el foco.
+  const teclado = useTecladoAbierto()
+  const plegarArriba = inmersivo || teclado
+
+  /**
+   * (02/10/2026) MODO COMPACTO: TODO SCROLLEA JUNTO cuando a la grilla no le queda lugar.
+   *
+   * Con letra del sistema 1,5 quedaban ~65 px entre los chips y la barra del pedido, y con 2,0 nada
+   * (informe 09 del emulador, B2/B3): el header de la visita, el buscador, los chips, la barra del
+   * pedido y la botonera se comían la pantalla y la grilla —el caso de uso principal— no se veía.
+   * Pasa también con letra 1,0 cuando aparecen "repetir el último pedido" y "lo que más lleva".
+   *
+   * Se mide el lugar libre para la grilla (alto de la columna − lo que hay arriba de la grilla − la
+   * botonera − la barra del pedido) y, si no llega a ~una fila (140 px a letra 1,0, escalado con la
+   * letra), la columna pasa a ser el scroll: el header y los filtros se van hacia arriba con los
+   * productos. La barra del pedido y el CTA no se mueven (son `absolute` respecto de `VendedorView`).
+   * Con lugar de sobra queda igual que siempre: buscador y chips fijos, grilla con scroll propio.
+   *
+   * Lo medido no depende del modo (lo de arriba de la grilla mide lo mismo con o sin scroll de la
+   * columna), así que no oscila. Con el teclado abierto no se reevalúa: cambiar de contenedor de
+   * scroll mientras se escribe movería el campo enfocado.
+   */
+  const colRef = useRef(null)
+  const [compacto, setCompacto] = useState(false)
+  useEffect(() => {
+    const col = colRef.current
+    if (!col || teclado) return undefined
+    const evaluar = () => {
+      const grilla = col.querySelector('[data-grilla]')
+      if (!grilla) return
+      const cs = getComputedStyle(col)
+      const escala = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16
+      const arriba = grilla.getBoundingClientRect().top - col.getBoundingClientRect().top + col.scrollTop
+      const nav = parseFloat(cs.getPropertyValue('--nav-h')) || 0
+      const pedido = parseFloat(cs.getPropertyValue('--pedido-h')) || 0
+      const libre = col.clientHeight - arriba - nav - pedido - 12
+      setCompacto(libre < 140 * escala)
+    }
+    evaluar()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    // Sin lista de dependencias a propósito: lo de arriba de la grilla aparece y desaparece con
+    // varios estados (sugeridos, aviso, inmersivo, barra del pedido) y se vuelve a observar todo.
+    const ro = new ResizeObserver(evaluar)
+    ro.observe(col)
+    for (const h of col.children) if (!h.hasAttribute('data-grilla')) ro.observe(h)
+    return () => ro.disconnect()
+  })
 
   /**
    * Hace cuanto que este telefono no baja el catalogo. Devuelve el texto del aviso, o `null` si
@@ -103,18 +156,20 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   }
 
   return (
-    <div style={{ ...sx('flex:1;display:flex;flex-direction:column;overflow:hidden'), '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px' }}>
+    <div ref={colRef} style={{ ...sx('flex:1;min-height:0;display:flex;flex-direction:column'), overflowX: 'hidden', overflowY: compacto ? 'auto' : 'hidden', '--pedido-h': pedidoAlto ? `${pedidoAlto + 8}px` : '0px' }}>
       {/* Cabecera colapsable. Se anima con `maxHeight` y no con `grid-template-rows:0fr`, que es más
           prolijo pero pide Chrome 107+: el parque tiene WebViews viejos y ahí no animaría nada. El
-          240 es un techo holgado — el header de visita mide ~100 px y el banner de consulta ~44. */}
+          techo es holgado — el header de visita mide ~100 px y el banner de consulta ~44.
+          (02/10/2026) El techo va en `rem` (era 240 px): con letra 2,0 el header mide más de 240 y
+          quedaba recortado arriba y abajo ("VISITA EN CURSO" y el código del comercio). */}
       <div
-        aria-hidden={inmersivo}
+        aria-hidden={plegarArriba}
         style={{
           flex: 'none', overflow: 'hidden',
-          maxHeight: inmersivo ? 0 : 240,
-          opacity: inmersivo ? 0 : 1,
-          transform: inmersivo ? 'translateY(-8px)' : 'translateY(0)',
-          visibility: inmersivo ? 'hidden' : 'visible',
+          maxHeight: plegarArriba ? 0 : '15rem',
+          opacity: plegarArriba ? 0 : 1,
+          transform: plegarArriba ? 'translateY(-8px)' : 'translateY(0)',
+          visibility: plegarArriba ? 'hidden' : 'visible',
           transition: 'max-height .2s cubic-bezier(.23,1,.32,1), opacity .16s cubic-bezier(.23,1,.32,1), transform .2s cubic-bezier(.23,1,.32,1), visibility .2s',
         }}
       >
@@ -126,12 +181,15 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
             </div>
             <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--text)')}>{timer}</div>
           </div>
-          <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:6px')}>
-            <div>
+          {/* (02/10/2026) La fila envuelve: con letra 2,0 los botones no entraban al lado del nombre
+              y "Cancelar" quedaba cortado contra el borde derecho. El nombre pide 8rem antes de
+              pasar los botones abajo; con letra 1,0 todo sigue en un renglón. */}
+          <div style={sx('display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:6px')}>
+            <div style={sx('flex:1 1 0;min-width:8rem')}>
               <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px')}>{visitC.name}</div>
               <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{visitC.codigo || ''} · {visitC.loc || ''}</div>
             </div>
-            <div style={sx('display:flex;gap:6px')}>
+            <div style={sx('display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-left:auto')}>
               {/* VIDRIERA — abre el QR para emparejar la tablet del cliente. Va en el header de la
                   visita en curso porque el gesto es: hago check-in, le paso la tablet, tomo el
                   pedido. Fuera de una visita no tiene sentido: el cartel del celular no sabría de
@@ -174,7 +232,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           aparece siempre se deja de leer a los dos días, y entonces no sirve el día que importa.
           El umbral son 6 h — el ERP manda cada hora, así que seis corridas perdidas ya es una
           mañana entera sin actualizar. */}
-      {!inmersivo && catalogoDesactualizado && (
+      {!plegarArriba && catalogoDesactualizado && (
         <div style={sx('flex:none;margin:10px 14px 0;padding:9px 12px;border:1px solid var(--warning);border-radius:12px;background:var(--warning-tint);color:var(--text);font-size:11.5px;line-height:1.45;display:flex;gap:8px;align-items:center')}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2.2" strokeLinecap="round" style={{ flex: 'none' }}><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
           <span>
@@ -200,6 +258,10 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
         onProductoAbierto={alAbrirProducto}
         vidActiva={vid.activa}
         onMostrar={(p) => { vid.destacar(p); showToast(`Se lo mostramos: ${p.name}`) }}
+        scrollPropio={!compacto}
+        // (02/10/2026) El fondo despeja la botonera y la barra del pedido MEDIDAS (antes 180 fijos,
+        // que con letra grande dejaban la última fila debajo de la barra: B3 pide todo alcanzable).
+        paddingInferior="calc(var(--nav-h, 80px) + var(--pedido-h, 0px) + 64px)"
         accionBuscador={onToggleInmersivo && (
           <BtnInmersivo activo={inmersivo} onToggle={onToggleInmersivo} queExpande="el catálogo" style={{ boxShadow: 'none' }} />
         )}
@@ -221,7 +283,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
         {/* Los dos bloques de sugeridos se desmontan en inmersivo en vez de colapsarse: son
             `children` de la grilla, entre el buscador y los chips, y animarles el alto ahí empuja
             los chips y la grilla entera en cada frame. Lo que se gana es espacio, que es el punto. */}
-        {!inmersivo && !!ultimoPedido && (
+        {!plegarArriba && !!ultimoPedido && (
           <div style={sx('flex:none;padding:0 14px 10px')}>
             <button
               onClick={() => {
@@ -261,7 +323,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
             mínimo por producto. Con una sola compra no hay preferencia — y una recomendación
             equivocada quema la confianza en la función más rápido que su ausencia. Como los pedidos
             recién se empiezan a guardar hoy, esta fila va a estar vacía varias semanas. */}
-        {!inmersivo && sugerencias.length > 0 && (
+        {!plegarArriba && sugerencias.length > 0 && (
           <div style={sx('flex:none;padding:0 14px 10px')}>
             <div style={sx('display:flex;align-items:center;gap:6px;margin-bottom:7px')}>
               <span style={sx('width:6px;height:6px;flex:none;border-radius:99px;background:var(--primary)')} />
@@ -373,7 +435,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           mitad es lo que entró al pedido y salió (`quitados`), que es la señal más fuerte de las dos
           —lo iba a llevar y se arrepintió— y que hasta hoy se evaporaba sin dejar rastro. El detalle
           con el botón para recuperarlo vive en `CarritoSheet`; acá va el resumen de un renglón. */}
-      {(vid.activa || Object.keys(quitados).length > 0) && (
+      {!teclado && (vid.activa || Object.keys(quitados).length > 0) && (
         <div
           style={{
             ...sx('position:absolute;left:12px;right:12px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted);box-shadow:var(--shadow)'),
@@ -447,7 +509,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
               cinco cosas seguidas y hay que repasarlas antes de cerrar.
               (02/10/2026) Alto mínimo 44 (medía 27, criterio B4); el margen negativo se come el
               padding de la barra, así la barra no crece. */}
-          <div
+          {!teclado && <div
             onClick={() => setVerCarrito(true)}
             className="lu-press"
             role="button"
@@ -458,7 +520,8 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
               <span style={sx('font-size:18px;font-weight:600;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
             </div>
-          </div>
+          </div>}
+          {/* (02/10/2026) Con el teclado abierto queda solo el CTA (el renglón de arriba se oculta). */}
           {visitC ? (
             <button
               onClick={() => setConfirmando(true)}
