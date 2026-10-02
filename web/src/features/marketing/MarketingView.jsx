@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { Contador, TiraContadores } from '../../components/ui'
+import { Contador, NavInferior, TiraContadores } from '../../components/ui'
 import { glassBlur } from '../../lib/glass'
 import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
@@ -8,7 +8,6 @@ import { useDevice } from '../../context/DeviceContext'
 import { Box, Check, ImagenVacia } from '../../components/icons'
 import GuiaFotos from './GuiaFotos'
 import MenuCuenta from '../perfil/MenuCuenta'
-import { NavInferior } from '../../components/ui'
 
 /**
  * Pantalla del rol `marketing` — la persona a cargo del catálogo (db/38).
