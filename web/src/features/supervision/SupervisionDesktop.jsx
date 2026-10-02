@@ -17,20 +17,21 @@ import useRecorridosDelDia, { textoDeErrorRecorridos } from '../../hooks/useReco
 import HaceSegundos from '../../components/HaceSegundos'
 import useEmpresaBase from '../../hooks/useEmpresaBase'
 import useAlertasEquipo from '../../hooks/useAlertasEquipo'
-import AlertasEquipo from '../../components/AlertasEquipo'
+import AlertasEquipo, { TarjetaIncidencias } from '../../components/AlertasEquipo'
 import SelectorEmpresa from '../../components/SelectorEmpresa'
 import PistaBoton from '../../components/PistaBoton'
 import LeafletMap from '../../components/LeafletMap'
 import BtnInmersivo from '../../components/BtnInmersivo'
-import Logo from '../../components/Logo'
 import EstadoEquipo from './components/EstadoEquipo'
 import BurbujasEquipo from './components/BurbujasEquipo'
 import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
+import RailEscritorio from './components/RailEscritorio'
+import ListaGestion from './components/ListaGestion'
 import DespachoGestion from './components/DespachoGestion'
 import MenuCuenta from '../perfil/MenuCuenta'
 import { etiquetaRol } from '../../lib/roles'
-import { Alerta, AlertaCirculo, Calendario, Check, GestIcon, Mapa, Menu, Pin, Refrescar, Reloj, Truck } from '../../components/icons'
+import { Alerta, AlertaCirculo, Calendario, Check, ChevronDown, Dashboard, Gestion, Mapa, Menu, Pin, Refrescar, Reloj, Truck } from '../../components/icons'
 import useCapaCartera from './useCapaCartera'
 import LeyendaCartera from './components/LeyendaCartera'
 import TarjetaComercio from './components/TarjetaComercio'
@@ -70,7 +71,16 @@ const DashboardEquipo = lazy(() => import('../dashboard/DashboardEquipo'))
 
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 
+// Ancho del panel contextual de Gestión: el del sidebar que había antes del rail (02/10/2026).
 const SIDEBAR_W = 232
+// Rail expandido o no, por equipo (localStorage). Mismo criterio que `lu-device`.
+const RAIL_KEY = 'lu-rail-escritorio'
+
+// "11:58:04" — la hora de la última carga de ubicaciones, con segundos como en la hoja.
+const horaConSegundos = (ts) => {
+  const d = new Date(ts)
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':')
+}
 
 export default function SupervisionDesktop({ role = 'admin', vista = null, onIrAJornada = null }) {
   const { theme, isDark } = useTheme()
@@ -104,7 +114,11 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [pinId, setPinId] = useState(null)
   const [foco, setFoco] = useState(null)       // { id, nonce } — usuario a enfocar en el mapa
   const [acctOpen, setAcctOpen] = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false) // sidebar como drawer en mobile
+  const [drawerOpen, setDrawerOpen] = useState(false) // rail + panel como drawer en mobile
+  const [railAbierto, setRailAbierto] = useState(() => { try { return localStorage.getItem(RAIL_KEY) === '1' } catch { return false } })
+  const [panelGestion, setPanelGestion] = useState(true) // panel contextual de Gestión a la vista
+  const ultimaGestionRef = useRef(null)
+  const railRef = useRef(null)
   const [toast, setToast] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [, tick] = useState(0)
@@ -345,70 +359,103 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
   const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
   const roleLabel = role ? etiquetaRol(role) : 'Supervisión' // tabla única: lib/roles.js
-  const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard')
-  const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : `Ventas y actividad · ${horizonteDash === 'hoy' ? 'hoy' : horizonteDash === 'semana' ? 'esta semana' : 'este mes'}`)
+  // Título + migas del topbar (hoja SupervisionEscritorio: "Supervisión › Gestión › Equipo").
+  const grupoActual = esGestion ? gestionGrupos.find((g) => g.items.some((it) => it.key === view))?.titulo : null
+  const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Mapa en vivo' : 'Dashboard')
+  const migas = esGestion
+    ? ['Supervisión', 'Gestión', grupoActual].filter(Boolean)
+    : view === 'dash'
+      ? ['Supervisión', `Ventas y actividad · ${horizonteDash === 'hoy' ? 'hoy' : horizonteDash === 'semana' ? 'esta semana' : 'este mes'}`]
+      : ['Supervisión', roleLabel]
 
-  // Elegir una sección desde el sidebar (cierra el drawer y el menú de cuenta).
+  // Elegir una sección desde el rail o el panel (cierra el drawer y el menú de cuenta).
   const irA = (k) => { setView(k); setPinId(null); setAcctOpen(false); setDrawerOpen(false) }
 
+  // Gestión en el rail: desde otra sección abre la ÚLTIMA pantalla de gestión que se usó (o la
+  // primera del rol) con el panel a la vista; estando ya en Gestión, muestra u oculta el panel para
+  // devolverle ese ancho a la pantalla. En el drawer el panel está siempre al lado del rail.
+  const irGestion = () => {
+    if (esGestion && !isMobile) { setPanelGestion((v) => !v); return }
+    const primera = gestionGrupos[0]?.items[0]?.key
+    const destino = GESTION_TITLES[ultimaGestionRef.current] && gestionGrupos.some((g) => g.items.some((it) => it.key === ultimaGestionRef.current))
+      ? ultimaGestionRef.current
+      : primera
+    if (!destino) return
+    setPanelGestion(true)
+    irA(destino)
+  }
+  useEffect(() => { if (esGestion) ultimaGestionRef.current = view }, [esGestion, view])
+
+  // Rail contraído (72) o expandido (208), recordado en este equipo. Igual que la hoja: arranca
+  // contraído, que es lo que le deja el ancho al mapa.
+  const alternarRail = () => setRailAbierto((v) => {
+    const n = !v
+    try { localStorage.setItem(RAIL_KEY, n ? '1' : '0') } catch { /* sin storage: no se recuerda */ }
+    return n
+  })
+
+  // Drawer (pantallas chicas): al abrir, el foco va al rail; Escape lo cierra.
+  useEffect(() => {
+    if (!drawerOpen) return undefined
+    railRef.current?.focus({ preventScroll: true })
+    const onKey = (e) => { if (e.key === 'Escape') setDrawerOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawerOpen])
+
   const gpsOffArr = Object.values(gpsOff)
+
+  // Destinos del rail (02/10/2026, bloque C7). Los mismos de la barra inferior de la APK: Mapa ·
+  // Dashboard · Gestión (la cuenta vive arriba a la derecha). Gestión no se dibuja si el rol no
+  // tiene ninguna pantalla, igual que antes con los grupos del sidebar.
+  const nAvisos = avisos.alertas.length
+  const destinosRail = [
+    { k: 'mapa', etiqueta: 'Mapa', Icono: Mapa, activo: view === 'mapa', badge: nAvisos, badgeAria: `${nAvisos} incidencia${nAvisos === 1 ? '' : 's'} abierta${nAvisos === 1 ? '' : 's'}`, onClick: () => irA('mapa') },
+    { k: 'dash', etiqueta: 'Dashboard', Icono: Dashboard, activo: view === 'dash', onClick: () => irA('dash') },
+    ...(gestionGrupos.length
+      ? [{ k: 'gestion', etiqueta: 'Gestión', Icono: Gestion, activo: esGestion, expandido: isMobile ? undefined : (esGestion && panelGestion), onClick: irGestion }]
+      : []),
+  ]
+
+  // Panel contextual de Gestión: la lista agrupada COMPARTIDA con la APK y el panel de dirección
+  // (`ListaGestion`, regla 31), con la pantalla abierta marcada. Ancho = el del sidebar viejo.
+  const panelGestionNodo = gestionGrupos.length > 0 && (
+    <aside id="panel-gestion" aria-label="Gestión" style={{ flex: 'none', width: SIDEBAR_W, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--surface)', borderRight: '1px solid var(--line)' }}>
+      <div style={{ flex: 'none', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid var(--line)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 17 }}>Gestión</div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 10px 16px' }}>
+        <ListaGestion rol={role} permisos={permisos} activa={esGestion ? view : null} chevron={false} onAbrir={irA} />
+      </div>
+    </aside>
+  )
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--bg-app)', color: 'var(--text)', fontFamily: 'var(--font-body)' }}>
 
-      {/* ===== SIDEBAR IZQUIERDA ===== */}
-      {/* En escritorio: columna fija en el flujo. En mobile: drawer flotante sobre scrim. */}
-      {isMobile && drawerOpen && (
-        <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', background: 'var(--scrim)' }} />
-      )}
-      <aside
-        style={{
-          flex: 'none', width: SIDEBAR_W, background: 'var(--surface)', borderRight: '1px solid var(--line)',
-          display: 'flex', flexDirection: 'column',
-          ...(isMobile
-            ? { position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }
-            : { position: 'sticky', top: 0, height: '100vh' }),
-        }}
-      >
-        {/* Logo + marca arriba */}
-        <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '16px 16px 14px', borderBottom: '1px solid var(--line)' }}>
-          <Logo size={30} radius={9} />
-          <div style={{ lineHeight: 1.1 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, letterSpacing: '.03em' }}>DisT-At</div>
-            <div style={{ fontSize: 9.5, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>Supervisión</div>
+      {/* ===== RAIL + PANEL CONTEXTUAL (02/10/2026, bloque C7) =====
+          Era un sidebar de 232 px siempre abierto (logo + Monitoreo / Dashboard / los tres grupos de
+          Gestión) que le quitaba ese ancho al mapa todo el tiempo. Ahora: rail oscuro de 72 px con los
+          destinos y, SOLO dentro de Gestión, el panel de 232 con la lista agrupada. En Mapa y en
+          Dashboard el ancho es todo del contenido.
+          En pantallas chicas (isMobile) los dos van juntos en el drawer de la hamburguesa. */}
+      {isMobile ? (
+        <>
+          {drawerOpen && (
+            <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', background: 'var(--scrim)' }} />
+          )}
+          <div
+            inert={drawerOpen ? undefined : true}
+            style={{ position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 'var(--z-sheet)', display: 'flex', maxWidth: 'calc(100vw - 40px)', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .22s ease', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }}
+          >
+            <RailEscritorio destinos={destinosRail} navRef={railRef} style={{ height: '100%' }} />
+            {panelGestionNodo}
           </div>
+        </>
+      ) : (
+        <div style={{ flex: 'none', display: 'flex', position: 'sticky', top: 0, height: '100vh', alignSelf: 'flex-start' }}>
+          <RailEscritorio destinos={destinosRail} abierto={railAbierto} onAlternar={alternarRail} navRef={railRef} />
+          {esGestion && panelGestion && panelGestionNodo}
         </div>
-
-        {/* Navegación (scrolleable) */}
-        <nav style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 10px' }}>
-          <SideGroup label="Monitoreo">
-            <SideItem active={view === 'mapa'} label="Monitoreo en vivo" onClick={() => irA('mapa')}>
-              <Mapa size={18} />
-            </SideItem>
-            <SideItem active={view === 'dash'} label="Dashboard" onClick={() => irA('dash')}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" rx="1" /><rect x="12.5" y="8" width="3" height="10" rx="1" /><rect x="18" y="5" width="3" height="13" rx="1" /></svg>
-            </SideItem>
-          </SideGroup>
-
-          {/* Gestión en tres grupos (Operación / Equipo / Sistema, 01/10/2026). Un grupo sin
-              pantallas habilitadas para el rol no se dibuja; si no hay ninguna, no hay nada. El
-              rediseño del sidebar a rail de íconos es un bloque aparte: acá solo cambian los rótulos. */}
-          {gestionGrupos.map((g) => (
-            <SideGroup key={g.k} label={g.titulo}>
-              {g.items.map((it) => (
-                <SideItem key={it.key} active={view === it.key} label={it.label} onClick={() => irA(it.key)}>
-                  <GestIcon k={it.key} />
-                </SideItem>
-              ))}
-            </SideGroup>
-          ))}
-        </nav>
-
-        {/* El pie "Cambiar a vista Celular/PC" se fue el 01/10/2026 (decisión del dueño): la vista se
-            elige UNA sola vez, en el menú de cuenta y solo en la web (MenuCuenta, fila "Vista"). Ese
-            pie es el que dejaba encerrado a un encargado con override 'mobile' hasta que se lo hizo
-            alternar (informe 06 D5); con la fila en el menú el encierro ya no puede volver. */}
-      </aside>
+      )}
 
       {/* ===== COLUMNA DERECHA (topbar + contenido) ===== */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -421,32 +468,86 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
             sobre el header y desaparecía sobre el mapa.
             Ahora el número chico es seguro porque la contención se hace en el origen:
             LeafletMap lleva `isolation: isolate` y confina sus 200–1000 adentro. Si alguna
-            vez se saca ese isolate, este header vuelve a necesitar un z-index > 1000. */}
-        <header style={{ flex: 'none', minHeight: 58, display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)' }}>
+            vez se saca ese isolate, este header vuelve a necesitar un z-index > 1000.
+            02/10/2026 (C7): la campanita, el selector de empresa y "Actualizar" vinieron de la barra
+            del mapa: tienen que verse en TODAS las secciones (06 D6/D7), no solo en Monitoreo. */}
+        <header style={{ flex: 'none', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '8px 12px' : '8px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)' }}>
           {/* Hamburguesa (solo mobile) */}
           {isMobile && (
-            <button onClick={() => setDrawerOpen(true)} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 38, height: 38, border: '1px solid var(--line)', borderRadius: 10, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
-              <Menu size={18} />
+            <button type="button" onClick={() => setDrawerOpen(true)} aria-label="Menú" aria-expanded={drawerOpen} title="Menú" style={{ flex: 'none', display: 'grid', placeItems: 'center', width: 44, height: 44, padding: 0, border: '1px solid var(--line)', borderRadius: 12, background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
+              <Menu size={20} />
             </button>
           )}
 
-          {/* Título de la sección activa */}
-          <div style={{ minWidth: 0, lineHeight: 1.15 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
-            <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: mqttOn ? 'var(--success)' : 'var(--faint)', animation: mqttOn ? 'lu-blink 2s infinite' : 'none' }} />{subtitle}
-            </div>
+          {/* Migas + título de la sección activa */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {!isMobile && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', lineHeight: 1.2 }}>
+                {migas.map((m, i) => (
+                  <span key={m} style={{ display: 'contents' }}>
+                    {i > 0 && <span aria-hidden="true" style={{ color: 'var(--faint)' }}>›</span>}
+                    <span>{m}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 18, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
           </div>
 
-          <div style={{ flex: 1, minWidth: 8 }} />
+          {/* "En línea · hh:mm:ss": el punto dice si hay tiempo real (MQTT) y la hora, cuándo llegó
+              la última carga de ubicaciones. El texto cambia con el estado: no es solo el color. */}
+          {!isMobile && (
+            <div title={mqttOn ? 'Recibiendo posiciones en tiempo real' : 'Sin tiempo real: las posiciones se actualizan cada minuto'} style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 99, background: mqttOn ? 'var(--success-tint)' : 'var(--surface2)', color: mqttOn ? 'var(--success)' : 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+              <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 99, background: mqttOn ? 'var(--success)' : 'var(--faint)', animation: mqttOn ? 'lu-blink 2s infinite' : 'none' }} />
+              {mqttOn ? 'En línea' : 'Sin tiempo real'}{recorridosAt ? ` · ${horaConSegundos(recorridosAt)}` : ''}
+            </div>
+          )}
 
-          {/* Avatar + menú de cuenta único (perfil/MenuCuenta). En la PC va como popover de 340 px;
-              en un celular (encargado en la PWA, que cae acá) como hoja inferior. El popover es
-              `position:fixed` en --z-popover: no depende de este header (ver el comentario de arriba
-              sobre el isolate de LeafletMap). */}
-          <button type="button" onClick={() => setAcctOpen((v) => !v)} aria-label="Mi cuenta" aria-haspopup="dialog" aria-expanded={acctOpen} style={{ flex: 'none', width: 44, height: 44, padding: 0, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, position: 'relative' }}>
-            {initials(nombre)}
-            <span style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--surface)' }} />
+          {/* Actualizar ubicaciones: solo donde hay ubicaciones (Mapa y Dashboard). */}
+          {!esGestion && (
+            <button type="button" onClick={doSync} aria-label="Actualizar ubicaciones" title="Actualizar ubicaciones" style={{ flex: 'none', width: 44, height: 44, padding: 0, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
+              <span style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><Refrescar size={18} /></span>
+            </button>
+          )}
+
+          {/* Empresa que se mira. Quien puede cambiarla (superadmin con más de una) tiene el
+              selector; el resto ve el nombre, sin control. No cambia identidad. */}
+          {puedeCambiarScope ? (
+            <SelectorEmpresa compacto={isMobile} style={{ height: 44, borderRadius: 12 }} />
+          ) : (!isMobile && nombreActiva && (
+            <div style={{ flex: 'none', minHeight: 44, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 12px', borderRadius: 12, border: '1px solid var(--line)', lineHeight: 1.2, maxWidth: 220 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--faint)' }}>Empresa</span>
+              <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombreActiva}</span>
+            </div>
+          ))}
+
+          {/* Campanita de avisos del equipo. En esta pantalla NO es un complemento del push: es el
+              único canal. Una PWA de escritorio no recibe FCM, así que sin esto el admin que trabaja
+              en la PC no se entera de nada. */}
+          <AlertasEquipo
+            alertas={avisos.alertas}
+            sinVer={avisos.sinVer}
+            nombres={nombres}
+            onMarcarVista={avisos.marcarVista}
+            onEnfocar={enfocarAviso}
+            style={{ borderRadius: 12 }}
+          />
+
+          {/* Cuenta: avatar + nombre + rol, con el menú de cuenta único (perfil/MenuCuenta). En la
+              PC va como popover de 340 px; en un celular (encargado en la PWA, que cae acá) como
+              hoja inferior. El popover es `position:fixed` en --z-popover: no depende de este
+              header (ver el comentario de arriba sobre el isolate de LeafletMap). */}
+          <button type="button" onClick={() => setAcctOpen((v) => !v)} aria-label={`Mi cuenta · ${nombre}`} aria-haspopup="dialog" aria-expanded={acctOpen} style={{ flex: 'none', minHeight: 44, display: 'flex', alignItems: 'center', gap: 9, padding: isMobile ? 4 : '4px 10px 4px 5px', boxSizing: 'border-box', borderRadius: 12, border: `1px solid ${acctOpen ? 'var(--primary)' : 'var(--line)'}`, background: 'var(--surface2)', color: 'var(--text)', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+            <span aria-hidden="true" style={{ flex: 'none', width: 34, height: 34, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12 }}>{initials(nombre)}</span>
+            {!isMobile && (
+              <>
+                <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, maxWidth: 160 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{roleLabel}</span>
+                </span>
+                <span aria-hidden="true" style={{ display: 'grid' }}><ChevronDown size={14} /></span>
+              </>
+            )}
           </button>
         </header>
 
@@ -501,8 +602,8 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     <Chip on={filter === 'v'} dim={filter && filter !== 'v'} color="var(--info)" dotRadius={99} count={vendCount} label="Vendedores" onClick={() => { setFilter((f) => f === 'v' ? null : 'v'); setPinId(null) }} />
                     <Chip on={filter === 'r'} dim={filter && filter !== 'r'} color="var(--warning)" dotRadius={4} count={repCount} label="Repartidores" onClick={() => { setFilter((f) => f === 'r' ? null : 'r'); setPinId(null) }} />
                     <div style={{ flex: 1, minWidth: 8 }} />
-                    {/* Empresa que se mira (solo superadmin con más de una). No cambia identidad. */}
-                    <SelectorEmpresa />
+                    {/* El selector de empresa, la campanita y "Actualizar" se mudaron al topbar el
+                        02/10/2026 (C7): se ven en todas las secciones, no solo acá. */}
                     {/* Selector de fecha */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : 'var(--on-primary)' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
                       <Calendario size={14} style={{ flex: 'none' }} />
@@ -561,21 +662,6 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                       <span style={{ fontSize: 12, fontWeight: 600 }}>{seguirId ? 'Siguiendo' : 'Centrar'}</span>
                     </div>
                     </PistaBoton>
-                    {/* Campanita de avisos del equipo. En esta pantalla NO es un complemento del
-                        push: es el único canal. Una PWA de escritorio no recibe FCM, así que sin
-                        esto el admin que trabaja en la PC no se entera de nada. */}
-                    <AlertasEquipo
-                      alertas={avisos.alertas}
-                      sinVer={avisos.sinVer}
-                      nombres={nombres}
-                      onMarcarVista={avisos.marcarVista}
-                      onEnfocar={enfocarAviso}
-                      style={{ width: 36, height: 36, borderRadius: 10 }}
-                    />
-                    {/* Sync */}
-                    <div onClick={doSync} title="Actualizar ubicaciones" style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', background: 'var(--surface2)', border: '1px solid var(--line)', color: syncing ? 'var(--primary)' : 'var(--muted)' }}>
-                      <div style={{ display: 'grid', placeItems: 'center', animation: syncing ? 'lu-spin .9s linear infinite' : 'none' }}><Refrescar size={17} /></div>
-                    </div>
                     {/* Pantalla completa */}
                     <BtnInmersivo activo={false} onToggle={() => { setInmersivo(true); setAcctOpen(false); setDrawerOpen(false) }} style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--line)', boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none', color: 'var(--muted)' }} />
                   </div>
@@ -760,6 +846,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                 filter={filter}
                 pasaFiltro={pasaFiltro}
                 onSelectUsuario={enfocarUsuario}
+                incidencias={
+                  <TarjetaIncidencias
+                    alertas={avisos.alertas}
+                    nombres={nombres}
+                    onMarcarVista={avisos.marcarVista}
+                    onEnfocar={enfocarAviso}
+                  />
+                }
               />
             </div>
           )}
@@ -797,12 +891,20 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 // ---- MÉTRICAS (Estado del equipo + Equipo en la calle + KPIs) ----
 // Reutiliza EstadoEquipo y replica las tarjetas de PropietarioView / SupervisionMovil.
 // `expanded` (vista Dashboard) usa una grilla más ancha para los KPIs.
-function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasaFiltro, onSelectUsuario }) {
+// `incidencias` (02/10/2026, C7): la tarjeta de la hoja SupervisionEscritorio, arriba de "Equipo en la
+// calle" en la columna derecha — lo que está mal AHORA queda junto a quién está en la calle.
+function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasaFiltro, onSelectUsuario, incidencias = null }) {
+  const dosColumnas = !isMobile && !expanded
   return (
-    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: !isMobile && !expanded ? '1fr 1fr' : '1fr' }}>
+    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: dosColumnas ? '1fr 1fr' : '1fr' }}>
+      {/* En una sola columna las incidencias van primero. */}
+      {!dosColumnas && incidencias}
+
       {/* Estado del equipo · por qué no llega la señal. Click → enfoca su recorrido en el mapa. */}
       <div><EstadoEquipo onSelectUsuario={onSelectUsuario} /></div>
 
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+      {dosColumnas && incidencias}
       {/* Equipo en la calle (real, en vivo) */}
       <div style={panelSx}>
         <div style={{ padding: 14 }}>
@@ -823,6 +925,7 @@ function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasa
             </div>
           ))}
         </div>
+      </div>
       </div>
 
       {/* Métricas reales del día por usuario: km + tiempo de parada (Feature B). */}
@@ -846,26 +949,6 @@ function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasa
 // ---- piezas chicas ----
 const panelSx = { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: 'var(--shadow)', overflow: 'hidden' }
 const label10 = { fontSize: 10.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }
-
-// Grupo del sidebar (título + ítems).
-function SideGroup({ label, children }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ padding: '4px 12px 8px', fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>{label}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</div>
-    </div>
-  )
-}
-
-// Ítem de navegación del sidebar.
-function SideItem({ active, label, onClick, children }) {
-  return (
-    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 12px', borderRadius: 11, cursor: 'pointer', minHeight: 42, boxSizing: 'border-box', color: active ? 'var(--deep)' : 'var(--muted)', background: active ? 'var(--primary-tint)' : 'transparent', border: `1px solid ${active ? 'var(--primary)' : 'transparent'}`, fontWeight: active ? 600 : 500 }}>
-      <span style={{ flex: 'none', display: 'grid', placeItems: 'center', color: active ? 'var(--primary)' : 'var(--muted)' }}>{children}</span>
-      <span style={{ flex: 1, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-    </div>
-  )
-}
 
 // Chip de filtro (variante escritorio: sólido, sin glass flotante).
 function Chip({ on, dim, color, dotRadius, count, label, onClick }) {
