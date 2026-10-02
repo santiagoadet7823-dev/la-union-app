@@ -54,7 +54,7 @@ export default function TarjetaPin({ pin, nombre, bateria = null, resumen = null
               exactamente lo que se veía. */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: px(8) }}>
             <span style={{ flex: '1 1 auto', minWidth: 0, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: px(14.5), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</span>
-            <span style={{ flex: 'none', fontFamily: 'var(--font-mono)', fontSize: px(10), color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
+            <span style={{ flex: 'none', fontFamily: 'var(--font-mono)', fontSize: px(11), color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
           </div>
           {/* `flexWrap`: la otra fila que podía desbordar. "repartidor · en vivo" + la batería al
               150 % no entran en un teléfono angosto; que baje a un segundo renglón es preferible a
@@ -114,7 +114,7 @@ function Resumen({ etiqueta, valor, px }) {
     // teléfono angosto. Con ellipsis se recortan adentro (30/07/2026).
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: px(14), color: 'var(--deep)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{valor}</div>
-      <div style={{ fontSize: px(9), fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--faint)', marginTop: px(2), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{etiqueta}</div>
+      <div style={{ fontSize: px(11), fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--faint)', marginTop: px(2), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{etiqueta}</div>
     </div>
   )
 }

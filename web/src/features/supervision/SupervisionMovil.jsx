@@ -790,7 +790,7 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setDatePop(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), ...plano, borderRadius: 14, padding: '10px 12px' }} className="lu-rise">
-            <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
             <input
               type="date" value={fecha} max={hoyStr()} autoFocus
               onChange={(e) => cambiarFecha(e.target.value)}
