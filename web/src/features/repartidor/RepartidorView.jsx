@@ -450,11 +450,16 @@ export default function RepartidorView() {
                 aria-label={`Hacer ahora la entrega de ${d.client}`}
                 style={sx('width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:6px 4px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);font-family:inherit;text-align:left;cursor:pointer')}>
                 <span style={sx('flex:none;min-width:26px;min-height:26px;border-radius:8px;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted)')}>
-                  {recorrido?.orden?.[d.id] ?? (paradaN ? paradaN + i + 1 : i + 1)}
+                  {/* Por POSICIÓN en pantalla, siempre: sigue a "Parada N de M". El número del recorrido
+                      (`recorrido.orden`) cuenta desde otra base y podía repetir el de la actual. */}
+                  {paradaN + i + 1}
                 </span>
                 <span style={sx('flex:1;min-width:0')}>
                   <span style={sx('display:block;font-size:14px;font-weight:600;word-break:break-word')}>{d.client}</span>
                   <span style={sx('display:block;font-size:11px;color:var(--faint);word-break:break-word')}>{d.loc || 'Sin dirección'}</span>
+                  {/* Si eligió otra parada a mano, la que estaba EN CAMINO cae acá: no puede perder
+                      el estado de vista (el pedido sigue "En camino" en la base). */}
+                  {d.status === 'en_camino' && <PildoraEstado tipo="info" style={{ marginTop: 3 }}>En camino</PildoraEstado>}
                 </span>
                 <span style={sx('flex:none;font-family:var(--font-mono);font-size:12px;color:var(--muted)')}>{arts(d)} art.</span>
               </button>
@@ -665,7 +670,7 @@ export default function RepartidorView() {
         footer={
           <>
             <button type="button" onClick={() => setNoPudeId(null)} className="lu-press" style={sx('flex:none;min-height:56px;padding:0 16px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);font-weight:600;font-size:var(--fs-md);color:var(--muted);cursor:pointer;background:transparent')}>Volver</button>
-            <button type="button" onClick={() => npView && confirmarNoEntregado(npView)} className="lu-press" style={sx('flex:1;min-height:56px;display:grid;place-items:center;background:var(--danger);color:var(--on-danger);border-radius:var(--r-md);font-weight:600;font-size:16px;cursor:pointer;border:none')}>Marcar como no entregado</button>
+            <button type="button" onClick={() => np && confirmarNoEntregado(np)} className="lu-press" style={sx('flex:1;min-height:56px;display:grid;place-items:center;background:var(--danger);color:var(--on-danger);border-radius:var(--r-md);font-weight:600;font-size:16px;cursor:pointer;border:none')}>Marcar como no entregado</button>
           </>
         }
       >

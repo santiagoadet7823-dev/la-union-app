@@ -207,12 +207,21 @@ export default function MapaComercios({
 function BotonEstiloMapa() {
   const [abierto, setAbierto] = useState(false)
   const [actual, setActual] = useState(getBasemap)
+  const cajaRef = useRef(null)
   useEffect(() => onBasemapChange(setActual), [])
+  // Tocar afuera lo cierra. En fase de CAPTURA: Leaflet corta la propagación de los toques sobre
+  // el mapa, y en burbuja este listener no se enteraría nunca de un toque en el mapa.
+  useEffect(() => {
+    if (!abierto) return undefined
+    const fuera = (e) => { if (cajaRef.current && !cajaRef.current.contains(e.target)) setAbierto(false) }
+    document.addEventListener('pointerdown', fuera, true)
+    return () => document.removeEventListener('pointerdown', fuera, true)
+  }, [abierto])
   const opciones = usableBasemaps()
   if (opciones.length < 2) return null
   const credito = basemapById(actual).opts?.attribution || ''
   return (
-    <div style={{ position: 'relative', pointerEvents: 'auto' }}>
+    <div ref={cajaRef} style={{ position: 'relative', pointerEvents: 'auto' }}>
       {abierto && (
         <div className="lu-rise" role="menu" style={{ ...sx('position:absolute;right:52px;bottom:0;min-width:190px;max-width:230px;display:flex;flex-direction:column;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);box-shadow:var(--shadow-lg);overflow:hidden') }}>
           {opciones.map((b) => {

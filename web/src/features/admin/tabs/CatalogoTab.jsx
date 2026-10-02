@@ -294,7 +294,13 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     onToast?.(`"${p.name}" queda fuera del catálogo`)
   }
 
-  const btnIcono = sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:9px;cursor:pointer;background:transparent')
+  // (01/10/2026, C10) En el celular las acciones de fila miden 44 (brief v2 §4.3) con 8 px entre
+  // ellas: ahí van en su propio renglón al pie de la tarjeta y sobra lugar. En escritorio quedan en
+  // 34 — puntero fino, y la columna de acciones de `catGrid` mide 92 px.
+  const ladoAccion = isMobile ? 44 : 34
+  const btnIcono = { ...sx('display:grid;place-items:center;border:1px solid var(--line2);border-radius:9px;cursor:pointer;background:transparent'), width: ladoAccion, height: ladoAccion }
+  const btnTexto = { ...sx('padding:0 12px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer'), minHeight: ladoAccion }
+  const filaAcciones = { ...sx('display:flex;align-items:center;justify-content:flex-end'), gap: isMobile ? 8 : 6 }
 
   /* El interruptor de habilitado/deshabilitado.
    *
@@ -334,7 +340,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     if (!puedeEditar) return null
     if (p.descontinuado) {
       return (
-        <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
+        <div style={filaAcciones}>
           <Interruptor on={false} onToggle={() => reactivar(p)} titulo={`Habilitar "${p.name}"`} />
           <button onClick={() => onEditarProducto?.(p)} title="Editar" style={{ ...btnIcono, color: 'var(--deep)' }}>
             <Editar size={15} />
@@ -344,14 +350,14 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
     }
     if (confirmDel === p.id) {
       return (
-        <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
-          <button onClick={() => eliminar(p)} style={sx('height:34px;padding:0 10px;border:none;border-radius:9px;background:var(--danger);color:var(--on-danger);font-size:12px;font-weight:600;cursor:pointer')}>Eliminar</button>
-          <button onClick={() => setConfirmDel(null)} style={sx('height:34px;padding:0 10px;border:1px solid var(--line2);border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer')}>No</button>
+        <div style={filaAcciones}>
+          <button onClick={() => eliminar(p)} style={{ ...btnTexto, border: 'none', background: 'var(--danger)', color: 'var(--on-danger)' }}>Eliminar</button>
+          <button onClick={() => setConfirmDel(null)} style={{ ...btnTexto, border: '1px solid var(--line2)', background: 'transparent', color: 'var(--muted)' }}>No</button>
         </div>
       )
     }
     return (
-      <div style={sx('display:flex;gap:6px;align-items:center;justify-content:flex-end')}>
+      <div style={filaAcciones}>
         <Interruptor on onToggle={() => deshabilitar(p)} titulo={`Deshabilitar "${p.name}" (no se borra, deja de verse)`} />
         <button onClick={() => onEditarProducto?.(p)} title="Editar" style={{ ...btnIcono, color: 'var(--deep)' }}>
           <Editar size={15} />
