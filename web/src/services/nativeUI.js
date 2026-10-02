@@ -70,4 +70,16 @@ export async function initNativeUI() {
     const { SplashScreen } = await import('@capacitor/splash-screen')
     await SplashScreen.hide().catch(() => {})
   } catch (_) { /* sin plugin → el splash se oculta solo por timeout */ }
+  // (02/10/2026) Al terminar de irse, el splash de Android 12+ (androidx `SplashScreen`) vuelve a
+  // aplicar las barras del `postSplashScreenTheme` (`AppTheme.NoActionBar`) y PISA el color que
+  // acabamos de poner: quedaba `#757575` con íconos blancos en Claro y `#000000` en Oscuro hasta el
+  // primer cambio de tema (A5, informe 09 del emulador). `hide()` resuelve en el acto, antes de que
+  // termine el fundido (200 ms), y el plugin no avisa cuándo se fue. Por eso se repinta con el tema
+  // resuelto de ESE momento (si el usuario cambió de tema mientras tanto, gana el actual) un rato
+  // después; la segunda pasada cubre teléfonos lentos donde el fundido arranca tarde.
+  for (const espera of [600, 1500]) {
+    setTimeout(() => {
+      aplicarTemaNativo(document.documentElement.getAttribute('data-theme'))
+    }, espera)
+  }
 }
