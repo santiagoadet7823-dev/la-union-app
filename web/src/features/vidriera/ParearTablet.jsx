@@ -36,7 +36,10 @@ export default function ParearTablet({ onListo, onSalir }) {
   const [error, setError] = useState(null)
   const [via, setVia] = useState(null)
   const vivo = useRef(true)
-  useEffect(() => () => { vivo.current = false }, [])
+  // (02/10/2026) La marca se vuelve a prender al montar: con <StrictMode> (dev) React monta, desmonta y
+  // vuelve a montar, y con solo la limpieza el ref quedaba en false para siempre (en Equipo: "Cargando
+  // equipo…" eterno en `npm run dev`). En producción no cambia nada.
+  useEffect(() => { vivo.current = true; return () => { vivo.current = false } }, [])
 
   /**
    * 🩸 DOS CAMINOS PARA LO MISMO (18/08/2026). `porBluetooth` cambia SOLO cómo llega el sobre de la
