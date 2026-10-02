@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
 import { identidadVisible } from '../../../context/AuthContext'
+import { hace } from '../../../lib/format'
+import { Chip, PildoraEstado, GrupoLista, FilaLista, EstadoVacio, Contador, TiraContadores } from '../../../components/ui'
+import { ChevronRight } from '../../../components/icons'
 import { ORDEN_ROLES, ROL_GRUPO, ROL_UNO } from './modelo'
-import { Avatar, Segmentado, IcoBuscar, IcoChevron, IcoAviso, IcoEdificio, mono, display, rotulo } from './ui'
+import { Avatar, Segmentado, IcoBuscar, IcoChevron, IcoAviso, IcoEdificio, IcoQr, IcoMas, mono, display, rotulo, pildoraDe, frescura } from './ui'
 
 /**
  * El árbol de la izquierda (brief v1.5 P1): Empresa → Rol → Persona, o Empresa → Zona → Persona.
@@ -20,8 +23,10 @@ import { Avatar, Segmentado, IcoBuscar, IcoChevron, IcoAviso, IcoEdificio, mono,
  */
 
 export const FILTROS = [
-  { k: 'calle', l: 'En la calle', pasa: (i) => i.estado.k === 'calle' },
-  { k: 'sinrep', l: 'Sin reportar', pasa: (i) => i.estado.k === 'sinrep' },
+  // Rótulos alineados con la píldora de estado (01/10/2026, C9): "En ruta" y "Sin señal" son las
+  // mismas palabras que ve cada fila (ver `pildoraDe` en ui.jsx).
+  { k: 'calle', l: 'En ruta', pasa: (i) => i.estado.k === 'calle' },
+  { k: 'sinrep', l: 'Sin señal', pasa: (i) => i.estado.k === 'sinrep' },
   { k: 'alertas', l: 'Con alertas', pasa: (i) => i.alertas.length > 0 },
   { k: 'pend', l: 'Pendientes', pasa: (i) => i.estado.k === 'pend' },
   { k: 'off', l: 'Desactivados', pasa: (i) => i.estado.k === 'off' },
@@ -259,5 +264,211 @@ export default function Arbol({
         )}
       </div>
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LISTA DEL EQUIPO EN EL CELULAR (01/10/2026, bloque C9)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Hoja "Ficha de Persona" 6a (claro) y 6c (oscuro): título "Equipo" con "Invitar por QR" en la
+ * cabecera, buscador, y la gente en GRUPOS POR ROL (Vendedores · 4, Repartidores · 2…) con fila =
+ * avatar con iniciales, nombre, píldora de estado con glifo, frescura del último punto en mono y
+ * chevron. Reemplaza, solo en el celular, al árbol de arriba (que sigue en el escritorio, donde
+ * hay lugar para el árbol fijo al costado de la ficha).
+ *
+ * Usa la MISMA lógica que el árbol (`agrupar`, `FILTROS`, `coincideBusqueda`): cambia la forma, no
+ * qué se ve. Lo que el árbol tenía y acá sigue estando, para no perder funciones:
+ *  - filtros con su cantidad (En la calle, Sin reportar, Con alertas, Pendientes…) → `Chip`
+ *  - filtro por zona → selector en la misma fila; "Agrupar por zona" → un `Chip` que alterna
+ *  - nivel empresa del superadmin → grupo "Empresas" arriba; cada fila abre el resumen de esa
+ *    empresa y elige de cuál se lista la gente
+ *  - el "+" por rol para crear una cuenta → una sola fila "Crear cuenta" al final (el diálogo de
+ *    alta deja elegir el rol)
+ *  - el resumen del encargado (En la calle / Sin reportar / Sin datos hoy) → `TiraContadores`
+ *
+ * 🔴 Las píldoras dicen solo lo que el dato sabe: ver `pildoraDe` en ui.jsx.
+ *
+ * props: empresas, nivelEmpresa, selEmpresa, onEmpresa(id), onPersona(id), onAgregar() | null,
+ *        onInvitar() | null, soloLectura, q, setQ, filtro, setFiltro, zonaFiltro, setZonaFiltro,
+ *        agruparModo, setAgruparModo, red: { error, sinRed, actualizadoTs, onReintentar }
+ */
+export function ListaEquipo({
+  empresas, nivelEmpresa, selEmpresa, onEmpresa, onPersona, onAgregar, onInvitar, soloLectura,
+  q, setQ, filtro, setFiltro, zonaFiltro, setZonaFiltro, agruparModo, setAgruparModo, red,
+}) {
+  const todos = useMemo(() => empresas.flatMap((e) => e.items.map((i) => ({ ...i, empNombre: e.nombre }))), [empresas])
+  const zonasTodas = useMemo(() => empresas.flatMap((e) => e.zonas.map((z) => ({ ...z, empNombre: e.nombre }))), [empresas])
+  const filtroDef = FILTROS.find((f) => f.k === filtro)
+  const pasa = (i) => (!filtroDef || filtroDef.pasa(i)) && (!zonaFiltro || i.zonas.some((z) => z.id === zonaFiltro) || i.cubre.some((z) => z.id === zonaFiltro))
+  const hayFiltro = !!(filtroDef || zonaFiltro)
+  const buscando = q.trim().length > 0
+  const filtrosVisibles = FILTROS.filter((f) => !soloLectura || !['pend', 'cambios', 'off'].includes(f.k))
+  const limpiarFiltros = () => { setFiltro(null); setZonaFiltro(null) }
+
+  // De qué empresa se lista la gente: la elegida (superadmin) o la única (admin y encargado).
+  const emp = empresas.find((e) => e.id === selEmpresa) || empresas[0]
+  const items = emp ? emp.items.filter(pasa) : []
+  const grupos = emp ? agrupar(items, agruparModo, emp.zonas) : []
+  const resultados = buscando ? todos.filter((i) => coincideBusqueda(i, q) && pasa(i)) : []
+  const nadieEnEquipo = !todos.length
+
+  const enLaCalle = todos.filter((i) => i.estado.k === 'calle').length
+  const sinRep = todos.filter((i) => i.estado.k === 'sinrep').length
+  const sinDatos = todos.filter((i) => i.estado.k === 'nodata').length
+
+  return (
+    <div style={sx('display:flex;flex-direction:column;gap:var(--sp-4);padding:var(--sp-3) var(--sp-4) var(--sp-6)')}>
+      {/* Cabecera: título + Invitar por QR (6a). Parte en dos líneas antes que cortar el botón. */}
+      <div style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3)')}>
+        <h1 style={{ ...display, ...sx('flex:1 1 auto;margin:0;font-size:var(--fs-xl);font-weight:600;line-height:1.2;color:var(--text)') }}>{soloLectura ? 'Mi equipo' : 'Equipo'}</h1>
+        {onInvitar && (
+          <button type="button" onClick={onInvitar} className="lu-ui-btn"
+            style={sx('flex:none;display:flex;align-items:center;gap:var(--sp-2);min-height:2.75rem;min-width:2.75rem;padding:var(--sp-1) var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--text);font-family:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;text-align:left')}>
+            <span aria-hidden="true" style={sx('display:grid')}><IcoQr size={18} /></span>Invitar por QR
+          </button>
+        )}
+      </div>
+
+      {red?.error && (
+        <EstadoVacio variante="error" causa={red.sinRed ? 'red' : 'dato'} onReintentar={red.onReintentar}
+          texto={`${red.sinRed ? 'El teléfono no tiene señal.' : 'El servidor no respondió bien.'} Estás viendo los datos de ${hace(red.actualizadoTs) || 'hace un momento'}.`} />
+      )}
+
+      <label style={sx('display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-1) 0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--muted)')}>
+        <IcoBuscar size={18} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar persona" aria-label={nivelEmpresa ? 'Buscar persona en todas las empresas por nombre, email, código o zona' : 'Buscar persona por nombre, email, código o zona'}
+          style={sx('flex:1;min-width:0;min-height:2.75rem;border:0;outline:0;background:transparent;font-size:16px;color:var(--text);font-family:inherit')} />
+        {buscando && (
+          <button type="button" onClick={() => setQ('')} aria-label="Limpiar búsqueda"
+            style={sx('flex:none;min-width:2.75rem;min-height:2.75rem;border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:var(--fs-md)')}>✕</button>
+        )}
+      </label>
+
+      {soloLectura && !nadieEnEquipo && (
+        <TiraContadores ariaLabel="Tu equipo hoy">
+          <Contador valor={enLaCalle} etiqueta="En ruta" tono="ok" />
+          <Contador valor={sinRep} etiqueta="Sin señal" tono="error" />
+          <Contador valor={sinDatos} etiqueta="Sin datos hoy" />
+        </TiraContadores>
+      )}
+
+      {/* Filtros: los mismos del árbol, con su cantidad. Fila con scroll horizontal y `flex:none`
+          (ver Chip.jsx: sin eso, con letra grande la columna la aplasta). */}
+      {!nadieEnEquipo && (
+        <div className="lu-chips" style={sx('flex:none;display:flex;gap:var(--sp-2);overflow-x:auto;margin:0 calc(-1 * var(--sp-4));padding:0 var(--sp-4)')}>
+          {filtrosVisibles.map((f) => {
+            const on = filtro === f.k
+            const n = todos.filter((i) => f.pasa(i)).length
+            if (!n && !on) return null
+            return <Chip key={f.k} seleccionado={on} contador={n} onClick={() => setFiltro(on ? null : f.k)} style={{ flex: 'none' }}>{f.l}</Chip>
+          })}
+          {zonasTodas.length > 0 && (
+            <Chip seleccionado={agruparModo === 'zona'} onClick={() => setAgruparModo(agruparModo === 'zona' ? 'rol' : 'zona')} style={{ flex: 'none' }}>Agrupar por zona</Chip>
+          )}
+          {zonasTodas.length > 0 && (
+            <select value={zonaFiltro || ''} onChange={(e) => setZonaFiltro(e.target.value || null)} aria-label="Filtrar por zona"
+              style={{ ...sx('flex:none;min-height:2.75rem;max-width:12rem;padding:0 var(--sp-3);border-radius:var(--r-pill);font-family:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;border-width:1px;border-style:solid'), borderColor: zonaFiltro ? 'var(--primary)' : 'var(--line2)', background: zonaFiltro ? 'var(--primary-tint)' : 'var(--surface)', color: 'var(--text)' }}>
+              <option value="">Zona: todas</option>
+              {zonasTodas.map((z) => <option key={z.id} value={z.id}>{nivelEmpresa ? `${z.nombre} · ${z.empNombre}` : z.nombre}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+
+      {nadieEnEquipo ? (
+        <EstadoVacio icono={IcoQr} titulo={soloLectura ? 'Todavía no tenés personas a cargo' : 'Todavía no hay nadie en el equipo'}
+          texto={soloLectura ? 'Las asigna un admin según tu nivel.' : 'Invitá a tu gente con el QR: descargan la app y entran con su cuenta.'}
+          accion={onInvitar ? { etiqueta: 'Invitar por QR', onClick: onInvitar } : null} />
+      ) : buscando ? (
+        resultados.length ? (
+          <GrupoLista titulo={`${resultados.length} ${resultados.length === 1 ? 'persona' : 'personas'}`}>
+            {resultados.map((i) => <FilaPersonaEquipo key={i.p.id} i={i} onClick={() => onPersona(i.p.id)} empresa={nivelEmpresa ? i.empNombre : null} />)}
+          </GrupoLista>
+        ) : (
+          <EstadoVacio icono={IcoBuscar} titulo={`Nadie se llama “${q.trim()}”`}
+            texto={`${nivelEmpresa ? 'Se buscó en todas las empresas' : 'Se buscó en todo tu equipo'} por nombre, email, código ERP y zona${hayFiltro ? ', con el filtro puesto' : ''}.`}
+            accion={{ etiqueta: 'Limpiar búsqueda', onClick: () => setQ('') }} />
+        )
+      ) : (
+        <>
+          {nivelEmpresa && (
+            <GrupoLista titulo="Empresas" extra={empresas.length}>
+              {empresas.map((e) => {
+                const cambiosEmp = e.items.reduce((a, i) => a + i.nCambios + (i.del ? 1 : 0), 0)
+                return (
+                  <FilaLista key={e.id} etiqueta={e.nombre} onClick={() => onEmpresa(e.id)}
+                    detalle={[`${e.contadores.n} personas · ${e.contadores.calle} en la calle`, e.contadores.alertas ? `${e.contadores.alertas} con alertas` : null, e.zonasSin.length ? `${e.zonasSin.length} ${e.zonasSin.length === 1 ? 'zona' : 'zonas'} sin vendedor` : null, emp?.id === e.id ? 'listada abajo' : null].filter(Boolean).join(' · ')}
+                    valor={cambiosEmp ? `${cambiosEmp} sin guardar` : null} />
+                )
+              })}
+            </GrupoLista>
+          )}
+          {nivelEmpresa && emp && <div style={sx('font-size:var(--fs-sm);color:var(--muted);padding:0 4px;margin-bottom:calc(-1 * var(--sp-2))')}>Personas de <b style={sx('color:var(--text)')}>{emp.nombre}</b></div>}
+          {!grupos.length && (
+            hayFiltro
+              ? <EstadoVacio titulo="Nadie con ese filtro" texto="Probá con otro filtro o quitá los que hay." accion={{ etiqueta: 'Limpiar filtros', onClick: limpiarFiltros }} />
+              : <EstadoVacio titulo="Todavía no hay personas en esta empresa" />
+          )}
+          {grupos.map((g) => (
+            <GrupoLista key={g.k} titulo={g.l} extra={g.aviso ? g.zonasSin.length : g.filas.length}>
+              {g.aviso && g.zonasSin.map((z) => (
+                <FilaLista key={z.id} etiqueta={z.nombre} detalle={`${z.clientes ?? '—'} clientes · ${z.motivo}`}
+                  extremo={<PildoraEstado tipo="aviso">Sin vendedor</PildoraEstado>} />
+              ))}
+              {g.filas.map((i) => (
+                <FilaPersonaEquipo key={i.p.id} i={i} onClick={() => onPersona(i.p.id)}
+                  nota={agruparModo === 'zona' && g.zona && i.cubre.some((x) => x.id === g.zona.id) ? 'Cubre esta zona hoy · vence 23:59' : null} />
+              ))}
+            </GrupoLista>
+          ))}
+        </>
+      )}
+
+      {onAgregar && (
+        <GrupoLista>
+          <FilaLista icono={<IcoMas size={18} />} etiqueta="Crear cuenta" detalle="Con email o con usuario y contraseña. Entra al borrador." onClick={() => onAgregar()} />
+        </GrupoLista>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Una persona en la lista del equipo (6a): avatar 40 px con el anillo de su color de trazo,
+ * nombre, píldora de estado y, a la derecha, cuánto hace del último punto en mono. Es un <button>
+ * con la clase `lu-fila` de components/ui (separador con sangría, foco y presionado iguales a
+ * `FilaLista`); no es una `FilaLista` porque esa pone el ícono en un cuadrado de 32 px y acá va
+ * un avatar redondo de 40.
+ *
+ * `min-height` y texto que parte en dos líneas: con la letra del sistema al doble el nombre crece
+ * y la fila con él (informe 08: el WebView agranda el texto, no las cajas).
+ */
+export function FilaPersonaEquipo({ i, onClick, empresa, nota }) {
+  const nombre = i.p.nombre || identidadVisible(i.p.email)
+  const pil = pildoraDe(i.estado)
+  const fresco = frescura(i.ultimo?.ultimo_ts)
+  const tachada = !!i.del
+  return (
+    <button type="button" onClick={onClick} className="lu-fila"
+      style={{ ...sx('display:flex;align-items:center;gap:var(--sp-3);width:100%;min-height:3.75rem;padding:var(--sp-2) var(--sp-3);margin:0;border:0;background:transparent;font-family:inherit;text-align:left;color:var(--text);cursor:pointer'), '--sep-izq': 'calc(2 * var(--sp-3) + 40px)', opacity: i.estado.k === 'off' ? 0.7 : 1 }}>
+      <Avatar nombre={nombre} color={i.color} size={40} fs={13} />
+      <span style={sx('flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px')}>
+        <span style={{ ...sx('font-size:var(--fs-md);font-weight:600;line-height:1.3;overflow-wrap:anywhere'), textDecoration: tachada ? 'line-through' : 'none' }}>{nombre}</span>
+        <span style={sx('display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--sp-2)')}>
+          <PildoraEstado tipo={pil.tipo}>{pil.t}</PildoraEstado>
+          {tachada && <PildoraEstado tipo="error">{i.del === 'purgar' ? 'Se purga al guardar' : 'Se elimina al guardar'}</PildoraEstado>}
+          {i.nCambios > 0 && !tachada && <PildoraEstado tipo="info">{i.nCambios === 1 ? '1 cambio sin guardar' : `${i.nCambios} cambios sin guardar`}</PildoraEstado>}
+          {i.alertas.length > 0 && i.estado.k !== 'sinrep' && <PildoraEstado tipo="aviso">{i.alertas.length === 1 ? '1 alerta' : `${i.alertas.length} alertas`}</PildoraEstado>}
+        </span>
+        {(empresa || nota) && <span style={sx('font-size:var(--fs-xs);color:var(--muted);line-height:1.3')}>{[empresa, nota].filter(Boolean).join(' · ')}</span>}
+      </span>
+      <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--fs-xs);color:var(--muted);text-align:right')}>
+        {fresco
+          ? <><span className="lu-ui-oculto">Último punto: </span>{fresco}</>
+          : <><span aria-hidden="true">—</span><span className="lu-ui-oculto">Sin puntos hoy</span></>}
+      </span>
+      <span aria-hidden="true" style={sx('flex:none;display:grid')}><ChevronRight size={18} color="var(--faint)" /></span>
+    </button>
   )
 }

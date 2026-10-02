@@ -16,13 +16,18 @@ export const mono = { fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabul
 export const display = { fontFamily: 'var(--font-display)' }
 
 export const tarjeta = sx('background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card)')
-export const rotulo = sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')
+export const rotulo = sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')
 export const tituloTarjeta = { ...display, ...sx('font-weight:600;font-size:15px') }
 
-/** Iniciales con anillo del color de trazo y punto de estado. */
-export function Avatar({ nombre, color, dot, size = 30, fs = 10.5, borde = 2, style }) {
+/**
+ * Iniciales con anillo del color de trazo y punto de estado.
+ * `min-width`/`min-height` + `aspect-ratio` (01/10/2026, C9): con la letra del sistema al doble
+ * las iniciales crecen y el círculo crece con ellas en vez de que "MR" se salga del anillo
+ * (galería ×2, informe 08). Sin `aspect-ratio` (Chrome 79 de la tablet) queda el mínimo de siempre.
+ */
+export function Avatar({ nombre, color, dot, size = 30, fs = 11, borde = 2, style }) {
   return (
-    <div style={{ ...sx('position:relative;flex:none;border-radius:99px;background:var(--surface2);display:grid;place-items:center;font-weight:700;color:var(--text)'), ...display, width: size, height: size, border: `${borde}px solid ${color}`, fontSize: fs, ...style }}>
+    <div style={{ ...sx('position:relative;flex:none;box-sizing:border-box;border-radius:99px;background:var(--surface2);display:grid;place-items:center;font-weight:700;color:var(--text);aspect-ratio:1 / 1;padding:0 3px;line-height:1'), ...display, minWidth: size, minHeight: size, border: `${borde}px solid ${color}`, fontSize: fs, ...style }}>
       {initials(nombre)}
       {dot && <span style={{ ...sx('position:absolute;right:-3px;bottom:-3px;width:10px;height:10px;border-radius:99px;border:2px solid var(--surface)'), background: dot }} />}
     </div>
@@ -71,7 +76,7 @@ export function CampoEditable({ label, cambiado, antes, onDeshacer, extra, child
       {cambiado && (
         <div style={sx('display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);min-width:0')}>
           <span style={sx('flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>antes: <s>{antes}</s>{extra}</span>
-          <button type="button" onClick={onDeshacer} className="lu-press" style={sx('border:0;background:transparent;cursor:pointer;font-size:11px;font-weight:600;color:var(--deep);padding:6px 4px;min-height:32px')}>Deshacer</button>
+          <button type="button" onClick={onDeshacer} className="lu-press" style={sx('border:0;background:transparent;cursor:pointer;font-size:11px;font-weight:600;color:var(--deep);padding:0 var(--sp-2);min-height:2.75rem;min-width:2.75rem')}>Deshacer</button>
         </div>
       )}
     </div>
@@ -91,7 +96,7 @@ export function Opcion({ on, onClick, children, alto = 36, style }) {
 export function Interruptor({ on, onClick, label }) {
   return (
     <button type="button" onClick={onClick} role="switch" aria-checked={on} className="lu-press"
-      style={sx('display:flex;align-items:center;gap:8px;min-height:38px;border:0;background:transparent;cursor:pointer;padding:0;color:var(--text)')}>
+      style={sx('display:flex;align-items:center;gap:8px;min-height:2.75rem;border:0;background:transparent;cursor:pointer;padding:0;color:var(--text)')}>
       <span style={{ ...sx('flex:none;width:40px;height:24px;border-radius:99px;position:relative'), background: on ? 'var(--primary)' : 'var(--line2)' }}>
         <span style={{ ...sx('position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:99px;background:var(--surface);transition:transform .15s cubic-bezier(.23,1,.32,1)'), transform: `translateX(${on ? 16 : 0}px)` }} />
       </span>
@@ -123,3 +128,45 @@ export const IcoInforme = (p) => <I d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12
 export const IcoEdificio = (p) => <I d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h6" sw={2} {...p} />
 export const IcoSinRastreo = (p) => <I {...p}><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 11.9-5" /><path d="M19 9.5c0 5.3-7 11.5-7 11.5" /><path d="m3 3 18 18" /></I>
 export const IcoAtras = (p) => <I d="m15 18-6-6 6-6" {...p} />
+// Equipo y ficha (01/10/2026): los de la hoja "Ficha de Persona" (6a-6d).
+export const IcoQr = (p) => <I {...p}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 14v.01M14 21h3M21 18v3h-1" /></I>
+export const IcoBarras = (p) => <I d="M4 20h16M7 16v-5M12 16V7M17 16v-8" {...p} />
+export const IcoCarrito = (p) => <I {...p}><path d="M3 4h2l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2" /><circle cx="9.5" cy="20" r="1.2" /><circle cx="17" cy="20" r="1.2" /></I>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado de una persona como PÍLDORA (01/10/2026, bloque C9 "Equipo y ficha")
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Traduce `estadoPersona()` (modelo.js) a la `PildoraEstado` de components/ui: glifo + texto,
+ * nunca solo color (brief v2 §2.7, criterio C2). Lo usan la lista del equipo y la cabecera de la
+ * ficha, para que las dos digan lo mismo con las mismas palabras.
+ *
+ * 🔴 Solo se nombra lo que el dato SABE. La hoja dibuja "En visita" y "Fuera de jornada", pero
+ * la pantalla no tiene esos datos: `ultimo_punto_equipo` trae la hora del último punto, no la
+ * parada en curso ni el horario. Por eso "en la calle" (punto de hace ≤ 10 min) se lee "En ruta",
+ * "sin reportar" (aviso que abrió el servidor en `alertas_equipo`) se lee "Sin señal", y el resto
+ * conserva el texto honesto de `estadoPersona` ("Último punto 10:12", "Sin datos hoy").
+ */
+const PILDORA = {
+  calle: { tipo: 'ok', t: () => 'En ruta' },
+  sinrep: { tipo: 'error', t: () => 'Sin señal' },
+  pend: { tipo: 'aviso', t: () => 'Pendiente' },
+  nuevo: { tipo: 'info', t: () => 'Alta nueva' },
+}
+export function pildoraDe(estado) {
+  const x = PILDORA[estado?.k]
+  return x ? { tipo: x.tipo, t: x.t() } : { tipo: 'neutro', t: estado?.t || 'Sin datos' }
+}
+
+/**
+ * Frescura del último punto, corta y en mono: "ahora", "4 min", "3 h". `null` sin punto (los
+ * puntos que lee esta pantalla son solo de HOY: `useUsuariosDatos` pide desde las 00:00).
+ */
+export function frescura(ts, ahora = Date.now()) {
+  if (!ts) return null
+  const min = Math.floor((ahora - new Date(ts).getTime()) / 60000)
+  if (!Number.isFinite(min) || min < 0) return null
+  if (min < 1) return 'ahora'
+  if (min < 60) return `${min} min`
+  return `${Math.floor(min / 60)} h`
+}

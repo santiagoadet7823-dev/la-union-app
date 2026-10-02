@@ -410,9 +410,18 @@ export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes,
             {!f.categorias.length && <div style={sx('font-size:11.5px;padding:7px 10px;border-radius:8px;background:var(--surface2);color:var(--muted)')}>Sin marcar: usa el horario general de la empresa.</div>}
           </div>
         )}
-        <label style={{ ...lbl, maxWidth: 200 }}><span>Código ERP · opcional</span>
-          <input value={f.numero} onChange={(ev) => set({ numero: ev.target.value.replace(/[^\d]/g, '') })} placeholder="sin código" inputMode="numeric" className="lu-input" style={{ ...inp, ...mono }} />
+        {/* Código ERP en el alta (01/10/2026, revisión de C9): sigue siendo OPCIONAL acá, como
+            siempre —`guardarLote` lo manda a `crear-usuario`—, para no partir el alta en dos pasos.
+            Después del alta el único editor es la ficha (Asignaciones → Código ERP, que muestra el
+            código efectivo). Sin código, `pedido_exportable` deja sus pedidos "Retenido" (db/74). */}
+        <label style={{ ...lbl, maxWidth: 220 }}><span>Código ERP · opcional</span>
+          <input value={f.numero} onChange={(ev) => set({ numero: ev.target.value.replace(/[^\d]/g, '') })} placeholder="sin código" inputMode="numeric" className="lu-input" style={{ ...inp, ...mono, fontSize: 16 }} />
         </label>
+        {!f.numero && (f.rol === 'vendedor' || f.rol === 'encargado') && (
+          <div role="note" style={sx('font-size:var(--fs-sm);line-height:1.45;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--warning-tint);color:var(--text)')}>
+            Sin código ERP, sus pedidos quedan retenidos y no salen a facturar. Lo podés cargar ahora o después en su ficha.
+          </div>
+        )}
       </div>
     </Overlay>
   )
@@ -465,6 +474,31 @@ export function ResultadoReset({ resultado, onClose }) {
           </div>
         </div>
       ))}
+    </Overlay>
+  )
+}
+
+/**
+ * Confirmación corta de una acción INMEDIATA contra el servidor (01/10/2026, revisión de C9):
+ * "Restablecer contraseña" y "Verificación en 2 pasos" son filas de la lista Cuenta y llaman a una
+ * Edge Function sin borrador ni deshacer. Un toque de más dejaba a la persona sin poder entrar.
+ *
+ * `pedido`: null | { titulo, texto, etiqueta }. Se retiene el último para la animación de salida
+ * (mismo criterio que DialogoPeligro). `onConfirmar` lo llama el padre y cierra él.
+ */
+export function ConfirmarAccion({ pedido, onClose, onConfirmar }) {
+  const ref = useRef(pedido)
+  if (pedido) ref.current = pedido
+  const e = ref.current
+  return (
+    <Overlay open={!!pedido} onClose={onClose} maxWidth={440} title={e?.titulo || ''}
+      footer={
+        <div style={sx('display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--sp-2);width:100%')}>
+          <button type="button" onClick={onClose} className="lu-press" style={btnSec}>Cancelar</button>
+          <button type="button" onClick={onConfirmar} className="lu-press" style={btnPri(true)}>{e?.etiqueta || 'Confirmar'}</button>
+        </div>
+      }>
+      <div style={sx('font-size:var(--fs-md);line-height:1.5;color:var(--text)')}>{e?.texto}</div>
     </Overlay>
   )
 }
