@@ -312,23 +312,27 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
    * y `background`, <300 ms. */
   function Interruptor({ on, onToggle, titulo }) {
     return (
+      // (02/10/2026) El <button> mide 44×44 y el riel de 40×23 va adentro: medía 40×23 (criterio B4).
+      // Mismo patrón que el `Interruptor` de usuarios/ui.jsx.
       <button
         onClick={onToggle}
         title={titulo}
         aria-label={titulo}
         aria-pressed={on}
         className="lu-press"
-        style={{
-          ...sx('position:relative;width:40px;height:23px;flex:none;border:none;border-radius:99px;cursor:pointer;padding:0'),
-          background: on ? 'var(--primary)' : 'var(--line2)',
-          transition: 'background .18s cubic-bezier(.23,1,.32,1)',
-        }}
+        style={sx('width:44px;height:44px;flex:none;display:grid;place-items:center;border:none;background:transparent;cursor:pointer;padding:0')}
       >
         <span style={{
-          ...sx('position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.28)'),
-          transform: on ? 'translateX(17px)' : 'translateX(0)',
-          transition: 'transform .18s cubic-bezier(.23,1,.32,1)',
-        }} />
+          ...sx('position:relative;width:40px;height:23px;border-radius:99px'),
+          background: on ? 'var(--primary)' : 'var(--line2)',
+          transition: 'background .18s cubic-bezier(.23,1,.32,1)',
+        }}>
+          <span style={{
+            ...sx('position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.28)'),
+            transform: on ? 'translateX(17px)' : 'translateX(0)',
+            transition: 'transform .18s cubic-bezier(.23,1,.32,1)',
+          }} />
+        </span>
       </button>
     )
   }

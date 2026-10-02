@@ -39,7 +39,8 @@ export default function GestionHost({ title, onClose, children }) {
       {/* ===== HEADER GLASS (fijo arriba) ===== */}
       <div style={{ flex: 'none', background: 'var(--glass-bg)', ...glassBlur, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
-          <div onClick={onClose} role="button" aria-label="Volver" style={{ width: 40, height: 40, flex: 'none', borderRadius: 99, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--text)', border: '1px solid var(--glass-brd)', background: 'var(--glass-bg)' }}>
+          {/* (02/10/2026) 44×44 (era 40, criterio B4). */}
+          <div onClick={onClose} role="button" aria-label="Volver" style={{ width: 44, height: 44, flex: 'none', borderRadius: 99, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--text)', border: '1px solid var(--glass-brd)', background: 'var(--glass-bg)' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>

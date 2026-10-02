@@ -131,7 +131,7 @@ export default function CarritoSheet({
           {lineas.length > 0 && (
             <button
               onClick={alVaciar}
-              style={sx('width:100%;min-height:38px;display:grid;place-items:center;background:transparent;border:none;color:var(--muted);font-size:12.5px;cursor:pointer')}
+              style={sx('width:100%;min-height:44px;display:grid;place-items:center;background:transparent;border:none;color:var(--muted);font-size:12.5px;cursor:pointer')}
             >Vaciar el pedido</button>
           )}
         </div>
@@ -168,18 +168,19 @@ export default function CarritoSheet({
                 )}
               </div>
 
+              {/* (02/10/2026) Stepper y quitar a 44×44 (eran 34 y 30×34; brief v2 §3 "stepper de 44 px", B4). */}
               <div style={sx('display:flex;align-items:center;gap:5px;flex:none')}>
                 <button onClick={() => addCart(p.id, -1)} className="lu-press"
-                  style={sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);font-size:18px;cursor:pointer;user-select:none')}>−</button>
+                  style={sx('width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);font-size:18px;cursor:pointer;user-select:none')}>−</button>
                 <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} />
                 <button onClick={() => addCart(p.id, 1)} className="lu-press"
-                  style={sx('width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:17px;cursor:pointer;user-select:none')}>+</button>
+                  style={sx('width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--primary);border-radius:10px;background:var(--primary-tint);color:var(--deep);font-size:17px;cursor:pointer;user-select:none')}>+</button>
                 {/* Sacar la línea entera. Con 8 unidades, el − son 8 toques. */}
                 <button
                   onClick={() => { quitarLinea?.(p.id); setDeshacible(true) }}
                   className="lu-press"
                   aria-label={`Quitar ${p.name} del pedido`}
-                  style={sx('width:30px;height:34px;display:grid;place-items:center;border:none;background:transparent;color:var(--faint);cursor:pointer')}
+                  style={sx('width:44px;height:44px;margin-right:-8px;display:grid;place-items:center;border:none;background:transparent;color:var(--faint);cursor:pointer')}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                 </button>
@@ -210,7 +211,7 @@ export default function CarritoSheet({
                   onClick={() => recuperar?.(p.id)}
                   className="lu-press"
                   aria-label={`Volver a sumar ${p.name}`}
-                  style={sx('width:30px;height:30px;flex:none;display:grid;place-items:center;border:1px solid var(--primary);border-radius:9px;background:var(--primary-tint);color:var(--deep);font-size:16px;cursor:pointer;user-select:none')}
+                  style={sx('width:44px;height:44px;flex:none;display:grid;place-items:center;border:1px solid var(--primary);border-radius:9px;background:var(--primary-tint);color:var(--deep);font-size:16px;cursor:pointer;user-select:none')}
                 >+</button>
               </div>
             ))}
