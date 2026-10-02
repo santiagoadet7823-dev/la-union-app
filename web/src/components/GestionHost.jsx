@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { glassBlur } from '../lib/glass'
 import { apilarAtras } from '../services/atras'
 
 /**
@@ -36,8 +35,10 @@ export default function GestionHost({ title, onClose, children }) {
   return (
     <div className="lu-rise" style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)' }}>
 
-      {/* ===== HEADER GLASS (fijo arriba) ===== */}
-      <div style={{ flex: 'none', background: 'var(--glass-bg)', ...glassBlur, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
+      {/* ===== HEADER (fijo arriba) =====
+          (02/10/2026) `--surface` plano con borde, sin `backdrop-filter`: acá no hay mapa que desenfocar
+          (brief v2 §2.5, presupuesto de vidrio solo sobre el mapa; criterio C3). */}
+      <div style={{ flex: 'none', background: 'var(--surface)', borderBottom: '1px solid var(--line)', paddingTop: 'env(safe-area-inset-top)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
           {/* (02/10/2026) 44×44 (era 40, criterio B4). */}
           <div onClick={onClose} role="button" aria-label="Volver" style={{ width: 44, height: 44, flex: 'none', borderRadius: 99, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--text)', border: '1px solid var(--glass-brd)', background: 'var(--glass-bg)' }}>
