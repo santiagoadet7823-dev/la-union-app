@@ -6,7 +6,7 @@ import { useDevice } from '../../context/DeviceContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { colorPorId, tintaTransporte } from '../../lib/colors'
 import useTramosTransporte from '../../hooks/useTramosTransporte'
-import { GESTION_TITLES, itemsDeGestion } from '../../lib/gestion'
+import { GESTION_TITLES, gruposDeGestion } from '../../lib/gestion'
 import { hoyStr } from '../../lib/format'
 import { calcularDwells } from './dwells'
 import { construirFines, construirHitosTransporte, construirInicios, construirLeaflet, construirTrails, hayVelocidadesDeReparto, limpiarPorUsuario, totalDescartados } from './trazos'
@@ -28,9 +28,9 @@ import BurbujasEquipo from './components/BurbujasEquipo'
 import BurbujasParadas from './components/BurbujasParadas'
 import RailMapa from './components/RailMapa'
 import DespachoGestion from './components/DespachoGestion'
-import SelectorTema from '../../components/SelectorTema'
-import { Alerta, AlertaCirculo, Calendario, Check, ChevronRight, GestIcon, Lock, LogOut, Mapa, Menu, Monitor, Pin, Profile, Refrescar, Reloj, Smartphone, Truck } from '../../components/icons'
-import { APP_VERSION } from '../../version'
+import MenuCuenta from '../perfil/MenuCuenta'
+import { etiquetaRol } from '../../lib/roles'
+import { Alerta, AlertaCirculo, Calendario, Check, GestIcon, Mapa, Menu, Pin, Refrescar, Reloj, Truck } from '../../components/icons'
 import useCapaCartera from './useCapaCartera'
 import LeyendaCartera from './components/LeyendaCartera'
 import TarjetaComercio from './components/TarjetaComercio'
@@ -62,9 +62,7 @@ import TarjetaComercio from './components/TarjetaComercio'
 // seguir visible al lado, y por eso lo que se comparte es el despacho y no el contenedor.
 const NuevoCliente = lazy(() => import('../catalog/NuevoCliente'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
-const MiPerfilModal = lazy(() => import('../perfil/MiPerfilModal'))
-// Mismo modal que abre MiCuenta (cambiar la PROPIA contraseña): acá no se duplica lógica, solo se abre.
-const CambiarContrasenaModal = lazy(() => import('../perfil/CambiarContrasenaModal'))
+// Mi perfil y Cambiar contraseña los abre ahora el menú de cuenta único (perfil/MenuCuenta).
 // El dashboard con gráficos (ventas + actividad) es el mismo módulo que monta PanelDireccion en
 // celular y SupervisionMovil en el APK (regla 31). Lazy: sus hooks pegan tres RPC y la librería de
 // gráficos baja aparte; el monitoreo en vivo, que es lo que abre primero, no paga nada de eso.
@@ -76,8 +74,8 @@ const SIDEBAR_W = 232
 
 export default function SupervisionDesktop({ role = 'admin', vista = null, onIrAJornada = null }) {
   const { theme, isDark } = useTheme()
-  const { perfil, user, idEmpresa, permisos, signOut } = useAuth()
-  const { isMobile, setMode } = useDevice()
+  const { perfil, user, idEmpresa, permisos } = useAuth()
+  const { isMobile } = useDevice()
   const { nombres, fotos, roles, plantel, movers, gpsOff, mqttOn } = useEquipoEnVivo()
   // Incidentes abiertos del equipo (los abre el cron `alertas-equipo`, acá solo se leen).
   const avisos = useAlertasEquipo()
@@ -120,14 +118,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   const [seguirNonce, setSeguirNonce] = useState(0)
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
-  const [modalPerfil, setModalPerfil] = useState(false)
-  const [modalPass, setModalPass] = useState(false)
   const toastRef = useRef(null)
   const dateRef = useRef(null) // <input type="date"> del rail compacto (modo inmersivo)
 
   // Ítems de gestión visibles para el rol. Sale de la tabla compartida (`lib/gestion.js`), igual
   // que en SupervisionMovil y en PanelDireccion: si queda vacía, la sección no se dibuja.
-  const gestionItems = useMemo(() => itemsDeGestion(role, permisos), [role, permisos])
+  // Ítems de gestión del rol, en Operación / Equipo / Sistema (lib/gestion.js, 01/10/2026): el
+  // sidebar los rotula igual que el destino Gestión de la APK y del panel de dirección.
+  const gestionGrupos = useMemo(() => gruposDeGestion(role, permisos), [role, permisos])
   const esGestion = !!GESTION_TITLES[view]
   const esHoy = fecha === hoyStr()
 
@@ -346,7 +344,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
   }
 
   const nombre = perfil?.nombre || identidadVisible(user?.email) || 'Usuario'
-  const roleLabel = { encargado: 'Encargado', admin: 'Administrador', superadmin: 'Superadmin' }[role] || 'Supervisión'
+  const roleLabel = role ? etiquetaRol(role) : 'Supervisión' // tabla única: lib/roles.js
   const title = esGestion ? GESTION_TITLES[view] : (view === 'mapa' ? 'Monitoreo en vivo' : 'Dashboard')
   const subtitle = esGestion ? 'Gestión' : (view === 'mapa' ? `${roleLabel} · en vivo` : `Ventas y actividad · ${horizonteDash === 'hoy' ? 'hoy' : horizonteDash === 'semana' ? 'esta semana' : 'este mes'}`)
 
@@ -392,28 +390,24 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
             </SideItem>
           </SideGroup>
 
-          {/* Gestión: no se dibuja si el rol no tiene ninguna pantalla habilitada. */}
-          {gestionItems.length > 0 && (
-            <SideGroup label="Gestión">
-              {gestionItems.map((it) => (
+          {/* Gestión en tres grupos (Operación / Equipo / Sistema, 01/10/2026). Un grupo sin
+              pantallas habilitadas para el rol no se dibuja; si no hay ninguna, no hay nada. El
+              rediseño del sidebar a rail de íconos es un bloque aparte: acá solo cambian los rótulos. */}
+          {gestionGrupos.map((g) => (
+            <SideGroup key={g.k} label={g.titulo}>
+              {g.items.map((it) => (
                 <SideItem key={it.key} active={view === it.key} label={it.label} onClick={() => irA(it.key)}>
                   <GestIcon k={it.key} />
                 </SideItem>
               ))}
             </SideGroup>
-          )}
+          ))}
         </nav>
 
-        {/* Pie: alterna la vista, siempre hacia la OTRA. Antes decía "Cambiar a vista Celular" aunque
-            ya se estuviera en celular: un encargado en la PWA de un teléfono (que cae acá, ver
-            App.jsx `usaDesktop`) solo podía volver a fijar 'mobile' y nunca ofrecía "PC" — quedaba
-            encerrado. En escritorio (`isMobile` false) el pie es el de siempre. */}
-        <div style={{ flex: 'none', padding: 10, borderTop: '1px solid var(--line)' }}>
-          <div onClick={() => { setDrawerOpen(false); setMode(isMobile ? 'desktop' : 'mobile') }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
-            {isMobile ? <Monitor size={17} /> : <Smartphone size={17} />}
-            {isMobile ? 'Cambiar a vista PC' : 'Cambiar a vista Celular'}
-          </div>
-        </div>
+        {/* El pie "Cambiar a vista Celular/PC" se fue el 01/10/2026 (decisión del dueño): la vista se
+            elige UNA sola vez, en el menú de cuenta y solo en la web (MenuCuenta, fila "Vista"). Ese
+            pie es el que dejaba encerrado a un encargado con override 'mobile' hasta que se lo hizo
+            alternar (informe 06 D5); con la fila en el menú el encierro ya no puede volver. */}
       </aside>
 
       {/* ===== COLUMNA DERECHA (topbar + contenido) ===== */}
@@ -446,60 +440,14 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
 
           <div style={{ flex: 1, minWidth: 8 }} />
 
-          {/* Avatar + menú de cuenta */}
-          <div style={{ position: 'relative', flex: 'none' }}>
-            <div onClick={() => setAcctOpen((v) => !v)} style={{ width: 38, height: 38, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, position: 'relative' }}>
-              {initials(nombre)}
-              <span style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--surface)' }} />
-            </div>
-
-            {acctOpen && (
-              <>
-                <div onClick={() => setAcctOpen(false)} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }} />
-                <div style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 264, zIndex: 'var(--z-popover)', background: 'var(--surface)', border: '1px solid var(--line2)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', animation: 'lu-rise .18s ease' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 15px 12px' }}>
-                    <div style={{ width: 44, height: 44, flex: 'none', borderRadius: 13, background: 'var(--tlight)', color: 'var(--deep)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16 }}>{initials(nombre)}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombre}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{roleLabel} · {identidadVisible(user?.email)}</div>
-                      <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>App v{APP_VERSION}</div>
-                    </div>
-                  </div>
-                  <div style={{ height: 1, background: 'var(--line)' }} />
-                  <div style={{ padding: 6 }}>
-                    {onIrAJornada && (
-                      <div onClick={() => { setAcctOpen(false); onIrAJornada() }} style={acctItem}>
-                        <div style={acctIconBox}><Mapa size={15} /></div>
-                        <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Ir a mi jornada</span>
-                        <ChevronRight />
-                      </div>
-                    )}
-                    <div onClick={() => { setAcctOpen(false); setModalPerfil(true) }} style={acctItem}>
-                      <div style={acctIconBox}><Profile size={15} /></div>
-                      <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Mi perfil</span>
-                      <ChevronRight />
-                    </div>
-                    {/* Igual que en MiCuenta: lo ven todos los roles, cada uno cambia SU contraseña. */}
-                    <div onClick={() => { setAcctOpen(false); setModalPass(true) }} style={acctItem}>
-                      <div style={acctIconBox}><Lock size={15} /></div>
-                      <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>Cambiar contraseña</span>
-                      <ChevronRight />
-                    </div>
-                  </div>
-                  <div style={{ height: 1, background: 'var(--line)' }} />
-                  <div style={{ padding: '13px 15px' }}>
-                    <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 9 }}>Apariencia</div>
-                    <SelectorTema />
-                  </div>
-                  <div style={{ height: 1, background: 'var(--line)' }} />
-                  <div onClick={() => signOut()} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', cursor: 'pointer', color: 'var(--danger)' }}>
-                    <LogOut size={16} />
-                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>Cerrar sesión</span>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          {/* Avatar + menú de cuenta único (perfil/MenuCuenta). En la PC va como popover de 340 px;
+              en un celular (encargado en la PWA, que cae acá) como hoja inferior. El popover es
+              `position:fixed` en --z-popover: no depende de este header (ver el comentario de arriba
+              sobre el isolate de LeafletMap). */}
+          <button type="button" onClick={() => setAcctOpen((v) => !v)} aria-label="Mi cuenta" aria-haspopup="dialog" aria-expanded={acctOpen} style={{ flex: 'none', width: 44, height: 44, padding: 0, borderRadius: 99, background: 'var(--tlight)', color: 'var(--deep)', border: `1.5px solid ${acctOpen ? 'var(--primary)' : 'var(--line2)'}`, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, position: 'relative' }}>
+            {initials(nombre)}
+            <span style={{ position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: 99, background: 'var(--success)', border: '2px solid var(--surface)' }} />
+          </button>
         </header>
 
         {/* ===== ÁREA CENTRAL ===== */}
@@ -818,14 +766,20 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
         </main>
       </div>
 
-      {/* Modales de alta (se abren desde Clientes / Catálogo) + edición de perfil. */}
-      {(modalCliente || modalProducto || modalPerfil || modalPass) && (
+      <MenuCuenta
+        open={acctOpen}
+        onClose={() => setAcctOpen(false)}
+        onToast={showToast}
+        presentacion={isMobile ? 'hoja' : 'popover'}
+        onIrAJornada={onIrAJornada}
+      />
+
+      {/* Modales de alta (se abren desde Clientes / Catálogo). */}
+      {(modalCliente || modalProducto) && (
         <Suspense fallback={null}>
           {modalCliente && <NuevoCliente onClose={() => setModalCliente(false)} onToast={showToast} center={null} />}
           {/* `true` = alta; un objeto producto = edición (mismo patrón que AdminView). */}
           {modalProducto && <NuevoProducto onClose={() => setModalProducto(false)} onToast={showToast} producto={modalProducto === true ? null : modalProducto} />}
-          {modalPerfil && <MiPerfilModal onClose={() => setModalPerfil(false)} onToast={showToast} />}
-          {modalPass && <CambiarContrasenaModal onClose={() => setModalPass(false)} onToast={showToast} />}
         </Suspense>
       )}
 
@@ -892,8 +846,6 @@ function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasa
 // ---- piezas chicas ----
 const panelSx = { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: 'var(--shadow)', overflow: 'hidden' }
 const label10 = { fontSize: 10.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }
-const acctItem = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', borderRadius: 11, cursor: 'pointer', minHeight: 44, boxSizing: 'border-box', color: 'var(--text)' }
-const acctIconBox = { width: 30, height: 30, flex: 'none', borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', display: 'grid', placeItems: 'center' }
 
 // Grupo del sidebar (título + ítems).
 function SideGroup({ label, children }) {
