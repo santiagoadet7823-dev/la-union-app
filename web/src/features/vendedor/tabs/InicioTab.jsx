@@ -7,6 +7,7 @@ import Logo from '../../../components/Logo'
 import { useGps } from '../../../context/GpsContext'
 import { useAuth } from '../../../context/AuthContext'
 import { card, Stat } from '../ui'
+import { Chip } from '../../../components/ui'
 
 const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
 
@@ -138,7 +139,8 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
 
       <div style={sx('display:flex;justify-content:space-between;align-items:center;margin:0 2px 10px')}>
         <div style={sx('font-family:var(--font-display);font-weight:600;font-size:17px')}>Mis clientes</div>
-        <button onClick={onNuevoCliente} style={sx('display:flex;align-items:center;gap:5px;background:var(--primary-tint);border:1px solid var(--primary);color:var(--deep);border-radius:10px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer')}>
+        <button onClick={onNuevoCliente} style={sx('display:flex;align-items:center;gap:5px;background:var(--primary-tint);border:1px solid var(--primary);color:var(--deep);border-radius:10px;padding:6px 11px;min-height:44px;font-size:12px;font-weight:600;cursor:pointer')}>
+          {/* (02/10/2026) min-height 44: medía 78×32 (criterio B4, 0 controles < 44×44). */}
           <Mas size={12} w={2.5} />Nuevo
         </button>
       </div>
@@ -164,7 +166,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
 
       {catLoading || clients.length === 0 ? null : (
         <div style={sx('margin-bottom:10px')}>
-          <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;height:42px')}>
+          <div className="lu-campo" style={sx('display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-md);padding:0 12px;min-height:44px')}>
             <Search size={15} style={{ flex: 'none' }} />
             <input
               value={buscaCli}
@@ -176,22 +178,18 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
             />
             {buscaCli && (
               <button onClick={() => setBuscaCli('')} aria-label="Limpiar búsqueda"
-                style={sx('width:22px;height:22px;flex:none;border:none;border-radius:var(--r-pill);background:var(--line);display:grid;place-items:center;font-size:12px;color:var(--muted);cursor:pointer')}>✕</button>
+                style={sx('width:44px;height:44px;margin-right:-11px;flex:none;border:none;background:transparent;display:grid;place-items:center;cursor:pointer;padding:0')}>
+                {/* (02/10/2026) Área táctil de 44 (era 22×22, B4); la cara visible sigue de 22. */}
+                <span style={sx('width:22px;height:22px;border-radius:var(--r-pill);background:var(--line);display:grid;place-items:center;font-size:12px;color:var(--muted)')}>✕</span>
+              </button>
             )}
           </div>
           <div style={sx('display:flex;align-items:center;gap:8px;margin-top:8px')}>
-            <button
-              onClick={() => setSoloPendientes((v) => !v)}
-              aria-pressed={soloPendientes}
-              style={{
-                ...sx('border-radius:var(--r-pill);padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer'),
-                background: soloPendientes ? 'var(--primary-tint)' : 'var(--surface2)',
-                border: `1px solid ${soloPendientes ? 'var(--primary)' : 'var(--line)'}`,
-                color: soloPendientes ? 'var(--deep)' : 'var(--muted)',
-              }}
-            >
-              Por visitar {clients.length - done}
-            </button>
+            {/* (02/10/2026) Pasa al `Chip` compartido: el botón propio medía 96×29 (criterio B4) y el
+                filtro prendido se distinguía solo por el tinte (C2); el primitivo da 44 px y el ✓. */}
+            <Chip seleccionado={soloPendientes} onClick={() => setSoloPendientes((v) => !v)} contador={clients.length - done}>
+              Por visitar
+            </Chip>
             <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
               {lista.length === clients.length ? `${clients.length} clientes` : `${lista.length} de ${clients.length}`}
             </div>
@@ -277,7 +275,9 @@ function TarjetaCliente({ c, i, isNext, alTocar, onEditarCliente }) {
               hasta 43 caracteres la tarjeta se estiraba a varios renglones y la lista se
               volvía ilegible. El espacio para el nombre se gana ACHICANDO EL BOTÓN (ver
               abajo), no dejando crecer la tarjeta. */}
-          <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
+          {/* (02/10/2026) Nombre en hasta 2 renglones, no elipsis en 1: con la letra del sistema a 1,5 se
+              cortaban casi todos (criterio B2; regla de truncado del brief v2 §2.2). */}
+          <div style={{ ...sx('font-weight:600;font-size:13.5px;line-height:1.3;overflow-wrap:anywhere'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.name}</div>
           {!c.activo && <span style={sx('flex:none;font-size:11px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
           {c.cubierta && c.zonaAbrev && <span style={{ ...sx('flex:none;font-size:11px;font-weight:700;color:#fff;border-radius:99px;padding:2px 6px;font-family:var(--font-mono)'), background: c.zonaColor || 'var(--muted)' }} title="Zona que cubrís hoy">{c.zonaAbrev}</span>}
           {c.sinDueno && <span style={sx('flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:99px;padding:2px 6px')}>SIN DUEÑO</span>}
@@ -294,7 +294,7 @@ function TarjetaCliente({ c, i, isNext, alTocar, onEditarCliente }) {
             Decisión del encargado: cada vendedor es responsable de lo que toca. La RLS
             acompaña (`clientes_upd` acepta al rol vendedor dentro de su empresa); el alcance
             por EMPRESA sigue intacto, y BORRAR sigue sin estar permitido. */}
-        <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
+        <button onClick={(e) => { e.stopPropagation(); onEditarCliente?.(c.id) }} title="Editar ubicación y días de visita" style={sx('flex:none;width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer')}>
           <Editar size={15} />
         </button>
         {/* 🩸 11/08/2026 — CHECK-IN SIN LA PALABRA, y el motivo es aritmética, no estética.

@@ -52,8 +52,11 @@ export default function TarjetaPin({ pin, nombre, bateria = null, resumen = null
               Con un nombre largo —y sobre todo al 150 %, donde todo mide una vez y media— el
               nombre se negaba a ceder y EMPUJABA el "hace 27s" fuera de la tarjeta, que es
               exactamente lo que se veía. */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: px(8) }}>
-            <span style={{ flex: '1 1 auto', minWidth: 0, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: px(14.5), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</span>
+          {/* (02/10/2026) La fila PARTE (`flexWrap`) y el nombre va en hasta 2 renglones en vez de elipsis
+              en 1: con la letra del sistema a 1,5 quedaba "Bru…" al lado del "hace 1 min" (criterio B2;
+              regla de truncado del brief v2 §2.2). Si no entran juntos, la frescura baja de renglón. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', columnGap: px(8) }}>
+            <span style={{ flex: '1 1 auto', minWidth: 0, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: px(14.5), overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{titulo}</span>
             <span style={{ flex: 'none', fontFamily: 'var(--font-mono)', fontSize: px(11), color: 'var(--faint)', whiteSpace: 'nowrap' }}><HaceSegundos ts={pin.ts} /></span>
           </div>
           {/* `flexWrap`: la otra fila que podía desbordar. "repartidor · en vivo" + la batería al

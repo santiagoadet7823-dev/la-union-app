@@ -75,7 +75,8 @@ export default function ConfirmarPedidoSheet({
     })
   }
 
-  const chip = (activo) => sx(`padding:8px 14px;border-radius:99px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid ${activo ? 'var(--primary)' : 'var(--line2)'};background:${activo ? 'var(--primary)' : 'transparent'};color:${activo ? 'var(--on-primary)' : 'var(--muted)'}`)
+  // (02/10/2026) min-height 44 en los chips de fecha y el campo de fecha (medían 37 y 38, criterio B4).
+  const chip = (activo) => sx(`min-height:44px;padding:8px 14px;border-radius:99px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid ${activo ? 'var(--primary)' : 'var(--line2)'};background:${activo ? 'var(--primary)' : 'transparent'};color:${activo ? 'var(--on-primary)' : 'var(--muted)'}`)
 
   return (
     <Overlay
@@ -130,7 +131,7 @@ export default function ConfirmarPedidoSheet({
             value={fechaEntrega}
             min={isoLocal(new Date())}
             onChange={(e) => setFechaEntrega(e.target.value)}
-            style={sx('padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:inherit')}
+            style={sx('min-height:44px;padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:inherit')}
           />
         </div>
       </div>

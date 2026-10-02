@@ -152,8 +152,8 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
                   Vidriera
                 </button>
               )}
-              <button onClick={() => setSheet(true)} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--warning);cursor:pointer;background:transparent')}>Sin pedido</button>
-              <button onClick={cancelVisit} style={sx('min-height:38px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
+              <button onClick={() => setSheet(true)} style={sx('min-height:44px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--warning);cursor:pointer;background:transparent')}>Sin pedido</button>
+              <button onClick={cancelVisit} style={sx('min-height:44px;padding:0 12px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -444,12 +444,14 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           {/* 🩸 La barra ABRE el pedido (19/08/2026). Antes solo informaba: para cambiar una
               cantidad había que volver a buscar el producto entre 529, y para saber qué llevaba el
               cliente, acordarse. Con la vidriera andando se nota enseguida — el comercio señala
-              cinco cosas seguidas y hay que repasarlas antes de cerrar. */}
+              cinco cosas seguidas y hay que repasarlas antes de cerrar.
+              (02/10/2026) Alto mínimo 44 (medía 27, criterio B4); el margen negativo se come el
+              padding de la barra, así la barra no crece. */}
           <div
             onClick={() => setVerCarrito(true)}
             className="lu-press"
             role="button"
-            style={sx('display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;cursor:pointer')}
+            style={sx('display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:44px;margin:-8px 0 2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;cursor:pointer')}
           >
             <div style={sx('font-size:12px;color:var(--muted)')}>{cartCount} ítems · {cartKg.toFixed(1).replace('.', ',')} kg</div>
             <div style={sx('display:flex;align-items:center;gap:7px')}>

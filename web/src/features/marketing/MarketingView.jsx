@@ -1,7 +1,6 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { Contador, NavInferior, TiraContadores } from '../../components/ui'
-import { glassBlur } from '../../lib/glass'
 import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { useDevice } from '../../context/DeviceContext'
@@ -122,8 +121,10 @@ export default function MarketingView() {
   return (
     <div style={sx('position:fixed;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text);font-family:var(--font-body)')}>
 
-      {/* ===== HEADER ===== */}
-      <div style={{ flex: 'none', background: 'var(--glass-bg)', ...glassBlur, borderBottom: '0.5px solid var(--glass-brd)', paddingTop: 'env(safe-area-inset-top)' }}>
+      {/* ===== HEADER (fijo arriba) =====
+          (02/10/2026) `--surface` plano con borde, sin `backdrop-filter`: acá no hay mapa que desenfocar
+          (brief v2 §2.5, presupuesto de vidrio solo sobre el mapa; criterio C3). */}
+      <div style={{ flex: 'none', background: 'var(--surface)', borderBottom: '1px solid var(--line)', paddingTop: 'env(safe-area-inset-top)' }}>
         <div style={sx('display:flex;align-items:center;gap:10px;padding:11px 14px')}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={sx('font-family:var(--font-display);font-weight:600;font-size:16px;line-height:1.2')}>Catálogo</div>

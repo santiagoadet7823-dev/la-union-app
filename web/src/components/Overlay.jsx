@@ -361,7 +361,9 @@ export default function Overlay({
               flex: 'none',
               display: 'flex',
               alignItems: 'flex-start',
-              gap: 'var(--sp-3)',
+              // (02/10/2026) `--gx` y no `gap`: las hojas del Login también se abren en la tablet (Chrome 79),
+              // que ignora `gap` en flex y pegaba el título a la ✕ (criterio C4; ver `--gx` en index.css).
+              '--gx': 'var(--sp-3)',
               padding: 'var(--sp-4)',
               borderBottom: '1px solid var(--line)',
               // En sheets el header es zona de arrastre: touch-action none para que el
@@ -374,7 +376,9 @@ export default function Overlay({
                 {title}
               </div>
               {subtitle && (
-                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                // (02/10/2026) El subtítulo parte en renglones en vez de cortarse con elipsis: en los diálogos
+                // lleva la consecuencia ("No puede entrar hasta que lo reactives…") y con letra a 1,5 se perdía (B2).
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
                   {subtitle}
                 </div>
               )}

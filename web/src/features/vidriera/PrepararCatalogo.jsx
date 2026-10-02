@@ -31,7 +31,14 @@ export default function PrepararCatalogo({ onToast }) {
   const cancelRef = useRef(false)
   const vivoRef = useRef(true)
 
-  useEffect(() => () => { vivoRef.current = false; cancelRef.current = true }, [])
+  // (02/10/2026) La marca se vuelve a prender al montar: con <StrictMode> (dev) React monta, desmonta y
+  // vuelve a montar, y con solo la limpieza el ref quedaba en false para siempre (en Equipo: "Cargando
+  // equipo…" eterno en `npm run dev`). En producción no cambia nada.
+  useEffect(() => {
+    vivoRef.current = true
+    cancelRef.current = false
+    return () => { vivoRef.current = false; cancelRef.current = true }
+  }, [])
 
   const refrescar = useCallback(async () => {
     const e = await estadoEspejo(productos)
