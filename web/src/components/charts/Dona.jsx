@@ -15,6 +15,13 @@ import { colorCategoria, MAX_PORCIONES } from './paleta'
  * · La identidad nunca es color solo: SIEMPRE lleva leyenda con etiqueta, valor y porcentaje.
  * · El centro muestra el total; al pasar el mouse (o tocar) una porción, muestra esa porción.
  * · Si el total es 0 no se dibuja una dona vacía "al 0 %": se dice que no hay registros.
+ * · (01/10/2026) Los textos del centro se dimensionan contra `tam`: el SVG escala el viewBox de
+ *   100 y un `fontSize` fijo de 6,5 daba ~7,5 px en pantalla. Ahora el rótulo mide 11 px y el
+ *   número al menos 14, sea cual sea el diámetro. Los rótulos de la leyenda pueden partir en dos
+ *   líneas (nada de elipsis en un rótulo primario), y la leyenda pide 180 px: si no los tiene al
+ *   lado de la dona baja debajo, en vez de cortar "Golosinas" en "Golosina/s".
+ * · Colores (decisión 6 del dueño): la dona de rubros/marcas conserva `CATEGORICAS` por posición;
+ *   las demás (estados, efectividad) reciben su color ya resuelto de quien llama.
  *
  * @param {Array<{label:string, valor:number, color?:string}>} datos
  * @param {(v:number)=>string} formato   cómo escribir un valor en la leyenda y el centro
@@ -56,6 +63,8 @@ export default function Dona({ datos = [], formato = (v) => String(v), centroLab
   const grosor = 16
   const ri = r - grosor
   const sel = activa != null ? porciones.lista[activa] : null
+  // Unidades del viewBox (100) que equivalen a N px en pantalla con este diámetro.
+  const px = (n) => (n * 100) / tam
 
   return (
     <div style={sx('display:flex;align-items:center;gap:16px;flex-wrap:wrap')}>
@@ -75,15 +84,15 @@ export default function Dona({ datos = [], formato = (v) => String(v), centroLab
             <title>{`${p.label}: ${formato(p.valor)} (${Math.round(p.frac * 100)} %)`}</title>
           </path>
         ))}
-        <text x="50" y="47" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: sel ? 11 : 12, fontWeight: 700, fill: 'var(--text)' }}>
+        <text x="50" y="48" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: Math.max(12, px(14)), fontWeight: 700, fill: 'var(--text)' }}>
           {sel ? `${Math.round(sel.frac * 100)} %` : formato(porciones.total)}
         </text>
-        <text x="50" y="59" textAnchor="middle" style={{ fontFamily: 'var(--font-body)', fontSize: 6.5, fill: 'var(--faint)' }}>
-          {sel ? recortar(sel.label, 18) : centroLabel}
+        <text x="50" y={48 + px(16)} textAnchor="middle" style={{ fontFamily: 'var(--font-body)', fontSize: px(11), fill: 'var(--faint)' }}>
+          {sel ? recortar(sel.label, 12) : centroLabel}
         </text>
       </svg>
 
-      <ul style={sx('list-style:none;margin:0;padding:0;flex:1;min-width:140px;display:flex;flex-direction:column;gap:5px')}>
+      <ul style={sx('list-style:none;margin:0;padding:0;flex:1;min-width:180px;display:flex;flex-direction:column;gap:5px')}>
         {porciones.lista.map((p, i) => (
           <li
             key={p.label}
@@ -92,9 +101,9 @@ export default function Dona({ datos = [], formato = (v) => String(v), centroLab
             style={{ ...sx('display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);line-height:1.3;cursor:default'), opacity: activa == null || activa === i ? 1 : 0.5 }}
           >
             <span style={{ ...sx('width:9px;height:9px;border-radius:2px;flex:none'), background: p.color }} />
-            <span style={sx('flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)')} title={p.label}>{p.label}</span>
+            <span style={sx('flex:1;min-width:0;overflow-wrap:break-word;color:var(--text)')}>{p.label}</span>
             <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--muted);flex:none')}>{formato(p.valor)}</span>
-            <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint);width:34px;text-align:right;flex:none')}>{Math.round(p.frac * 100)} %</span>
+            <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--faint);min-width:34px;text-align:right;flex:none')}>{Math.round(p.frac * 100)} %</span>
           </li>
         ))}
       </ul>

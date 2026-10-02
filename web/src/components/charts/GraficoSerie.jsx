@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import useTemaGrafico from './useTemaGrafico'
-import { fmtDiaLargo } from './formato'
+import { fmtDiaLargo, FS_MIN } from './formato'
 
 /**
  * Serie de tiempo con Lightweight Charts (TradingView, Apache 2.0).
@@ -23,8 +23,13 @@ import { fmtDiaLargo } from './formato'
  * hueco, en vez de bajar a cero y decir "ese día no se vendió nada" cuando la verdad es "no
  * sabemos".
  *
+ * 🎨 COLOR (decisión 6 del dueño, 01/10/2026): neutros + UN acento de énfasis. Quien arma las
+ * series elige: la serie que importa en `--primary`, la de contexto en neutro (`--line2`/`--faint`).
+ * Un punto puede traer su propio `color` (solo histogramas): así el día de hoy o la hora en curso
+ * va en acento y el resto de las barras en neutro, sin una segunda serie.
+ *
  * @param {Array<{id:string, label:string, color:string, tipo?:'area'|'line'|'histogram',
- *         punteada?:boolean, puntos:Array<{time:string|number, value:number|null}>}>} series
+ *         punteada?:boolean, puntos:Array<{time:string|number, value:number|null, color?:string}>}>} series
  *   `time` es 'YYYY-MM-DD' (día) o segundos Unix (con `escalaHoras`).
  * @param {number} alto  alto en px del área de dibujo
  * @param {(v:number)=>string} formatoValor  para el eje y el tooltip
@@ -56,7 +61,7 @@ export default function GraficoSerie({ series = [], alto = 180, formatoValor = (
           background: { type: lib.ColorType.Solid, color: 'transparent' },
           textColor: tema.faint,
           fontFamily: tema.fontMono || 'monospace',
-          fontSize: 10,
+          fontSize: 11, // piso de 11 px para rótulos (decisión 15); antes 10
           attributionLogo: true,
         },
         grid: {
@@ -153,7 +158,7 @@ export default function GraficoSerie({ series = [], alto = 180, formatoValor = (
         api = chart.addSeries(lib.LineSeries, comun)
       }
       // Whitespace para los días sin dato: la línea se corta, no cae a cero.
-      api.setData(def.puntos.map((p) => (p.value == null ? { time: p.time } : { time: p.time, value: p.value })))
+      api.setData(def.puntos.map((p) => (p.value == null ? { time: p.time } : p.color ? { time: p.time, value: p.value, color: p.color } : { time: p.time, value: p.value })))
       seriesRef.current.push({ api, def })
     }
     chart.timeScale().fitContent()
@@ -170,7 +175,7 @@ export default function GraficoSerie({ series = [], alto = 180, formatoValor = (
   return (
     <div style={sx('position:relative')}>
       {series.length > 1 && (
-        <div style={sx('display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:6px;font-size:var(--fs-2xs);color:var(--muted)')}>
+        <div style={{ ...sx('display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:6px;color:var(--muted)'), fontSize: FS_MIN }}>
           {series.map((s) => (
             <span key={s.id} style={sx('display:inline-flex;align-items:center;gap:6px')}>
               <span style={{ ...sx('display:inline-block;width:14px;height:0;border-top-width:2px;border-top-style:solid;border-radius:2px'), borderTopColor: s.color, borderTopStyle: s.punteada ? 'dashed' : 'solid' }} />
@@ -183,7 +188,8 @@ export default function GraficoSerie({ series = [], alto = 180, formatoValor = (
       {tooltip && (
         <div
           style={{
-            ...sx('position:absolute;top:8px;pointer-events:none;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-sm);box-shadow:var(--shadow-lg);padding:6px 9px;font-family:var(--font-mono);font-size:var(--fs-2xs);white-space:nowrap;z-index:1'),
+            ...sx('position:absolute;top:8px;pointer-events:none;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-sm);box-shadow:var(--shadow-lg);padding:6px 9px;font-family:var(--font-mono);white-space:nowrap;z-index:1'),
+            fontSize: FS_MIN,
             left: Math.min(tooltip.x + 12, (ref.current?.clientWidth || 200) - 150),
           }}
         >

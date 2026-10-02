@@ -22,6 +22,13 @@
  *    2.72, `#eda100` 2.09, `#e87ba4` 2.60; sobre el `#ffffff` de antes daban 2.82/2.17/2.69), y el
  *    alivio es el de siempre: la leyenda con etiqueta y valor. Por eso `CATEGORICAS` no se tocó.
  *
+ * 3. TODO LO DEMÁS (series de tiempo, rankings, barras, sparklines) → MONOCROMO con UN acento
+ *    (decisión 6 del dueño, 30/09/2026; aplicada el 01/10/2026): lo que hay que mirar en
+ *    `--primary` y el resto en neutros de tema (`--line2` serie secundaria, `--faint` punteado de
+ *    comparación, `--bar` pista). No sale de esta lista: va por token, así cambia con el tema
+ *    sin tocar nada acá. La dona de rubros/marcas es la excepción explícita de esa decisión y
+ *    sigue con `CATEGORICAS`, que NO cambia.
+ *
  * Los ESTADOS de pedido no son categorías arbitrarias: tienen semántica y usan los tokens de
  * estado de la app (`--success`, `--info`, `--warning`, `--danger`), ver `colorEstadoPedido`.
  */

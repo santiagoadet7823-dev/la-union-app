@@ -14,7 +14,7 @@ import Dona from '../../components/charts/Dona'
 import BarrasH from '../../components/charts/BarrasH'
 import BarrasApiladas from '../../components/charts/BarrasApiladas'
 import TarjetaGrafico from '../../components/charts/TarjetaGrafico'
-import { fmtPesosCompacto, fmtKm, fmtEntero, fmtPct } from '../../components/charts/formato'
+import { fmtPesosCompacto, fmtKm, fmtEntero, fmtPct, EYEBROW, FS_MIN } from '../../components/charts/formato'
 import MiniKpi from '../direccion/components/MiniKpi'
 import { HORIZONTES, DIAS_GRAFICO } from './horizontes'
 import { puntosDeSerie, puntosPeriodoAnterior, apiladasPorVendedor, donaEstados, donaCategorias, puntosPorHora, rankingVendedores } from './agrupar'
@@ -47,6 +47,19 @@ import { puntosDeSerie, puntosPeriodoAnterior, apiladasPorVendedor, donaEstados,
  *
  * La librería de gráficos (Lightweight Charts) la importa `GraficoSerie` con `import()`: el
  * chunk de este componente no la incluye, baja sola la primera vez que hay algo que dibujar.
+ *
+ * 🎨 COLOR — decisión 6 del dueño (30/09/2026), aplicada el 01/10/2026: NEUTROS + UN ACENTO.
+ * En cada gráfico una sola cosa va en `--primary` (lo que hay que mirar) y el resto en neutro:
+ *   · Ventas por día: el período actual en acento, el anterior punteado en `--faint`.
+ *   · Km por día: barras en `--line2`, el último día en acento (antes todo en `--info`, un segundo
+ *     color sin significado propio).
+ *   · Pedidos por hora: barras en `--line2`, la hora pico en acento (antes todas en acento).
+ *   · Efectividad: "con pedido" en acento, "sin pedido" en `--line2` (antes verde contra ocre).
+ *   · Ranking: barras en `--line2`, la primera en acento; el punto de identidad de cada persona
+ *     queda junto a su nombre.
+ * Excepciones, a propósito: la dona de rubros/marcas conserva `CATEGORICAS` (la decisión lo dice
+ * explícitamente), la dona de estados usa los tokens de estado de la app (son semántica, no
+ * decoración, y van con leyenda), y la apilada por persona usa el color de identidad del mapa.
  */
 export default function DashboardEquipo({
   layout = 'grid',
@@ -89,13 +102,13 @@ export default function DashboardEquipo({
   ], [v.serieMonto, v.hasta, n, tema.primary, tema.faint])
 
   const seriesKm = useMemo(() => [
-    { id: 'km', label: 'Km del equipo', color: tema.info || tema.primary, tipo: 'histogram', puntos: puntosDeSerie(m.serieKm || {}, m.hasta || v.hasta, n) },
+    { id: 'km', label: 'Km del equipo', color: tema.line2, tipo: 'histogram', puntos: conEnfasisUltimo(puntosDeSerie(m.serieKm || {}, m.hasta || v.hasta, n), tema.primary) },
     { id: 'prev', label: 'Período anterior', color: tema.faint, tipo: 'line', punteada: true, puntos: puntosPeriodoAnterior(m.serieKm || {}, m.hasta || v.hasta, n) },
-  ], [m.serieKm, m.hasta, v.hasta, n, tema.info, tema.primary, tema.faint])
+  ], [m.serieKm, m.hasta, v.hasta, n, tema.line2, tema.primary, tema.faint])
 
   const seriesHora = useMemo(() => [
-    { id: 'hora', label: 'Pedidos', color: tema.primary, tipo: 'histogram', puntos: puntosPorHora(pedidosHoy, v.hasta) },
-  ], [pedidosHoy, v.hasta, tema.primary])
+    { id: 'hora', label: 'Pedidos', color: tema.line2, tipo: 'histogram', puntos: conEnfasisPico(puntosPorHora(pedidosHoy, v.hasta), tema.primary) },
+  ], [pedidosHoy, v.hasta, tema.line2, tema.primary])
 
   const apiladas = useMemo(() => apiladasPorVendedor(v, v.desde, v.hasta, nombres, colorPorId), [v.porDia, v.porDiaVendedor, v.porVendedor, v.desde, v.hasta, nombres]) // eslint-disable-line react-hooks/exhaustive-deps
   const ranking = useMemo(() => rankingVendedores(v.porVendedor, m.porUsuario, nombres, colorPorId, fmtKm).map((f) => ({
@@ -107,8 +120,8 @@ export default function DashboardEquipo({
     const t = v.total
     if (!t.visitas) return []
     return [
-      { label: 'Con pedido', valor: t.visitasConPedido, color: 'var(--success)' },
-      { label: 'Sin pedido', valor: t.visitas - t.visitasConPedido, color: 'var(--warning)' },
+      { label: 'Con pedido', valor: t.visitasConPedido, color: 'var(--primary)' },
+      { label: 'Sin pedido', valor: t.visitas - t.visitasConPedido, color: 'var(--line2)' },
     ]
   }, [v.total])
 
@@ -125,7 +138,9 @@ export default function DashboardEquipo({
 
   const kpis = (
     <div style={sx(`display:grid;gap:${esPc ? 12 : 10}px;grid-template-columns:repeat(auto-fit,minmax(${esPc ? 200 : 150}px,1fr))`)}>
-      <MiniKpi label="Vendido" valor={v.loading ? '—' : fmtPesos(Math.round(v.total.monto))} comp={cmp.monto} />
+      {/* En el celular "Vendido" es el KPI principal y va a ancho completo (brief v2 §2.8: uno
+          principal + los demás de a 2). "$ 4.860.000" no entra en media tarjeta de 360. */}
+      <MiniKpi label="Vendido" valor={v.loading ? '—' : fmtPesos(Math.round(v.total.monto))} comp={cmp.monto} style={esPc ? undefined : { gridColumn: '1 / -1' }} />
       <MiniKpi label="Pedidos" valor={v.loading ? '—' : fmtEntero(v.total.pedidos)} comp={cmp.pedidos} nota={v.total.anulados ? `${v.total.anulados} anulados` : ''} />
       <MiniKpi label="Ticket promedio" valor={v.loading || v.total.ticket == null ? '—' : fmtPesos(Math.round(v.total.ticket))} nota={v.total.ticket == null ? 'sin pedidos' : 'por pedido'} />
       {!compacto && <MiniKpi label="Comercios con compra" valor={v.loading ? '—' : fmtEntero(v.total.clientes)} nota="distintos por vendedor y día" />}
@@ -141,7 +156,7 @@ export default function DashboardEquipo({
     </TarjetaGrafico>
   )
   const tKm = (
-    <TarjetaGrafico eyebrow="Actividad" titulo={`Km del equipo por día · ${periodoTxt}`} comp={cmp.km}>
+    <TarjetaGrafico eyebrow="Actividad" titulo={`Km del equipo por día · ${periodoTxt}`} comp={cmp.km} nota={`En color, el último día con registro. Punteado: ${prevTxt}.`}>
       {m.loading ? <Cargando alto={esPc ? 200 : 160} /> : <GraficoSerie series={seriesKm} alto={esPc ? 200 : 160} formatoValor={fmtKm} compacto={!esPc} />}
     </TarjetaGrafico>
   )
@@ -165,8 +180,8 @@ export default function DashboardEquipo({
     </TarjetaGrafico>
   )
   const tRanking = (
-    <TarjetaGrafico eyebrow="Equipo" titulo="Vendido por persona" derecha={<span style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint)')}>pedidos · km</span>}>
-      {v.loading ? <Cargando alto={120} /> : <BarrasH filas={ranking} formato={(x) => fmtPesos(Math.round(x))} />}
+    <TarjetaGrafico eyebrow="Equipo" titulo="Vendido por persona" derecha={<span style={{ ...sx('font-family:var(--font-mono);color:var(--faint)'), fontSize: FS_MIN }}>pedidos · km</span>}>
+      {v.loading ? <Cargando alto={120} /> : <BarrasH filas={ranking} formato={(x) => fmtPesos(Math.round(x))} monocromo />}
     </TarjetaGrafico>
   )
   const tApiladas = (
@@ -175,7 +190,7 @@ export default function DashboardEquipo({
     </TarjetaGrafico>
   )
   const tHora = horizonte === 'hoy' ? (
-    <TarjetaGrafico eyebrow="Hoy" titulo="Pedidos por hora" nota="Hora de carga del pedido en el teléfono. Anulados afuera.">
+    <TarjetaGrafico eyebrow="Hoy" titulo="Pedidos por hora" nota="Hora de carga del pedido en el teléfono. Anulados afuera. En color, la hora pico.">
       {v.loading ? <Cargando alto={140} /> : <GraficoSerie series={seriesHora} alto={140} formatoValor={fmtEntero} escalaHoras compacto={!esPc} />}
     </TarjetaGrafico>
   ) : null
@@ -215,7 +230,7 @@ export default function DashboardEquipo({
     <div style={sx('display:flex;flex-direction:column;gap:16px')}>
       {onHorizonte && (
         <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap')}>
-          <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:600')}>
+          <div style={EYEBROW}>
             {v.desde === v.hasta ? v.hasta : `${v.desde} → ${v.hasta}`}
           </div>
           <Toggle valor={horizonte} opciones={HORIZONTES} onChange={onHorizonte} grande />
@@ -238,6 +253,20 @@ export default function DashboardEquipo({
 
 // ---- piezas ----
 
+/** El último punto CON valor va en el color de énfasis (el día más reciente con registro). */
+function conEnfasisUltimo(puntos, color) {
+  let i = puntos.length - 1
+  while (i >= 0 && puntos[i].value == null) i--
+  return i < 0 ? puntos : puntos.map((p, k) => (k === i ? { ...p, color } : p))
+}
+
+/** La hora pico (el mayor valor; ante empate, la primera) va en el color de énfasis. */
+function conEnfasisPico(puntos, color) {
+  let i = -1
+  puntos.forEach((p, k) => { if (p.value != null && (i < 0 || p.value > puntos[i].value)) i = k })
+  return i < 0 ? puntos : puntos.map((p, k) => (k === i ? { ...p, color } : p))
+}
+
 function Toggle({ valor, opciones, onChange, grande = false }) {
   return (
     <div style={sx('display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-pill);padding:2px;gap:2px')}>
@@ -248,7 +277,10 @@ function Toggle({ valor, opciones, onChange, grande = false }) {
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            style={sx(`border:0;cursor:pointer;border-radius:var(--r-pill);padding:${grande ? '7px 14px' : '3px 9px'};font-size:${grande ? 'var(--fs-sm)' : 'var(--fs-2xs)'};font-weight:600;background:${on ? 'var(--surface)' : 'transparent'};color:${on ? 'var(--text)' : 'var(--muted)'};box-shadow:${on ? 'var(--shadow)' : 'none'};min-height:${grande ? 34 : 24}px`)}
+            aria-pressed={on}
+            // Toque de 44 px los dos tamaños (01/10/2026): el chico medía 24 y era el selector
+            // Rubro/Marca del celular. El "grande" cambia el aire y la letra, no el alto.
+            style={sx(`border:0;cursor:pointer;border-radius:var(--r-pill);padding:${grande ? '0 14px' : '0 12px'};font-size:${grande ? 'var(--fs-sm)' : 'var(--fs-xs)'};font-weight:600;background:${on ? 'var(--surface)' : 'transparent'};color:${on ? 'var(--text)' : 'var(--muted)'};box-shadow:${on ? 'var(--shadow)' : 'none'};min-height:44px`)}
           >
             {o.label}
           </button>
@@ -266,7 +298,7 @@ function Aviso({ children, tono = 'faint', accion }) {
   return (
     <div style={sx(`padding:13px 15px;border-radius:var(--r-md);background:${tono === 'danger' ? 'var(--danger-tint)' : 'var(--surface2)'};border:1px dashed var(--line2);font-size:var(--fs-sm);color:var(--muted);line-height:1.55;display:flex;gap:10px;align-items:center;flex-wrap:wrap`)}>
       <span style={sx('flex:1;min-width:200px')}>{children}</span>
-      {accion && <button type="button" onClick={accion} className="lu-press" style={sx('border:1px solid var(--line2);background:var(--surface);border-radius:var(--r-md);padding:6px 12px;font-size:var(--fs-sm);font-weight:600;color:var(--text);cursor:pointer')}>Reintentar</button>}
+      {accion && <button type="button" onClick={accion} className="lu-press" style={sx('min-height:44px;border:1px solid var(--line2);background:var(--surface);border-radius:var(--r-md);padding:0 14px;font-size:var(--fs-sm);font-weight:600;color:var(--text);cursor:pointer')}>Reintentar</button>}
     </div>
   )
 }

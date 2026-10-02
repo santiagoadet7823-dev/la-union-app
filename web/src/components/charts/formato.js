@@ -42,3 +42,22 @@ export function fmtPct(fraccion) {
   if (fraccion == null || !Number.isFinite(fraccion)) return '—'
   return Math.round(fraccion * 100) + ' %'
 }
+
+/**
+ * Tipografía compartida del dashboard (01/10/2026, brief estético v2 §2.2/§2.8). Vive acá y no en
+ * un componente para que `TarjetaGrafico`, `MiniKpi`, los gráficos y `DashboardEquipo` usen el
+ * MISMO eyebrow sin que un archivo de componente exporte constantes.
+ *
+ * `FS_MIN`: piso de 11 px para rótulos chicos mientras `--fs-2xs` siga en 10 px (decisión 15 del
+ * dueño: rótulos mínimos de 11). Cuando la escala pase a rem (0,6875 rem = 11 px) el `max` deja
+ * de hacer efecto solo. `max()` existe desde Chrome 79.
+ */
+export const FS_MIN = 'max(11px, var(--fs-2xs))'
+
+/** Eyebrow mono en mayúsculas con el tracking único del sistema (.08em). `break-word`: con la
+ * letra del sistema al doble "EFECTIVIDAD" no entra en media tarjeta de 360 y empujaba la página
+ * 5 px de costado; ahora parte la palabra antes que salirse. */
+export const EYEBROW = {
+  fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 'var(--track-eyebrow, .08em)',
+  color: 'var(--faint)', fontWeight: 600, lineHeight: 1.3, fontSize: FS_MIN, overflowWrap: 'break-word',
+}
