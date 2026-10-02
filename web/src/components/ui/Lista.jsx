@@ -68,10 +68,13 @@ export function GrupoLista({ titulo, extra, children, style }) {
  *   - destructiva   bool: texto e ícono en --danger, 600, sin chevron (acciones que no llevan a
  *                   otra pantalla sino que HACEN algo: "Cerrar sesión", "Desactivar cuenta")
  *   - deshabilitada bool (solo <button>)
+ *   - actual        bool: la fila es la pantalla abierta (panel de Gestión del escritorio, 02/10/2026).
+ *                   `aria-current="page"`, fondo --primary-tint, etiqueta en 600 e ícono en --primary:
+ *                   el peso y el cuadrado del ícono también cambian, no solo el tono.
  *   - onClick, href, title, style
  *   - ariaLabel     solo se aplica si la fila es <button> o <a>
  */
-export function FilaLista({ etiqueta, detalle, valor, valorMono = false, icono, extremo, chevron, destructiva = false, deshabilitada = false, onClick, href, ariaLabel, title, style }) {
+export function FilaLista({ etiqueta, detalle, valor, valorMono = false, icono, extremo, chevron, destructiva = false, deshabilitada = false, actual = false, onClick, href, ariaLabel, title, style }) {
   const navega = !!(onClick || href)
   const conChevron = chevron ?? (navega && !destructiva)
   const tinta = destructiva ? 'var(--danger)' : 'var(--text)'
@@ -87,10 +90,12 @@ export function FilaLista({ etiqueta, detalle, valor, valorMono = false, icono, 
       className="lu-fila"
       // Solo en <button>/<a>: en un <div> sin rol, `aria-label` no se lee (y pisaría el texto).
       aria-label={Tag === 'div' ? undefined : ariaLabel}
+      aria-current={actual && Tag !== 'div' ? 'page' : undefined}
       title={title}
       style={{
         ...sx('display:flex;align-items:center;gap:var(--sp-3);width:100%;min-height:var(--row-h, 3rem);padding:var(--sp-2) var(--sp-3);margin:0;border:0;background:transparent;font-family:inherit;text-align:left;text-decoration:none;-webkit-tap-highlight-color:transparent'),
         color: tinta,
+        ...(actual ? { background: 'var(--primary-tint)' } : null),
         cursor: navega && !deshabilitada ? 'pointer' : undefined,
         // Sangría del separador de arriba (ui.css): alineado con el texto, no con el borde.
         '--sep-izq': icono ? 'calc(2 * var(--sp-3) + 32px)' : 'var(--sp-3)',
@@ -98,12 +103,12 @@ export function FilaLista({ etiqueta, detalle, valor, valorMono = false, icono, 
       }}
     >
       {icono && (
-        <span aria-hidden="true" style={{ ...sx('flex:none;width:32px;height:32px;border-radius:var(--r-sm);background:var(--surface2);display:grid;place-items:center'), color: destructiva ? 'var(--danger)' : 'var(--muted)' }}>
+        <span aria-hidden="true" style={{ ...sx('flex:none;width:32px;height:32px;border-radius:var(--r-sm);display:grid;place-items:center'), background: actual ? 'var(--surface)' : 'var(--surface2)', color: destructiva ? 'var(--danger)' : actual ? 'var(--primary)' : 'var(--muted)' }}>
           {pintarIcono(icono, 18)}
         </span>
       )}
       <span style={sx('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
-        <span style={{ ...sx('font-size:var(--fs-md);line-height:1.3;overflow-wrap:break-word'), fontWeight: destructiva ? 600 : 500 }}>{etiqueta}</span>
+        <span style={{ ...sx('font-size:var(--fs-md);line-height:1.3;overflow-wrap:break-word'), fontWeight: destructiva || actual ? 600 : 500 }}>{etiqueta}</span>
         {detalle && <span style={sx('font-size:var(--fs-xs);line-height:1.3;color:var(--muted);overflow-wrap:break-word')}>{detalle}</span>}
       </span>
       {extremo ?? (valor != null && valor !== '' && (

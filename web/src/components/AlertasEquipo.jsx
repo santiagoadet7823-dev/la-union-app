@@ -2,6 +2,8 @@ import { useState } from 'react'
 import Overlay from './Overlay'
 import { fmtDuracion, fmtHora, initials } from '../lib/format'
 import { colorPorId } from '../lib/colors'
+import { EstadoVacio } from './ui'
+import { Check } from './icons'
 
 /**
  * Campanita de avisos del equipo + la lista de incidentes abiertos.
@@ -52,10 +54,11 @@ export default function AlertasEquipo({ alertas = [], sinVer = 0, nombres = {}, 
             irse aunque el problema siga abierto (para eso está la lista). */}
         {sinVer > 0 && (
           <span style={{
-            position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, padding: '0 4px',
+            // 18 px y letra de 11 (02/10/2026): el mínimo de texto del brief (§4.5); con 9,5 no se leía.
+            position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box',
             display: 'grid', placeItems: 'center', borderRadius: 'var(--r-pill)',
             background: 'var(--danger)', color: 'var(--on-danger)',
-            fontFamily: 'var(--font-mono)', fontSize: 9.5, fontWeight: 700, lineHeight: 1,
+            fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, lineHeight: 1,
           }}>
             {sinVer > 9 ? '9+' : sinVer}
           </span>
@@ -192,5 +195,64 @@ function FilaAviso({ alerta, nombre, onClick }) {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * TARJETA "INCIDENCIAS" del monitoreo de escritorio (02/10/2026, hoja SupervisionEscritorio). Son
+ * los MISMOS avisos de la campanita (`useAlertasEquipo`), a la vista sin abrir nada: en la PC el
+ * mapa ocupa el centro y la lista de lo que está mal tiene que estar al lado, no detrás de un toque.
+ * Vive acá y no en features/supervision para usar la tabla `TIPOS` de arriba: un tipo nuevo se
+ * agrega una sola vez (regla 31).
+ *
+ * El color del tipo va siempre con su rótulo escrito ("sin reportar", "quieto"): nunca solo color.
+ * Sin avisos, estado vacío con el mismo componente que el resto de la app (`EstadoVacio`).
+ *
+ * props: { alertas, nombres, onEnfocar, onMarcarVista, max = 5, style }
+ */
+export function TarjetaIncidencias({ alertas = [], nombres = {}, onEnfocar, onMarcarVista, max = 5, style }) {
+  const visibles = alertas.slice(0, max)
+  const resto = alertas.length - visibles.length
+  return (
+    <section aria-label="Incidencias" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: 'var(--shadow)', padding: '14px 16px', display: 'flex', flexDirection: 'column', minWidth: 0, ...style }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--faint)' }}>Incidencias</span>
+        {alertas.length > 0 && <span style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>{alertas.length} abierta{alertas.length === 1 ? '' : 's'}</span>}
+      </div>
+      {!alertas.length ? (
+        <EstadoVacio
+          icono={Check}
+          titulo="Sin incidencias abiertas"
+          texto="Si alguien deja de reportar, queda quieto o va en ruta sin declararlo, aparece acá."
+          style={{ padding: '16px 8px 8px' }}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>
+          {visibles.map((a) => {
+            const tipo = TIPOS[a.tipo] || TIPOS.quieto
+            const nombre = nombres[a.id_usuario] || 'Móvil'
+            const puedeEnfocar = a.lat != null && a.lng != null
+            return (
+              <button
+                key={a.id}
+                type="button"
+                className="lu-fila"
+                onClick={() => { onMarcarVista?.(a); if (puedeEnfocar) onEnfocar?.(a) }}
+                title={puedeEnfocar ? 'Ver su última posición en el mapa' : 'Sin posición conocida'}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '6px 2px', margin: 0, border: 0, background: 'transparent', color: 'var(--text)', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', '--sep-izq': '19px' }}
+              >
+                <span aria-hidden="true" style={{ width: 9, height: 9, flex: 'none', borderRadius: 99, background: tipo.color }} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.3 }}>
+                  <b style={{ fontWeight: 600 }}>{nombre}</b>
+                  <span style={{ color: 'var(--muted)' }}> · {tipo.etiqueta}</span>
+                </span>
+                <span style={{ flex: 'none', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--faint)' }}>{fmtDuracion((a.minutos || 0) * 60000)}</span>
+              </button>
+            )
+          })}
+          {resto > 0 && <div style={{ paddingTop: 6, fontSize: 12, color: 'var(--muted)' }}>y {resto} más · en la campanita</div>}
+        </div>
+      )}
+    </section>
   )
 }

@@ -218,6 +218,13 @@ html[data-theme='light'] {
   --bar: rgba(46, 58, 68, 0.1);
   --console-bg: #2e3a44;
   --console-fg: #dde4e1;
+  /* Rail de íconos del escritorio (02/10/2026, decisión 9 del dueño): fondo --console-bg en los
+     dos temas. Son ALIAS de colores que ya existen, no colores nuevos: tinta en reposo, tinta del
+     destino activo y el ícono activo. En Claro la consola es grafito y todo va en crema; en Oscuro
+     la tinta es --muted y el ícono activo, el acento (lo que dibuja la hoja SupervisionEscritorio). */
+  --rail-fg: var(--console-fg);
+  --rail-on: var(--surface);
+  --rail-acento: var(--surface);
   --hm0: #e3e8e5;
   --hm1: #b6c8ca;
   --hm2: #88a8ae;
@@ -279,6 +286,9 @@ html[data-theme='dark'] {
   --bar: rgba(242, 242, 245, 0.1);
   --console-bg: #0e0e10;
   --console-fg: #7cb8c9;
+  --rail-fg: var(--muted);
+  --rail-on: var(--text);
+  --rail-acento: var(--console-fg);
   --hm0: #232327;
   --hm1: #324a50;
   --hm2: #486b75;

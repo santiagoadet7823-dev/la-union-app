@@ -22,9 +22,14 @@ import { GestIcon } from '../../../components/icons'
  * Props:
  *   - rol, permisos   opcionales; por defecto los de la sesión (`useAuth`)
  *   - onAbrir         (key) => void
+ *   - activa          clave de la pantalla abierta, o null. La marca con `aria-current` (02/10/2026:
+ *                     el panel contextual de Gestión del escritorio deja la lista visible al lado de
+ *                     la pantalla, así que tiene que decir en cuál estás).
+ *   - chevron         bool, por defecto sí. En el panel del escritorio va sin: la fila no lleva a
+ *                     "otra pantalla más adentro", cambia la de al lado.
  *   - style
  */
-export default function ListaGestion({ rol: rolProp, permisos: permisosProp, onAbrir, style }) {
+export default function ListaGestion({ rol: rolProp, permisos: permisosProp, onAbrir, activa = null, chevron, style }) {
   const auth = useAuth()
   const rol = rolProp ?? auth.rol
   const permisos = permisosProp ?? auth.permisos
@@ -39,7 +44,7 @@ export default function ListaGestion({ rol: rolProp, permisos: permisosProp, onA
       {grupos.map((g) => (
         <GrupoLista key={g.k} titulo={g.titulo}>
           {g.items.map((it) => (
-            <FilaLista key={it.key} icono={<GestIcon k={it.key} size={18} />} etiqueta={it.label} onClick={() => onAbrir?.(it.key)} />
+            <FilaLista key={it.key} icono={<GestIcon k={it.key} size={18} />} etiqueta={it.label} actual={activa === it.key} chevron={chevron} onClick={() => onAbrir?.(it.key)} />
           ))}
         </GrupoLista>
       ))}

@@ -113,3 +113,36 @@ button.lu-fila:disabled { cursor: default; opacity: 0.5; }
 .leaflet-container.leaflet-touch .leaflet-bar a,
 .leaflet-container .leaflet-bar a.leaflet-control-zoom-in,
 .leaflet-container .leaflet-bar a.leaflet-control-zoom-out { width: 44px; height: 44px; line-height: 44px; font-size: 20px; }
+
+/* --- Rail de íconos del escritorio (02/10/2026) ---------------------------------------------
+   `features/supervision/components/RailEscritorio.jsx`, decisión 9 del dueño. El rail es oscuro en
+   los dos temas (--console-bg), así que el anillo de foco global (--primary) se pierde sobre él: acá
+   va en --rail-acento. La placa del destino activo y la del hover son un pseudo-elemento con la
+   tinta del rail y opacidad: sin `color-mix()` (Chrome 79) ni un color translúcido nuevo. */
+.lu-rail :focus-visible { outline: 2px solid var(--rail-acento); outline-offset: 1px; }
+.lu-rail-btn { position: relative; }
+.lu-rail-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: var(--rail-fg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* 0.22 y no 0.16 (revisión C7): en Claro la placa crema sobre grafito casi no se distinguía. */
+.lu-rail-btn[aria-current='page']::before { opacity: 0.22; }
+.lu-rail-btn:active::before { opacity: 0.26; }
+@media (hover: hover) {
+  .lu-rail-btn:hover::before { opacity: 0.1; }
+  .lu-rail-btn[aria-current='page']:hover::before { opacity: 0.22; }
+}
+.lu-rail-btn > * { position: relative; }
+.lu-rail-sep { flex: none; height: 1px; background: var(--rail-fg); opacity: 0.16; }
+@media (prefers-reduced-motion: reduce) {
+  .lu-rail-btn::before { transition: none; }
+}
