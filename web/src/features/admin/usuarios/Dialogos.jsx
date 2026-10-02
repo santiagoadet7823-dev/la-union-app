@@ -172,7 +172,7 @@ export function Revision({ open, onClose, bor, porId, info, ctx, sinRed, guardan
           return (
             <div key={pid} style={sx('border:1px solid var(--line);border-radius:14px;overflow:hidden')}>
               <div style={sx('display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2)')}>
-                <Avatar nombre={p.nombre || identidadVisible(p.email)} color={colorDe(p)} size={28} fs={10} />
+                <Avatar nombre={p.nombre || identidadVisible(p.email)} color={colorDe(p)} size={28} fs={11} />
                 <span style={sx('flex:1;font-weight:600')}>{p.nombre || identidadVisible(p.email)}</span>
                 <span style={sx('font-size:11px;color:var(--muted);white-space:nowrap')}>{ctx.empresaNombre[p.id_empresa] || ''}</span>
               </div>
@@ -286,7 +286,7 @@ export function DialogoPeligro({ estado, onClose, onConfirmar }) {
           <label style={sx('display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600')}>
             <span>Escribí <span style={mono}>“{nombre}”</span> para confirmar</span>
             <input value={txt} onChange={(ev) => setTxt(ev.target.value)} autoComplete="off" className="lu-input"
-              style={{ ...sx('height:44px;padding:0 12px;border-radius:10px;background:var(--surface2);font-size:14px;color:var(--text);font-family:var(--font-body)'), border: `1.5px solid ${txt && !nombreOk ? 'var(--danger)' : nombreOk && txt ? 'var(--success)' : 'var(--line2)'}` }} />
+              style={{ ...sx('height:44px;padding:0 12px;border-radius:10px;background:var(--surface2);font-size:max(14px, var(--piso-entrada));color:var(--text);font-family:var(--font-body)'), border: `1.5px solid ${txt && !nombreOk ? 'var(--danger)' : nombreOk && txt ? 'var(--success)' : 'var(--line2)'}` }} />
           </label>
         )}
         {purgar && (
@@ -427,7 +427,7 @@ export function AltaUsuario({ estado, onClose, ctx, onAgregar, emailsExistentes,
   )
 }
 const lbl = sx('display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:var(--muted)')
-const inp = sx('height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);font-size:14px;color:var(--text);font-family:var(--font-body);box-sizing:border-box;width:100%')
+const inp = sx('height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);font-size:max(14px, var(--piso-entrada));color:var(--text);font-family:var(--font-body);box-sizing:border-box;width:100%')
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Resultado de "Resetear contraseña" (db/78, Ficha.jsx → Edge Function resetear-contrasena)

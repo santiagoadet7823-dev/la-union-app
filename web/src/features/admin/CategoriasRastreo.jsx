@@ -10,7 +10,7 @@ import { invalidarTrackCache } from '../../services/tracking'
  * El motor dentroDeHorario() ya soporta días y cruce de medianoche, así que 'hasta' admite 24:00.
  */
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
-const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;font-family:var(--font-mono)') }
+const inpTime = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(14px, var(--piso-entrada));font-family:var(--font-mono)') }
 const DIAS = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [7, 'Dom']]
 const nuevaVacia = { nombre: '', dias: [], hora_inicio: '18:00', hora_fin: '23:00', id_empresa: '' }
 
@@ -90,7 +90,7 @@ export default function CategoriasRastreo({ empresas = [], onToast }) {
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Nombre</div>
           <input value={form.nombre} onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Vendedor Ma/Ju tarde"
-            className="lu-input" style={sx('width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px')} />
+            className="lu-input" style={sx('width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(14px, var(--piso-entrada))')} />
         </div>
         <div>
           <div style={sx('font-size:11px;color:var(--faint);margin-bottom:4px')}>Desde</div>

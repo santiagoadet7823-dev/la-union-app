@@ -55,7 +55,7 @@ export default function ResumenEmpresa({ e, v, onPersona, onCrear, onIrA, soloLe
     <div className="lu-rise" style={sx('display:flex;flex-direction:column;gap:16px')}>
       <div style={sx('display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap')}>
         <div style={sx('flex:1;min-width:200px')}>
-          <div style={{ ...rotulo, fontSize: 10.5, letterSpacing: '.08em' }}>{soloLectura ? 'Tu equipo' : 'Empresa'}</div>
+          <div style={{ ...rotulo, fontSize: 11, letterSpacing: '.08em' }}>{soloLectura ? 'Tu equipo' : 'Empresa'}</div>
           <div style={{ ...display, ...sx('font-weight:700;font-size:28px;line-height:1.1;margin-top:4px') }}>{soloLectura ? 'Hoy del equipo' : e.nombre}</div>
           <div style={sx('font-size:12.5px;color:var(--muted);margin-top:4px')}>{e.contadores.n} personas · {e.contadores.calle} en la calle{e.contadores.pend ? ` · ${e.contadores.pend} pendientes` : ''}</div>
         </div>
@@ -100,7 +100,7 @@ export default function ResumenEmpresa({ e, v, onPersona, onCrear, onIrA, soloLe
             <div style={{ ...tituloTarjeta, flex: 1 }}>Hoy, persona por persona</div>
             <div style={sx('font-size:11px;color:var(--muted)')}>Tocá una fila para abrir la ficha</div>
           </div>
-          <div style={sx('display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) 64px 58px 90px;gap:10px;padding:8px 16px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-top:1px solid var(--line);border-bottom:1px solid var(--line)')}>
+          <div style={sx('display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) 64px 58px 90px;gap:10px;padding:8px 16px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-top:1px solid var(--line);border-bottom:1px solid var(--line)')}>
             <span>Persona</span><span>Estado</span><span style={{ textAlign: 'right' }}>Km hoy</span><span style={{ textAlign: 'right' }}>Visitas</span><span style={{ textAlign: 'right' }}>Ventas hoy</span>
           </div>
           {filasHoy.map((i) => {
@@ -110,8 +110,8 @@ export default function ResumenEmpresa({ e, v, onPersona, onCrear, onIrA, soloLe
               <div key={i.p.id} role="button" tabIndex={0} onClick={() => onPersona(i.p.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') onPersona(i.p.id) }}
                 style={sx('display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) 64px 58px 90px;gap:10px;align-items:center;padding:0 16px;min-height:48px;border-bottom:1px solid var(--line);cursor:pointer')}>
                 <div style={sx('display:flex;align-items:center;gap:9px;min-width:0')}>
-                  <span style={{ ...display, ...sx('flex:none;width:26px;height:26px;border-radius:99px;background:var(--surface2);display:grid;place-items:center;font-weight:700;font-size:9.5px'), border: `2px solid ${i.color}` }}>{(i.p.nombre || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
-                  <div style={sx('min-width:0')}><div style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px')}>{i.p.nombre}</div><div style={sx('font-size:10.5px;color:var(--muted)')}>{ROL_UNO[i.p.rol]}</div></div>
+                  <span style={{ ...display, ...sx('flex:none;width:26px;height:26px;border-radius:99px;background:var(--surface2);display:grid;place-items:center;font-weight:700;font-size:11px'), border: `2px solid ${i.color}` }}>{(i.p.nombre || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+                  <div style={sx('min-width:0')}><div style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px')}>{i.p.nombre}</div><div style={sx('font-size:11px;color:var(--muted)')}>{ROL_UNO[i.p.rol]}</div></div>
                 </div>
                 <div style={sx('display:flex;align-items:center;gap:6px;font-size:12px;min-width:0')}>
                   <span style={{ ...sx('flex:none;width:7px;height:7px;border-radius:99px'), background: i.estado.dot }} />

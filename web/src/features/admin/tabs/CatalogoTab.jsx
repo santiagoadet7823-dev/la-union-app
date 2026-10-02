@@ -420,7 +420,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
                 onChange={(e) => setBusqueda(e.target.value)}
                 {...propsBusqueda}
                 placeholder="Buscar por descripción, código o categoría…"
-                style={{ ...sx('flex:1;min-width:0;min-height:44px;padding:0 12px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);box-sizing:border-box'), fontSize: isMobile ? 16 : 13 }}
+                style={{ ...sx('flex:1;min-width:0;min-height:44px;padding:0 12px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);box-sizing:border-box'), fontSize: 'max(13px, var(--piso-entrada))' }}
               />
               {isMobile && (
                 <button type="button" onClick={alternarVista} className="lu-press"

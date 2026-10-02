@@ -59,7 +59,7 @@ export default class ErrorBoundary extends Component {
             del problema en vez de una pista inventada — que es la diferencia entre arreglarlo hoy
             o pasar un día mirando la base de datos. */}
         {this.state.error?.message && (
-          <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);line-height:1.5;max-width:320px;word-break:break-word')}>
+          <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.5;max-width:320px;word-break:break-word')}>
             {String(this.state.error.message).slice(0, 200)}
           </div>
         )}

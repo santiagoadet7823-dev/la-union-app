@@ -254,7 +254,7 @@ export default function PedidosView({ onToast }) {
         <select
           value={filtroVendedor}
           onChange={(e) => setFiltroVendedor(e.target.value)}
-          style={sx('padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px')}
+          style={sx('padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')}
         >
           <option value="">Todas las personas</option>
           {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -266,7 +266,7 @@ export default function PedidosView({ onToast }) {
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar número, comercio o persona"
           aria-label="Buscar pedidos"
-          style={sx('flex:1;min-width:170px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:12.5px')}
+          style={sx('flex:1;min-width:170px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')}
         />
 
         {/* Para facturar en el sistema del cliente. Va con los filtros y no arriba del todo porque
@@ -345,7 +345,7 @@ export default function PedidosView({ onToast }) {
           <select
             value={filtroRepartidor}
             onChange={(e) => setFiltroRepartidor(e.target.value)}
-            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:11.5px')}
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(11.5px, var(--piso-entrada))')}
           >
             <option value="">Cualquier repartidor</option>
             <option value="sin">Sin repartidor</option>
@@ -364,7 +364,7 @@ export default function PedidosView({ onToast }) {
               if (l && l.ts < desde) setRango('30')
             }}
             title="Exportación al sistema de gestión (ERP)"
-            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:11.5px')}
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(11.5px, var(--piso-entrada))')}
           >
             <option value="">ERP: todos</option>
             <option value="sin">Sin exportar</option>
@@ -395,16 +395,16 @@ export default function PedidosView({ onToast }) {
       {!enPapelera ? (
         <div style={sx('display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
           <div>
-            <div style={sx('font-size:10.5px;color:var(--faint)')}>{hayFiltro ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
+            <div style={sx('font-size:11px;color:var(--faint)')}>{hayFiltro ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
             <div style={sx('font-size:19px;font-weight:700')}>{pedidos.length}{hayFiltro ? <span style={sx('font-size:11px;color:var(--faint);font-weight:400')}> de {activos.length}</span> : null}</div>
           </div>
           <div>
-            <div style={sx('font-size:10.5px;color:var(--faint)')}>Vendido</div>
+            <div style={sx('font-size:11px;color:var(--faint)')}>Vendido</div>
             <div style={sx('font-size:19px;font-weight:700')}>{fmtPesos(totalVendido)}</div>
           </div>
           {anulados.length > 0 && (
             <div>
-              <div style={sx('font-size:10.5px;color:var(--faint)')}>Anulados</div>
+              <div style={sx('font-size:11px;color:var(--faint)')}>Anulados</div>
               <div style={sx('font-size:19px;font-weight:700;color:var(--danger)')}>{anulados.length}</div>
             </div>
           )}
@@ -484,18 +484,18 @@ export default function PedidosView({ onToast }) {
                     sólo va en la lista viva; en la papelera el estado es siempre "Anulado" y ya lo
                     dice la línea roja de abajo. */}
                 {!anulado && (
-                  <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
+                  <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
                     {p.estado}
                   </span>
                 )}
                 {p.exportado_ts && (
-                  <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
+                  <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
                     ERP{p.export_lote ? ` #${p.export_lote}` : ''}
                   </span>
                 )}
                 {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta. */}
                 {motivoRetencion(p) && (
-                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
+                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
                     Retenido · {TEXTO_RETENCION[motivoRetencion(p)]}
                   </span>
                 )}
@@ -509,7 +509,7 @@ export default function PedidosView({ onToast }) {
                 </span>
               </div>
               {anulado && (
-                <div style={sx('font-size:10.5px;color:var(--danger);margin-top:3px')}>
+                <div style={sx('font-size:11px;color:var(--danger);margin-top:3px')}>
                   ANULADO{p.motivo_anulacion ? ` · ${p.motivo_anulacion}` : ''}
                 </div>
               )}
@@ -518,7 +518,7 @@ export default function PedidosView({ onToast }) {
                   para siempre es lo único de esta pantalla que tiene urgencia real. */}
               {anulado && enPapelera && (
                 <div style={{
-                  ...sx('font-size:10.5px;margin-top:2px;font-family:var(--font-mono)'),
+                  ...sx('font-size:11px;margin-top:2px;font-family:var(--font-mono)'),
                   color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
                   fontWeight: porVencer(p) ? 600 : 400,
                 }}>

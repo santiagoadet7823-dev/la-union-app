@@ -186,7 +186,7 @@ export default function SplashIntro({ onDone }) {
       }}
     >
       <Isotipo ref={svgRef} size={172} />
-      <div style={{ position: 'absolute', bottom: 34, left: 0, right: 0, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.14em', color: 'rgba(255,255,255,.28)' }}>
+      <div style={{ position: 'absolute', bottom: 34, left: 0, right: 0, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.14em', color: 'rgba(255,255,255,.28)' }}>
         TOCÁ PARA SALTAR
       </div>
     </div>

@@ -168,7 +168,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                   placeholder="Por qué se anula (obligatorio)"
-                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
+                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:max(13px, var(--piso-entrada))')}
                 />
               </>
             )}
@@ -193,7 +193,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
             Va arriba y separado del catálogo: son unidades con precio ya pactado, y la única
             acción posible sobre ellas es restar. */}
         <div style={sx('padding:0 0 4px')}>
-          <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:4px')}>
+          <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:4px')}>
             Ya estaba en el pedido
           </div>
           <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:8px')}>
@@ -218,7 +218,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
                   <div style={{ ...sx('font-size:12.5px;line-height:1.35'), textDecoration: quitada ? 'line-through' : 'none' }}>
                     {l.descripcion}
                   </div>
-                  <div style={sx('font-size:10.5px;color:var(--faint);margin-top:2px;font-family:var(--font-mono)')}>
+                  <div style={sx('font-size:11px;color:var(--faint);margin-top:2px;font-family:var(--font-mono)')}>
                     {fmtPesos(l.precio_unitario)} c/u · precio fijado
                   </div>
                 </div>
@@ -261,7 +261,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
               contador, pero desde arriba no se ve sin scrollear hasta el producto. */}
           {nuevas.length > 0 && (
             <div style={sx('margin-top:12px;padding:9px 11px;border:1px solid var(--primary);border-radius:11px;background:var(--primary-tint)')}>
-              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--deep);margin-bottom:5px')}>
+              <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--deep);margin-bottom:5px')}>
                 Agregado ahora · precio de hoy
               </div>
               {nuevas.map((n) => (
@@ -281,7 +281,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
             marco de rentabilidad y chips de categoría. Sin vidriera: corregir un pedido es algo que
             el vendedor hace para arreglar un error, no una conversación frente a la tablet. */}
         <div style={sx('margin-top:16px;padding-top:12px;border-top:1px solid var(--line2)')}>
-          <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')}>
+          <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')}>
             Agregar al pedido · precio de hoy
           </div>
         </div>

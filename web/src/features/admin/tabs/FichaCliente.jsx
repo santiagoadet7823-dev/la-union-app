@@ -66,7 +66,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [confirmDel, setConfirmDel] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)')
+  const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body)')
 
   // Otro cliente (vigente o archivado) que ya usa el código escrito. Se bloquea el guardado: el
   // índice único de la base rechazaría el update con 23505 y la cola lo mandaría a cuarentena
@@ -186,7 +186,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
               </select>
             </div>
           </div>
-          <div style={sx('font-size:10.5px;color:var(--faint);line-height:1.4')}>Al cambiar la zona, el cliente hereda el vendedor dueño de esa zona.</div>
+          <div style={sx('font-size:11px;color:var(--faint);line-height:1.4')}>Al cambiar la zona, el cliente hereda el vendedor dueño de esa zona.</div>
         </div>
       )}
 

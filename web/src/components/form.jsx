@@ -54,9 +54,12 @@ export const propsBusqueda = {
 /**
  * Estilo base de input/select/textarea. Va SIEMPRE junto a className="lu-input",
  * que es quien aporta el foco visible y la transición del borde.
+ *
+ * (02/10/2026) La letra es `max(13px, var(--piso-entrada))`: 13 px con mouse y 16 px en pantallas
+ * táctiles (iOS hace zoom al enfocar un campo de menos de 16; criterio B7). Ver index.css.
  */
 export const inputStyle = sx(
   'width:100%;box-sizing:border-box;min-height:44px;padding:10px 11px;' +
   'border:1px solid var(--line2);border-radius:var(--r-md);' +
-  'background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)'
+  'background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body)'
 )

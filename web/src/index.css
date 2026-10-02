@@ -86,13 +86,20 @@
 
   /* --- Escala tipográfica ----------------------------------------------
      Antes 15 tamaños en decimales arbitrarios (9.5, 10.5, 11.5, 12.5,
-     13.5, 14.5…). Consolidados en 6. */
-  --fs-2xs: 10px;   /* labels de tabla, "Próx." */
-  --fs-xs: 11px;    /* labels de campo, hints */
-  --fs-sm: 12.5px;  /* texto secundario */
-  --fs-md: 14px;    /* cuerpo */
-  --fs-lg: 17px;    /* título de modal */
-  --fs-xl: 20px;    /* título de pantalla */
+     13.5, 14.5…). Consolidados en 6.
+     (02/10/2026) En rem 1:1 (1rem = 16px; el `html` NO fija font-size, así el rem sigue la
+     preferencia de tamaño de letra del navegador en la PWA). En el WebView de Android no cambia
+     nada: ahí el tamaño de letra del sistema multiplica px y rem por igual (informe 08, PR-0).
+     Único cambio visual: `--fs-2xs` sube de 10 a 11 px, el piso de rótulos (decisión 15 del
+     dueño: cuerpo 14, nada por debajo de 11). Los `--sp-*` siguen en px a propósito: en el
+     WebView un rem de layout no crece con la letra, así que pasarlos no protege nada. */
+  --fs-2xs: 0.6875rem;  /* 11px — labels de tabla, "Próx." (antes 10px) */
+  --fs-xs: 0.6875rem;   /* 11px — labels de campo, hints */
+  --fs-sm: 0.78125rem;  /* 12.5px — texto secundario */
+  --fs-md: 0.875rem;    /* 14px — cuerpo */
+  --fs-lg: 1.0625rem;   /* 17px — título de modal */
+  --fs-xl: 1.25rem;     /* 20px — título de pantalla */
+  --piso-entrada: 0px;  /* piso de letra de los campos: 0 con mouse, 16px en táctil (abajo) */
 
   /* --- Espaciado (múltiplos de 4) --------------------------------------- */
   --sp-1: 4px;
@@ -346,6 +353,27 @@ body {
 }
 .lu-input:focus-visible {
   border-color: var(--primary);
+}
+
+/* (02/10/2026) ENTRADAS TÁCTILES ≥ 16 px (brief v2 §2.2, criterio B7). iOS hace zoom solo al
+   enfocar un campo de menos de 16 px y no lo deshace; en Android el campo chico además es el que
+   más cuesta leer mientras se escribe. Con mouse (escritorio) los campos siguen compactos.
+   · `--piso-entrada` vale 0 con mouse y 16 px en táctil. Un campo con letra propia la escribe
+     `font-size: max(<su tamaño>, var(--piso-entrada))`: en escritorio queda igual que antes y en
+     el teléfono nunca baja de 16 (ni achica los que ya son más grandes, como el login o el MFA).
+     `inputStyle` (components/form.jsx) ya lo trae.
+   · La regla de abajo cubre las entradas SIN `font-size` inline (sin ella el navegador les pone
+     13,33 px). Sin `!important` a propósito: forzarla pisaría también a los campos grandes.
+   · `max(1rem, 16px)`: en la PWA sigue la preferencia de letra del navegador si es mayor.
+   ⚠️ Si un campo táctil se ve apretado con 16 px, se le da más caja (min-height, ancho), no se
+   le baja la letra. */
+@media (pointer: coarse) {
+  :root { --piso-entrada: max(1rem, 16px); }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']):not([type='image']):not([type='hidden']),
+  select,
+  textarea {
+    font-size: max(1rem, 16px);
+  }
 }
 
 /* Campo compuesto: un input SIN borde dentro de un contenedor que sí lo tiene

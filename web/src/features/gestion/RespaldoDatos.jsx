@@ -209,7 +209,7 @@ export default function RespaldoDatos({ onToast }) {
         <label style={sx('font-size:12.5px;color:var(--muted)')}>Mes</label>
         <input
           type="month" value={mes} max={mesActual} onChange={(e) => setMes(e.target.value)}
-          style={sx('padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-mono)')}
+          style={sx('padding:8px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-mono)')}
         />
         <span style={sx('font-size:12.5px;color:var(--muted)')}>
           Empresa: <b style={sx('color:var(--text)')}>{esTodas ? '— elegí una —' : (nombreActiva || '—')}</b>

@@ -85,7 +85,7 @@ export default function GestionarCategorias({ onClose, onToast }) {
                 ) : (
                   <>
                     <span style={sx('flex:1;font-size:13.5px;font-weight:500')}>{c.nombre}</span>
-                    <span style={sx('font-size:10.5px;color:var(--faint);font-family:var(--font-mono)')}>{n}</span>
+                    <span style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>{n}</span>
                     <button onClick={() => { setEditId(c.id); setEditVal(c.nombre) }} title="Renombrar" style={sx('width:32px;height:32px;flex:none;display:grid;place-items:center;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--deep);cursor:pointer')}>
                       <Editar size={14} />
                     </button>

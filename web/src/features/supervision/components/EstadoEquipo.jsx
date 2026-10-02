@@ -22,7 +22,7 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--faint)' }}>Estado del equipo · por qué no llega la señal</span>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--faint)' }}>Estado del equipo · por qué no llega la señal</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: problemas ? 'var(--danger)' : 'var(--success)' }}>{problemas ? `${problemas} con problema` : 'todos OK'}</span>
       </div>
       {filas.length === 0 ? (
@@ -42,12 +42,12 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
             return <span style={{ width: 10, height: 10, flex: 'none', borderRadius: 99, background: dot, boxShadow: `0 0 0 3px ${dot}22` }} />
           })()}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre} <span style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{f.rol}</span></div>
+            <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nombre} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{f.rol}</span></div>
             <div style={{ fontSize: 11, color: f.estado === 'ok' ? 'var(--muted)' : f.color, lineHeight: 1.3 }}>{f.motivo}</div>
             {/* Cola de posiciones sin enviar. Ámbar = acumulación (late pero no drena);
                 rojo = puntos en cuarentena (error permanente, ver reglas 19-22). */}
             {f.colaTrabada && (
-              <div style={{ fontSize: 10.5, fontWeight: 600, lineHeight: 1.35, marginTop: 2, color: f.cuarentena > 0 ? 'var(--danger)' : 'var(--warning)' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.35, marginTop: 2, color: f.cuarentena > 0 ? 'var(--danger)' : 'var(--warning)' }}>
                 ⚠ {f.cola} ubicación{f.cola === 1 ? '' : 'es'} en cola sin enviar
                 {f.cuarentena > 0 ? ` · ${f.cuarentena} en cuarentena (error permanente)` : ''}
               </div>
@@ -55,7 +55,7 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
             {/* Versiones: OTA (bundle JS) · APK (nativo). El APK viejo sin push se resalta ámbar
                 porque el watchdog no le funciona por más OTA nueva que tenga. */}
             {(f.ota || f.apk) && (
-              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', lineHeight: 1.35, marginTop: 2, color: 'var(--faint)' }}>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.35, marginTop: 2, color: 'var(--faint)' }}>
                 OTA <span style={{ color: f.otaAtrasada ? 'var(--warning)' : 'var(--muted)', fontWeight: f.otaAtrasada ? 600 : 400 }}>{f.ota || '—'}{f.otaAtrasada ? ' ↑' : ''}</span>
                 {' · '}APK <span style={{ color: f.apkSinPush ? 'var(--warning)' : 'var(--muted)', fontWeight: f.apkSinPush ? 600 : 400 }}>{f.apk || '—'}{f.apkSinPush ? ' · sin push' : ''}</span>
                 {f.instalada ? <> · instalada <span style={{ color: 'var(--muted)' }}>{f.instalada}</span></> : null}
@@ -66,7 +66,7 @@ export default function EstadoEquipo({ compact = false, onSelectUsuario }) {
         </div>
       ))}
       {!compact && (
-        <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--faint)', lineHeight: 1.4 }}>
+        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--faint)', lineHeight: 1.4 }}>
           El motivo se detecta desde el propio celular. Para que grabe el recorrido con el celu guardado, el
           móvil necesita el permiso de ubicación en <b>"Siempre"</b> y la app <b>sin optimización de batería</b>.
           "Aún no grabó en 2º plano" = todavía no capturó con la app cerrada; si persiste, revisá esos dos.

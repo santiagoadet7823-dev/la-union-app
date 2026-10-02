@@ -249,7 +249,7 @@ function Controles({ fecha, onFecha, onExcel, onPdf }) {
         onChange={(e) => onFecha?.(e.target.value)}
         disabled={!onFecha}
         aria-label="Día del informe"
-        style={sx('background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px;font-family:var(--font-mono);font-size:var(--fs-sm)')}
+        style={sx('background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px;font-family:var(--font-mono);font-size:max(var(--fs-sm), var(--piso-entrada))')}
       />
       <div style={sx('flex:1')} />
       <Boton onClick={onExcel}>Excel</Boton>

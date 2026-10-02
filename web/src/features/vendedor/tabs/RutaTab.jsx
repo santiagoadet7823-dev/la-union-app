@@ -73,9 +73,9 @@ export default function RutaTab({ j, onCheckIn }) {
         {pend.length === 0 && <div style={sx('font-size:12px;color:var(--faint);padding:8px 2px')}>No hay paradas pendientes.</div>}
         {pend.map((x) => (
           <div key={x.c.id} style={sx('display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:6px')}>
-            <span style={{ ...sx('width:22px;height:22px;flex:none;border-radius:8px;display:grid;place-items:center;font-family:var(--font-mono);font-size:10px;font-weight:600'), background: x.c.id === nextId ? 'var(--primary)' : 'var(--surface2)', color: x.c.id === nextId ? 'var(--on-primary)' : 'var(--muted)' }}>{String(x.i + 1).padStart(2, '0')}</span>
+            <span style={{ ...sx('width:22px;height:22px;flex:none;border-radius:8px;display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;font-weight:600'), background: x.c.id === nextId ? 'var(--primary)' : 'var(--surface2)', color: x.c.id === nextId ? 'var(--on-primary)' : 'var(--muted)' }}>{String(x.i + 1).padStart(2, '0')}</span>
             <span style={sx('flex:1;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{x.c.name}</span>
-            <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);flex:none')}>{x.c.loc || ''}</span>
+            <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);flex:none')}>{x.c.loc || ''}</span>
           </div>
         ))}
       </div>

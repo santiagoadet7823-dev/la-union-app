@@ -183,7 +183,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                   placeholder="Por qué se anula (obligatorio)"
-                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:13px')}
+                  style={sx('width:100%;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface2);color:var(--text);font-size:max(13px, var(--piso-entrada))')}
                 />
                 <button
                   onClick={alAnular}
@@ -239,14 +239,14 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               <b style={sx('color:var(--danger)')}>PEDIDO ANULADO.</b>{' '}
               {pedido.motivo_anulacion || 'Sin motivo registrado.'}
               {pedido.anulado_ts && (
-                <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:4px')}>
+                <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-top:4px')}>
                   {fmtFecha(pedido.anulado_ts)}
                 </div>
               )}
               {/* Los pedidos anulados antes del 20/08/2026 no tienen firma, y la pantalla lo dice
                   en vez de dejar un renglón vacío que se lea como "no lo anuló nadie". */}
               {!pedido.anulado_por && (
-                <div style={sx('font-size:10.5px;color:var(--faint);margin-top:3px')}>
+                <div style={sx('font-size:11px;color:var(--faint);margin-top:3px')}>
                   Sin registro de quién lo anuló (anterior al 20/08/2026).
                 </div>
               )}
@@ -297,7 +297,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               {pedido.fecha_entrega && <div>Entrega pedida para: <b style={sx('color:var(--text)')}>{fmtDia(pedido.fecha_entrega)}</b></div>}
               {pedido.observaciones && <div>Observaciones: <span style={sx('color:var(--text)')}>{pedido.observaciones}</span></div>}
               {pedido.exportado_ts && (
-                <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:2px')}>
+                <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-top:2px')}>
                   Exportado al ERP el {fmtFecha(pedido.exportado_ts)}{pedido.export_lote ? ` · lote ${pedido.export_lote}` : ''}
                 </div>
               )}
@@ -308,7 +308,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               No aparece en un pedido anulado: no se reparte lo que no se factura. */}
           {!anulado && (
             <div style={sx('margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
-              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:7px')}>Reparto</div>
+              <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:7px')}>Reparto</div>
               {repartidores.length === 0 ? (
                 // Un selector vacío es peor que ningún selector: promete algo y no se puede usar.
                 <div style={sx('font-size:11.5px;color:var(--muted);line-height:1.5')}>
@@ -320,7 +320,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                     value={pedido.id_repartidor || ''}
                     disabled={asignando}
                     onChange={(e) => alAsignar(e.target.value || null)}
-                    style={sx('width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px')}
+                    style={sx('width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada))')}
                   >
                     <option value="">Sin asignar</option>
                     {repartidores.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
@@ -356,14 +356,14 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               no necesita un cartel que diga que no las tuvo. */}
           {ediciones && ediciones.length > 0 && (
             <div style={sx('margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
-              <div style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:7px')}>
+              <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:7px')}>
                 Correcciones · {ediciones.length}
               </div>
               {ediciones.map((e) => (
                 <div key={e.id} style={sx('padding:7px 0;border-top:1px solid var(--line);font-size:11.5px;line-height:1.5')}>
                   <div style={sx('display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap')}>
                     <b style={sx('color:var(--text)')}>{e.nombre || 'Sin nombre'}</b>
-                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{fmtFecha(e.ts)}</span>
+                    <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{fmtFecha(e.ts)}</span>
                   </div>
                   {(e.cambios || []).map((c, i) => (
                     <div key={i} style={sx('color:var(--muted)')}>
@@ -372,7 +372,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                     </div>
                   ))}
                   {e.monto_antes != null && e.monto_despues != null && Number(e.monto_antes) !== Number(e.monto_despues) && (
-                    <div style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:2px')}>
+                    <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-top:2px')}>
                       {fmtPesos(e.monto_antes)} → {fmtPesos(e.monto_despues)}
                     </div>
                   )}

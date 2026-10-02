@@ -640,7 +640,7 @@ export default function SupervisionDesktop({ role = 'admin', vista = null, onIrA
                     {/* Selector de fecha */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 11px', borderRadius: 10, background: esHoy ? 'var(--surface2)' : 'var(--primary)', border: `1px solid ${esHoy ? 'var(--line)' : 'transparent'}`, color: esHoy ? 'var(--muted)' : 'var(--on-primary)' }} title={esHoy ? 'Viendo hoy · en vivo' : 'Viendo un día pasado · histórico'}>
                       <Calendario size={14} style={{ flex: 'none' }} />
-                      <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
+                      <input type="date" value={fecha} max={hoyStr()} onChange={(e) => cambiarFecha(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 'max(12px, var(--piso-entrada))', fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }} />
                       {!esHoy && <span onClick={() => cambiarFecha(hoyStr())} style={{ flex: 'none', fontSize: 11, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>Hoy</span>}
                     </div>
                     {/* 🩸 El toggle "Calles" se retiró el 18/08/2026. Los encargados no entendían qué
@@ -952,7 +952,7 @@ function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasa
               <span style={{ width: 12, height: 12, flex: 'none', borderRadius: 99, background: colorPorId(m.id), boxShadow: `0 0 0 4px ${colorPorId(m.id)}22` }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[m.id] || m.rol}</div>
-                <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{m.rol}</div>
+                <div style={{ fontSize: 11, color: 'var(--faint)', fontFamily: 'var(--font-mono)' }}>{m.rol}</div>
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>hace {Math.max(0, Math.round((Date.now() - m.ts) / 1000))}s</div>
             </div>
@@ -966,7 +966,7 @@ function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasa
         <div style={{ padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <div style={label10}>Rendimiento del día</div>
-            <span style={{ fontSize: 10.5, color: 'var(--faint)' }}>km recorridos y tiempo de parada por persona</span>
+            <span style={{ fontSize: 11, color: 'var(--faint)' }}>km recorridos y tiempo de parada por persona</span>
           </div>
           <MetricasEquipo byUser={byUser} nombres={nombres} pasaFiltro={pasaFiltro} filter={filter} onSelect={onSelectUsuario} />
           <div style={{ marginTop: 12, fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>
@@ -981,7 +981,7 @@ function Metricas({ expanded, isMobile, moversArr, nombres, byUser, filter, pasa
 
 // ---- piezas chicas ----
 const panelSx = { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, boxShadow: 'var(--shadow)', overflow: 'hidden' }
-const label10 = { fontSize: 10.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }
+const label10 = { fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)' }
 
 // Chip de filtro (variante escritorio: sólido, sin glass flotante).
 function Chip({ on, dim, color, dotRadius, count, label, onClick }) {

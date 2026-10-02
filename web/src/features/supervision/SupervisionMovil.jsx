@@ -790,11 +790,11 @@ export default function SupervisionMovil({ role = 'encargado', onIrAJornada = nu
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-popover)' }}>
           <div onClick={() => setDatePop(false)} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'var(--scrim)' }} />
           <div style={{ position: 'absolute', right: RAIL_W + 20, bottom: safeBottom(NAV_H + 14), ...plano, borderRadius: 14, padding: '10px 12px' }} className="lu-rise">
-            <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 6 }}>Fecha</div>
             <input
               type="date" value={fecha} max={hoyStr()} autoFocus
               onChange={(e) => cambiarFecha(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', minHeight: 44, colorScheme: isDark ? 'dark' : 'light' }}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 'max(14px, var(--piso-entrada))', fontWeight: 600, fontFamily: 'var(--font-body)', outline: 'none', minHeight: 44, colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
         </div>

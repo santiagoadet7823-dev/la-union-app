@@ -262,10 +262,10 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
             </div>
           )}
           {p.oferta && p.precioOferta != null && (
-            <span style={sx('position:absolute;top:9px;left:9px;background:var(--warning);color:var(--on-warning);font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>OFERTA</span>
+            <span style={sx('position:absolute;top:9px;left:9px;background:var(--warning);color:var(--on-warning);font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>OFERTA</span>
           )}
           {p.destacado && (
-            <span style={sx('position:absolute;top:9px;right:9px;background:var(--primary);color:var(--on-primary);font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>DESTACADO</span>
+            <span style={sx('position:absolute;top:9px;right:9px;background:var(--primary);color:var(--on-primary);font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px')}>DESTACADO</span>
           )}
         </div>
 
@@ -298,7 +298,7 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
             contra la cantidad total del carrito, así que el escalón se aplica solo. */}
         {escalones.length > 0 && (
           <div style={sx('margin-top:14px')}>
-            <div style={sx('font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--muted);margin-bottom:7px')}>PRECIO POR CANTIDAD</div>
+            <div style={sx('font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--muted);margin-bottom:7px')}>PRECIO POR CANTIDAD</div>
             <div style={sx('display:flex;flex-direction:column;gap:5px')}>
               {escalones.map((e) => {
                 const activo = qty >= e.desde

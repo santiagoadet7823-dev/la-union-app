@@ -26,15 +26,15 @@ import AvisoCuarentena from '../../components/AvisoCuarentena'
 const COLORES = ['#0ABAB5', '#6366F1', '#F59E0B', '#EF4444', '#10B981', '#EC4899', '#0EA5E9', '#8B5CF6']
 
 const panel = { ...sx('background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px') }
-const label10 = { ...sx('font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
+const label10 = { ...sx('font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)') }
 // Sin `outline:none`: al ser estilo inline le ganaba al :focus-visible global y
 // dejaba los campos inalcanzables por teclado. El foco lo maneja `.lu-input`.
-const inp = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font-body)') }
-const selectStyle = { ...sx('width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-family:var(--font-body);cursor:pointer') }
+const inp = { ...sx('padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body)') }
+const selectStyle = { ...sx('width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--text);font-size:max(12px, var(--piso-entrada));font-family:var(--font-body);cursor:pointer') }
 const btnPrimario = { ...sx('padding:8px 14px;border:none;border-radius:var(--r-sm);background:var(--primary);color:var(--on-primary);font-size:12.5px;font-weight:700;cursor:pointer') }
 const btnSuave = { ...sx('padding:8px 12px;border:none;border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer') }
 const btnIcono = { ...sx('display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--muted);cursor:pointer;flex:none') }
-const pill = (color, bg) => ({ ...sx('padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.03em;white-space:nowrap'), color, background: bg })
+const pill = (color, bg) => ({ ...sx('padding:2px 7px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap'), color, background: bg })
 
 const ordenZonas = (a, b) => (a.numero ?? 9999) - (b.numero ?? 9999) || a.nombre.localeCompare(b.nombre)
 /** `#3 · LJ · Las Lajitas` para los selects. */
@@ -53,7 +53,7 @@ function Paleta({ valor, onChange }) {
 /** Chip con la abreviatura en el color de la zona (el mismo que dibuja el mapa). */
 function ChipAbrev({ z }) {
   if (!z.abrev) return <span style={pill('var(--faint)', 'var(--surface)')} title="Sin abreviatura: el mapa no la va a etiquetar">sin abrev.</span>
-  return <span style={{ ...sx('font-family:var(--font-mono);font-size:10px;font-weight:700;color:#fff;padding:2px 6px;border-radius:5px;letter-spacing:.04em'), background: z.color || 'var(--faint)' }}>{z.abrev}</span>
+  return <span style={{ ...sx('font-family:var(--font-mono);font-size:11px;font-weight:700;color:#fff;padding:2px 6px;border-radius:5px;letter-spacing:.04em'), background: z.color || 'var(--faint)' }}>{z.abrev}</span>
 }
 
 export default function ZonasView({ onToast }) {
@@ -289,7 +289,7 @@ export default function ZonasView({ onToast }) {
                         <option value="">— Sin vendedor —</option>
                         {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre} · {v.rol}</option>)}
                       </select>
-                      <span style={sx('font-family:var(--font-mono);font-size:10px;color:var(--faint);white-space:nowrap')} title={`${n.vigentes} vigentes${n.archivados ? ` (+${n.archivados} archivados)` : ''} · ${n.geo} con ubicación (aparecen en el mapa)`}>
+                      <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap')} title={`${n.vigentes} vigentes${n.archivados ? ` (+${n.archivados} archivados)` : ''} · ${n.geo} con ubicación (aparecen en el mapa)`}>
                         {n.vigentes} cli. · {n.geo} con ubicación
                       </span>
                       <button onClick={() => empezarEdicion(z)} className="lu-press" style={btnIcono} title="Editar zona" aria-label={`Editar ${z.nombre}`}><Editar size={14} /></button>
@@ -378,7 +378,7 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
           <option value="sin">Sin zona</option>
           {zonas.map((z) => <option key={z.id} value={z.id}>{etiquetaZona(z)}</option>)}
         </select>
-        <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--faint);white-space:nowrap')}>
+        <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap')}>
           Mostrando {filtrados.length} de {clientes.length}
         </span>
       </div>
@@ -389,7 +389,7 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
       ) : (
         <>
           {!isMobile && (
-            <div style={{ ...grid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
+            <div style={{ ...grid, ...sx('padding:8px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)') }}>
               <span>Cliente</span><span>Zona</span><span>Vendedor dueño</span><span />
             </div>
           )}
@@ -405,7 +405,7 @@ const AsignacionClientes = memo(function AsignacionClientes({ clientes, zonas, z
               </span>
               <SelectPerezoso value={c.idZona || ''} opciones={opcionesZona} onChange={(v) => cambiar(c.id, { id_zona: v || null })} />
               <SelectPerezoso value={c.idVendedor || ''} opciones={opcionesVendedor} onChange={(v) => cambiar(c.id, { id_vendedor: v || null })} disabled={esOverride} title={tituloVendedor} />
-              <span style={sx('font-family:var(--font-mono);font-size:10px;color:var(--faint);text-align:right')}>{c.codigo || ''}</span>
+              <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);text-align:right')}>{c.codigo || ''}</span>
             </div>
           ))}
         </>

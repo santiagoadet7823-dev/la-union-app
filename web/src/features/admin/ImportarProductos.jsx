@@ -211,7 +211,7 @@ export default function ImportarProductos({ onClose, onToast }) {
       dup: { t: 'Repetido en planilla', c: 'var(--warning)', b: 'var(--warning-tint)' },
       'sin-desc': { t: 'Sin descripción', c: 'var(--danger)', b: 'var(--danger-tint)' },
     }[estado] || { t: estado, c: 'var(--muted)', b: 'var(--surface2)' }
-    return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap'), color: map.c, background: map.b }}>{map.t}</span>
+    return <span style={{ ...sx('display:inline-flex;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap'), color: map.c, background: map.b }}>{map.t}</span>
   }
 
   const importables = resumen ? (resumen.ok + resumen.update) : 0
@@ -345,7 +345,7 @@ export default function ImportarProductos({ onClose, onToast }) {
             {/* Una sola definición de las columnas: estaba escrita dos veces (cabecera y fila) y
                 agregar una desalineaba la mitad de la tabla. */}
             <div style={sx('border:1px solid var(--line);border-radius:12px;overflow:hidden')}>
-              <div style={{ display: 'grid', gridTemplateColumns: COLS_PREVIEW, gap: 8, ...sx('padding:9px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
+              <div style={{ display: 'grid', gridTemplateColumns: COLS_PREVIEW, gap: 8, ...sx('padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);background:var(--surface2);border-bottom:1px solid var(--line)') }}>
                 <span>Código</span><span>Descripción</span><span style={sx('text-align:right')}>Precio</span><span>Descuentos</span><span>Categoría</span><span>Estado</span>
               </div>
               <div style={{ maxHeight: 360, overflow: 'auto' }}>
@@ -363,7 +363,7 @@ export default function ImportarProductos({ onClose, onToast }) {
                     <span style={sx('text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--muted)')}>{f.precio_unitario != null ? f.precio_unitario : '—'}</span>
                     {/* `null` (la planilla no trae columnas de escala) y `[]` (viene desde_1 = 0, que
                         BORRA) son cosas distintas y tienen que verse distintas antes de confirmar. */}
-                    <span style={sx('font-family:var(--font-mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
+                    <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
                       {f.escalas == null
                         ? <span style={sx('color:var(--faint)')}>—</span>
                         : f.escalas.length === 0

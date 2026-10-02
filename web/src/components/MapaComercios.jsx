@@ -264,6 +264,7 @@ function BotonEstiloMapa() {
 // `tactil` (01/10/2026, C10): el botón de la píldora mide 44 de alto (la píldora visible sigue en
 // 30, centrada), como el `Chip` de components/ui. Opcional para no mover la leyenda de las
 // supervisiones, que la posicionan con `estilo` contando con la caja de 30.
+// (02/10/2026) La letra ya no depende de `tactil`: el piso de 11 px vale para todas (decisión 15).
 export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo = null, tactil = false }) {
   const [abierta, setAbierta] = useState(() => {
     // Un `localStorage` que no se puede leer (ventana privada, datos bloqueados) no puede tumbar
@@ -291,7 +292,7 @@ export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo =
         className="lu-press"
         aria-expanded={abierta}
         title={abierta ? 'Ocultar la referencia de colores' : 'Ver qué significa cada color'}
-        style={{ ...sx('display:flex;align-items:center;gap:7px;max-width:100%;min-height:30px;padding:0 10px;border-radius:var(--r-pill);border:.5px solid var(--glass-brd);background:var(--glass-strong);box-shadow:var(--shadow);font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--text);cursor:pointer;pointer-events:auto;white-space:nowrap;overflow:hidden'), ...(tactil ? { minHeight: 44, fontSize: 11, padding: '0 12px' } : null) }}
+        style={{ ...sx('display:flex;align-items:center;gap:7px;max-width:100%;min-height:30px;padding:0 10px;border-radius:var(--r-pill);border:.5px solid var(--glass-brd);background:var(--glass-strong);box-shadow:var(--shadow);font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text);cursor:pointer;pointer-events:auto;white-space:nowrap;overflow:hidden'), ...(tactil ? { minHeight: 44, padding: '0 12px' } : null) }}
       >
         <span style={{ color: 'var(--faint)' }}>{abierta ? '▾' : '▸'}</span>
         {resumen}
@@ -308,14 +309,14 @@ export function LeyendaMapa({ items, resumen, pie = null, claveMemoria, estilo =
               no llega al zoom. `pie` queda afuera del scroll: siempre visible. */}
           <div style={sx('display:flex;flex-direction:column;gap:4px;max-height:176px;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto')}>
             {items.map((it) => (
-              <div key={it.etiqueta} style={{ ...sx('display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--text);white-space:nowrap;flex:none'), ...(tactil ? { fontSize: 11 } : null) }}>
+              <div key={it.etiqueta} style={{ ...sx('display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text);white-space:nowrap;flex:none') }}>
                 <Muestra color={it.color} glifo={it.glifo} hueco={it.hueco} />
                 {it.etiqueta}
               </div>
             ))}
           </div>
           {pie && (
-            <div style={{ ...sx('margin-top:4px;padding-top:6px;border-top:1px solid var(--line);font-size:10px;color:var(--muted);max-width:190px;line-height:1.4;white-space:normal'), ...(tactil ? { fontSize: 11 } : null) }}>
+            <div style={{ ...sx('margin-top:4px;padding-top:6px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);max-width:190px;line-height:1.4;white-space:normal') }}>
               {pie}
             </div>
           )}

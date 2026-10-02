@@ -181,7 +181,7 @@ export default function MapaCartera({ j, onCheckIn }) {
         {/* El recuadro del pie no toma eventos (regla 30): sólo este botón los recibe. */}
         {sinDueno.length > 0 && (
           <button type="button" onClick={alternarSinDueno} aria-pressed={verSinDueno} className="lu-press"
-            style={{ ...sx('display:flex;align-items:center;gap:6px;margin-top:4px;min-height:28px;padding:0 8px;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--surface);font-size:10px;font-weight:600;cursor:pointer;pointer-events:auto'), color: verSinDueno ? 'var(--primary)' : 'var(--muted)' }}>
+            style={{ ...sx('display:flex;align-items:center;gap:6px;margin-top:4px;min-height:28px;padding:0 8px;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--surface);font-size:11px;font-weight:600;cursor:pointer;pointer-events:auto'), color: verSinDueno ? 'var(--primary)' : 'var(--muted)' }}>
             <span style={{ ...sx('width:8px;height:8px;border-radius:99px;border:1.5px solid currentColor'), background: verSinDueno ? 'currentColor' : 'transparent' }} />
             {verSinDueno ? 'Ocultar' : 'Mostrar'} sin dueño ({sinDueno.length})
           </button>
@@ -259,7 +259,7 @@ function TarjetaComercio({ c, estado, pedidoBot = null, isDark, distancia, onCer
             {c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span>
           </div>
           <div style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:6px')}>
-            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:10.5px;font-weight:600'), border: `1px solid ${pill[1]}`, color: pill[1] }}>
+            <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:600'), border: `1px solid ${pill[1]}`, color: pill[1] }}>
               <span style={{ ...sx('width:6px;height:6px;border-radius:99px'), background: pill[1] }} />{pill[0]}
             </span>
             {sub && <span style={{ ...sx('font-size:11px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: pill[1] }}>{sub}</span>}

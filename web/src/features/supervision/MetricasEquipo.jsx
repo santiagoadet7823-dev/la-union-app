@@ -86,7 +86,7 @@ export default function MetricasEquipo({ byUser, nombres = {}, pasaFiltro, filte
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
               <span style={{ width: 10, height: 10, flex: 'none', borderRadius: 99, background: c, boxShadow: `0 0 0 4px ${c}22` }} />
               <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombres[f.id] || f.rol}</span>
-              <span style={{ ...stat, fontSize: 15, color: 'var(--deep)' }}>{f.km.toFixed(1)}<span style={{ fontSize: 10, color: 'var(--faint)', marginLeft: 2 }}>km</span></span>
+              <span style={{ ...stat, fontSize: 15, color: 'var(--deep)' }}>{f.km.toFixed(1)}<span style={{ fontSize: 11, color: 'var(--faint)', marginLeft: 2 }}>km</span></span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               <Celda etiqueta="Prom." valor={f.paradas.n ? fmtDuracion(f.paradas.avgMs) : '—'} />
@@ -105,7 +105,7 @@ function Celda({ etiqueta, valor }) {
   return (
     <div style={{ textAlign: 'center' }}>
       <div style={{ ...stat, fontSize: 13, color: 'var(--deep)' }}>{valor}</div>
-      <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--faint)', marginTop: 2 }}>{etiqueta}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--faint)', marginTop: 2 }}>{etiqueta}</div>
     </div>
   )
 }

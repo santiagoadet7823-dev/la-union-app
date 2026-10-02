@@ -222,12 +222,12 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
                   {p.numero ? `#${p.numero} · ` : ''}{fmtFecha(p.created_at)}
                 </div>
                 {p.sinSubir && (
-                  <div style={sx('font-size:10.5px;color:var(--warning);margin-top:3px;font-weight:600')}>
+                  <div style={sx('font-size:11px;color:var(--warning);margin-top:3px;font-weight:600')}>
                     SIN SUBIR · se manda solo cuando vuelva la señal
                   </div>
                 )}
                 {anulado && (
-                  <div style={sx('font-size:10.5px;color:var(--danger);margin-top:3px')}>
+                  <div style={sx('font-size:11px;color:var(--danger);margin-top:3px')}>
                     ANULADO{p.motivo_anulacion ? ` · ${p.motivo_anulacion}` : ''}
                   </div>
                 )}
@@ -250,10 +250,10 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
         {anulados.length > 0 && (
           <div style={sx('margin-top:18px')}>
             <div style={sx('display:flex;align-items:baseline;justify-content:space-between;padding-bottom:6px;border-bottom:1px solid var(--line)')}>
-              <span style={sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--danger)')}>
+              <span style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--danger)')}>
                 Anulados ({anulados.length})
               </span>
-              <span style={sx('font-size:10.5px;color:var(--faint)')}>
+              <span style={sx('font-size:11px;color:var(--faint)')}>
                 se borran a los {DIAS_PAPELERA} días
               </span>
             </div>
@@ -277,10 +277,10 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
                     {p.numero ? `#${p.numero} · ` : ''}{fmtFecha(p.created_at)}
                   </div>
                   {p.motivo_anulacion && (
-                    <div style={sx('font-size:10.5px;color:var(--danger);margin-top:3px')}>{p.motivo_anulacion}</div>
+                    <div style={sx('font-size:11px;color:var(--danger);margin-top:3px')}>{p.motivo_anulacion}</div>
                   )}
                   <div style={{
-                    ...sx('font-size:10.5px;margin-top:2px;font-family:var(--font-mono)'),
+                    ...sx('font-size:11px;margin-top:2px;font-family:var(--font-mono)'),
                     color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
                   }}>
                     {textoPapelera(p)}

@@ -208,7 +208,7 @@ export default function FaltanteTab() {
           <div style={panel}>
             <div style={{ ...label10, marginBottom: 10 }}>Detalle por producto</div>
             <div style={sx('overflow-x:auto')}>
-              <div style={{ ...faltGrid, ...sx('padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line);min-width:560px') }}>
+              <div style={{ ...faltGrid, ...sx('padding:8px 10px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line);min-width:560px') }}>
                 <span>Producto</span><span style={sx('text-align:right')}>Pedido</span><span style={sx('text-align:right')}>Entregado</span><span style={sx('text-align:right')}>Faltante</span><span>Motivo</span>
               </div>
               {(conFaltante.length ? conFaltante : r.productos.slice(0, 12)).map((p) => (
@@ -219,7 +219,7 @@ export default function FaltanteTab() {
                   <span style={{ ...sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600'), color: p.falt > 0 ? 'var(--danger)' : 'var(--faint)' }}>{p.falt > 0 ? `−${fmtEntero(p.falt)}` : '0'}</span>
                   <span>
                     {p.motivo && (
-                      <span style={{ ...sx('display:inline-flex;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:600'), background: p.motivo === 'Sin stock' ? 'var(--danger-tint)' : p.motivo === 'Rechazado' ? 'var(--warning-tint)' : 'var(--surface2)', color: COLOR_MOTIVO[p.motivo] || 'var(--faint)' }}>{p.motivo}</span>
+                      <span style={{ ...sx('display:inline-flex;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600'), background: p.motivo === 'Sin stock' ? 'var(--danger-tint)' : p.motivo === 'Rechazado' ? 'var(--warning-tint)' : 'var(--surface2)', color: COLOR_MOTIVO[p.motivo] || 'var(--faint)' }}>{p.motivo}</span>
                     )}
                   </span>
                 </div>

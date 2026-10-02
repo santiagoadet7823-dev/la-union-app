@@ -48,11 +48,11 @@ export function fmtPct(fraccion) {
  * un componente para que `TarjetaGrafico`, `MiniKpi`, los gráficos y `DashboardEquipo` usen el
  * MISMO eyebrow sin que un archivo de componente exporte constantes.
  *
- * `FS_MIN`: piso de 11 px para rótulos chicos mientras `--fs-2xs` siga en 10 px (decisión 15 del
- * dueño: rótulos mínimos de 11). Cuando la escala pase a rem (0,6875 rem = 11 px) el `max` deja
- * de hacer efecto solo. `max()` existe desde Chrome 79.
+ * `FS_MIN`: piso de 11 px para rótulos chicos (decisión 15 del dueño: rótulos mínimos de 11).
+ * (02/10/2026) `--fs-2xs` ya es 0,6875 rem = 11 px, así que el `max(11px, …)` que lo protegía
+ * mientras el token valía 10 px se fue: ahora es el token solo, y sigue la preferencia de letra.
  */
-export const FS_MIN = 'max(11px, var(--fs-2xs))'
+export const FS_MIN = 'var(--fs-2xs)'
 
 /** Eyebrow mono en mayúsculas con el tracking único del sistema (.08em). `break-word`: con la
  * letra del sistema al doble "EFECTIVIDAD" no entra en media tarjeta de 360 y empujaba la página

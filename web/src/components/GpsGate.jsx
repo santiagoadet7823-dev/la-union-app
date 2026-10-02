@@ -131,7 +131,7 @@ export default function GpsGate({ children }) {
         >
           <Pin size={18} /> Activar GPS
         </button>
-        <div style={sx('margin-top:8px;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{nombre} · {rol}</div>
+        <div style={sx('margin-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {rol}</div>
       </div>
     )
   }
@@ -158,7 +158,7 @@ export default function GpsGate({ children }) {
           <Pin size={16} /> Reintentar
         </button>
       )}
-      <div style={sx('margin-top:8px;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)')}>{nombre} · {rol}</div>
+      <div style={sx('margin-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{nombre} · {rol}</div>
     </div>
   )
 }

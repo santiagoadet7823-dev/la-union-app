@@ -127,7 +127,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
             <div style={sx('height:6px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
               <div style={{ ...sx('height:100%;border-radius:99px;background:var(--primary);transition:width .4s'), width: `${Math.min(100, meta)}%` }} />
             </div>
-            <div style={sx('font-size:9.5px;color:var(--faint);font-family:var(--font-mono);margin-top:4px')}>de $ 900.000</div>
+            <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);margin-top:4px')}>de $ 900.000</div>
           </div>
           <div>
             <div style={sx('font-size:11px;color:var(--muted);margin-bottom:4px')}>Efectividad</div>
@@ -172,7 +172,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
               {...propsBusqueda}
               placeholder="Buscar comercio o código…"
               aria-label="Buscar entre mis clientes"
-              style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;color:var(--text)')}
+              style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:max(13px, var(--piso-entrada));color:var(--text)')}
             />
             {buscaCli && (
               <button onClick={() => setBuscaCli('')} aria-label="Limpiar búsqueda"
@@ -278,9 +278,9 @@ function TarjetaCliente({ c, i, isNext, alTocar, onEditarCliente }) {
               volvía ilegible. El espacio para el nombre se gana ACHICANDO EL BOTÓN (ver
               abajo), no dejando crecer la tarjeta. */}
           <div style={sx('font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{c.name}</div>
-          {!c.activo && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
-          {c.cubierta && c.zonaAbrev && <span style={{ ...sx('flex:none;font-size:9px;font-weight:700;color:#fff;border-radius:99px;padding:2px 6px;font-family:var(--font-mono)'), background: c.zonaColor || 'var(--muted)' }} title="Zona que cubrís hoy">{c.zonaAbrev}</span>}
-          {c.sinDueno && <span style={sx('flex:none;font-size:9px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:99px;padding:2px 6px')}>SIN DUEÑO</span>}
+          {!c.activo && <span style={sx('flex:none;font-size:11px;font-weight:700;color:var(--warning);background:var(--warning-tint);border-radius:99px;padding:2px 6px')}>A CONFIRMAR</span>}
+          {c.cubierta && c.zonaAbrev && <span style={{ ...sx('flex:none;font-size:11px;font-weight:700;color:#fff;border-radius:99px;padding:2px 6px;font-family:var(--font-mono)'), background: c.zonaColor || 'var(--muted)' }} title="Zona que cubrís hoy">{c.zonaAbrev}</span>}
+          {c.sinDueno && <span style={sx('flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:99px;padding:2px 6px')}>SIN DUEÑO</span>}
         </div>
         <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{c.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>{c.codigo || c.id.slice(0, 6)}</span></div>
         <div style={{ ...sx('font-size:11px;margin-top:3px;font-family:var(--font-mono);font-variant-numeric:tabular-nums'), color: subColor }}>{sub}</div>
