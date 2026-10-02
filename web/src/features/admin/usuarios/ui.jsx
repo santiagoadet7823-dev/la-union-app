@@ -16,13 +16,18 @@ export const mono = { fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabul
 export const display = { fontFamily: 'var(--font-display)' }
 
 export const tarjeta = sx('background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card)')
-export const rotulo = sx('font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')
+export const rotulo = sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)')
 export const tituloTarjeta = { ...display, ...sx('font-weight:600;font-size:15px') }
 
-/** Iniciales con anillo del color de trazo y punto de estado. */
-export function Avatar({ nombre, color, dot, size = 30, fs = 10.5, borde = 2, style }) {
+/**
+ * Iniciales con anillo del color de trazo y punto de estado.
+ * `min-width`/`min-height` + `aspect-ratio` (01/10/2026, C9): con la letra del sistema al doble
+ * las iniciales crecen y el círculo crece con ellas en vez de que "MR" se salga del anillo
+ * (galería ×2, informe 08). Sin `aspect-ratio` (Chrome 79 de la tablet) queda el mínimo de siempre.
+ */
+export function Avatar({ nombre, color, dot, size = 30, fs = 11, borde = 2, style }) {
   return (
-    <div style={{ ...sx('position:relative;flex:none;border-radius:99px;background:var(--surface2);display:grid;place-items:center;font-weight:700;color:var(--text)'), ...display, width: size, height: size, border: `${borde}px solid ${color}`, fontSize: fs, ...style }}>
+    <div style={{ ...sx('position:relative;flex:none;box-sizing:border-box;border-radius:99px;background:var(--surface2);display:grid;place-items:center;font-weight:700;color:var(--text);aspect-ratio:1 / 1;padding:0 3px;line-height:1'), ...display, minWidth: size, minHeight: size, border: `${borde}px solid ${color}`, fontSize: fs, ...style }}>
       {initials(nombre)}
       {dot && <span style={{ ...sx('position:absolute;right:-3px;bottom:-3px;width:10px;height:10px;border-radius:99px;border:2px solid var(--surface)'), background: dot }} />}
     </div>

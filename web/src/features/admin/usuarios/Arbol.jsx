@@ -23,8 +23,10 @@ import { Avatar, Segmentado, IcoBuscar, IcoChevron, IcoAviso, IcoEdificio, IcoQr
  */
 
 export const FILTROS = [
-  { k: 'calle', l: 'En la calle', pasa: (i) => i.estado.k === 'calle' },
-  { k: 'sinrep', l: 'Sin reportar', pasa: (i) => i.estado.k === 'sinrep' },
+  // Rótulos alineados con la píldora de estado (01/10/2026, C9): "En ruta" y "Sin señal" son las
+  // mismas palabras que ve cada fila (ver `pildoraDe` en ui.jsx).
+  { k: 'calle', l: 'En ruta', pasa: (i) => i.estado.k === 'calle' },
+  { k: 'sinrep', l: 'Sin señal', pasa: (i) => i.estado.k === 'sinrep' },
   { k: 'alertas', l: 'Con alertas', pasa: (i) => i.alertas.length > 0 },
   { k: 'pend', l: 'Pendientes', pasa: (i) => i.estado.k === 'pend' },
   { k: 'off', l: 'Desactivados', pasa: (i) => i.estado.k === 'off' },
@@ -333,10 +335,10 @@ export function ListaEquipo({
           texto={`${red.sinRed ? 'El teléfono no tiene señal.' : 'El servidor no respondió bien.'} Estás viendo los datos de ${hace(red.actualizadoTs) || 'hace un momento'}.`} />
       )}
 
-      <label style={sx('display:flex;align-items:center;gap:var(--sp-2);min-height:2.75rem;padding:0 var(--sp-1) 0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--muted)')}>
+      <label style={sx('display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-1) 0 var(--sp-3);border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface);color:var(--muted)')}>
         <IcoBuscar size={18} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar persona" aria-label={nivelEmpresa ? 'Buscar persona en todas las empresas por nombre, email, código o zona' : 'Buscar persona por nombre, email, código o zona'}
-          style={sx('flex:1;min-width:0;min-height:2.5rem;border:0;outline:0;background:transparent;font-size:var(--fs-md);color:var(--text);font-family:inherit')} />
+          style={sx('flex:1;min-width:0;min-height:2.75rem;border:0;outline:0;background:transparent;font-size:16px;color:var(--text);font-family:inherit')} />
         {buscando && (
           <button type="button" onClick={() => setQ('')} aria-label="Limpiar búsqueda"
             style={sx('flex:none;min-width:2.75rem;min-height:2.75rem;border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:var(--fs-md)')}>✕</button>
@@ -345,7 +347,7 @@ export function ListaEquipo({
 
       {soloLectura && !nadieEnEquipo && (
         <TiraContadores ariaLabel="Tu equipo hoy">
-          <Contador valor={enLaCalle} etiqueta="En la calle" tono="ok" />
+          <Contador valor={enLaCalle} etiqueta="En ruta" tono="ok" />
           <Contador valor={sinRep} etiqueta="Sin señal" tono="error" />
           <Contador valor={sinDatos} etiqueta="Sin datos hoy" />
         </TiraContadores>

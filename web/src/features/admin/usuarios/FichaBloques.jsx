@@ -17,7 +17,7 @@ import {
 } from './modelo'
 import {
   Avatar, Segmentado, ChipEstado, Skeleton, CampoEditable, Opcion, Interruptor,
-  IcoReloj, IcoExpandir, IcoPlay, IcoMapa, IcoInforme, IcoSinRastreo, IcoAviso,
+  IcoReloj, IcoExpandir, IcoSinRastreo, IcoAviso,
   mono, display, tarjeta, rotulo, tituloTarjeta, pildoraDe, frescura,
 } from './ui'
 
@@ -64,8 +64,8 @@ function Tile({ l, v, u, c1, c2, spark, punteado, barra, fg }) {
         {u && <span style={sx('font-size:11px;color:var(--muted)')}>{u}</span>}
       </div>
       {barra != null && <div style={sx('height:4px;border-radius:99px;background:var(--line);overflow:hidden')}><div style={{ ...sx('height:100%;background:var(--primary);border-radius:99px'), width: `${Math.min(100, Math.round(barra * 100))}%` }} /></div>}
-      {c1 && <div style={sx('font-size:10.5px;color:var(--muted);line-height:1.4')}>{c1}</div>}
-      {c2 && <div style={sx('font-size:10.5px;color:var(--muted);line-height:1.4')}>{c2}</div>}
+      {c1 && <div style={sx('font-size:11px;color:var(--muted);line-height:1.4')}>{c1}</div>}
+      {c2 && <div style={sx('font-size:11px;color:var(--muted);line-height:1.4')}>{c2}</div>}
     </div>
   )
 }
@@ -209,11 +209,14 @@ export function TresNumeros({ i, f, rastreado }) {
       { l: 'EN DISTAT DESDE', v: i.p.created_at ? new Date(i.p.created_at).toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }).replace('.', '') : null },
     ]
   return (
-    <div role="group" aria-label="Resumen" style={sx('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);overflow:hidden')}>
-      {celdas.map((c, k) => (
-        <div key={c.l} style={{ ...sx('min-width:0;display:flex;flex-direction:column;gap:4px;padding:var(--sp-3)'), borderLeft: k ? '1px solid var(--line)' : 0 }}>
-          <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);letter-spacing:.04em;color:var(--muted);line-height:1.25;overflow-wrap:anywhere')}>{c.l}</span>
-          <span style={{ ...mono, ...sx('font-weight:600;line-height:1.15;overflow-wrap:anywhere'), fontSize: 'min(1.25rem, 5.4vw)', color: c.v ? 'var(--text)' : 'var(--faint)' }}>
+    // Hairline con `gap:1px` sobre fondo `--line` y celdas que NO parten palabras (`min-width:
+    // min-content`): con la letra al doble, "VENDIDO" o "$1,49M" no entran en un tercio de 360 px
+    // y la celda baja a otra fila entera en vez de cortar "VENDI/DO" o "$1,/49M" (galería, ×2).
+    <div role="group" aria-label="Resumen" style={sx('display:flex;flex-wrap:wrap;gap:1px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--line);overflow:hidden')}>
+      {celdas.map((c) => (
+        <div key={c.l} style={sx('flex:1 1 0;min-width:min-content;display:flex;flex-direction:column;gap:4px;padding:var(--sp-3);background:var(--surface)')}>
+          <span style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);letter-spacing:.04em;color:var(--muted);line-height:1.25;white-space:nowrap')}>{c.l}</span>
+          <span style={{ ...mono, ...sx('font-weight:600;line-height:1.15;white-space:nowrap'), fontSize: 'min(1.25rem, 5.4vw)', color: c.v ? 'var(--text)' : 'var(--faint)' }}>
             {c.v
               ? (c.sr ? <><span aria-hidden="true">{c.v}</span><span className="lu-ui-oculto">{c.sr}</span></> : c.v)
               : <><span aria-hidden="true">—</span><span className="lu-ui-oculto">sin dato</span></>}
@@ -281,12 +284,12 @@ export function TarjetasIdentidad({ i, ventas }) {
       <div style={{ ...tarjeta, ...sx('border-radius:14px;padding:12px 13px;display:flex;flex-direction:column;gap:4px') }}>
         <div style={sx('font-size:11px;color:var(--muted)')}>En DisT-At desde</div>
         <div style={{ ...mono, ...sx('font-weight:600;font-size:20px') }}>{alta.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' }).replace('.', '')}</div>
-        <div style={sx('font-size:10.5px;color:var(--muted)')}>{antig} en el sistema</div>
+        <div style={sx('font-size:11px;color:var(--muted)')}>{antig} en el sistema</div>
       </div>
       <div style={{ ...tarjeta, ...sx('border-radius:14px;padding:12px 13px;display:flex;flex-direction:column;gap:4px') }}>
         <div style={sx('font-size:11px;color:var(--muted)')}>{t2.l}</div>
         <div style={{ ...mono, ...sx('font-weight:600;font-size:20px') }}>{t2.v}</div>
-        <div style={sx('font-size:10.5px;color:var(--muted)')}>{t2.s}</div>
+        <div style={sx('font-size:11px;color:var(--muted)')}>{t2.s}</div>
       </div>
     </div>
   )
@@ -347,12 +350,12 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
             {i.zonas.map((z) => (
               <span key={z.id} style={sx('display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:8px;background:var(--surface2);border:1px solid var(--line);font-size:12px;font-weight:600')}>
                 <span style={{ ...sx('width:9px;height:9px;border-radius:3px'), background: z.color || 'var(--muted)' }} />{z.nombre}
-                <span style={{ ...mono, ...sx('font-size:10.5px;font-weight:500;color:var(--muted)') }}>{z.clientes ?? '—'}</span>
+                <span style={{ ...mono, ...sx('font-size:11px;font-weight:500;color:var(--muted)') }}>{z.clientes ?? '—'}</span>
               </span>
             ))}
             {i.cubre.map((z) => (
               <span key={'c' + z.id} title="Cobertura del día: vence sola a las 23:59" style={{ ...sx('display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:8px;font-size:12px;font-weight:600'), border: `1.5px dashed ${z.color || 'var(--line2)'}` }}>
-                <IcoReloj size={12} />Cubre {z.nombre} hoy<span style={{ ...mono, ...sx('font-size:10.5px;font-weight:500;color:var(--muted)') }}>{z.clientes ?? '—'}</span>
+                <IcoReloj size={12} />Cubre {z.nombre} hoy<span style={{ ...mono, ...sx('font-size:11px;font-weight:500;color:var(--muted)') }}>{z.clientes ?? '—'}</span>
               </span>
             ))}
           </div>
@@ -390,7 +393,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
         <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:6px')}>
           {[{ n: 1, l: 'Los vendedores', s: 'No ve a otros encargados' }, { n: 2, l: 'Todo el equipo', s: 'Incluye encargados' }].map((o) => (
             <Opcion key={o.n} on={v('nivel') === o.n} onClick={() => set('nivel', o.n)} alto={44} style={{ textAlign: 'left', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-start' }}>
-              <span style={sx('font-size:12.5px;font-weight:600')}>{o.l}</span><span style={sx('font-size:10.5px;color:var(--muted);font-weight:500')}>{o.s}</span>
+              <span style={sx('font-size:12.5px;font-weight:600')}>{o.l}</span><span style={sx('font-size:11px;color:var(--muted);font-weight:500')}>{o.s}</span>
             </Opcion>
           ))}
         </div>
@@ -415,7 +418,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
                 onClick={perm.horarios ? toggle : undefined} onKeyDown={perm.horarios ? (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle() } } : undefined}
                 style={{ ...sx('display:flex;align-items:center;gap:9px;min-height:44px;padding:0 10px;border-radius:9px'), border: `1px solid ${on ? 'var(--primary)' : 'var(--line)'}`, background: on ? 'var(--primary-tint)' : 'transparent', cursor: perm.horarios ? 'pointer' : 'default', display: perm.horarios || on ? 'flex' : 'none' }}>
                 {perm.horarios && <span style={{ ...sx('flex:none;width:17px;height:17px;border-radius:5px;display:grid;place-items:center;color:var(--on-primary);font-size:11px;font-weight:700'), border: `1.5px solid ${on ? 'var(--primary)' : 'var(--line2)'}`, background: on ? 'var(--primary)' : 'transparent' }}>{on ? '✓' : ''}</span>}
-                <div style={sx('flex:1;min-width:0')}><div style={sx('font-size:12.5px;font-weight:600')}>{c.nombre}</div><div style={{ ...mono, fontSize: 10.5, color: 'var(--muted)' }}>{det}</div></div>
+                <div style={sx('flex:1;min-width:0')}><div style={sx('font-size:12.5px;font-weight:600')}>{c.nombre}</div><div style={{ ...mono, fontSize: 11, color: 'var(--muted)' }}>{det}</div></div>
               </div>
             )
           })}
@@ -456,7 +459,7 @@ export function BloqueAsignaciones({ i, perm, ctx, bor, solo = null }) {
           {ver('color_trazo') && campo('color_trazo', 'Color de trazo', (
             <div style={sx('display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:5px')}>
               <button type="button" onClick={() => set('color_trazo', null)} title="Automático" className="lu-press"
-                style={{ ...sx('aspect-ratio:1;border-radius:7px;background:var(--surface2);cursor:pointer;font-size:9px;font-weight:700;color:var(--muted);padding:0'), border: `1.5px solid ${!v('color_trazo') ? 'var(--text)' : 'var(--line2)'}` }}>A</button>
+                style={{ ...sx('aspect-ratio:1;border-radius:7px;background:var(--surface2);cursor:pointer;font-size:11px;font-weight:700;color:var(--muted);padding:0'), border: `1.5px solid ${!v('color_trazo') ? 'var(--text)' : 'var(--line2)'}` }}>A</button>
               {PALETA.map((hex) => (
                 <button key={hex} type="button" onClick={() => set('color_trazo', hex)} title={hex} className="lu-press"
                   style={{ ...sx('aspect-ratio:1;border-radius:7px;cursor:pointer;padding:0'), background: hex, border: `2px solid ${v('color_trazo') === hex ? 'var(--text)' : 'transparent'}` }} />
@@ -567,7 +570,7 @@ function EditorGps({ valor, original, onChange, estado }) {
   const cadencia = typeof estado?.gps_intervalo_ms === 'number' && estado.gps_intervalo_ms > 0 ? `${Math.round(estado.gps_intervalo_ms / 1000)} s` : '—'
   return (
     <div style={sx('display:flex;flex-direction:column;gap:7px')}>
-      <Segmentado estirar opciones={[{ k: 'auto', l: 'Auto' }, { k: 'intensivo', l: 'Intensivo' }, { k: 'ahorro', l: 'Ahorro' }, { k: 'simple', l: 'Simple' }]} valor={modo} onChange={setModo} alto={34} fs={11} />
+      <Segmentado estirar opciones={[{ k: 'auto', l: 'Auto' }, { k: 'intensivo', l: 'Intensivo' }, { k: 'ahorro', l: 'Ahorro' }, { k: 'simple', l: 'Simple' }]} valor={modo} onChange={setModo} alto={44} fs={11} />
       {valor && (
         <div style={sx('display:flex;align-items:center;gap:8px;flex-wrap:wrap')}>
           <label style={sx('display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)')}>Cada
@@ -581,7 +584,7 @@ function EditorGps({ valor, original, onChange, estado }) {
           )}
         </div>
       )}
-      <div style={{ ...mono, fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+      <div style={{ ...mono, fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
         {valor ? resumenPerfil(valor) : `La general: ${GPS_BASE.intervaloS} s, ${GPS_BASE.rapidoS} s en movimiento, ${GPS_BASE.quietoS} s quieto`} · el teléfono reporta {cadencia}
       </div>
     </div>
@@ -664,7 +667,7 @@ export function BloqueActividad({ i, f, periodo, setPeriodo, accesos, mostrarVen
           <div style={tituloTarjeta}>{mostrarActividad ? 'Actividad' : 'Ventas y visitas'}</div>
           <div style={sx('font-size:11px;color:var(--muted);margin-top:1px')}>{per.k === 'hoy' ? 'Hoy' : `Del ${fechaCorta(f.desde)} al ${fechaCorta(f.hasta)}`}</div>
         </div>
-        <Segmentado opciones={PERIODOS} valor={periodo} onChange={setPeriodo} alto={34} />
+        <Segmentado opciones={PERIODOS} valor={periodo} onChange={setPeriodo} alto={44} />
       </div>
       {per.dias > TECHO_RECORRIDOS_DIAS && (
         <div style={sx('display:flex;gap:8px;align-items:center;font-size:11.5px;padding:8px 10px;border-radius:9px;background:var(--info-tint)')}>
@@ -695,7 +698,7 @@ export function BloqueActividad({ i, f, periodo, setPeriodo, accesos, mostrarVen
 
       {mostrarVentas && (
         <>
-          {mostrarActividad && <div style={{ ...rotulo, fontSize: 10.5, paddingTop: 2 }}>Ventas y visitas</div>}
+          {mostrarActividad && <div style={{ ...rotulo, fontSize: 11, paddingTop: 2 }}>Ventas y visitas</div>}
           {ven?.cargando ? (
             <div style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px')}><Skeleton alto={84} /><Skeleton alto={84} /><Skeleton alto={84} /><Skeleton alto={84} /></div>
           ) : !hayVentas ? (
@@ -729,7 +732,7 @@ export function BloqueActividad({ i, f, periodo, setPeriodo, accesos, mostrarVen
             <button key={x.l} type="button" onClick={x.go} className="lu-press"
               style={sx('display:flex;align-items:center;gap:10px;min-height:48px;padding:0 12px;border-radius:12px;border:1px solid var(--line2);background:var(--surface);cursor:pointer;text-align:left;color:var(--text)')}>
               <span style={sx('flex:none;width:30px;height:30px;border-radius:9px;background:var(--primary-tint);color:var(--deep);display:grid;place-items:center')}>{x.icon}</span>
-              <span style={sx('flex:1;min-width:0')}><span style={sx('display:block;font-size:12.5px;font-weight:600')}>{x.l}</span><span style={sx('display:block;font-size:10.5px;color:var(--muted)')}>{x.s}</span></span>
+              <span style={sx('flex:1;min-width:0')}><span style={sx('display:block;font-size:12.5px;font-weight:600')}>{x.l}</span><span style={sx('display:block;font-size:11px;color:var(--muted)')}>{x.s}</span></span>
             </button>
           ))}
         </div>
@@ -737,8 +740,6 @@ export function BloqueActividad({ i, f, periodo, setPeriodo, accesos, mostrarVen
     </div>
   )
 }
-
-export const accesosIconos = { mapa: <IcoMapa size={15} />, play: <IcoPlay size={15} />, informe: <IcoInforme size={15} /> }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Historial
@@ -798,7 +799,7 @@ export function Historial({ i, f, cfg, diaSel, onDia, recorridoHoy, clientes }) 
         <div style={sx('display:flex;flex-direction:column;gap:6px')}><Skeleton alto={46} radio={11} /><Skeleton alto={46} radio={11} /><Skeleton alto={46} radio={11} /></div>
       ) : (
         <>
-          <div style={{ ...sx('display:grid;gap:10px;padding:0 10px 6px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)'), gridTemplateColumns: gridHist(per.k) }}>
+          <div style={{ ...sx('display:grid;gap:10px;padding:0 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)'), gridTemplateColumns: gridHist(per.k) }}>
             <span />{cols.map((c, k) => <span key={c} style={{ textAlign: k ? 'right' : 'left' }}>{c}</span>)}{per.k !== 'hoy' && <span style={{ textAlign: 'right' }}>Estado</span>}
           </div>
           <div style={sx('display:flex;flex-direction:column;gap:5px;max-height:430px;overflow:auto')}>
@@ -809,8 +810,8 @@ export function Historial({ i, f, cfg, diaSel, onDia, recorridoHoy, clientes }) 
                 <div key={h.key} role={tocable ? 'button' : undefined} tabIndex={tocable ? 0 : undefined}
                   onClick={tocable ? () => onDia(h.dia) : undefined} onKeyDown={tocable ? (e) => { if (e.key === 'Enter') onDia(h.dia) } : undefined}
                   style={{ ...sx('display:grid;gap:10px;align-items:center;min-height:46px;padding:0 10px;border-radius:11px'), gridTemplateColumns: gridHist(per.k), background: sel ? 'var(--primary-tint)' : 'var(--surface2)', border: `1px solid ${sel ? 'var(--primary)' : 'transparent'}`, cursor: tocable ? 'pointer' : 'default' }}>
-                  <span style={{ ...mono, ...sx('width:26px;height:26px;border-radius:99px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:10.5px;color:var(--muted)') }}>{h.n}</span>
-                  <div style={sx('min-width:0')}><div style={sx('font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.a}</div><div style={sx('font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.a2}</div></div>
+                  <span style={{ ...mono, ...sx('width:26px;height:26px;border-radius:99px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:11px;color:var(--muted)') }}>{h.n}</span>
+                  <div style={sx('min-width:0')}><div style={sx('font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.a}</div><div style={sx('font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h.a2}</div></div>
                   {[h.b, h.c, h.d].map((x, k) => <span key={k} style={{ ...mono, textAlign: 'right', fontSize: 12, color: h.sinDato ? 'var(--faint)' : 'var(--text)', whiteSpace: 'nowrap' }}>{x}</span>)}
                   {h.chip && <span style={{ justifySelf: 'end' }}><ChipEstado {...h.chip} /></span>}
                 </div>
@@ -838,7 +839,7 @@ export function PedidosAnulados({ f, nombres }) {
       {lista.map((a) => (
         <div key={a.id} style={sx('display:grid;grid-template-columns:90px minmax(0,1fr) minmax(0,1fr) 100px;gap:12px;align-items:center;min-height:44px;border-top:1px solid var(--line);font-size:12px')}>
           <span style={{ ...mono, fontSize: 11, color: 'var(--muted)' }}>{a.anulado_ts ? `${new Date(a.anulado_ts).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} ${hhmm(a.anulado_ts)}` : '—'}</span>
-          <div style={sx('min-width:0')}><div style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{a.clientes?.nombre_comercio || `Pedido ${a.numero ?? ''}`}</div><div style={sx('font-size:10.5px;color:var(--muted)')}>anuló {nombres[a.anulado_por] || (a.anulado_por ? 'otra persona' : '—')}</div></div>
+          <div style={sx('min-width:0')}><div style={sx('font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{a.clientes?.nombre_comercio || `Pedido ${a.numero ?? ''}`}</div><div style={sx('font-size:11px;color:var(--muted)')}>anuló {nombres[a.anulado_por] || (a.anulado_por ? 'otra persona' : '—')}</div></div>
           <span>{a.motivo_anulacion || 'Sin motivo cargado'}</span>
           <span style={{ ...mono, textAlign: 'right', color: 'var(--muted)', textDecoration: 'line-through' }}>{fmtPesos(Math.round(Number(a.monto_total) || 0))}</span>
         </div>
@@ -906,7 +907,7 @@ export function TelefonoAlertas({ i, f }) {
           detalle={`Desde las ${hhmm(al.desde)}${al.minutos ? ` · ${al.minutos} min` : ''}${al.motivo ? ` · ${al.motivo}` : ''}`}
           extremo={<PildoraEstado tipo="error">Alerta</PildoraEstado>} />
       ))}
-      {!i.alertas.length && <FilaLista etiqueta="Alertas" extremo={<PildoraEstado tipo="ok">Sin alertas abiertas</PildoraEstado>} />}
+      {!i.alertas.length && <FilaLista etiqueta="Alertas" extremo={<PildoraEstado tipo="ok">Ninguna abierta</PildoraEstado>} />}
     </GrupoLista>
   )
 }
