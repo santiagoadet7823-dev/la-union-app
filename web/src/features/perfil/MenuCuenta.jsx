@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useDevice } from '../../context/DeviceContext'
@@ -108,13 +108,18 @@ export default function MenuCuenta({ open, onClose, onToast, presentacion = 'hoj
 function PopoverCuenta({ open, onClose, children }) {
   // ATRÁS de Android y Escape (regla 26): el popover también se abre en una PWA en un celular
   // apaisado, y sin esto el atrás no tenía nada que cerrar.
+  // `onClose` va en una ref: los que montan esto le pasan una flecha en línea, y con `onClose` en
+  // las deps el efecto se rehacía en cada render del padre (SupervisionDesktop re-renderiza con
+  // cada posición), desapilando y reapilando el cierre en la pila del atrás (02/10/2026).
+  const cerrarRef = useRef(onClose)
+  cerrarRef.current = onClose
   useEffect(() => {
     if (!open) return undefined
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    const onKey = (e) => { if (e.key === 'Escape') cerrarRef.current?.() }
     window.addEventListener('keydown', onKey)
-    const desapilar = apilarAtras(() => onClose?.())
+    const desapilar = apilarAtras(() => cerrarRef.current?.())
     return () => { window.removeEventListener('keydown', onKey); desapilar() }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (
