@@ -4,6 +4,7 @@ import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { cuarentenaMutaciones } from '../../services/sync/writeQueue'
 import { hace } from '../../lib/format'
+import { PildoraEstado } from '../../components/ui'
 
 /**
  * DOS NÚMEROS QUE HASTA HOY NO EXISTÍAN EN NINGUNA PANTALLA.
@@ -87,11 +88,13 @@ export default function EstadoCatalogo() {
 
   const rancia = ingesta?.ts ? Date.now() - new Date(ingesta.ts).getTime() > RANCIA_MS : false
   const rechazadas = Array.isArray(ingesta?.rechazadas) ? ingesta.rechazadas.length : 0
-  const colorIngesta = ingesta?.error ? 'var(--danger)' : (rancia || !ingesta ? 'var(--warning)' : 'var(--success)')
+  // 🎨 (01/10/2026, C10) Antes era un punto + borde de color (`colorIngesta`): el estado dependía
+  // sólo del color. Ahora es una `PildoraEstado`, que lleva glifo (✓ / ! / ✕) además del tinte.
+  const tipoIngesta = ingesta?.error ? 'error' : (rancia || !ingesta ? 'aviso' : 'ok')
 
   return (
     <div style={sx('display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px')}>
-      <Chip color={colorIngesta}>
+      <Chip tipo={tipoIngesta}>
         {ingesta === null && <>La lista de precios <b>nunca</b> se importó</>}
         {ingesta?.error && <>Última importación <b>rechazada</b> · {hace(ingesta.ts)}</>}
         {ingesta && !ingesta.error && (
@@ -110,7 +113,7 @@ export default function EstadoCatalogo() {
           desaparecieron". Aparece sólo cuando hay algo aislado — que es exactamente cuando hay que
           mirarlo. Las mutaciones NO se borran (regla 20): se pueden inspeccionar y reintentar. */}
       {cuarentena > 0 && (
-        <Chip color="var(--danger)">
+        <Chip tipo="error">
           <b>{cuarentena}</b> {cuarentena === 1 ? 'cambio no se pudo guardar' : 'cambios no se pudieron guardar'} · quedaron aislados, no se perdieron
         </Chip>
       )}
@@ -118,14 +121,12 @@ export default function EstadoCatalogo() {
   )
 }
 
-function Chip({ color, children }) {
+// Envoltorio fino de `PildoraEstado`: estos renglones son frases largas (no un rótulo de dos
+// palabras), así que necesitan un poco más de aire y poder partir en dos líneas a 360 px.
+function Chip({ tipo, children }) {
   return (
-    <div style={{
-      ...sx('display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:99px;font-size:11.5px;line-height:1.4;color:var(--muted);background:var(--surface)'),
-      border: `1px solid ${color}`,
-    }}>
-      <span style={{ ...sx('width:7px;height:7px;flex:none;border-radius:99px'), background: color }} />
-      <span>{children}</span>
-    </div>
+    <PildoraEstado tipo={tipo} style={sx('padding:4px 10px 4px 6px;line-height:1.4;font-weight:500;border-radius:var(--r-md)')}>
+      {children}
+    </PildoraEstado>
   )
 }

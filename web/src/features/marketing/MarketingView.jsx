@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
+import { Contador, TiraContadores } from '../../components/ui'
 import { glassBlur } from '../../lib/glass'
 import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
@@ -44,33 +45,28 @@ function Cargando() {
 }
 
 /**
- * Contador del tablero. `onClick` lo lleva al problema, no solo lo informa: un número que no se
- * puede tocar obliga a buscar a mano los 67 productos que le faltan la foto.
+ * Los contadores del tablero. `onClick` lo lleva al problema, no solo lo informa: un número que no
+ * se puede tocar obliga a buscar a mano los 67 productos que le faltan la foto.
+ *
+ * Historia que conviene no perder: en el celular los CINCO tienen que entrar en una sola fila, sin
+ * scroll horizontal. Antes eran tarjetas de 104 px mínimo, y en una pantalla de 360 px se veían tres
+ * y "Sin marca" / "De baja" quedaban escondidos sin ninguna pista de que había más. Por eso el
+ * rótulo va en minúscula: en mayúsculas "SIN PRECIO" no entra en los ~58 px que le tocan a cada uno.
+ *
+ * 🎨 (01/10/2026, C10 — decisión 14 del dueño, hoja "Marketing" 8a/8c) El contador local se
+ * reemplazó por el `Contador` de components/ui: número en tinta y PUNTO de estado, en vez de cinco
+ * números de cinco colores. En el celular van en `TiraContadores` (que además pasa a una segunda
+ * fila si la letra del sistema no deja que entren los cinco, en vez de cortarlos con elipsis); en
+ * escritorio, variante `tarjeta`. El tono sale de si hay trabajo pendiente: con cero, punto verde.
+ * "Vigentes" y "De baja" no son un estado, así que van sin punto.
  */
-function Contador({ label, valor, color, onClick, activo, compacto }) {
-  // `compacto` (celular): los CINCO entran en una sola fila, sin scroll horizontal. Antes eran
-  // tarjetas de 104 px mínimo, y en una pantalla de 360 px se veían tres y "Sin marca" / "De baja"
-  // quedaban escondidos sin ninguna pista de que había más. La etiqueta pasa a minúscula porque en
-  // mayúsculas "SIN PRECIO" no entra en los ~58 px que le tocan a cada uno.
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        ...(compacto
-          ? sx('flex:1;min-width:0;padding:6px 2px;border-radius:10px;cursor:pointer;text-align:center')
-          : sx('flex:1;min-width:104px;padding:9px 12px;border-radius:12px;cursor:pointer;text-align:left')),
-        border: `1px solid ${activo ? color : 'var(--line)'}`,
-        background: activo ? 'var(--surface2)' : 'var(--surface)',
-      }}
-    >
-      <span style={{ ...sx(`display:block;font-family:var(--font-mono);font-size:${compacto ? 16 : 19}px;font-weight:700;line-height:1.1`), color }}>{valor}</span>
-      <span style={compacto
-        ? sx('display:block;font-size:10px;font-weight:600;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')
-        : sx('display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-top:3px')}>{label}</span>
-    </button>
-  )
-}
+const DEF_CONTADORES = [
+  { f: 'todos', etiqueta: 'Vigentes', clave: 'vigentes', tono: () => null },
+  { f: 'sin-foto', etiqueta: 'Sin foto', clave: 'sinFoto', tono: (n) => (n ? 'aviso' : 'ok') },
+  { f: 'sin-precio', etiqueta: 'Sin precio', clave: 'sinPrecio', tono: (n) => (n ? 'error' : 'ok') },
+  { f: 'sin-marca', etiqueta: 'Sin marca', clave: 'sinMarca', tono: (n) => (n ? 'info' : 'ok') },
+  { f: 'descontinuados', etiqueta: 'De baja', clave: 'baja', tono: () => null },
+]
 
 /** Pestaña de la barra inferior (celular). Mismo aspecto que `NavBtn` de SupervisionMovil. */
 function NavBtn({ active, label, onClick, children }) {
@@ -162,13 +158,23 @@ export default function MarketingView() {
 
         {/* Tablero: qué falta hacer. Es lo primero que se ve al abrir, a propósito — el trabajo de
             esta persona es justamente vaciar estos contadores. */}
-        <div style={isMobile ? sx('display:flex;gap:6px;padding:0 14px 10px') : sx('display:flex;gap:8px;padding:0 14px 11px;overflow-x:auto')}>
-          <Contador compacto={isMobile} label="Vigentes" valor={loading ? '—' : stats.vigentes} color="var(--deep)" onClick={() => pedirFiltro('todos')} activo={filtroPedido?.f === 'todos'} />
-          <Contador compacto={isMobile} label="Sin foto" valor={loading ? '—' : stats.sinFoto} color={stats.sinFoto ? 'var(--warning)' : 'var(--success)'} onClick={() => pedirFiltro('sin-foto')} activo={filtroPedido?.f === 'sin-foto'} />
-          <Contador compacto={isMobile} label="Sin precio" valor={loading ? '—' : stats.sinPrecio} color={stats.sinPrecio ? 'var(--danger)' : 'var(--success)'} onClick={() => pedirFiltro('sin-precio')} activo={filtroPedido?.f === 'sin-precio'} />
-          <Contador compacto={isMobile} label="Sin marca" valor={loading ? '—' : stats.sinMarca} color={stats.sinMarca ? 'var(--info)' : 'var(--success)'} onClick={() => pedirFiltro('sin-marca')} activo={filtroPedido?.f === 'sin-marca'} />
-          <Contador compacto={isMobile} label="De baja" valor={loading ? '—' : stats.baja} color="var(--faint)" onClick={() => pedirFiltro('descontinuados')} activo={filtroPedido?.f === 'descontinuados'} />
-        </div>
+        {(() => {
+          // `null` mientras carga: `Contador` dibuja "—" y TalkBack lee "sin dato" (sin dato ≠ 0).
+          const contadores = DEF_CONTADORES.map(({ f, etiqueta, clave, tono }) => (
+            <Contador
+              key={f}
+              variante={isMobile ? 'compacto' : 'tarjeta'}
+              etiqueta={etiqueta}
+              valor={loading ? null : stats[clave]}
+              tono={loading ? null : tono(stats[clave])}
+              activo={filtroPedido?.f === f}
+              onClick={() => pedirFiltro(f)}
+            />
+          ))
+          return isMobile
+            ? <TiraContadores ariaLabel="Qué falta en el catálogo" style={sx('margin:0 14px 10px')}>{contadores}</TiraContadores>
+            : <div role="group" aria-label="Qué falta en el catálogo" style={sx('display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:0 14px 11px')}>{contadores}</div>
+        })()}
 
         {/* Escritorio: pestañas en píldoras bajo el tablero. En el celular van ABAJO (más
             abajo, en la barra), donde llega el pulgar, y acá no ocupan alto. */}
