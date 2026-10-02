@@ -70,4 +70,28 @@ export async function initNativeUI() {
     const { SplashScreen } = await import('@capacitor/splash-screen')
     await SplashScreen.hide().catch(() => {})
   } catch (_) { /* sin plugin → el splash se oculta solo por timeout */ }
+  // (02/10/2026) Al terminar de irse, el splash de Android 12+ (androidx `SplashScreen`) vuelve a
+  // aplicar las barras del `postSplashScreenTheme` (`AppTheme.NoActionBar`) y PISA lo que acabamos de
+  // poner: quedaba `#757575` con íconos blancos en Claro y `#000000` en Oscuro hasta el primer cambio
+  // de tema (A5, informe 09 del emulador). `hide()` resuelve en el acto y el plugin no avisa cuándo se
+  // fue el splash: en el emulador la vista se quitó 3,6 s DESPUÉS del `hide()` (y ahí pisó el estilo
+  // de los íconos), así que una espera fija no alcanza. Durante 12 s se compara la barra con el tema
+  // resuelto de ESE momento (si el usuario cambió de tema, gana el actual) y se repinta si no coincide.
+  vigilarBarraTrasSplash()
+}
+
+async function vigilarBarraTrasSplash() {
+  let StatusBar
+  try { ({ StatusBar } = await import('@capacitor/status-bar')) } catch (_) { return }
+  for (let i = 0; i < 24; i++) {
+    await new Promise((r) => setTimeout(r, 500))
+    const t = temaValido(document.documentElement.getAttribute('data-theme'))
+    try {
+      const info = await StatusBar.getInfo()
+      // `getInfo().style` dice `LIGHT` cuando los íconos son oscuros (fondo claro), igual que `Style.Light`.
+      const bien = (info?.color || '').toUpperCase() === COLOR_TEMA[t].toUpperCase() &&
+        info?.style === (t === 'light' ? 'LIGHT' : 'DARK')
+      if (!bien) await aplicarTemaNativo(t)
+    } catch (_) { return /* plugin sin getInfo: no hay cómo comparar */ }
+  }
 }

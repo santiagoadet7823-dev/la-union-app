@@ -41,7 +41,13 @@ import FichaProducto from '../features/vendedor/FichaProducto'
  * producto), así que no había ninguna razón para tenerlo afuera.
  *
  * props: { productos, cart, addCart, search, setSearch, catFilter, setCatFilter, onProductoAbierto,
- *          vidActiva, onMostrar, paddingInferior, accionBuscador, children }
+ *          vidActiva, onMostrar, paddingInferior, accionBuscador, scrollPropio, children }
+ *
+ * (02/10/2026) `scrollPropio` (por defecto `true`): la grilla scrollea sola y el buscador y los chips
+ * quedan quietos arriba. Con `false` la grilla crece con su contenido y scrollea el CONTENEDOR del
+ * llamador, así lo de arriba se va con el scroll. Lo usa `VisitaCatalogo` cuando con letra grande no
+ * le queda lugar a la grilla (informe 09 del emulador). Lleva `data-grilla` para que el llamador mida
+ * dónde empieza.
  */
 
 // Color del marco según el nivel de rentabilidad (1..4). Es un código privado para el
@@ -63,6 +69,7 @@ export default function GrillaCatalogo({
   vacioTitulo = 'El catálogo está vacío',
   vacioTexto = 'El administrador todavía no cargó los productos. En cuanto los cargue, vas a poder armar pedidos.',
   accionBuscador = null,
+  scrollPropio = true,
   children,
 }) {
   const CATS = [...new Set(productos.map((p) => p.cat))]
@@ -167,7 +174,7 @@ export default function GrillaCatalogo({
         </div>
       )}
 
-      <div style={{ ...sx('flex:1;overflow-y:auto;padding:0 14px'), paddingBottom: paddingInferior }}>
+      <div data-grilla="" style={{ ...sx(scrollPropio ? 'flex:1;overflow-y:auto;padding:0 14px' : 'flex:none;padding:0 14px'), paddingBottom: paddingInferior }}>
         {/* Una línea de instrucción. Ahora que el gesto vale en toda la grilla se muestra siempre:
             tocar una tarjeta no hizo nada durante meses, así que el vendedor ya aprendió que no se
             tocan. Esconderla justo cuando el gesto se generalizó sería esconder lo nuevo. */}
