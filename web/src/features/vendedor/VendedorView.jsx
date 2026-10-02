@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import GestionHost from '../../components/GestionHost'
 import { Home, Pin, Box, Check } from '../../components/icons'
-import { glassSurface } from '../../lib/glass'
+import { NavInferior } from '../../components/ui'
 import { useDevice } from '../../context/DeviceContext'
 import { useAltoMedido } from '../../hooks/useAltoMedido'
 import { useGps } from '../../context/GpsContext'
@@ -162,8 +162,6 @@ export default function VendedorView() {
   // hacen crecer: el botón de confirmar quedaba tapado. Ver `useAltoMedido`.
   const [navRef, navAlto] = useAltoMedido()
 
-  const navItem = (t) => (j.tab === t ? 'var(--primary)' : 'var(--faint)')
-
   return (
     <div className="lu-mob" style={{ ...sx('display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative;padding-top:calc(12px + env(safe-area-inset-top));box-sizing:border-box'), height: isMobile ? '100vh' : '100%', minHeight: isMobile ? undefined : 600,
       /* 🩸 EN INMERSIVO `--nav-h` VA A 0 A MANO (09/09/2026). La botonera se esconde con
@@ -274,31 +272,25 @@ export default function VendedorView() {
         </Suspense>
       )}
 
-      {/* ===== BOTTOM NAV (glass + safe-area). En mobile va FIXED al fondo real de
-              la pantalla; en escritorio, absolute dentro del marco de teléfono. ===== */}
-      <div
+      {/* ===== BARRA INFERIOR (01/10/2026: `NavInferior`, la misma de todos los roles) =====
+          Era una botonera propia de `<div onClick>` (sin foco, sin rol, TalkBack no la leía) con
+          vidrio. Ahora es plana: detrás no hay mapa salvo en Ruta, y el presupuesto de vidrio se
+          gasta solo sobre el mapa (brief v2 §2.5). En mobile va FIXED al fondo real de la pantalla;
+          en escritorio, absolute dentro del marco de teléfono. En inmersivo se desliza hacia abajo
+          sin desmontarse (`oculta`, ver la nota de `--nav-h` arriba); con el teclado abierto no se
+          dibuja, y `useAltoMedido` mide 0 solo. */}
+      <NavInferior
         ref={navRef}
-        aria-hidden={inmersivo}
-        style={{
-          ...sx('flex:none;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(3,1fr)'),
-          zIndex: 'var(--z-chrome)', position: isMobile ? 'fixed' : 'absolute', ...glassSurface(),
-          padding: '6px 8px calc(10px + env(safe-area-inset-bottom))',
-          // Se desliza hacia abajo sin desmontarse (ver la nota de `--nav-h` arriba). `visibility`
-          // la saca del recorrido por teclado mientras está escondida.
-          transform: inmersivo ? 'translateY(100%)' : 'translateY(0)',
-          visibility: inmersivo ? 'hidden' : 'visible',
-          transition: 'transform .2s cubic-bezier(.23,1,.32,1), visibility .2s',
-        }}
-      >
-        {[['inicio', 'Inicio', Home], ['ruta', 'Ruta', Pin], ['catalogo', 'Catálogo', Box]].map(([t, label, Icon]) => (
-          <div key={t} onClick={() => j.setTab(t)} style={{ ...sx('display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer'), color: navItem(t) }}>
-            {/* Píldora de tinte detrás del ícono activo: con el acento azul acero (30/09/2026) el color solo
-                casi no separa la pestaña activa de las grises (contraste 1.09:1 contra --faint en Claro). */}
-            <span style={{ display: 'grid', placeItems: 'center', padding: '0 14px', borderRadius: 99, background: j.tab === t ? 'var(--primary-tint)' : 'transparent' }}><Icon /></span>
-            <span style={sx('font-size:10px;font-weight:600')}>{label}</span>
-          </div>
-        ))}
-      </div>
+        items={[
+          { k: 'inicio', etiqueta: 'Inicio', icono: Home },
+          { k: 'ruta', etiqueta: 'Ruta', icono: Pin },
+          { k: 'catalogo', etiqueta: 'Catálogo', icono: Box },
+        ]}
+        activo={j.tab}
+        onCambiar={j.setTab}
+        oculta={inmersivo}
+        style={{ position: isMobile ? 'fixed' : 'absolute', bottom: 0, left: 0, right: 0, zIndex: 'var(--z-chrome)' }}
+      />
     </div>
   )
 }

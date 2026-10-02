@@ -3,12 +3,13 @@ import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useCatalog } from '../../context/CatalogContext'
-import Overlay from '../../components/Overlay'
 import LeafletMap from '../../components/LeafletMap'
 import Logo from '../../components/Logo'
 import HaceSegundos from '../../components/HaceSegundos'
 import AlertasEquipo from '../../components/AlertasEquipo'
-import MiCuenta from '../perfil/MiCuenta'
+import MenuCuenta from '../perfil/MenuCuenta'
+import { NavInferior } from '../../components/ui'
+import ListaGestion from '../supervision/components/ListaGestion'
 import useMetricasActividad from '../../hooks/useMetricasActividad'
 import useDiagnosticoEquipo, { DIAG_RECIENTE_MS } from '../../hooks/useDiagnosticoEquipo'
 import useEquipoEnVivo from '../../hooks/useEquipoEnVivo'
@@ -20,7 +21,7 @@ import { calcularDwells } from '../supervision/dwells'
 import BurbujasEquipo from '../supervision/components/BurbujasEquipo'
 import RailMapa, { RAIL_W } from '../supervision/components/RailMapa'
 import BtnInmersivo from '../../components/BtnInmersivo'
-import { Check, ChevronRight, Menu } from '../../components/icons'
+import { Check, Gestion, Home, Mapa } from '../../components/icons'
 import useSnapConectores from '../supervision/useSnapConectores'
 import { apilarAtras } from '../../services/atras'
 import { sx } from '../../lib/sx'
@@ -100,7 +101,10 @@ export default function PanelDireccion() {
   // Pantalla de gestión abierta (clave de GESTION_ITEMS) o null. El informe de jornada es una más
   // de la lista: el botón del cuerpo abre 'reportes', el mismo que el menú.
   const [gestion, setGestion] = useState(null)
-  const [menuAbierto, setMenuAbierto] = useState(false)
+  // Destino de la barra inferior (01/10/2026): 'resumen' (el scroll de siempre) o 'gestion'. El
+  // tercero, Mapa, no es un estado propio: abre `MapaCompleto`, que ya era la pantalla completa del
+  // mapa con su propio atrás.
+  const [destino, setDestino] = useState('resumen')
   const [modalCliente, setModalCliente] = useState(false)
   const [modalProducto, setModalProducto] = useState(false)
   const [toast, setToast] = useState(null)
@@ -373,11 +377,26 @@ export default function PanelDireccion() {
   // ninguno. Para un admin sale completa; el filtro por rol y por `permisos` ya vive allá.
   const gestionItems = useMemo(() => itemsDeGestion(rol, permisos), [rol, permisos])
 
-  // El botón atrás de Android cierra el menú antes que la app (reglas 26-27).
+  // El botón atrás de Android, parado en Gestión, vuelve al Resumen antes de minimizar la app
+  // (reglas 26-27): es el mismo atrás que antes cerraba la hoja del menú de gestión.
   useEffect(() => {
-    if (!menuAbierto) return
-    return apilarAtras(() => setMenuAbierto(false))
-  }, [menuAbierto])
+    if (destino !== 'gestion') return
+    return apilarAtras(() => setDestino('resumen'))
+  }, [destino])
+
+  // BARRA INFERIOR (01/10/2026, decisión del dueño sobre la pregunta 7 del brief v2: se toma la
+  // propuesta, hoja "Cuenta y Navegación" 3a/3b). Reemplaza al botón ☰ del header: Gestión deja de
+  // ser "un desvío" escondido en un ícono y pasa a ser un destino, igual que en la APK. Sin pantallas
+  // de gestión habilitadas, la barra queda en dos destinos.
+  const destinos = [
+    { k: 'resumen', etiqueta: 'Resumen', icono: Home },
+    { k: 'mapa', etiqueta: 'Mapa', icono: Mapa },
+    ...(gestionItems.length > 0 ? [{ k: 'gestion', etiqueta: 'Gestión', icono: Gestion }] : []),
+  ]
+  const irA = (k) => {
+    if (k === 'mapa') { setMapaAbierto(true); return }
+    setDestino(k)
+  }
 
   return (
     <div style={sx('position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg-app);color:var(--text)')}>
@@ -406,32 +425,22 @@ export default function PanelDireccion() {
                 setMapaAbierto(true)
               }}
             />
-            {/* Gestión. Va como un ícono más del header y no como una barra propia: esta pantalla
-                se lee de arriba hacia abajo y el menú es un desvío, no un destino. Si el rol no
-                tiene ninguna pantalla habilitada, el botón no existe. */}
-            {gestionItems.length > 0 && (
-              <button
-                onClick={() => setMenuAbierto(true)}
-                className="lu-press"
-                aria-label="Menú de gestión"
-                style={sx('width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer')}
-              >
-                <Menu size={17} />
-              </button>
-            )}
+            {/* El botón ☰ de Gestión que iba acá se fue a la barra inferior (01/10/2026). */}
             {/* El diseño no previó acceso a la cuenta: sin esto el dueño se queda sin editar su
                 perfil, sin cambiar el tema y —sobre todo— sin poder cerrar sesión. */}
             <button
               onClick={() => setCuentaAbierta(true)}
               className="lu-press"
               aria-label="Mi cuenta"
-              style={sx('width:36px;height:36px;flex:none;border-radius:var(--r-md);border:1px solid var(--line2);background:var(--surface2);color:var(--deep);font-family:var(--font-display);font-size:var(--fs-sm);font-weight:700;cursor:pointer')}
+              aria-haspopup="dialog"
+              style={sx('width:44px;height:44px;flex:none;border-radius:var(--r-pill);border:1px solid var(--line2);background:var(--tlight);color:var(--deep);font-family:var(--font-display);font-size:var(--fs-sm);font-weight:700;cursor:pointer')}
             >
               {initials(perfil?.nombre || identidadVisible(perfil?.email) || '?')}
             </button>
           </div>
         </div>
 
+        {destino === 'resumen' && (
         <div style={sx('display:flex;gap:4px;padding:3px;border-radius:var(--r-md);background:var(--surface2);border:1px solid var(--line)')}>
           {HORIZONTES.map((h) => {
             const activo = h.id === horizonte
@@ -455,11 +464,18 @@ export default function PanelDireccion() {
             )
           })}
         </div>
+        )}
       </div>
 
       {/* ---- Cuerpo ---- */}
-      <div style={sx('flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px calc(env(safe-area-inset-bottom,0px) + 28px)')}>
-        {m.error ? (
+      {/* El área segura de abajo ya la suma la barra inferior: acá solo el aire del final. */}
+      <div style={sx('flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 28px')}>
+        {destino === 'gestion' ? (
+          <>
+            <h1 style={sx('font-family:var(--font-display);font-size:var(--fs-xl);font-weight:700;line-height:1.2;margin:18px 0 16px')}>Gestión</h1>
+            <ListaGestion rol={rol} permisos={permisos} onAbrir={setGestion} />
+          </>
+        ) : m.error ? (
           <Error onReintentar={m.reload} mensaje={m.error.message} />
         ) : m.loading ? (
           <Skeleton />
@@ -563,6 +579,8 @@ export default function PanelDireccion() {
           </>
         )}
       </div>
+
+      <NavInferior items={destinos} activo={mapaAbierto ? 'mapa' : destino} onCambiar={irA} />
 
       {/* ---- Capas ----
           `puntos` van LIMPIOS (byUser ya pasó por limpiarPorUsuario): si acá entrara el crudo, el
@@ -681,39 +699,19 @@ export default function PanelDireccion() {
         />
       )}
 
-      {menuAbierto && (
-        <Overlay open onClose={() => setMenuAbierto(false)} variant="sheet" title="Gestión">
-          <div style={sx('display:flex;flex-direction:column;gap:2px;padding-bottom:4px')}>
-            {gestionItems.map((it) => (
-              <button
-                key={it.key}
-                className="lu-press"
-                onClick={() => { setMenuAbierto(false); setGestion(it.key) }}
-                style={sx('display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:0 4px;background:none;border:none;border-radius:var(--r-md);color:var(--text);font-size:var(--fs-md);font-weight:500;text-align:left;cursor:pointer')}
-              >
-                {it.label}
-                <ChevronRight size={15} />
-              </button>
-            ))}
-          </div>
-        </Overlay>
-      )}
-
-      {cuentaAbierta && (
-        <Overlay open onClose={() => setCuentaAbierta(false)} variant="sheet" title="Mi cuenta">
-          {/* 🩸 `showDeviceToggle` NO es opcional acá. Esta pantalla se elige por ANCHO de
-              viewport, así que un admin en una ventana angosta de PC entra al panel y sin este
-              switch se queda sin ninguna forma de volver a la consola de escritorio. */}
-          <MiCuenta showDeviceToggle />
-        </Overlay>
-      )}
+      {/* Menú de cuenta único (features/perfil/MenuCuenta). La fila "Vista · Solo en la web" ya
+          viene adentro: esta pantalla se elige por ANCHO de viewport, así que un admin en una
+          ventana angosta de PC entra al panel y sin ese switch se quedaba sin ninguna forma de
+          volver a la consola de escritorio (antes había que acordarse de `showDeviceToggle`). */}
+      <MenuCuenta open={cuentaAbierta} onClose={() => setCuentaAbierta(false)} onToast={mostrarToast} />
 
       {toast && (
         <div
           className="lu-rise"
           style={{
             ...sx('position:fixed;left:16px;right:16px;display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:13px;background:var(--glass-strong);border:0.5px solid var(--glass-brd);box-shadow:var(--shadow-lg);font-size:var(--fs-sm);font-weight:500'),
-            bottom: 'calc(18px + env(safe-area-inset-bottom,0px))',
+            // Por encima de la barra inferior (01/10/2026): antes no había barra y quedaba pegado al borde.
+            bottom: 'calc(var(--nav-alto, 3.5rem) + 18px + env(safe-area-inset-bottom,0px))',
             zIndex: 'var(--z-toast)',
           }}
         >

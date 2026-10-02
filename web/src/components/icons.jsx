@@ -318,6 +318,22 @@ export const GestIcon = ({ k, size = 18 }) => (
   </svg>
 )
 
+/* Destinos de la barra inferior (01/10/2026, hoja "Cuenta y Navegación" 3a-3f). El Dashboard era
+   un <svg> en línea dentro del `NavBtn` de SupervisionMovil; Gestión reemplaza al ícono de "Menú"
+   (hamburguesa con un +) y Equipo es el mismo dibujo que la fila "Equipo" de Gestión. */
+export const Dashboard = ({ size = 22, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} stroke={color}>
+    <path d="M3 3v18h18" /><path d="M8 17v-5M13 17V8M18 17v-9" />
+  </svg>
+)
+export const Gestion = ({ size = 22, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base} stroke={color}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </svg>
+)
+export const Equipo = ({ size = 22 }) => <GestIcon k="usuarios" size={size} />
+
 /* Nube tachada: "sin conexión" (01/10/2026). La usan el chip persistente y el error de red de
    `components/ui/EstadoVacio`; es el trazo de la hoja "Cuenta y Navegación" (5e, 5g). */
 export const SinConexion = ({ size = 16, color = 'currentColor' }) => (

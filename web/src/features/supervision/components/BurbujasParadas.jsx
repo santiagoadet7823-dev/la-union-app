@@ -71,13 +71,14 @@ export default function BurbujasParadas({ dwells = [], focoId = null, sel = null
               style={{
                 display: 'flex', alignItems: 'center', gap: activo ? 8 : 0, flex: 'none',
                 maxWidth: 210, cursor: 'pointer',
-                padding: activo ? '5px 11px 5px 5px' : 3,
+                // Plana y de 44 de alto como mínimo (01/10/2026), igual que BurbujasEquipo.
+                padding: activo ? '8px 11px 8px 8px' : 8, // 8 + 28 + 8 = 44
                 borderRadius: 'var(--r-pill)',
-                background: 'var(--glass-strong)',
+                background: 'var(--surface)',
                 // El anillo de la parada abierta usa el color de la PERSONA, igual que su trazo y su
                 // burbuja de perfil: es el hilo que une todo lo que se ve de ella en el mapa.
-                border: `1.5px solid ${activo ? d.color : 'var(--glass-brd)'}`,
-                boxShadow: 'var(--shadow-lg)',
+                border: `1.5px solid ${activo ? d.color : 'var(--line)'}`,
+                boxShadow: 'var(--shadow)',
                 transition: 'border-color 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1)',
               }}
             >
@@ -92,7 +93,7 @@ export default function BurbujasParadas({ dwells = [], focoId = null, sel = null
                     {d.label}
                   </span>
                   {d.sub && (
-                    <span style={{ fontSize: 10.5, color: 'var(--faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {d.sub}
                     </span>
                   )}

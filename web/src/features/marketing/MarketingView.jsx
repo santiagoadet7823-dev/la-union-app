@@ -1,12 +1,13 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { glassBlur } from '../../lib/glass'
 import { useAuth, identidadVisible } from '../../context/AuthContext'
 import { useCatalog } from '../../context/CatalogContext'
 import { useDevice } from '../../context/DeviceContext'
-import { apilarAtras } from '../../services/atras'
 import { Box, Check, ImagenVacia } from '../../components/icons'
 import GuiaFotos from './GuiaFotos'
+import MenuCuenta from '../perfil/MenuCuenta'
+import { NavInferior } from '../../components/ui'
 
 /**
  * Pantalla del rol `marketing` — la persona a cargo del catálogo (db/38).
@@ -27,7 +28,6 @@ import GuiaFotos from './GuiaFotos'
 const CatalogoTab = lazy(() => import('../admin/tabs/CatalogoTab'))
 const ControlCodigos = lazy(() => import('./ControlCodigos'))
 const NuevoProducto = lazy(() => import('../catalog/NuevoProducto'))
-const MiCuenta = lazy(() => import('../perfil/MiCuenta'))
 
 const TABS = [
   { k: 'catalogo', t: 'Catálogo', Icono: Box },
@@ -35,8 +35,8 @@ const TABS = [
   { k: 'guia', t: 'Guía de fotos', Icono: ImagenVacia },
 ]
 
-// Alto de la barra inferior del celular (sin safe-area). Mismo número que la bottom-nav de
-// SupervisionMovil, para que el pulgar encuentre las pestañas en el mismo lugar en todos los roles.
+// Alto de la barra inferior del celular (sin safe-area): `--nav-alto` de NavInferior (56 px), el
+// mismo en todos los roles para que el pulgar encuentre las pestañas en el mismo lugar.
 const NAV_H = 56
 
 function Cargando() {
@@ -72,24 +72,8 @@ function Contador({ label, valor, color, onClick, activo, compacto }) {
   )
 }
 
-/** Pestaña de la barra inferior (celular). Mismo aspecto que `NavBtn` de SupervisionMovil. */
-function NavBtn({ active, label, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      className="lu-press"
-      style={{
-        ...sx('flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0;cursor:pointer;background:none;border:none;font-family:inherit'),
-        color: active ? 'var(--primary)' : 'var(--muted)',
-      }}
-    >
-      {children}
-      <span style={sx('font-size:10px;font-weight:600')}>{label}</span>
-    </button>
-  )
-}
+// La pestaña de la barra inferior era un `NavBtn` propio, copia del de SupervisionMovil (regla 31):
+// desde el 01/10/2026 la barra es `components/ui/NavInferior`, la misma de todos los roles.
 
 export default function MarketingView() {
   const { perfil, user } = useAuth()
@@ -116,13 +100,10 @@ export default function MarketingView() {
     toastRef.current = setTimeout(() => setToast(''), 3200)
   }
 
-  // Botón ATRÁS de Android: solo el panel de cuenta lo apila (regla 26). Esta pantalla NO apila
-  // nada propio a propósito — es la raíz de este rol, así que con la pila vacía el atrás minimiza
-  // la app en vez de cerrarla (regla 27). Si apilara un cierre, el atrás no haría nada visible.
-  useEffect(() => {
-    if (!cuentaOpen) return undefined
-    return apilarAtras(() => setCuentaOpen(false))
-  }, [cuentaOpen])
+  // Botón ATRÁS de Android: solo el menú de cuenta lo apila (regla 26; lo hace `MenuCuenta` por
+  // `Overlay`). Esta pantalla NO apila nada propio a propósito — es la raíz de este rol, así que con
+  // la pila vacía el atrás minimiza la app en vez de cerrarla (regla 27). Si apilara un cierre, el
+  // atrás no haría nada visible.
 
   const stats = useMemo(() => {
     const todos = productosTodos || []
@@ -156,7 +137,8 @@ export default function MarketingView() {
           <button
             onClick={() => setCuentaOpen((v) => !v)}
             aria-label="Mi cuenta"
-            style={sx('width:38px;height:38px;flex:none;border-radius:99px;display:grid;place-items:center;cursor:pointer;border:1px solid var(--glass-brd);background:var(--glass-bg);color:var(--text);font-family:var(--font-display);font-weight:700;font-size:13px')}
+            aria-haspopup="dialog"
+            style={sx('width:44px;height:44px;flex:none;border-radius:99px;display:grid;place-items:center;cursor:pointer;border:1px solid var(--glass-brd);background:var(--glass-bg);color:var(--text);font-family:var(--font-display);font-weight:700;font-size:13px')}
           >{nombre.slice(0, 2).toUpperCase()}</button>
         </div>
 
@@ -228,33 +210,19 @@ export default function MarketingView() {
 
       {/* ===== BARRA INFERIOR (celular) ===== */}
       {isMobile && (
-        <div style={{ flex: 'none', background: 'var(--glass-bg)', ...glassBlur, borderTop: '0.5px solid var(--glass-brd)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around', minHeight: NAV_H, padding: '4px 10px' }}>
-            {TABS.map(({ k, t, Icono }) => (
-              <NavBtn key={k} active={tab === k} label={t} onClick={() => setTab(k)}>
-                <Icono size={22} />
-              </NavBtn>
-            ))}
-          </div>
-        </div>
+        <NavInferior
+          items={TABS.map(({ k, t, Icono }) => ({ k, etiqueta: t, icono: Icono }))}
+          activo={tab}
+          onCambiar={setTab}
+        />
       )}
 
       {/* ===== CAPAS ===== */}
-      {cuentaOpen && (
-        <div
-          onClick={() => setCuentaOpen(false)}
-          style={sx('position:fixed;top:0;right:0;bottom:0;left:0;z-index:var(--z-modal);background:rgba(0,0,0,.35);display:flex;align-items:flex-start;justify-content:flex-end;padding:calc(58px + env(safe-area-inset-top)) 14px 14px')}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={sx('width:100%;max-width:340px')}>
-            <Suspense fallback={null}>
-              {/* `showDeviceToggle`: sin esto, un navegador que quedó marcado como "Celular" en el
-                  localStorage no tiene desde dónde volver — el mismo encierro que documenta
-                  PanelDireccion. */}
-              <MiCuenta onToast={showToast} showDeviceToggle />
-            </Suspense>
-          </div>
-        </div>
-      )}
+      {/* Menú de cuenta único (features/perfil/MenuCuenta): hoja en el celular, popover en la PC.
+          La fila "Vista · Solo en la web" viene adentro: sin ella, un navegador que quedó marcado
+          como "Celular" en el localStorage no tenía desde dónde volver (el mismo encierro que
+          documenta PanelDireccion). */}
+      <MenuCuenta open={cuentaOpen} onClose={() => setCuentaOpen(false)} onToast={showToast} presentacion={isMobile ? 'hoja' : 'popover'} />
 
       {modalProducto && (
         <Suspense fallback={null}>
