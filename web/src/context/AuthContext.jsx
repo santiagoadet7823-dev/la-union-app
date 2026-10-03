@@ -8,6 +8,10 @@ import { persistence } from '../services/persistence'
 import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil, actualizarMiPerfil as actualizarMiPerfilSvc } from '../services/data/perfiles'
 import { cerrarSesionUploader } from '../services/uploaderNativo'
 import { resetTransporte } from '../services/transporte'
+import {
+  leerCuentaActiva, fijarCuentaActiva, empezarLoginExplicito, terminarLoginExplicito, hayLoginExplicito,
+  guardaActiva, alDetectarSesionAjena,
+} from '../services/cuentaActiva'
 
 // Espejo de la sesión para el auto-login OFFLINE. El access token dura 1 h y, al reabrir la app
 // sin internet pasada esa hora, getSession() intenta refrescar contra la red, falla y devuelve
@@ -56,6 +60,38 @@ function esRechazoDelServidor(error) {
   const s = error?.status
   return s === 400 || s === 401 || s === 403
 }
+
+/**
+ * 🩸 ¿ESTA SESIÓN PUEDE ENTRAR? (02/10/2026). Incidente: un teléfono volvió SOLO a la sesión del
+ * superadmin ~2 min después de que otra cuenta entrara con Google — sin login, sin recargar, solo
+ * cambiando de vista. Ver `services/cuentaActiva.js` (la guarda) y `services/persistence/index.js`
+ * (el storage partido que la originó). Hasta 1.44.0 `onAuthStateChange`, el arranque y el espejo
+ * aplicaban la sesión que llegara, fuera de quien fuera.
+ *
+ * Devuelve:
+ *   - 'ok'       → es la cuenta activa (o se la adopta: primer arranque tras actualizar; en la web,
+ *                  siempre — ver el ⚠️ de `services/cuentaActiva.js`).
+ *   - 'ignorar'  → hay un login explícito en curso: la sesión que vale es la que devuelva esa
+ *                  llamada, y la aplica ella (`conLoginExplicito`). Lo que llegue mientras tanto
+ *                  —p. ej. el `_recoverAndRefresh` de supabase-js al volver del selector de cuentas
+ *                  de Google, que es una actividad aparte y saca al WebView de primer plano— no.
+ *   - 'rechazar' → es de OTRA cuenta y nadie la pidió: se cierra todo y se vuelve a ingresar.
+ *
+ * ⚠️ El modo sin conexión NO cambia: el espejo y la sesión degradada son de la MISMA cuenta activa,
+ * así que pasan por 'ok' como siempre.
+ */
+function veredictoCuenta(s) {
+  const id = s?.user?.id
+  if (!id) return 'ok'
+  if (hayLoginExplicito()) return 'ignorar'
+  const activa = leerCuentaActiva()
+  if (activa === id) return 'ok'
+  // Web (la sesión sigue a la del storage compartido) o primer arranque con 1.44.1 (se adopta UNA vez).
+  if (!guardaActiva() || activa === null) { fijarCuentaActiva(id); return 'ok' }
+  return 'rechazar'
+}
+
+const AVISO_SESION_AJENA = 'Se cerró la sesión por seguridad. Ingresá de nuevo.'
 
 const ULTIMO_KEY = 'lu-ultimo-ingreso'
 const RECORDAR_KEY = 'lu-recordar-usuario'
@@ -128,6 +164,8 @@ export function AuthProvider({ children }) {
   const [perfilError, setPerfilError] = useState(false)
   const [authError, setAuthError] = useState(null) // error del login nativo
   const [authStatus, setAuthStatus] = useState(null) // diagnóstico en pantalla del login nativo
+  // Aviso para el login cuando se rechazó una sesión de otra cuenta (ver `veredictoCuenta`).
+  const [avisoSesion, setAvisoSesion] = useState(null)
   /**
    * Contador que sube UNA vez: cuando la app arrancó con un token vencido y después consiguió uno
    * bueno. Los hooks de LECTURA lo llevan en sus dependencias para volver a consultar lo que se
@@ -169,6 +207,67 @@ export function AuthProvider({ children }) {
       setPerfilLoading(false)
     }
   }, [])
+
+  /**
+   * 🩸 Apareció una sesión de OTRA cuenta sin login explícito (02/10/2026). No se aplica: se cierra
+   * todo —estado de React, espejo, sesión local de supabase-js, uploader nativo— y se va al login
+   * con un aviso. La cuenta activa queda en "ninguna" (`''`): lo próximo que entre tiene que ser un
+   * login explícito. Es idempotente: el `signOut` de abajo relee el storage, la lectura filtrada
+   * vuelve a avisar, y ese segundo aviso cae dentro de la ventana de `rechazandoRef`.
+   *
+   * El aviso en el login sale solo si había una cuenta adentro (activa con id). Si ya se había
+   * cerrado sesión (activa `''`) y aparece una sesión vieja —p. ej. un "Cerrar sesión" sin red, que
+   * supabase-js no termina de borrar—, se limpia en silencio: la persona ya estaba en el login.
+   */
+  const rechazandoRef = useRef(false)
+  const rechazarSesionAjena = useCallback((info) => {
+    const activa = leerCuentaActiva()
+    console.warn('[auth] 🩸 sesión de otra cuenta rechazada', { ...info, activa })
+    fijarCuentaActiva('')
+    tokenDegradadoRef.current = null
+    sesionAbiertaConRef.current = null
+    setSession(null)
+    setPerfil(null)
+    setAuthStatus(null)
+    setAuthError(null)
+    if (activa) setAvisoSesion(AVISO_SESION_AJENA)
+    setLoading(false)
+    if (rechazandoRef.current) return
+    rechazandoRef.current = true
+    setTimeout(async () => {
+      try { await cerrarSesionUploader() } catch (_) { /* nunca bloquear */ }
+      try { await borrarCacheSesion() } catch (_) { /* idem */ }
+      try { await supabase.auth.signOut({ scope: 'local' }) } catch (_) { /* idem */ }
+      setTimeout(() => { rechazandoRef.current = false }, 3000)
+    }, 0)
+  }, [])
+
+  useEffect(() => alDetectarSesionAjena(rechazarSesionAjena), [rechazarSesionAjena])
+
+  /**
+   * Un login EXPLÍCITO (Google nativo, contraseña, registro, deep link): mientras corre, los eventos
+   * de sesión se ignoran (`veredictoCuenta` → 'ignorar'); cuando vuelve bien, la sesión que devolvió
+   * el SERVIDOR pasa a ser la cuenta activa y se aplica acá — no la que haya en el storage.
+   */
+  const aplicarLoginExplicito = useCallback((s) => {
+    if (!s?.user?.id) return
+    fijarCuentaActiva(s.user.id)
+    setAvisoSesion(null)
+    tokenDegradadoRef.current = null
+    escribirCacheSesion(s); recordarIngreso(s); setSession(s); cargarPerfil(s.user.id)
+    setLoading(false)
+  }, [cargarPerfil])
+
+  const conLoginExplicito = useCallback(async (llamada) => {
+    empezarLoginExplicito()
+    try {
+      const r = await llamada()
+      if (!r?.error && r?.data?.session) aplicarLoginExplicito(r.data.session)
+      return r
+    } finally {
+      terminarLoginExplicito()
+    }
+  }, [aplicarLoginExplicito])
 
   // ---- 2FA TOTP (29/09/2026, Tarea 2.2, fase 1: gate solo en el front) ----
   // `mfaNivel`/`mfaSiguiente` son el `currentLevel`/`nextLevel` tal cual los documenta Supabase
@@ -266,7 +365,9 @@ export function AuthProvider({ children }) {
     const safety = setTimeout(async () => {
       if (!active || sesionResuelta) return
       const cached = await leerCacheSesion()
-      if (active && !sesionResuelta && cached) {
+      const veredicto = cached ? veredictoCuenta(cached) : null
+      if (active && !sesionResuelta && veredicto === 'rechazar') rechazarSesionAjena({ origen: 'espejo-6s', recibida: cached.user?.id })
+      else if (active && !sesionResuelta && cached && veredicto === 'ok') {
         tokenDegradadoRef.current = cached.access_token
         sesionAbiertaConRef.current = cached.access_token
         setSession(cached)
@@ -282,6 +383,11 @@ export function AuthProvider({ children }) {
     const restaurarDesdeEspejo = async () => {
       const cached = await leerCacheSesion()
       if (!cached || !active) return null
+      // 🩸 La guarda va ANTES del `supabase.auth.setSession`: ese setSession ESCRIBE los tokens del
+      // espejo en el storage de auth-js. Con un espejo de otra cuenta, eso era reinstalarla.
+      const veredicto = veredictoCuenta(cached)
+      if (veredicto === 'rechazar') { rechazarSesionAjena({ origen: 'espejo', recibida: cached.user?.id }); return null }
+      if (veredicto !== 'ok') return null
       // 🩸 EL `await` NO ES COSMÉTICO (18/08/2026). Hasta hoy este `setSession` salía sin esperar y
       // con el error tragado, así que el Gate dejaba pasar a la app con el token VENCIDO del
       // espejo. Todas las pantallas montan y disparan sus consultas en ese instante — perfiles,
@@ -343,7 +449,12 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(async ({ data }) => {
       sesionResuelta = true
       if (!active) return
-      if (data.session) {
+      const veredicto = data.session ? veredictoCuenta(data.session) : null
+      if (veredicto === 'rechazar') {
+        rechazarSesionAjena({ origen: 'getSession', recibida: data.session.user?.id })
+      } else if (veredicto === 'ignorar') {
+        // Un login explícito en curso aplica su propia sesión al volver.
+      } else if (data.session) {
         // Si el safety ya abrió con el espejo y este es el MISMO token (llegó lento pero vivo), el
         // arranque no fue degradado: sin esto, el próximo refresco rutinario subiría authEpoch al
         // vicio y recargaría la jornada entera.
@@ -365,10 +476,17 @@ export function AuthProvider({ children }) {
       setLoading(false)
     })
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       // Solo ESCRIBIR el espejo cuando hay sesión. NO borrarlo ante un `s` null: un refresh
       // fallido offline emite SIGNED_OUT y perderíamos el auto-login. El borrado va en signOut().
       if (s) {
+        // 🩸 Primero, DE QUIÉN es (02/10/2026). INITIAL_SESSION / SIGNED_IN / TOKEN_REFRESHED /
+        // USER_UPDATED / MFA_CHALLENGE_VERIFIED de la cuenta activa pasan como siempre; una sesión de
+        // otra cuenta que llega sola (p. ej. el SIGNED_IN que emite `_recoverAndRefresh` con lo que
+        // encontró en el storage) se rechaza.
+        const veredicto = veredictoCuenta(s)
+        if (veredicto === 'ignorar') return
+        if (veredicto === 'rechazar') { rechazarSesionAjena({ origen: event, recibida: s.user?.id }); return }
         escribirCacheSesion(s); recordarIngreso(s); setSession(s); cargarPerfil(s.user?.id)
         // La OTRA mitad del arreglo. Si la app arrancó con el token vencido y SIN red (el `await`
         // de arriba no pudo renovarlo), las consultas del arranque ya fallaron con 401. Cuando la
@@ -388,7 +506,7 @@ export function AuthProvider({ children }) {
     })
 
     return () => { active = false; clearTimeout(safety); sub.subscription.unsubscribe() }
-  }, [cargarPerfil])
+  }, [cargarPerfil, rechazarSesionAjena])
 
   // Captura el retorno del login de Google cuando la app corre en nativo (deep link
   // com.launion.app://auth). Google → callback de Supabase → 302 al deep link, que
@@ -407,7 +525,7 @@ export function AuthProvider({ children }) {
         // 2) Flujo PKCE normal: ?code=... → intercambio por sesión.
         const code = parsed.searchParams.get('code')
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          const { error } = await conLoginExplicito(() => supabase.auth.exchangeCodeForSession(code))
           if (error) setAuthError(error.message)
           else setAuthError(null)
           return
@@ -419,7 +537,7 @@ export function AuthProvider({ children }) {
         const access_token = hp.get('access_token')
         const refresh_token = hp.get('refresh_token')
         if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+          const { error } = await conLoginExplicito(() => supabase.auth.setSession({ access_token, refresh_token }))
           if (error) setAuthError(error.message)
           else setAuthError(null)
           return
@@ -431,10 +549,11 @@ export function AuthProvider({ children }) {
       }
     })
     return () => { sub.then((s) => s.remove()) }
-  }, [])
+  }, [conLoginExplicito])
 
   const signInWithGoogle = async () => {
     setAuthError(null)
+    setAvisoSesion(null)
 
     // NATIVO (APK): login con el selector de cuentas de Android (sin navegador ni
     // deep link, que no funcionaban en estos equipos). El idToken se canjea por
@@ -457,7 +576,7 @@ export function AuthProvider({ children }) {
           setAuthError('Google no devolvió idToken. res=' + JSON.stringify(res).slice(0, 260))
           return { error: true }
         }
-        const { data, error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken })
+        const { data, error } = await conLoginExplicito(() => supabase.auth.signInWithIdToken({ provider: 'google', token: idToken }))
         if (error) {
           setAuthError(`Supabase rechazó el token: ${error.message} (status ${error.status ?? '?'})`)
           setAuthStatus(null)
@@ -498,6 +617,7 @@ export function AuthProvider({ children }) {
   // auth.users, tenga o no destinatario de verdad.
   const signInWithPassword = async ({ entrada, password }) => {
     setAuthError(null)
+    setAvisoSesion(null)
     const texto = (entrada || '').trim().toLowerCase()
     if (!texto || !password) {
       const msg = 'Ingresá tu usuario o email y tu contraseña.'
@@ -505,7 +625,7 @@ export function AuthProvider({ children }) {
       return { error: { message: msg } }
     }
     const correo = texto.includes('@') ? texto : `${texto}@${DOMINIO_USUARIO}`
-    const { data, error } = await supabase.auth.signInWithPassword({ email: correo, password })
+    const { data, error } = await conLoginExplicito(() => supabase.auth.signInWithPassword({ email: correo, password }))
     // Mensaje humano para el error más común; el resto se muestra tal cual.
     if (error) setAuthError(/invalid login/i.test(error.message) ? 'Usuario/email o contraseña incorrectos.' : error.message)
     return { data, error }
@@ -612,7 +732,27 @@ export function AuthProvider({ children }) {
     // aviso: PostgREST seguía aceptando el JWT hasta su vencimiento (8 h) y recién ahí el refresh
     // caía con 400 y la app abría con una ráfaga de 401/vacíos antes de ir al Login. Medido el 18/09:
     // `/auth/v1/user` → 403 `session_not_found` con un JWT todavía vigente.
-    await supabase.auth.signOut({ scope: 'local' })
+    //
+    // 🩸 La cuenta activa pasa a "ninguna" DESPUÉS del signOut de supabase-js, no antes (02/10/2026):
+    // ese signOut relee la sesión del storage para avisarle al servidor, y con la cuenta ya en '' la
+    // lectura la filtraría como ajena (ver `services/supabase.js`). Con '' lo que aparezca de acá en
+    // más sin un login explícito se rechaza — una sesión vieja que resucite del storage incluida.
+    //
+    // ⚠️ Y si el servidor no contestó (sin red, 5xx), supabase-js devuelve el error SIN borrar la
+    // sesión local: quedaba en el storage y la próxima vuelta a primer plano la re-emitía como
+    // SIGNED_IN. Con la cuenta ya en '', el segundo signOut la lee filtrada (sin sesión) y la borra
+    // sin pasar por la red.
+    let errorSalida = null
+    try {
+      errorSalida = (await supabase.auth.signOut({ scope: 'local' }))?.error || null
+    } catch (e) {
+      errorSalida = e
+    } finally {
+      fijarCuentaActiva('')
+    }
+    if (errorSalida) {
+      try { await supabase.auth.signOut({ scope: 'local' }) } catch (_) { /* nunca bloquear el logout */ }
+    }
   }
 
   const value = {
@@ -648,6 +788,7 @@ export function AuthProvider({ children }) {
     hasSupabase,
     authError,
     authStatus,
+    avisoSesion,
     authEpoch,
     signInWithGoogle,
     signInWithPassword,

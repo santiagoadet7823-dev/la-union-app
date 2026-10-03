@@ -89,7 +89,7 @@ const MSG_REGISTRO = {
 const traducirRegistro = (code) => MSG_REGISTRO[code] || 'no se pudo crear la cuenta. Probá de nuevo.'
 
 export default function LoginView({ onTablet }) {
-  const { signInWithGoogle, signInWithPassword, registrarUsuario, enviarEnlaceContrasena, hasSupabase, authError, authStatus } = useAuth()
+  const { signInWithGoogle, signInWithPassword, registrarUsuario, enviarEnlaceContrasena, hasSupabase, authError, authStatus, avisoSesion } = useAuth()
 
   // Última cuenta que entró en ESTE teléfono. Lectura síncrona a propósito: si llegara un
   // instante después, la tarjeta aparecería de golpe y la pantalla saltaría en el primer render.
@@ -217,6 +217,15 @@ export default function LoginView({ onTablet }) {
             {ultimo ? 'Buen día. Arrancá la jornada.' : 'Ingresá para arrancar la jornada.'}
           </div>
         </div>
+
+        {/* 🩸 Sesión de otra cuenta rechazada (02/10/2026, ver `veredictoCuenta` en AuthContext). Se
+            dice qué pasó y qué hacer, sin detalle técnico: el detalle queda en la consola. */}
+        {avisoSesion && !tipoError && (
+          <div role="status" className="lu-rise" style={{ ...sx('margin-top:18px;display:flex;align-items:flex-start;padding:14px;border-radius:var(--r-lg);background:var(--warning-tint);border:1px solid var(--warning)'), '--gx': '12px' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', marginTop: 1 }}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+            <div style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.35')}>{avisoSesion}</div>
+          </div>
+        )}
 
         {/* ---- Errores: tres causas, tres formas. ---- */}
         {tipoError === 'red' && (

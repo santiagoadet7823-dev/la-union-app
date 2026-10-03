@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { Capacitor } from '@capacitor/core'
 import { persistence } from './persistence'
+import { cuentaAjena, leerCuentaActiva, avisarSesionAjena } from './cuentaActiva'
 
 /**
  * Cliente único de Supabase (backend de producción: datos, realtime, auth, storage).
@@ -129,8 +130,29 @@ const fetchConTimeout = (input, init = {}) => {
  * vez — y de ahí en más la sesión vive en el lugar durable. La PWA no paga este costo: sigue en el
  * mismo `localStorage` de siempre, sin ningún corte.
  */
+/**
+ * 🩸 Y LO QUE SE LEE DE ACÁ SE MIRA ANTES DE ENTREGARLO (02/10/2026). supabase-js relee la sesión
+ * del storage por su cuenta —cada request (`_useSession`), el tick de auto-refresh de 30 s, cada
+ * vuelta del WebView a primer plano (`_recoverAndRefresh`)— y usa lo que encuentra SIN emitir
+ * ningún evento: el 02/10 el "Cerrar sesión" salió con el token de una cuenta que ya había cerrado
+ * sesión 2 min antes, mientras la pantalla mostraba la otra. Si la sesión guardada es de una cuenta
+ * distinta de la del último login explícito (`services/cuentaActiva.js`), no se entrega: auth-js
+ * ve "sin sesión" y AuthContext cierra todo y manda a ingresar de nuevo.
+ */
+const esClaveDeSesion = (k) => /^sb-.+-auth-token$/.test(k)
+
 const authStorage = {
-  getItem: (k) => persistence.raw.get(k),
+  getItem: async (k) => {
+    const v = await persistence.raw.get(k)
+    if (v == null || !esClaveDeSesion(k)) return v
+    let id = null
+    try { id = JSON.parse(v)?.user?.id || null } catch (_) { return v }
+    const ajena = cuentaAjena(id)
+    if (!ajena) return v
+    console.warn('[supabase] 🩸 sesión guardada de OTRA cuenta; no se entrega', { guardada: ajena, activa: leerCuentaActiva() })
+    avisarSesionAjena({ origen: 'storage', recibida: ajena })
+    return null
+  },
   setItem: (k, v) => persistence.raw.set(k, v),
   removeItem: (k) => persistence.raw.remove(k),
 }
