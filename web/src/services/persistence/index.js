@@ -36,6 +36,8 @@ import { conTimeout } from '../../lib/conTimeout'
  * y se devuelve `false` para que el llamador NO crea que guardó.
  */
 const CACHES_DESALOJABLES = ['lu-recorridos-cache', /^lu-catalogo-cache-/]
+// Marca de "esta clave la tiene localStorage" del store nativo (ver el 🩸 de `nativeStoreRaw`).
+const MARCA = '__lu_fb:'
 
 export function desalojarCaches(exceptoKey) {
   let liberado = 0
@@ -47,6 +49,10 @@ export function desalojarCaches(exceptoKey) {
       if (!cache) continue
       liberado += (localStorage.getItem(k) || '').length
       localStorage.removeItem(k)
+      // Y su marca de fallback (02/10/2026, revisión): sin el valor, la marca sola es una lápida y
+      // `get` devolvería null aunque SQLite tenga el dato (catálogo/cartera sin red). Desalojar es
+      // "esta copia no hace falta", no "la clave está borrada".
+      localStorage.removeItem(MARCA + k)
     }
   } catch { /* nada que liberar */ }
   return liberado
@@ -152,7 +158,6 @@ function initNative() {
  *   - `ultima`: la última escritura iniciada. Sólo ELLA decide la marca y la copia local cuando
  *     termina; una más vieja que vuelve tarde (o cae al fallback tarde) no toca nada.
  */
-const MARCA = '__lu_fb:'
 const enVuelo = new Map()
 const ultima = new Map()
 let secuencia = 0
@@ -173,7 +178,14 @@ const borrarCopiaLocal = (key) => {
 /** Guarda en localStorage como dueño de la clave (valor + marca). `false` si no entró. */
 async function guardarEnRespaldo(key, raw) {
   const ok = await webStoreRaw.set(key, raw)
-  if (!ok) return false
+  if (!ok) {
+    // 🩸 No entró en ninguno de los dos lados (02/10/2026, revisión). Si quedaban la marca y una copia
+    // vieja de un fallback anterior, `get` devolvería ESE valor para siempre, aunque la escritura
+    // vencida aterrice después en SQLite. Se suelta localStorage y manda SQLite.
+    borrarCopiaLocal(key)
+    sacarMarca(key)
+    return false
+  }
   if (!ponerMarca(key)) {
     // Sin marca, la copia quedaría huérfana (y vieja la próxima vez): mejor no dejarla.
     borrarCopiaLocal(key)

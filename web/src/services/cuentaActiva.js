@@ -32,12 +32,27 @@ import { isNative } from './platform'
 
 const KEY = 'lu-cuenta-activa'
 
+/**
+ * 🩸 COPIA EN MEMORIA, Y SI NO SE PUEDE GUARDAR SE BORRA (02/10/2026, revisión). Con localStorage
+ * lleno, `setItem` tira y quedaba el valor ANTERIOR ('' u otro id): cada login legítimo se
+ * rechazaba en bucle, sin salida. Ahora el valor nuevo vale igual en esta corrida (memoria, que se
+ * lee primero), y en disco se borra la clave: al reabrir, la guarda vuelve a "adoptar" (`null`) en
+ * vez de rechazar con un dato viejo.
+ */
+let enMemoria // undefined = todavía no se leyó ni se fijó en esta corrida
+
 export function leerCuentaActiva() {
+  if (enMemoria !== undefined) return enMemoria
   try { return localStorage.getItem(KEY) } catch { return null }
 }
 
 export function fijarCuentaActiva(id) {
-  try { localStorage.setItem(KEY, id || '') } catch { /* modo privado: la guarda queda en "adoptar" */ }
+  enMemoria = id || ''
+  try {
+    localStorage.setItem(KEY, enMemoria)
+  } catch {
+    try { localStorage.removeItem(KEY) } catch { /* modo privado: queda solo la copia en memoria */ }
+  }
 }
 
 // ---- Login explícito en curso (Google nativo, contraseña, registro, deep link) ----

@@ -234,11 +234,21 @@ export function AuthProvider({ children }) {
     setLoading(false)
     if (rechazandoRef.current) return
     rechazandoRef.current = true
+    // 🩸 Cada paso diferido revalida (02/10/2026, revisión): si en el medio entró una cuenta por login
+    // explícito ("Continuar como…" con un toque), la cuenta activa ya no es '' y este signOut le
+    // borraría la sesión NUEVA (y las consultas saldrían como anon). Ahí se corta.
+    const sigueRechazada = () => leerCuentaActiva() === '' && !hayLoginExplicito()
     setTimeout(async () => {
-      try { await cerrarSesionUploader() } catch (_) { /* nunca bloquear */ }
-      try { await borrarCacheSesion() } catch (_) { /* idem */ }
-      try { await supabase.auth.signOut({ scope: 'local' }) } catch (_) { /* idem */ }
-      setTimeout(() => { rechazandoRef.current = false }, 3000)
+      try {
+        if (!sigueRechazada()) return
+        try { await cerrarSesionUploader() } catch (_) { /* nunca bloquear */ }
+        if (!sigueRechazada()) return
+        try { await borrarCacheSesion() } catch (_) { /* idem */ }
+        if (!sigueRechazada()) return
+        try { await supabase.auth.signOut({ scope: 'local' }) } catch (_) { /* idem */ }
+      } finally {
+        setTimeout(() => { rechazandoRef.current = false }, 3000)
+      }
     }, 0)
   }, [])
 
