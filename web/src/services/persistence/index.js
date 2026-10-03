@@ -108,35 +108,151 @@ function initNative() {
   return nativeReady
 }
 
+/**
+ * 🩸 UNA CLAVE NUNCA QUEDA PARTIDA ENTRE SQLITE Y LOCALSTORAGE (02/10/2026).
+ *
+ * Hasta 1.44.0 el fallback era POR OPERACIÓN y sin memoria: cada get/set/remove probaba SQLite y,
+ * si tiraba o pasaba los 5 s, hacía ESA operación en localStorage y se olvidaba. Así una misma
+ * clave podía tener un valor en cada lado, y cuál se leía dependía de si la PRÓXIMA operación de
+ * SQLite andaba o no. Con la sesión de Supabase (`services/supabase.js` guarda acá su token) eso es
+ * un agujero de seguridad, no un detalle:
+ *   - login de A cuyo `set` cae a localStorage (SQLite ocupado: la cola GPS, el catálogo de 1,3 MB)
+ *     → A queda en localStorage;
+ *   - "Cerrar sesión" de A: el `remove` en SQLite ANDA → se borra SQLite… y la copia de
+ *     localStorage queda viva;
+ *   - login de B: `set` en SQLite → B en SQLite;
+ *   - la próxima lectura que se demore o falle en SQLite devolvía la copia de localStorage: la
+ *     SESIÓN DE A, con su access token todavía vigente.
+ * supabase-js relee el storage solo (tick de auto-refresh cada 30 s, `_recoverAndRefresh` cada vez
+ * que el WebView vuelve a primer plano — el selector de cuentas de Google, un diálogo de permisos
+ * de GPS…) y, si encuentra una sesión válida, emite SIGNED_IN con ELLA.
+ *
+ * 🩸 Incidente del 02/10/2026 (motorola edge 30 neo, APK 1.44.0): cerrar sesión del superadmin →
+ * entrar con Google con otra cuenta → cambiar de vista ("Ir a mi jornada", arranca el GPS y la cola
+ * en SQLite) → el próximo "Cerrar sesión", 2 min después, salió con el token del SUPERADMIN. El
+ * teléfono había vuelto solo a la cuenta anterior, sin ningún login de por medio.
+ *
+ * La regla ahora: una clave vive en SQLite, SALVO que tenga la marca `__lu_fb:<clave>` en
+ * localStorage; con la marca, lo que manda es localStorage (y si ahí no hay valor, la clave está
+ * BORRADA — la marca sola es una lápida).
+ *   - `set` que cae a localStorage → escribe el valor Y la marca.
+ *   - `set` que anda en SQLite → borra la copia de localStorage y la marca.
+ *   - `remove` → borra de LOS DOS lados siempre; si el DELETE de SQLite no confirma, deja la lápida.
+ *   - `get` con marca → localStorage. Sin marca → SQLite, y si SQLite falla devuelve `null`: un
+ *     valor de localStorage sin marca es por definición viejo (de antes de SQLite, de un fallback de
+ *     antes de este arreglo, o la sesión pre-migración de la Tarea 2.2.D) y NO se resucita.
+ * Los timeouts siguen (nada se cuelga: la cola GPS depende de eso). Lo que se agrega es memoria de
+ * QUÉ lado tiene la verdad.
+ *
+ * ⚠️ Un `conTimeout` vencido NO cancela la operación de SQLite: puede aterrizar DESPUÉS, y una
+ * escritura vieja aterrizando tarde pisaría a una nueva. Dos registros por clave lo cubren:
+ *   - `enVuelo`: escrituras en SQLite que todavía no terminaron DE VERDAD (desde que salen hasta que
+ *     el plugin contesta, con techo o sin él). Un `set` exitoso con otra escritura de la misma clave
+ *     todavía en vuelo NO levanta la marca: guarda también en localStorage, que sigue mandando.
+ *   - `ultima`: la última escritura iniciada. Sólo ELLA decide la marca y la copia local cuando
+ *     termina; una más vieja que vuelve tarde (o cae al fallback tarde) no toca nada.
+ */
+const MARCA = '__lu_fb:'
+const enVuelo = new Map()
+const ultima = new Map()
+let secuencia = 0
+
+const tieneMarca = (key) => {
+  try { return localStorage.getItem(MARCA + key) !== null } catch { return false }
+}
+const ponerMarca = (key) => {
+  try { localStorage.setItem(MARCA + key, '1'); return true } catch { return false }
+}
+const sacarMarca = (key) => {
+  try { localStorage.removeItem(MARCA + key) } catch { /* noop */ }
+}
+const borrarCopiaLocal = (key) => {
+  try { localStorage.removeItem(key) } catch { /* noop */ }
+}
+
+/** Guarda en localStorage como dueño de la clave (valor + marca). `false` si no entró. */
+async function guardarEnRespaldo(key, raw) {
+  const ok = await webStoreRaw.set(key, raw)
+  if (!ok) return false
+  if (!ponerMarca(key)) {
+    // Sin marca, la copia quedaría huérfana (y vieja la próxima vez): mejor no dejarla.
+    borrarCopiaLocal(key)
+    return false
+  }
+  return true
+}
+
+/** Una ESCRITURA en SQLite con techo de 5 s, anotada en `enVuelo` hasta que termine de verdad. */
+async function escribirSqlite(key, promesa, etiqueta) {
+  enVuelo.set(key, (enVuelo.get(key) || 0) + 1)
+  // Se registra ANTES que el `conTimeout`: cuando la operación termina, este descuento corre
+  // primero, así que al volver del `await` de abajo la propia escritura ya no cuenta.
+  const descontar = () => {
+    const n = (enVuelo.get(key) || 1) - 1
+    if (n > 0) enVuelo.set(key, n); else enVuelo.delete(key)
+  }
+  promesa.then(descontar, descontar)
+  return conTimeout(promesa, 5000, etiqueta)
+}
+
 // Las operaciones también van con timeout: si el query/run se cuelga (no solo la init),
 // caemos a localStorage en vez de dejar el await colgado (lo que trababa la cola GPS y, al
 // leerla desde el latido de estado, podía colgar también la telemetría).
 const nativeStoreRaw = {
   async get(key) {
+    // Sin SQLite en esta corrida, localStorage es el único lugar: se lee tal cual (como siempre).
     if (!(await initNative())) return webStoreRaw.get(key)
+    if (tieneMarca(key)) return webStoreRaw.get(key)
     try {
       const res = await conTimeout(sqlite.query('SELECT v FROM kv WHERE k = ?;', [key]), 5000, 'query')
       return res?.values?.[0]?.v ?? null
-    } catch {
-      return webStoreRaw.get(key)
+    } catch (e) {
+      console.warn('[persistence] no se pudo leer', key, 'de SQLite:', e?.message || e)
+      return null
     }
   },
   async set(key, raw) {
-    if (!(await initNative())) return webStoreRaw.set(key, raw)
+    // Sin SQLite, se guarda CON marca: si en la próxima corrida SQLite sí arranca, la fila vieja que
+    // tenga no le gana a este valor.
+    if (!(await initNative())) return guardarEnRespaldo(key, raw)
+    const mia = ++secuencia
+    ultima.set(key, mia)
+    let enSqlite = true
     try {
-      await conTimeout(sqlite.run('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?);', [key, raw]), 5000, 'run-set')
-      return true
+      await escribirSqlite(key, sqlite.run('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?);', [key, raw]), 'run-set')
     } catch {
-      return webStoreRaw.set(key, raw)
+      enSqlite = false
     }
+    // Ya hay una escritura más nueva de esta clave: ella decide. Este valor quedó viejo.
+    if (ultima.get(key) !== mia) return true
+    if (enSqlite && !enVuelo.has(key)) {
+      borrarCopiaLocal(key)
+      sacarMarca(key)
+      return true
+    }
+    // SQLite falló/venció, o hay otra escritura de la clave en vuelo que podría aterrizar después:
+    // localStorage manda hasta el próximo set limpio.
+    return guardarEnRespaldo(key, raw)
   },
   async remove(key) {
-    if (!(await initNative())) return webStoreRaw.remove(key)
+    const mia = ++secuencia
+    ultima.set(key, mia)
+    // De LOS DOS lados, siempre. La lápida va ANTES del DELETE: mientras SQLite no confirma, un get
+    // concurrente ya ve la clave borrada en vez del valor viejo.
+    borrarCopiaLocal(key)
+    ponerMarca(key)
+    if (!(await initNative())) return
+    let enSqlite = true
     try {
-      await conTimeout(sqlite.run('DELETE FROM kv WHERE k = ?;', [key]), 5000, 'run-remove')
+      await escribirSqlite(key, sqlite.run('DELETE FROM kv WHERE k = ?;', [key]), 'run-remove')
     } catch {
-      return webStoreRaw.remove(key)
+      enSqlite = false
     }
+    if (ultima.get(key) !== mia) return
+    if (enSqlite && !enVuelo.has(key)) { sacarMarca(key); return }
+    // Queda la lápida: SQLite puede seguir teniendo la fila (o recibirla tarde), y no se lee.
+    borrarCopiaLocal(key)
+    ponerMarca(key)
   },
 }
 
