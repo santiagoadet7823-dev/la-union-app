@@ -12,8 +12,12 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$URL = 'https://lqhtxivednffpiicnbog.supabase.co/functions/v1/export-pedidos'
 $aca = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Mismo servidor que bajar-pedidos.ps1 (servidor.txt o el propio de DisT-At).
+$servidor = 'https://api.dist-at.com'
+$archivoServidor = Join-Path $aca 'servidor.txt'
+if (Test-Path $archivoServidor) { $s = (Get-Content $archivoServidor -Raw).Trim(); if ($s) { $servidor = $s.TrimEnd('/') } }
+$URL = "$servidor/functions/v1/export-pedidos"
 
 $ok = 0
 $mal = 0

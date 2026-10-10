@@ -29,12 +29,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$URL = 'https://lqhtxivednffpiicnbog.supabase.co/functions/v1/export-pedidos'
 $ARCHIVO = 'Pedidos.txt'   # el nombre que el ERP ya conoce
 
 # Rutas absolutas SIEMPRE: la tarea programada corre sin sesión iniciada y el directorio actual no
 # es el de este script. Es la misma razón por la que `enviar-precios.ps1` usa rutas UNC.
 $aca = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# Servidor: el propio de DisT-At. `servidor.txt` al lado de este script (una linea, ej.
+# https://api.ejemplo.com) lo reemplaza sin reinstalar: es la vuelta atras del corte del 11/10/2026.
+$servidor = 'https://api.dist-at.com'
+$archivoServidor = Join-Path $aca 'servidor.txt'
+if (Test-Path $archivoServidor) { $s = (Get-Content $archivoServidor -Raw).Trim(); if ($s) { $servidor = $s.TrimEnd('/') } }
+$URL = "$servidor/functions/v1/export-pedidos"
 $registros = Join-Path $aca 'registros'
 if (-not (Test-Path $registros)) { New-Item -ItemType Directory -Path $registros | Out-Null }
 $log = Join-Path $registros ("pedidos-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd'))

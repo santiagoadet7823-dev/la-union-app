@@ -40,8 +40,13 @@ import java.time.Duration;
 
 public class EnviarPrecios {
 
-    private static final String URL =
-            "https://lqhtxivednffpiicnbog.supabase.co/functions/v1/ingest-precios";
+    /** Servidor propio de DisT-At; la variable de entorno DISTAT_URL (ej. https://api.ejemplo.com) lo reemplaza. */
+    private static final String URL = servidor() + "/functions/v1/ingest-precios";
+
+    private static String servidor() {
+        String s = System.getenv("DISTAT_URL");
+        return (s == null || s.isBlank() ? "https://api.dist-at.com" : s.strip()).replaceAll("/+$", "");
+    }
 
     /** Lo que devolvió el servidor. El cuerpo es el JSON con el resumen: hay que guardarlo. */
     public static class Respuesta {

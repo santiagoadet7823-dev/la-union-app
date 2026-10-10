@@ -46,8 +46,13 @@ import java.time.format.DateTimeFormatter;
 
 public class BajarPedidos {
 
-    private static final String URL =
-            "https://lqhtxivednffpiicnbog.supabase.co/functions/v1/export-pedidos";
+    /** Servidor propio de DisT-At; la variable de entorno DISTAT_URL (ej. https://api.ejemplo.com) lo reemplaza. */
+    private static final String URL = servidor() + "/functions/v1/export-pedidos";
+
+    private static String servidor() {
+        String s = System.getenv("DISTAT_URL");
+        return (s == null || s.isBlank() ? "https://api.dist-at.com" : s.strip()).replaceAll("/+$", "");
+    }
 
     /** El nombre que el ERP ya conoce. No cambiarlo sin avisar del otro lado. */
     private static final String ARCHIVO = "Pedidos.txt";

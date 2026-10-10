@@ -48,7 +48,12 @@ if ([string]::IsNullOrWhiteSpace($Archivo)) {
 }
 
 # ── Configuración ────────────────────────────────────────────────────────────
-$url = 'https://lqhtxivednffpiicnbog.supabase.co/functions/v1/ingest-precios'
+# Servidor: el propio de DisT-At. `servidor.txt` al lado de este script (una línea, ej.
+# https://api.ejemplo.com) lo reemplaza sin reinstalar: es la vuelta atrás del corte del 11/10/2026.
+$servidor = 'https://api.dist-at.com'
+$archivoServidor = Join-Path $base 'servidor.txt'
+if (Test-Path $archivoServidor) { $s = (Get-Content $archivoServidor -Raw).Trim(); if ($s) { $servidor = $s.TrimEnd('/') } }
+$url = "$servidor/functions/v1/ingest-precios"
 
 $token = $env:DISTAT_TOKEN
 if ([string]::IsNullOrWhiteSpace($token)) {

@@ -19,7 +19,9 @@
 
 set -u
 
-URL='https://lqhtxivednffpiicnbog.supabase.co/functions/v1/ingest-precios'
+# Servidor: el propio de DisT-At; DISTAT_URL (ej. https://api.ejemplo.com) lo reemplaza.
+SERVIDOR="${DISTAT_URL:-https://api.dist-at.com}"
+URL="${SERVIDOR%/}/functions/v1/ingest-precios"
 REINTENTOS=2
 ESPERA=900          # 15 min entre reintentos → 06:00, 06:15, 06:30
 
