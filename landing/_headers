@@ -1,0 +1,10 @@
+# Cloudflare Pages: cabeceras de la landing (plan 11).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), camera=(), microphone=()
+
+# Las fuentes no cambian de nombre si cambian: se renuevan cada 30 días.
+/fonts/*
+  Cache-Control: public, max-age=2592000

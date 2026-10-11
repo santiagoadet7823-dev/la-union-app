@@ -9,6 +9,10 @@ name: Deploy PWA to Cloudflare Pages
 on:
   push:
     branches: [main]
+    # La landing (dist-at.com) tiene su propio workflow: un cambio solo ahí no recompila la PWA.
+    paths-ignore:
+      - 'landing/**'
+      - '.github/workflows/landing.yml'
   workflow_dispatch:
 
 permissions:
