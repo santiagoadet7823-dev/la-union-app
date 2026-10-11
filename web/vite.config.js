@@ -4,15 +4,14 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import legacy from '@vitejs/plugin-legacy'
 
-// base './' → funciona en Capacitor (assets relativos desde el bundle nativo)
-// y en la mayoría de hosts estáticos. Para GitHub Pages en subruta de proyecto,
-// cambiar a '/<nombre-repo>/'.
+// base './' → funciona en Capacitor (assets relativos desde el bundle nativo).
 export default defineConfig({
-  // GitHub Pages sirve el proyecto bajo /<nombre-repo>/ → base '/la-union-app/'.
+  // La PWA se publica en la RAÍZ de https://app.dist-at.com (Cloudflare Pages, plan 10, 11/10/2026)
+  // → base '/'. Hasta 1.44.2 vivía en GitHub Pages bajo /la-union-app/.
   // Para el APK (Capacitor) los assets se sirven desde la raíz del WebView, así
   // que hay que compilar con base relativa './'. Se activa exportando CAP_BUILD=1
   // (ej. `CAP_BUILD=1 npm run build`). Ver GUIA_APK_ANDROID.md.
-  base: process.env.CAP_BUILD ? './' : '/la-union-app/',
+  base: process.env.CAP_BUILD ? './' : '/',
   // Target de compilación BAJO a propósito: hay tablets Android baratas en uso (Cidea CM915)
   // con WebView Chrome 79 (2019), que NO soporta optional chaining `?.` ni `??` (llegaron en
   // Chrome 80). Con el target por defecto de Vite (Chrome 87+) el bundle NO transpila esa

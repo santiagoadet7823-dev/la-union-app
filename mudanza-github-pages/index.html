@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>DisT-At · La app se mudó</title>
+  <!--
+    Página de mudanza (plan 10, 11/10/2026). Reemplaza a la PWA vieja en
+    santiagoadet7823-dev.github.io/la-union-app/ y manda a https://app.dist-at.com/.
+    La publica a mano el workflow `mudanza-github-pages.yml`. `404.html` es una copia exacta:
+    GitHub Pages la sirve para cualquier ruta vieja (assets, recargas en subrutas).
+  -->
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center; background: #0E0E10; color: #F2F2F5;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; text-align: center; padding: 24px;
+    }
+    .box { max-width: 340px; }
+    h1 { font-size: 20px; font-weight: 700; margin: 0 0 10px; }
+    p { font-size: 14px; color: #9A9AA6; margin: 0 0 14px; line-height: 1.5; }
+    b { color: #F2F2F5; }
+    a.btn {
+      display: inline-block; margin-top: 6px; background: #7CB8C9; color: #0E0E10; text-decoration: none;
+      padding: 12px 20px; border-radius: 12px; font-weight: 700; font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>La app se mudó</h1>
+    <p>La dirección nueva es <b>app.dist-at.com</b>. Iniciá sesión de nuevo ahí y, si la usabas
+      instalada, instalala otra vez desde la dirección nueva y borrá esta.</p>
+    <p id="msg">Te llevamos en unos segundos…</p>
+    <a class="btn" href="https://app.dist-at.com/">Ir a app.dist-at.com</a>
+  </div>
+  <script>
+    // Si quedó registrado el service worker de la PWA vieja, darlo de baja también desde la página
+    // (el sw.js nuevo lo hace solo, esto cubre el caso en que el navegador todavía no lo actualizó).
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (rs) {
+          rs.forEach(function (r) { r.unregister() })
+        })
+      }
+    } catch (e) {}
+    setTimeout(function () { window.location.replace('https://app.dist-at.com/') }, 3000)
+  </script>
+</body>
+</html>

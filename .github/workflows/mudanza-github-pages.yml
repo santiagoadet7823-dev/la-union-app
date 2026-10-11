@@ -1,0 +1,39 @@
+name: Mudanza de GitHub Pages a app.dist-at.com
+
+# Se corre UNA vez y A MANO (plan 10, fase 4), cuando ya nadie use la PWA vieja de github.io.
+# Publica en santiagoadet7823-dev.github.io/la-union-app/ la carpeta `mudanza-github-pages/`:
+# aviso + redirección a https://app.dist-at.com/, un sw.js que se autodestruye y `oauth.html`
+# (puente de login de APKs viejos, copia de web/public/oauth.html).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages-mudanza
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp mudanza-github-pages/index.html mudanza-github-pages/404.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: mudanza-github-pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

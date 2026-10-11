@@ -30,9 +30,10 @@ npm run preview
 ```
 
 ## 3. Desplegar como PWA (hosting estático)
-El `dist/` se sirve en cualquier hosting (Netlify, Vercel, GitHub Pages, etc.).
-- Para **GitHub Pages en subruta** (`usuario.github.io/repo/`): cambiar `base: './'`
-  por `base: '/repo/'` en [vite.config.js](web/vite.config.js).
+La PWA se publica en **https://app.dist-at.com** (Cloudflare Pages, proyecto `dist-at`) con cada
+push a `main` ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). Se sirve en la raíz:
+`base: '/'` en [vite.config.js](web/vite.config.js). Si algún día volviera a una subruta, cambiar
+`base` y las Redirect URLs del servidor (`infra/selfhost/configurar_env.sh`).
 
 ## 4. Compilar la app híbrida (Android / iOS) con Capacitor
 ```bash

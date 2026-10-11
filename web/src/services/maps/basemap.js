@@ -4,8 +4,8 @@
  * se actualice en vivo. El color de pines/trazos NO depende de esto (lo sigue fijando el tema).
  *
  * Stadia exige API key en producción (keyless SOLO en localhost). Pegá la key en STADIA_KEY:
- * sin ella, las dos capas Stadia solo cargan en el dev server, no en la PWA (github.io) ni el APK.
- * Además hay que registrar el dominio `santiagoadet7823-dev.github.io` en el panel de Stadia.
+ * sin ella, las dos capas Stadia solo cargan en el dev server, no en la PWA ni el APK.
+ * Además hay que registrar el dominio de la PWA (`app.dist-at.com`) en el panel de Stadia.
  */
 
 // API key de Stadia (cuenta gratis en stadiamaps.com). Es una clave de navegador (va en el bundle);
