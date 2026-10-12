@@ -134,6 +134,25 @@ export async function selloDePrecios(idEmpresa) {
 }
 
 /**
+ * EL CENTINELA DE LA CARTERA (07/10/2026, db/86). Gemelo de `selloDePrecios`: una fila para decidir
+ * si vale la pena bajar el catálogo entero. Se mueve con las altas de clientes y con las
+ * reasignaciones de código del servidor.
+ *
+ * Por qué hace falta ahora: el código del cliente lo da la app y el servidor resuelve las
+ * colisiones offline. Sin esto, el teléfono que perdió una colisión seguiría mostrando el número
+ * viejo toda la jornada, y los demás seguirían proponiendo huecos contra una cartera vieja (más
+ * colisiones). Mismo cuidado que el de precios: un error devuelve null y no recarga nada.
+ *
+ * Marketing no lo pide (no baja clientes, db/82); la RPC igual le devuelve null.
+ */
+export async function selloDeClientes(idEmpresa) {
+  if (!idEmpresa) return null
+  const { data, error } = await supabase.rpc('sello_clientes')
+  if (error) return null
+  return data || null
+}
+
+/**
  * Lee la caché local del catálogo de una empresa.
  * Devuelve `{productos, clientes, zonas, categorias, bajadoTs, sello}` | null.
  *

@@ -6,7 +6,7 @@ import { normalizarEscalas } from '../lib/precios'
 import { uid } from '../lib/uid'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
 import { startPosQueue } from '../services/sync/queue'
-import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo, selloDePrecios } from '../services/data/catalogo'
+import { fetchCatalogo, leerCacheCatalogo, escribirCacheCatalogo, selloDePrecios, selloDeClientes } from '../services/data/catalogo'
 import { BUCKET_PRODUCTOS, rutasImagenProducto } from '../services/data/productoImagen'
 
 /**
@@ -42,6 +42,11 @@ function mapCliente(c) {
     // La condición de pago pactada con el comercio (db/62). Sin esto el vendedor elegiría lo
     // mismo cuarenta veces por día, y a la cuadragésima elegiría mal.
     formaPagoDefault: c.forma_pago_default || null,
+    // db/86. `exportado` = el ERP ya conoce a este comercio por su código, que desde ahí no se
+    // cambia desde la app (lo frena también un trigger). `codigoSolicitado` = el número que pidió
+    // el teléfono cuando el servidor tuvo que darle otro por una colisión offline.
+    exportado: !!c.exportado_ts,
+    codigoSolicitado: c.codigo_reasignado_ts ? (c.codigo_solicitado || null) : null,
   }
 }
 
@@ -137,6 +142,8 @@ export function CatalogProvider({ children }) {
   // El sello de la última importación de precios que este teléfono ya aplicó, y cuándo se preguntó
   // por última vez. Van en refs y no en estado: cambiarlos no tiene que redibujar nada.
   const selloRef = useRef(null)
+  // Ídem para la cartera (db/86): altas y reasignaciones de código. Ver `selloDeClientes`.
+  const selloClientesRef = useRef(null)
   const ultimoSelloChequeoRef = useRef(0)
 
   const recargar = useCallback(async () => {
@@ -243,15 +250,26 @@ export function CatalogProvider({ children }) {
       const ahora = Date.now()
       if (ahora - ultimoSelloChequeoRef.current < SELLO_MIN_MS) return
       ultimoSelloChequeoRef.current = ahora
-      const sello = await selloDePrecios(idEmpresa)
-      if (!vivo || !sello) return
-      // La primera vuelta sólo memoriza: no se sabe con qué lista se arrancó, y recargar acá sería
-      // pagar la bajada completa en cada arranque para nada.
-      if (selloRef.current === null) { selloRef.current = sello; return }
-      if (sello !== selloRef.current) {
-        selloRef.current = sello
-        recargar()
+      // Los dos sellos en paralelo: son dos filas, y cualquiera de los dos que se haya movido paga
+      // UNA sola recarga. Marketing no baja clientes (db/82), así que no pregunta el de la cartera.
+      const [sello, selloCli] = await Promise.all([
+        selloDePrecios(idEmpresa),
+        soloCatalogo ? null : selloDeClientes(idEmpresa),
+      ])
+      if (!vivo) return
+      // La primera vuelta de cada sello sólo memoriza: no se sabe con qué datos se arrancó, y
+      // recargar acá sería pagar la bajada completa en cada arranque para nada. Un sello null (sin
+      // envíos todavía, o error de red) no cuenta como cambio.
+      let cambio = false
+      if (sello) {
+        if (selloRef.current === null) selloRef.current = sello
+        else if (sello !== selloRef.current) { selloRef.current = sello; cambio = true }
       }
+      if (selloCli) {
+        if (selloClientesRef.current === null) selloClientesRef.current = selloCli
+        else if (selloCli !== selloClientesRef.current) { selloClientesRef.current = selloCli; cambio = true }
+      }
+      if (cambio) recargar()
     }
 
     const alVolver = () => { if (document.visibilityState === 'visible') chequear() }
@@ -259,7 +277,7 @@ export function CatalogProvider({ children }) {
     const i = setInterval(chequear, REFRESCO_MS)
     chequear()
     return () => { vivo = false; document.removeEventListener('visibilitychange', alVolver); clearInterval(i) }
-  }, [idEmpresa, recargar])
+  }, [idEmpresa, recargar, soloCatalogo])
   // Arranca el auto-flush GLOBAL de ambas colas offline (escrituras de catálogo + posiciones GPS),
   // independiente del rastreo. Así el recorrido capturado sin internet sube al reconectar/volver a
   // primer plano aunque la jornada ya haya terminado.
@@ -289,6 +307,13 @@ export function CatalogProvider({ children }) {
       id_vendedor: esMovil ? (user?.id || null) : (c.id_vendedor || null),
       id_zona: c.id_zona || null,
       activo: !esMovil,
+      // EL RASTREO DEL ALTA (db/86). La hora es la del DISPOSITIVO, al tocar "Guardar" —no la de
+      // subida—, igual que `pedidos.created_at` en useJornada: es la que decide quién se queda el
+      // código si dos vendedores sin señal tomaron el mismo hueco. El servidor la recorta a su
+      // `now()` y pisa `creado_por` con `auth.uid()`: acá viajan para que el dato salga del
+      // teléfono, no porque se les crea.
+      creado_ts: new Date().toISOString(),
+      creado_por: user?.id || null,
     }
     setClientes((prev) => [...prev, mapCliente(row)].sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: row })

@@ -146,14 +146,23 @@ export default function PedidosView({ onToast }) {
   const avisoRetenidos = useMemo(() => {
     if (!retenidos.length) return null
     const vend = new Set(), cli = new Set()
+    // db/86: los que esperan a que su cliente salga al ERP. No falta cargar nada: se cuentan aparte
+    // para no mandar a nadie a "cargar un código" que ya está.
+    let esperanCliente = 0
     for (const p of retenidos) {
-      if (motivoRetencion(p) === 'vendedor') vend.add(p.nombreVendedor || 'alguien sin nombre')
+      const m = motivoRetencion(p)
+      if (m === 'vendedor') vend.add(p.nombreVendedor || 'alguien sin nombre')
+      else if (m === 'clienteSinEnviar') esperanCliente++
       else cli.add(p.comercio?.name || 'un comercio sin nombre')
     }
+    const frases = []
     const partes = []
     if (vend.size) partes.push(`el código de vendedor de ${[...vend].join(', ')} (Menú → Usuarios → "Código ERP")`)
     if (cli.size) partes.push(`el código de cliente de ${[...cli].join(', ')} (Menú → Clientes)`)
-    return `${retenidos.length} pedido${retenidos.length === 1 ? '' : 's'} no sale${retenidos.length === 1 ? '' : 'n'} al ERP hasta cargar ${partes.join(' y ')}.`
+    const nCargar = retenidos.length - esperanCliente
+    if (nCargar) frases.push(`${nCargar} pedido${nCargar === 1 ? '' : 's'} no sale${nCargar === 1 ? '' : 'n'} al ERP hasta cargar ${partes.join(' y ')}.`)
+    if (esperanCliente) frases.push(`${esperanCliente} espera${esperanCliente === 1 ? '' : 'n'} a que su cliente nuevo llegue al ERP (sale solo, cada 30 minutos).`)
+    return frases.join(' ')
   }, [retenidos])
   const errorAhora = enPapelera ? errorPapelera : error
 
@@ -493,9 +502,12 @@ export default function PedidosView({ onToast }) {
                     ERP{p.export_lote ? ` #${p.export_lote}` : ''}
                   </span>
                 )}
-                {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta. */}
+                {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta.
+                    db/86: o hasta que su cliente nuevo llegue al ERP, que no pide cargar nada. */}
                 {motivoRetencion(p) && (
-                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
+                  <span title={motivoRetencion(p) === 'clienteSinEnviar'
+                    ? 'No sale al ERP hasta que su cliente nuevo llegue al sistema de gestión. Sale solo en el próximo lote.'
+                    : `No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
                     Retenido · {TEXTO_RETENCION[motivoRetencion(p)]}
                   </span>
                 )}

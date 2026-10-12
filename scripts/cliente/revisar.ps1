@@ -124,6 +124,56 @@ if (-not (Test-Path $log)) {
   $lineas | Select-Object -Last 6 | ForEach-Object { Write-Host "          $_" -ForegroundColor DarkGray }
 }
 
+# --- La bajada de clientes (07/10/2026, db/86) -------------------------------
+# Solo si este equipo la tiene instalada (INSTALAR-CLIENTES.bat): un equipo que solo manda precios
+# no tiene por que mostrar un problema de clientes.
+$TAREA_CLI = 'DisT-At - bajar clientes'
+$tc = Get-ScheduledTask -TaskName $TAREA_CLI -ErrorAction SilentlyContinue
+if ($tc) {
+  Titulo 'La bajada de clientes'
+  $infc = Get-ScheduledTaskInfo -TaskName $TAREA_CLI
+  if ($tc.State -eq 'Disabled') {
+    Malo 'La tarea de clientes existe pero esta DESHABILITADA.'
+    $problemas += 'tarea de clientes deshabilitada'
+  } else {
+    Ok "La tarea de clientes existe y esta habilitada (cada $($tc.Triggers[0].Repetition.Interval), PT30M = 30 minutos)."
+  }
+  Info "Ultima ejecucion : $($infc.LastRunTime)   (codigo $($infc.LastTaskResult))"
+  Info "Proxima ejecucion: $($infc.NextRunTime)"
+
+  $cfgCli = Join-Path $base 'config-clientes.txt'
+  if (Test-Path $cfgCli) {
+    $carpetaCli = (Get-Content $cfgCli -Raw).Trim()
+    Info "Carpeta del ERP  : $carpetaCli"
+    $pendiente = Join-Path $carpetaCli 'Clientes.txt'
+    if (Test-Path $pendiente) {
+      $min = [math]::Round(((Get-Date) - (Get-Item $pendiente).LastWriteTime).TotalMinutes)
+      # 🩸 Mientras el archivo siga ahi, bajar-clientes.ps1 no pide nada nuevo (para no pisarlo).
+      # Si lleva mucho, el que se trabo es el IMPORTADOR del ERP, no la bajada.
+      if ($min -gt 90) {
+        Aviso "Clientes.txt esta sin importar hace $min minutos."
+        Info  'Eso NO es un problema de la bajada: el sistema de gestion no lo importo.'
+        Info  'Mientras siga ahi no se piden clientes nuevos (para no perder ninguno).'
+        $problemas += 'Clientes.txt sin importar'
+      } else {
+        Info "Clientes.txt esperando que el ERP lo importe (hace $min minutos)."
+      }
+    }
+  }
+
+  $logc = Join-Path $base ("registros\clientes-" + (Get-Date -Format 'yyyy-MM-dd') + ".log")
+  if (Test-Path $logc) {
+    $lc = Get-Content $logc
+    $bajadas = ($lc | Select-String 'HTTP 200').Count
+    $erroresC = ($lc | Select-String 'ERROR').Count
+    Ok "$bajadas bajadas con clientes nuevos hoy - $erroresC con error"
+    if ($erroresC -gt 0) { $problemas += "$erroresC errores en el registro de clientes de hoy" }
+    $lc | Select-Object -Last 4 | ForEach-Object { Write-Host "          $_" -ForegroundColor DarkGray }
+  } else {
+    Aviso 'Todavia no hay registro de clientes de hoy.'
+  }
+}
+
 # --- Veredicto ---------------------------------------------------------------
 Write-Host ''
 Write-Host '  ===============================================================' -ForegroundColor Cyan

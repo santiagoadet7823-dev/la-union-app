@@ -85,13 +85,17 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   }
 
   async function guardar() {
-    if (puedeEditar && ocupadoPor) { onToast(`El código ${codigoEdit.trim()} ya lo usa ${ocupadoPor.name}`); return }
+    if (puedeEditar && !fc.exportado && ocupadoPor) { onToast(`El código ${codigoEdit.trim()} ya lo usa ${ocupadoPor.name}`); return }
     setGuardando(true)
     const dias_visita = formatDias(DIAS.filter((d) => diasSel[d]))
     const patch = { geofence_radio: geoRadio, dias_visita: dias_visita || null, frecuencia: freqSel }
     if (puedeEditar) {
       patch.nombre_comercio = nombreEdit.trim() || fc.name
-      patch.codigo = codigoEdit.trim() || null
+      // 🔴 Un cliente que ya está en el ERP NO manda `codigo` (db/86): el trigger
+      // `cliente_exportado_congelado` lo rechazaría y la mutación se iría a cuarentena con el resto
+      // de los cambios de la ficha. Misma lógica que `frenarSiExportado` para pedidos: la guarda que
+      // evita encolar vive acá, el trigger es la red.
+      if (!fc.exportado) patch.codigo = codigoEdit.trim() || null
       patch.localidad = locEdit.trim() || null
       patch.horario = horarioEdit.trim() || null
       patch.telefono = telefonoEdit.trim() || null
@@ -137,10 +141,23 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
           <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>
             <div>
               <div style={fieldLabel}>Código</div>
-              <input value={codigoEdit} onChange={(e) => setCodigoEdit(e.target.value)} placeholder="—" className="lu-input" style={{ ...inp, ...(ocupadoPor ? { borderColor: 'var(--danger)' } : null) }} aria-invalid={!!ocupadoPor} />
-              {ocupadoPor && (
+              <input value={codigoEdit} onChange={(e) => setCodigoEdit(e.target.value)} placeholder="—" readOnly={fc.exportado} className="lu-input"
+                style={{ ...inp, ...(fc.exportado ? { background: 'var(--surface2)', color: 'var(--muted)' } : null), ...(!fc.exportado && ocupadoPor ? { borderColor: 'var(--danger)' } : null) }}
+                aria-invalid={!fc.exportado && !!ocupadoPor} />
+              {fc.exportado ? (
+                <div style={sx('margin-top:5px;font-size:11px;color:var(--faint);line-height:1.4')}>
+                  Ya está en el sistema de gestión con este código. Se corrige allá.
+                </div>
+              ) : ocupadoPor && (
                 <div style={sx('margin-top:5px;font-size:11px;color:var(--danger);font-weight:600;line-height:1.4')}>
                   Ya lo usa {ocupadoPor.name}{ocupadoPor.archivado ? ' (archivado)' : ''}.
+                </div>
+              )}
+              {/* db/86: dos vendedores sin señal tomaron el mismo número y el servidor le dio otro a
+                  éste (ganó el que se creó antes). Se muestra para que nadie lo busque por el viejo. */}
+              {fc.codigoSolicitado && (
+                <div style={sx('margin-top:5px;font-size:11px;color:var(--warning);font-weight:600;line-height:1.4')}>
+                  Código reasignado (había pedido {fc.codigoSolicitado}).
                 </div>
               )}
             </div>
