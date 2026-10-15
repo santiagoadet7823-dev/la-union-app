@@ -67,17 +67,17 @@
       </a>
       <nav class="menu" aria-label="Secciones">
         <a href="#como-funciona">Cómo funciona</a>
-        <a href="#pantallas">Pantallas</a>
+        <a href="#recorrido">La app</a>
         <a href="#dueno">Para el dueño</a>
         <a class="nuevo" href="#local">DisT-At Local</a>
-        <a href="#contacto">Contacto</a>
+        <a href="#preguntas">Preguntas</a>
       </nav>
       <div class="cabecera-acciones">
         <a class="btn btn-borde btn-chico" href="https://app.dist-at.com/" aria-label="Ingresar a la aplicación">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
           <span class="solo-ancho">Ingresar</span>
         </a>
-        <a class="btn btn-primario btn-chico" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At%20para%20mi%20distribuidora." target="_blank" rel="noopener">Pedir demo</a>
+        <a class="btn btn-primario btn-chico" href="#demo">Pedir demo</a>
       </div>
     </div>
   </header>
@@ -94,11 +94,11 @@
           </h1>
           <p class="bajada">El vendedor toma el pedido en el comercio, la oficina lo recibe al momento y vos ves la ruta de cada uno sin tener que llamar a nadie.</p>
           <div class="acciones">
-            <a class="btn btn-primario btn-flecha" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At%20para%20mi%20distribuidora." target="_blank" rel="noopener">
+            <a class="btn btn-primario btn-flecha" href="#demo">
               Pedir una demo
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
             </a>
-            <a class="enlace-flecha" href="#pantallas">Ver las pantallas
+            <a class="enlace-flecha" href="#recorrido">Ver cómo se usa
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
             </a>
           </div>
@@ -151,201 +151,275 @@
       </div>
     </section>
 
-    <!-- CÓMO FUNCIONA -->
-    <section class="seccion" id="como-funciona">
+    <!-- FRASE (plan 17): se ilumina palabra por palabra al bajar (js/motion). Sin JS o con movimiento reducido, entera. -->
+    <section class="frase" aria-label="En pocas palabras">
       <div class="wrap">
-        <div class="titulo-seccion">
-          <h2>Así viaja un pedido.</h2>
-          <p>Sale de tu sistema, se arma en el comercio y vuelve a tu sistema. Nadie lo carga dos veces.</p>
-        </div>
-        <ol class="pasos">
-          <li class="aparece"><div class="paso-cab" aria-hidden="true"><span class="paso-n">1</span><span class="paso-linea"></span><span class="paso-ruta">tu sistema → celular</span></div><h3>Cargás los precios una vez</h3><p>Productos, fotos y lista de precios salen de tu sistema de gestión. Si cambiás un precio, el vendedor lo ve actualizado sin que le mandes nada.</p></li>
-          <li class="aparece"><div class="paso-cab" aria-hidden="true"><span class="paso-n">2</span><span class="paso-linea"></span><span class="paso-ruta">en la ruta</span></div><h3>El vendedor vende en el comercio</h3><p>Recorre su cartera y arma el pedido frente al cliente. Si en ese local no hay señal, el pedido se guarda y sale solo cuando el celular vuelve a conectarse.</p></li>
-          <li class="aparece"><div class="paso-cab" aria-hidden="true"><span class="paso-n">3</span><span class="paso-linea"></span><span class="paso-ruta">celular → oficina</span></div><h3>La oficina factura sin tipear</h3><p>El pedido entra en la oficina en el momento y pasa a tu sistema para facturar y armar la carga del día siguiente.</p></li>
-        </ol>
+        <p>Lo que pasa en la calle llega a la oficina mientras pasa. Y el día cierra con los números hechos.</p>
       </div>
     </section>
 
-    <!-- PANTALLAS -->
-    <section class="seccion seccion-blanca" id="pantallas">
+    <!-- CÓMO FUNCIONA = MUNDO DisT-At (plan 17). Animación de Claude Design en js/mundo.v3.js.
+         Con JS (.vivo): la sección queda fija, el scroll mueve el tiempo del pueblo y se ve la
+         tarjeta de cada parada. Sin JS: el póster (estado final) y los 5 pasos en lista. -->
+    <section class="mundo-sec" id="como-funciona" aria-labelledby="mundo-tit">
+      <div class="mundo-fijo">
+        <div id="mundo" class="mundo-lienzo">
+          <svg id="mundo-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Pueblo en miniatura: los precios salen de la oficina, cinco vendedores recorren sus zonas, un pedido se arma en un almacén y vuelve a la oficina."></svg>
+          <picture class="mundo-poster">
+            <source media="(max-aspect-ratio: 1/1)" srcset="/mundo/01-pueblo-v.webp">
+            <img src="/mundo/01-pueblo-h.webp" alt="El pueblo en miniatura a primera hora, con el depósito de la distribuidora y los cinco vendedores." width="1600" height="900" loading="lazy">
+          </picture>
+        </div>
+        <div class="wrap mundo-textos">
+          <ol class="mundo-pasos">
+            <li class="mundo-paso">
+              <span class="mundo-n" aria-hidden="true">1</span>
+              <h2 id="mundo-tit">Así viaja un pedido.</h2>
+              <p>Sale de tu sistema, se arma en el comercio y vuelve a tu sistema. Nadie lo carga dos veces.</p>
+            </li>
+            <li class="mundo-paso">
+              <span class="mundo-n" aria-hidden="true">2</span>
+              <img class="mundo-foto" src="/mundo/02-precios.webp" alt="Desde la oficina sale una onda que llega a los celulares de los cinco vendedores." width="1600" height="900" loading="lazy">
+              <h3>Los precios salen de la oficina</h3>
+              <p>Productos, fotos y lista de precios salen de tu sistema de gestión. Si cambiás un precio, el vendedor lo ve actualizado sin que le mandes nada.</p>
+            </li>
+            <li class="mundo-paso">
+              <span class="mundo-n" aria-hidden="true">3</span>
+              <img class="mundo-foto" src="/mundo/03-recorrido.webp" alt="El vendedor celeste recorre su zona y quedan marcadas sus paradas." width="1600" height="900" loading="lazy">
+              <h3>Cada vendedor, en su zona</h3>
+              <p>Recorre su cartera comercio por comercio, con el catálogo y los precios del día en el celular.</p>
+            </li>
+            <li class="mundo-paso">
+              <span class="mundo-n" aria-hidden="true">4</span>
+              <img class="mundo-foto" src="/mundo/04-pedido.webp" alt="En la puerta del almacén, el celular del vendedor muestra el pedido confirmado." width="1600" height="900" loading="lazy">
+              <h3>El pedido se arma frente al cliente</h3>
+              <p>Si en ese local no hay señal, el pedido se guarda y sale solo cuando el celular vuelve a conectarse.</p>
+            </li>
+            <li class="mundo-paso">
+              <span class="mundo-n" aria-hidden="true">5</span>
+              <img class="mundo-foto" src="/mundo/05-dia-completo.webp" alt="El pueblo de tarde, con el recorrido de cada vendedor y los pedidos llegados a la oficina." width="1600" height="900" loading="lazy">
+              <h3>La oficina factura sin tipear</h3>
+              <p>Los pedidos de todo el equipo entran en el momento y pasan a tu sistema para facturar y armar la carga del día siguiente.</p>
+            </li>
+          </ol>
+          <div class="mundo-progreso" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RECORRIDO POR LA APP (plan 17). Guion: VIDEO LANDING V3.mp4, con datos inventados (bloques
+         APP-* de capturas-landing/pantallas.html). Sin JS, en celular o con movimiento reducido: cada
+         paso con su pantalla debajo. En PC, js/recorrido mueve las pantallas a .rec-escenario (fijo a
+         la derecha) y las anima con el scroll. -->
+    <section class="recorrido" id="recorrido">
       <div class="wrap">
-        <div class="cab-pantallas">
-          <div class="titulo-seccion">
-            <h2>Lo que ve cada uno.</h2>
-            <p>Son las pantallas que usa el equipo, con nombres, comercios e importes inventados.</p>
-          </div>
-          <div class="pestanas" role="tablist" aria-label="Elegí el dispositivo">
-            <button type="button" role="tab" id="tab-cel" aria-controls="panel-cel" aria-selected="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
-              En la calle
-            </button>
-            <button type="button" role="tab" id="tab-pc" aria-controls="panel-pc" aria-selected="false" tabindex="-1">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              En la oficina
-            </button>
-          </div>
+        <div class="titulo-seccion">
+          <h2>Un día de trabajo, pantalla por pantalla.</h2>
+          <p>Es lo que ves desde la oficina mientras el equipo está en la calle. Los nombres, comercios e importes son inventados.</p>
         </div>
-
-        <div class="panel-pantallas" id="panel-cel" role="tabpanel" aria-labelledby="tab-cel">
-          <div class="tira-celulares">
-            <figure>
-              <div class="telefono"><!--CEL-CATALOGO-->
-<div class="pantalla-cel"><div class="app" role="img" aria-label="Catálogo en el celular del vendedor: productos con foto y precio para armar el pedido (datos de ejemplo).">
-  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
-  <div class="cel-pantalla" aria-hidden="true">
-    <div class="cel-tit"><b>Catálogo</b><small>1.284 productos</small></div>
-    <div class="cel-buscar"><svg><use href="#i-buscar"/></svg>Buscar producto o código</div>
-    <div class="cel-cats"><span class="on">Todos</span><span>Bebidas</span><span>Almacén</span><span>Limpieza</span></div>
-    <div class="cel-prods">
-      <div class="cel-prod"><div class="foto t1"><svg><use href="#p-botella"/></svg></div><div><b>Agua mineral 2 L</b><small>pack x6</small><span class="precio">$ 7.920<i>+</i></span></div></div>
-      <div class="cel-prod"><div class="foto t2"><svg><use href="#p-botella"/></svg></div><div><b>Gaseosa cola 1,5 L</b><small>pack x6</small><span class="precio">$ 13.200<i>+</i></span></div></div>
-      <div class="cel-prod"><div class="foto t3"><svg><use href="#p-bolsa"/></svg></div><div><b>Yerba mate 1 kg</b><small>caja x10</small><span class="precio">$ 39.900<i>+</i></span></div></div>
-      <div class="cel-prod"><div class="foto t4"><svg><use href="#p-caja"/></svg></div><div><b>Galletitas surtidas</b><small>caja x12</small><span class="precio">$ 18.600<i>+</i></span></div></div>
-      <div class="cel-prod"><div class="foto t5"><svg><use href="#p-botella"/></svg></div><div><b>Aceite girasol</b><small>caja x12</small><span class="precio">$ 28.450<i>+</i></span></div></div>
-      <div class="cel-prod"><div class="foto t6"><svg><use href="#p-paquete"/></svg></div><div><b>Jabón en polvo</b><small>caja x10</small><span class="precio">$ 21.350<i>+</i></span></div></div>
-    </div>
-  </div>
-  <div class="cel-nav vidrio" aria-hidden="true"><span><svg><use href="#i-inicio"/></svg>Inicio</span><span><svg><use href="#i-ruta"/></svg>Ruta</span><span class="on"><svg><use href="#i-bolsa"/></svg>Catálogo</span><span><svg><use href="#i-perfil"/></svg>Perfil</span></div>
-</div></div>
-<!--/CEL-CATALOGO--></div>
-              <figcaption><b>El vendedor</b>Lleva el catálogo con fotos y precios para armar el pedido frente al cliente.</figcaption>
-            </figure>
-            <figure>
-              <div class="telefono"><!--CEL-MAPA-->
-<div class="pantalla-cel"><div class="app" role="img" aria-label="DisT-At en el celular: monitoreo en vivo con los recorridos del equipo sobre el mapa (datos de ejemplo).">
-  <div class="cel-mapa" aria-hidden="true"><img src="/capturas/mapa-cel.svg" alt="" width="470" height="960"></div>
-  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
-  <div class="cel-cab vidrio" aria-hidden="true"><img src="/logo.png" alt=""><div><b>Monitoreo en vivo</b><small>6 en la calle · 1 en reparto</small></div></div>
-  <div class="cel-riel" aria-hidden="true"><span class="vidrio"><svg><use href="#i-gente"/></svg><b>6</b></span><span class="vidrio"><svg><use href="#i-camion"/></svg></span><span class="vidrio"><svg><use href="#i-cal"/></svg></span><span class="vidrio"><svg><use href="#i-capas"/></svg></span></div>
-  <div class="cel-hoja" aria-hidden="true"><div class="asa"></div><h5>Equipo en la calle <small>hoy</small></h5><div class="cel-kpis"><div><small>Visitas</small><b>48</b></div><div><small>Pedidos</small><b>31</b></div><div><small>Km</small><b>86</b></div></div></div>
-  <div class="cel-nav vidrio" aria-hidden="true"><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-menu"/></svg>Menú</span></div>
-</div></div>
-<!--/CEL-MAPA--></div>
-              <figcaption><b>El supervisor</b>Ve dónde está cada vendedor y por qué comercios pasó hoy.</figcaption>
-            </figure>
-            <figure>
-              <div class="telefono"><!--CEL-PANEL-->
-<div class="pantalla-cel"><div class="app" role="img" aria-label="Panel en el celular: ventas, pedidos, visitas y meta del día, y el avance de cada vendedor (datos de ejemplo).">
-  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
-  <div class="cel-pantalla" aria-hidden="true">
-    <div class="cel-tit"><b>Dashboard</b><small>mar 14 oct</small></div>
-    <div class="cel-cuadro">
-      <div><small>Ventas hoy</small><b>$ 4,8 M</b><span>▲ 9 %</span></div>
-      <div><small>Pedidos</small><b>31</b><span>▲ 4</span></div>
-      <div><small>Visitas</small><b>48/62</b><div class="app-barra"><i style="width:77%"></i></div></div>
-      <div><small>Meta mes</small><b>74 %</b><div class="app-barra"><i style="width:74%"></i></div></div>
-    </div>
-    <div class="cel-lista">
-      <div class="app-fila"><i style="background:#0ea5e9"></i><span>M. Díaz<small>12 visitas · 8 pedidos</small></span><span class="mono">$ 1,3 M</span><div class="app-barra"><i style="width:88%;background:#0ea5e9"></i></div></div>
-      <div class="app-fila"><i style="background:#f59e0b"></i><span>P. Gómez<small>10 visitas · 6 pedidos</small></span><span class="mono">$ 1,0 M</span><div class="app-barra"><i style="width:79%;background:#f59e0b"></i></div></div>
-      <div class="app-fila"><i style="background:#10b981"></i><span>D. Sosa<small>9 visitas · 6 pedidos</small></span><span class="mono">$ 0,9 M</span><div class="app-barra"><i style="width:72%;background:#10b981"></i></div></div>
-      <div class="app-fila"><i style="background:#ef4444"></i><span>H. Ríos<small>8 visitas · 5 pedidos</small></span><span class="mono">$ 0,8 M</span><div class="app-barra"><i style="width:64%;background:#ef4444"></i></div></div>
-      <div class="app-fila"><i style="background:#8b5cf6"></i><span>M. Vega<small>6 visitas · 4 pedidos</small></span><span class="mono">$ 0,5 M</span><div class="app-barra"><i style="width:51%;background:#8b5cf6"></i></div></div>
-    </div>
-    <div class="cel-lista" style="padding:1em 1.1em 0.8em">
-      <div class="cel-tit" style="font-size:.6em"><b>Pedidos por hora</b><small>hoy</small></div>
-      <svg viewBox="0 0 300 90" style="width:100%;height:auto;margin-top:.6em">
-        <g fill="#2d6778" opacity=".32"><rect x="4" y="58" width="22" height="22" rx="4"/><rect x="34" y="34" width="22" height="46" rx="4"/><rect x="64" y="18" width="22" height="62" rx="4"/><rect x="94" y="26" width="22" height="54" rx="4"/><rect x="124" y="46" width="22" height="34" rx="4"/><rect x="154" y="62" width="22" height="18" rx="4"/><rect x="184" y="40" width="22" height="40" rx="4"/></g>
-        <rect x="214" y="30" width="22" height="50" rx="4" fill="#2d6778"/>
-        <g font-family="Nunito Sans, sans-serif" font-size="10" fill="#4c5f6b" text-anchor="middle"><text x="15" y="90">8</text><text x="75" y="90">10</text><text x="135" y="90">12</text><text x="195" y="90">14</text><text x="225" y="90">15</text></g>
-      </svg>
-    </div>
-  </div>
-  <div class="cel-nav vidrio" aria-hidden="true"><span><svg><use href="#i-mapa"/></svg>Mapa</span><span class="on"><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-menu"/></svg>Menú</span></div>
-</div></div>
-<!--/CEL-PANEL--></div>
-              <figcaption><b>También el supervisor</b>Sigue las ventas y los pedidos de cada uno, hora por hora.</figcaption>
-            </figure>
-          </div>
-        </div>
-
-        <div class="panel-pantallas" id="panel-pc" role="tabpanel" aria-labelledby="tab-pc" hidden>
-          <div class="tira-pc">
-            <figure>
-              <div class="ventana">
-                <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Mapa del día</span></div>
-                <!--PC-MAPA-->
-<div class="pantalla-pc"><div class="app" role="img" aria-label="DisT-At en la PC: mapa en vivo con el recorrido del día de cada vendedor, cada uno con su color (datos de ejemplo).">
+        <div class="rec">
+          <ol class="rec-pasos">
+            <li class="rec-paso">
+              <div class="rec-texto">
+                <span class="rec-n" aria-hidden="true">1</span>
+                <h3>Todo el equipo en un mapa</h3>
+                <p>Ves dónde está cada vendedor aunque trabajen en pueblos distintos. Te acercás a uno y aparece el recorrido de todos, cada uno con su color.</p>
+              </div>
+              <figure class="rec-fig">
+                <div class="ventana">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Mapa</span></div>
+                  <!--APP-PROVINCIA-->
+<div class="pantalla-pc"><div class="app esc-prov" role="img" aria-label="Mapa de la provincia con los seis vendedores del día y, al acercarse, el pueblo con el recorrido de cada uno (datos de ejemplo).">
   <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
   <div class="app-main" aria-hidden="true">
     <div class="app-top"><div><small>Supervisión › Encargado</small><b>Mapa en vivo</b></div><div class="der"><span class="app-pill">En línea · 10:42</span><span class="app-sel">DISTRIBUIDORA<svg><use href="#i-chev"/></svg></span><span class="app-av">EG</span></div></div>
     <div class="app-card app-mapa-card">
-      <div class="app-chips"><span class="app-chip"><i></i><span class="mono">6</span>Vendedores</span><span class="app-chip"><i style="background:#2e3a44"></i><span class="mono">1</span>Repartidor</span><span class="app-chip der"><svg><use href="#i-cal"/></svg><span class="mono">14/10/2026</span></span><span class="app-chip"><svg><use href="#i-reloj"/></svg>Paradas</span><span class="app-chip"><svg><use href="#i-pin"/></svg>Clientes</span><span class="app-chip"><svg><use href="#i-centrar"/></svg>Centrar</span></div>
-      <div class="app-mapa"><img src="/capturas/mapa.svg" alt="" width="1600" height="1000"><div class="app-zoom"><span>+</span><span>−</span></div><div class="app-leyenda"><span><i style="background:#0ea5e9"></i>Recorrido</span><span><i style="background:repeating-linear-gradient(90deg,#2e3a44 0 5px,transparent 5px 8px)"></i>Reparto</span><span><i style="width:.7em;height:.7em;border-radius:50%;background:#10b981"></i>Visita</span></div></div>
+      <div class="app-chips"><span class="app-chip"><i></i><span class="mono">6</span>Vendedores</span><span class="app-chip"><i style="background:#2e3a44"></i><span class="mono">1</span>Repartidor</span><span class="app-chip der"><svg><use href="#i-cal"/></svg><span class="mono">14/10/2026</span></span><span class="app-chip"><svg><use href="#i-pin"/></svg>Clientes</span><span class="app-chip"><svg><use href="#i-centrar"/></svg>Centrar</span></div>
+      <div class="app-mapa">
+        <img class="prov-pueblo" src="/capturas/mapa.svg" alt="" width="1600" height="1000">
+        <svg class="prov" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+          <defs><pattern id="prov-manz" width="24" height="24" patternUnits="userSpaceOnUse"><rect width="24" height="24" fill="#fff"/><rect x="3" y="3" width="18" height="18" rx="3" fill="#dfe4dd"/></pattern></defs>
+          <rect width="1600" height="1000" fill="#eef0eb"/>
+          <g fill="#dbe8d3"><path d="M0 0h420c-40 120-10 230-120 300S40 420 0 520z"/><path d="M1600 0v380c-140-30-240 20-330-60s-60-200-150-320z"/><path d="M380 1000c40-120 160-160 280-140s200 80 300 140z"/><ellipse cx="1360" cy="760" rx="170" ry="110"/></g>
+          <path d="M-20 640C220 600 360 700 520 650S800 500 960 520s300 140 660 90" fill="none" stroke="#bcd8e6" stroke-width="9" stroke-linecap="round"/>
+          <path d="M-20 880L1620 260" stroke="#e2c777" stroke-width="16"/><path d="M-20 880L1620 260" stroke="#f3dfa2" stroke-width="11"/>
+          <path d="M600 -20L1080 1020M120 220L700 420L1240 380M960 560L1500 900" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+          <rect x="902" y="498" width="168" height="120" rx="10" fill="url(#prov-manz)" transform="rotate(-9 986 558)"/>
+          <rect x="372" y="388" width="84" height="60" rx="8" fill="url(#prov-manz)" transform="rotate(-9 414 418)"/>
+          <rect x="1266" y="318" width="72" height="54" rx="8" fill="url(#prov-manz)" transform="rotate(-9 1302 345)"/>
+          <rect x="618" y="168" width="60" height="48" rx="8" fill="url(#prov-manz)" transform="rotate(-9 648 192)"/>
+          <g class="prov-pines" font-family="Nunito Sans, system-ui, sans-serif" font-weight="700" text-anchor="middle">
+            <g transform="translate(944 520)"><circle r="21" fill="#0ea5e9" stroke="#fff" stroke-width="4"/><text y="5" font-size="14" fill="#fff">MD</text></g>
+            <g transform="translate(1030 540)"><circle r="21" fill="#f59e0b" stroke="#fff" stroke-width="4"/><text y="5" font-size="14" fill="#fff">PG</text></g>
+            <g transform="translate(990 604)"><circle r="21" fill="#10b981" stroke="#fff" stroke-width="4"/><text y="5" font-size="14" fill="#fff">DS</text></g>
+            <g transform="translate(410 410)"><circle r="21" fill="#ef4444" stroke="#fff" stroke-width="4"/><text y="5" font-size="14" fill="#fff">HR</text></g>
+            <g transform="translate(1300 340)"><circle r="21" fill="#8b5cf6" stroke="#fff" stroke-width="4"/><text y="5" font-size="14" fill="#fff">MV</text></g>
+            <g transform="translate(650 186)"><circle r="21" fill="#ec4899" stroke="#fff" stroke-width="4"/><text y="5" font-size="14" fill="#fff">LP</text></g>
+          </g>
+        </svg>
+        <div class="app-zoom"><span>+</span><span>−</span></div>
+      </div>
     </div>
   </div>
 </div></div>
-<!--/PC-MAPA-->
+<!--/APP-PROVINCIA-->
+                </div>
+              </figure>
+            </li>
+            <li class="rec-paso">
+              <div class="rec-texto">
+                <span class="rec-n" aria-hidden="true">2</span>
+                <h3>El día de cada vendedor, parada por parada</h3>
+                <p>Elegís a uno y se dibuja su recorrido: en qué comercios paró, a qué hora y cuántos minutos se quedó. Al final del día, los kilómetros y las paradas ya están sumados.</p>
               </div>
-              <figcaption><b>Mapa del día</b>Cada recorrido con su color y los comercios visitados.</figcaption>
-            </figure>
-            <div class="tira-pc-lado">
-              <figure>
-                <div class="ventana ventana-chica">
-                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>Panel</span></div>
-                  <!--PC-PANEL-->
-<div class="pantalla-pc"><div class="app" role="img" aria-label="Panel de la dirección: ventas, pedidos, visitas y metas por vendedor (datos de ejemplo).">
-  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span><svg><use href="#i-mapa"/></svg>Mapa</span><span class="on"><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+              <figure class="rec-fig">
+                <div class="ventana">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Recorrido</span></div>
+                  <!--APP-RUTA-->
+<div class="pantalla-pc"><div class="app esc-ruta" role="img" aria-label="Recorrido del día de un vendedor sobre el mapa del pueblo, con cada parada numerada y los minutos que estuvo en cada comercio (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
   <div class="app-main" aria-hidden="true">
-    <div class="app-top"><div><small>Supervisión › Encargado</small><b>Dashboard total</b></div><div class="der"><span class="app-sel"><svg><use href="#i-cal"/></svg>Octubre 2026<svg><use href="#i-chev"/></svg></span><span class="app-av">EG</span></div></div>
-    <div class="app-kpis">
-      <div class="app-kpi"><small>Ventas del mes</small><b>$ 48,6 M</b><span>▲ 12 % vs. sept.</span></div>
-      <div class="app-kpi"><small>Pedidos</small><b>1.236</b><span>▲ 8 %</span></div>
-      <div class="app-kpi"><small>Visitas</small><b>3.410</b><span>87 % de la ruta</span></div>
-      <div class="app-kpi"><small>Meta del mes</small><b>74 %</b><div class="app-barra"><i style="width:74%"></i></div></div>
-    </div>
-    <div class="app-dos">
-      <div class="app-card"><h5>Ventas por día <span class="mono">últimos 14 días</span></h5>
-        <div class="app-grafico"><svg viewBox="0 0 300 150" style="width:100%;height:auto">
-          <g fill="#2d6778" opacity=".32"><rect x="6" y="62" width="14" height="70" rx="3"/><rect x="27" y="48" width="14" height="84" rx="3"/><rect x="48" y="70" width="14" height="62" rx="3"/><rect x="69" y="40" width="14" height="92" rx="3"/><rect x="90" y="54" width="14" height="78" rx="3"/><rect x="111" y="96" width="14" height="36" rx="3"/><rect x="132" y="58" width="14" height="74" rx="3"/><rect x="153" y="44" width="14" height="88" rx="3"/><rect x="174" y="66" width="14" height="66" rx="3"/><rect x="195" y="36" width="14" height="96" rx="3"/><rect x="216" y="50" width="14" height="82" rx="3"/><rect x="237" y="92" width="14" height="40" rx="3"/><rect x="258" y="46" width="14" height="86" rx="3"/></g>
-          <rect x="279" y="26" width="14" height="106" rx="3" fill="#2d6778"/>
-          <path d="M0 132.5H300" stroke="#dde4e1"/><path d="M0 60H300" stroke="#dde4e1" stroke-dasharray="3 4"/>
-          <text x="2" y="56" font-family="Nunito Sans, sans-serif" font-size="8" fill="#4c5f6b">meta diaria</text>
-          <g font-family="Nunito Sans, sans-serif" font-size="8" fill="#4c5f6b" text-anchor="middle"><text x="13" y="145">1</text><text x="76" y="145">4</text><text x="139" y="145">7</text><text x="202" y="145">10</text><text x="286" y="145">hoy</text></g>
-        </svg></div>
+    <div class="app-top"><div><small>Supervisión › Mapa</small><b>Recorrido del día</b></div><div class="der"><span class="app-pill">En línea · 15:12</span><span class="app-av">EG</span></div></div>
+    <div class="app-card app-mapa-card">
+      <div class="app-mapa">
+<!--RUTA-MD-->
+<svg class="ruta-svg" viewBox="69.3 23.2 528.6 478.7" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+  <image href="/capturas/mapa-base.svg" x="-300" y="-360" width="2200" height="1720" preserveAspectRatio="none"/>
+  <polyline class="ruta-borde" points="408.5,93.2 420.1,166.3 347,177.9 335.5,104.8 347,177.9 358.6,251 370.2,324.1 443.3,312.5 454.9,385.6 527.9,374 454.9,385.6 381.8,397.2 308.7,408.7 297.1,335.6 285.5,262.6 212.4,274.1 139.3,285.7 150.9,358.8 162.5,431.9 150.9,358.8 139.3,285.7 212.4,274.1 285.5,262.6 358.6,251 431.7,239.4 504.8,227.8 431.7,239.4 358.6,251 285.5,262.6 212.4,274.1 139.3,285.7 212.4,274.1 285.5,262.6 358.6,251 431.7,239.4 504.8,227.8 516.4,300.9" pathLength="1"/>
+  <polyline class="ruta-linea" points="408.5,93.2 420.1,166.3 347,177.9 335.5,104.8 347,177.9 358.6,251 370.2,324.1 443.3,312.5 454.9,385.6 527.9,374 454.9,385.6 381.8,397.2 308.7,408.7 297.1,335.6 285.5,262.6 212.4,274.1 139.3,285.7 150.9,358.8 162.5,431.9 150.9,358.8 139.3,285.7 212.4,274.1 285.5,262.6 358.6,251 431.7,239.4 504.8,227.8 431.7,239.4 358.6,251 285.5,262.6 212.4,274.1 139.3,285.7 212.4,274.1 285.5,262.6 358.6,251 431.7,239.4 504.8,227.8 516.4,300.9" pathLength="1" stroke="#0ea5e9"/>
+  <g class="ruta-parada" data-t="0.083"><circle cx="322.2" cy="91.7" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="334.2" y="61.7" width="84" height="26" rx="8"/><text x="376.2" y="79.2">1 · 5 min</text></g></g>
+  <g class="ruta-parada" data-t="0.194"><circle cx="435.7" cy="335" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="339.7" y="305" width="84" height="26" rx="8"/><text x="381.7" y="322.5">2 · 14 min</text></g></g>
+  <g class="ruta-parada" data-t="0.333"><circle cx="295.5" cy="395.6" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="307.5" y="365.6" width="84" height="26" rx="8"/><text x="349.5" y="383.1">3 · 14 min</text></g></g>
+  <g class="ruta-parada" data-t="0.389"><circle cx="300" cy="245.1" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="312" y="215.1" width="84" height="26" rx="8"/><text x="354" y="232.6">4 · 11 min</text></g></g>
+  <g class="ruta-parada" data-t="0.389"><circle cx="277.9" cy="285" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="289.9" y="255" width="84" height="26" rx="8"/><text x="331.9" y="272.5">5 · 15 min</text></g></g>
+  <g class="ruta-parada" data-t="0.444"><circle cx="131.8" cy="308.2" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="143.8" y="278.2" width="84" height="26" rx="8"/><text x="185.8" y="295.7">6 · 17 min</text></g></g>
+  <g class="ruta-parada" data-t="0.667"><circle cx="446.1" cy="221.9" r="7" fill="#0ea5e9"/><g class="ruta-burbuja"><rect x="350.1" y="191.9" width="84" height="26" rx="8"/><text x="392.1" y="209.4">7 · 16 min</text></g></g>
+  <g class="ruta-pin" transform="translate(516.4 300.9)"><circle r="26" fill="#0ea5e9" opacity=".18"/><circle r="17" fill="#0ea5e9" stroke="#fff" stroke-width="3"/><text y="5">MD</text></g>
+</svg>
+<!--/RUTA-MD-->
+        <div class="ruta-vend"><span style="background:#0ea5e9" class="on">MD</span><span style="background:#f59e0b">PG</span><span style="background:#10b981">DS</span><span style="background:#ef4444">HR</span><span style="background:#8b5cf6">MV</span><span style="background:#ec4899">LP</span></div>
+        <div class="ruta-resumen"><b>M. Díaz</b><span class="mono"><span data-cuenta="19.4" data-dec="1">19,4</span> km recorridos</span><span class="mono"><span data-cuenta="7">7</span> paradas</span><span>última señal hace 16 s</span></div>
       </div>
-      <div class="app-card"><h5>Vendedores <span class="mono">meta</span></h5>
-        <div class="app-filas">
-          <div class="app-fila"><i style="background:#0ea5e9"></i><span>M. Díaz<small>214 pedidos</small></span><span class="mono">$ 9,4 M</span><div class="app-barra"><i style="width:88%;background:#0ea5e9"></i></div></div>
-          <div class="app-fila"><i style="background:#f59e0b"></i><span>P. Gómez<small>198 pedidos</small></span><span class="mono">$ 8,7 M</span><div class="app-barra"><i style="width:81%;background:#f59e0b"></i></div></div>
-          <div class="app-fila"><i style="background:#10b981"></i><span>D. Sosa<small>187 pedidos</small></span><span class="mono">$ 8,1 M</span><div class="app-barra"><i style="width:76%;background:#10b981"></i></div></div>
-          <div class="app-fila"><i style="background:#ef4444"></i><span>H. Ríos<small>176 pedidos</small></span><span class="mono">$ 7,6 M</span><div class="app-barra"><i style="width:70%;background:#ef4444"></i></div></div>
-          <div class="app-fila"><i style="background:#8b5cf6"></i><span>M. Vega<small>161 pedidos</small></span><span class="mono">$ 7,2 M</span><div class="app-barra"><i style="width:66%;background:#8b5cf6"></i></div></div>
+    </div>
+  </div>
+</div></div>
+<!--/APP-RUTA-->
+                </div>
+              </figure>
+            </li>
+            <li class="rec-paso">
+              <div class="rec-texto">
+                <span class="rec-n" aria-hidden="true">3</span>
+                <h3>Quién dejó de reportar, y por qué</h3>
+                <p>Si un celular deja de mandar su ubicación, la app te dice desde cuándo y qué hay que tocar: un permiso, la precisión o la versión. Se arregla en un minuto, por teléfono.</p>
+              </div>
+              <figure class="rec-fig">
+                <div class="ventana">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Equipo</span></div>
+                  <!--APP-EQUIPO-->
+<div class="pantalla-pc"><div class="app esc-equipo" role="img" aria-label="Estado del equipo: quién dejó de reportar, desde cuándo y qué tiene que cambiar en el celular para que vuelva (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+  <div class="app-main" aria-hidden="true">
+    <div class="app-top"><div><small>Supervisión › Encargado</small><b>Mapa en vivo</b></div><div class="der"><span class="app-pill">En línea · 15:12</span><span class="app-av">EG</span></div></div>
+    <div class="eq-dos">
+      <div class="app-card"><h5>Estado del equipo · por qué no llega la señal <span class="eq-alerta">2 con problema</span></h5>
+        <div class="eq-filas">
+          <div class="eq-fila"><i class="eq-punto rojo"></i><div><b>P. Gómez <small>vendedor</small></b><span class="eq-diag">Sin señal desde 14:02 · permiso “solo mientras se usa” → ponelo en “Siempre”</span><small class="mono">Versión 1.44.2 · instalada hace 2 meses</small></div></div>
+          <div class="eq-fila"><i class="eq-punto ambar"></i><div><b>H. Ríos <small>vendedor</small></b><span class="eq-diag">Reporta, pero se ubica por antenas → poné “alta precisión” y probá a cielo abierto</span><small class="mono">Versión 1.44.2 · instalada hace 2 meses</small></div></div>
+          <div class="eq-fila"><i class="eq-punto"></i><div><b>L. Paz <small>vendedor</small></b><span>Sin actividad hoy</span><small class="mono">Versión 1.44.2 · instalada hace 3 semanas</small></div></div>
+          <div class="eq-fila"><i class="eq-punto verde"></i><div><b>D. Sosa <small>vendedor</small></b><span>Bien · segundo plano confirmado · hace 40 s</span><small class="mono">Versión 1.44.2</small></div></div>
+          <div class="eq-fila"><i class="eq-punto verde"></i><div><b>M. Vega <small>encargado</small></b><span>Bien · hace 12 s</span><small class="mono">Versión 1.44.2</small></div></div>
+        </div>
+      </div>
+      <div class="app-card"><h5>Incidencias <span class="mono">2 abiertas</span></h5>
+        <div class="eq-filas">
+          <div class="eq-inc"><i class="eq-punto rojo"></i><b>L. Paz</b><span>sin reportar</span><span class="mono">3 h 12 min</span></div>
+          <div class="eq-inc"><i class="eq-punto rojo"></i><b>P. Gómez</b><span>sin reportar</span><span class="mono">1 h 10 min</span></div>
+        </div>
+        <h5>Equipo en la calle <span class="mono">5 de 6</span></h5>
+        <div class="eq-filas">
+          <div class="eq-inc"><i style="background:#0ea5e9"></i><b>M. Díaz</b><span>vendedor</span><span class="mono">hace 16 s</span></div>
+          <div class="eq-inc"><i style="background:#10b981"></i><b>D. Sosa</b><span>vendedor</span><span class="mono">hace 40 s</span></div>
+          <div class="eq-inc"><i style="background:#8b5cf6"></i><b>M. Vega</b><span>encargado</span><span class="mono">hace 12 s</span></div>
         </div>
       </div>
     </div>
   </div>
 </div></div>
-<!--/PC-PANEL-->
+<!--/APP-EQUIPO-->
                 </div>
-                <figcaption><b>Panel del mes</b>Ventas, pedidos y avance de la meta de cada vendedor.</figcaption>
               </figure>
-              <figure>
-                <div class="ventana ventana-chica">
-                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>Catálogo</span></div>
-                  <!--PC-CATALOGO-->
-<div class="pantalla-pc"><div class="app" role="img" aria-label="Catálogo en la PC: productos con foto, código, categoría, precio y estado (datos de ejemplo).">
+            </li>
+            <li class="rec-paso">
+              <div class="rec-texto">
+                <span class="rec-n" aria-hidden="true">4</span>
+                <h3>El reporte del día, ya armado</h3>
+                <p>Kilómetros, paradas, horarios y tiempo en movimiento de cada uno, con los avisos arriba. Lo bajás en Excel o PDF para la reunión del lunes.</p>
+              </div>
+              <figure class="rec-fig">
+                <div class="ventana">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Reportes</span></div>
+                  <!--APP-REPORTES-->
+<div class="pantalla-pc"><div class="app esc-rep" role="img" aria-label="Reporte del día: kilómetros, cuántos salieron, paradas y tiempo en movimiento del equipo, con los avisos y el detalle por persona, para bajar en Excel o PDF (datos de ejemplo).">
   <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span class="on"><svg><use href="#i-gestion"/></svg>Gestión</span></div>
   <div class="app-main" aria-hidden="true">
-    <div class="app-top"><div><small>Gestión</small><b>Catálogo</b></div><div class="der"><span class="app-pill">Precios al día · 08:00</span><span class="app-av">EG</span></div></div>
-    <div class="app-herr"><span class="app-buscar"><svg><use href="#i-buscar"/></svg>Buscar por nombre o código</span><span class="app-chip">Categoría: Todas<svg><use href="#i-chev"/></svg></span><span class="app-btn">+ Nuevo producto</span></div>
-    <div class="app-card"><div class="app-tabla">
-      <div><span></span><span>Producto</span><span>Categoría</span><span class="mono" style="font-family:inherit">Precio</span><span>Estado</span></div>
-      <div><span class="foto t1"><svg><use href="#p-botella"/></svg></span><span>Agua mineral 2 L<small>AGU-0020 · pack x6</small></span><span>Bebidas</span><span class="mono">$ 7.920</span><span class="app-estado">Activo</span></div>
-      <div><span class="foto t2"><svg><use href="#p-botella"/></svg></span><span>Gaseosa cola 1,5 L<small>GAS-0151 · pack x6</small></span><span>Bebidas</span><span class="mono">$ 13.200</span><span class="app-estado">Activo</span></div>
-      <div><span class="foto t3"><svg><use href="#p-bolsa"/></svg></span><span>Yerba mate 1 kg<small>YER-1000 · caja x10</small></span><span>Almacén</span><span class="mono">$ 39.900</span><span class="app-estado">Activo</span></div>
-      <div><span class="foto t4"><svg><use href="#p-caja"/></svg></span><span>Galletitas surtidas<small>GAL-0400 · caja x12</small></span><span>Almacén</span><span class="mono">$ 18.600</span><span class="app-estado bajo">Stock bajo</span></div>
-      <div><span class="foto t5"><svg><use href="#p-botella"/></svg></span><span>Aceite de girasol 900 ml<small>ACE-0900 · caja x12</small></span><span>Almacén</span><span class="mono">$ 28.450</span><span class="app-estado">Activo</span></div>
-      <div><span class="foto t6"><svg><use href="#p-paquete"/></svg></span><span>Jabón en polvo 800 g<small>JAB-0800 · caja x10</small></span><span>Limpieza</span><span class="mono">$ 21.350</span><span class="app-estado">Activo</span></div>
+    <div class="app-top"><div><small>Gestión › Operación</small><b>Reportes</b></div><div class="der"><span class="app-sel"><svg><use href="#i-cal"/></svg><span class="mono">14/10/2026</span></span><span class="app-sel rep-exp">Excel</span><span class="app-sel rep-exp">PDF</span></div></div>
+    <div class="app-kpis">
+      <div class="app-kpi"><small>Kilómetros</small><b><span data-cuenta="141.7" data-dec="1">141,7</span> <em>km</em></b></div>
+      <div class="app-kpi"><small>En la calle</small><b><span data-cuenta="5">5</span> <em>de 6</em></b></div>
+      <div class="app-kpi"><small>Paradas</small><b><span data-cuenta="91">91</span></b></div>
+      <div class="app-kpi"><small>En movimiento</small><b>11 h 08 <em>min</em></b></div>
+    </div>
+    <div class="app-card rep-atencion"><h5>Atención</h5>
+      <div><i class="eq-punto rojo"></i><b>L. Paz</b><span>No reportó ni un punto</span></div>
+      <div><i class="eq-punto ambar"></i><b>P. Gómez</b><span>70 min sin reportar</span></div>
+    </div>
+    <div class="app-card"><div class="app-tabla rep-tabla">
+      <div><span>Persona</span><span>Desde</span><span>Último</span><span>Km</span><span>Paradas</span><span>Movimiento</span></div>
+      <div><span><i style="background:#0ea5e9"></i>M. Díaz</span><span class="mono">08:02</span><span class="mono">15:11</span><span class="mono">19,4</span><span class="mono">7</span><span class="mono">2 h 31 min</span></div>
+      <div><span><i style="background:#ef4444"></i>H. Ríos</span><span class="mono">08:15</span><span class="mono">15:10</span><span class="mono">38,6</span><span class="mono">21</span><span class="mono">2 h 47 min</span></div>
+      <div><span><i style="background:#10b981"></i>D. Sosa</span><span class="mono">07:58</span><span class="mono">15:11</span><span class="mono">33,9</span><span class="mono">26</span><span class="mono">2 h 12 min</span></div>
+      <div><span><i style="background:#f59e0b"></i>P. Gómez</span><span class="mono">08:31</span><span class="mono">14:02</span><span class="mono">27,3</span><span class="mono">19</span><span class="mono">1 h 54 min</span></div>
+      <div><span><i style="background:#8b5cf6"></i>M. Vega</span><span class="mono">08:40</span><span class="mono">15:12</span><span class="mono">22,5</span><span class="mono">18</span><span class="mono">1 h 44 min</span></div>
     </div></div>
   </div>
 </div></div>
-<!--/PC-CATALOGO-->
+<!--/APP-REPORTES-->
                 </div>
-                <figcaption><b>Lista de precios</b>Lo que llega de tu sistema, con el stock bajo marcado.</figcaption>
               </figure>
-            </div>
-          </div>
+            </li>
+            <li class="rec-paso">
+              <div class="rec-texto">
+                <span class="rec-n" aria-hidden="true">5</span>
+                <h3>El catálogo completo y ordenado</h3>
+                <p>Cada producto con foto, descuentos por cantidad, ofertas y destacados para el vendedor. Los filtros te muestran lo que falta: productos sin foto, sin precio o dados de baja.</p>
+              </div>
+              <figure class="rec-fig">
+                <div class="ventana">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Catálogo</span></div>
+                  <!--APP-CATALOGO-->
+<div class="pantalla-pc"><div class="app esc-cat" role="img" aria-label="Catálogo en la oficina: los precios llegan solos de tu sistema, con descuentos por cantidad, foto de cada producto y filtros para ver qué falta completar (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span class="on"><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+  <div class="app-main" aria-hidden="true">
+    <div class="app-top"><div><small>Gestión › Operación</small><b>Catálogo</b></div><div class="der"><span class="app-pill cat-aviso">Precios actualizados hace 13 min · automático</span></div></div>
+    <div class="app-herr"><span class="app-buscar"><svg><use href="#i-buscar"/></svg>Buscar por descripción, código o categoría</span><span class="app-chip">Descargar planilla</span><span class="app-btn">+ Nuevo producto</span></div>
+    <div class="cat-filtros"><span class="on">Todos <b class="mono">1.284</b></span><span>Sin foto <b class="mono">3</b></span><span>Sin precio <b class="mono">8</b></span><span>Sin marca <b class="mono">129</b></span><span>De baja <b class="mono">41</b></span></div>
+    <div class="app-card"><div class="app-tabla cat-tabla">
+      <div><span></span><span>Código</span><span>Descripción</span><span>Categoría</span><span>Precio</span></div>
+      <div><span class="foto t5"><svg><use href="#p-botella"/></svg></span><span class="mono">2191</span><span>Aceite de girasol 1,5 L</span><span>Almacén</span><span><b class="mono cat-precio"><s class="cat-viejo">$ 3.890</s> $ 4.050</b><small class="mono">12+ · 120+</small></span></div>
+      <div><span class="foto t1"><svg><use href="#p-botella"/></svg></span><span class="mono">0020</span><span>Agua mineral 2 L <em class="cat-tag">Oferta</em></span><span>Bebidas</span><span><b class="mono">$ 7.920</b><small class="mono">6+</small></span></div>
+      <div><span class="foto t3"><svg><use href="#p-bolsa"/></svg></span><span class="mono">1000</span><span>Yerba mate 1 kg <em class="cat-tag dest">Destacado</em></span><span>Almacén</span><span><b class="mono">$ 39.900</b><small class="mono">10+ · 50+</small></span></div>
+      <div><span class="foto t4"><svg><use href="#p-caja"/></svg></span><span class="mono">0400</span><span>Galletitas surtidas</span><span>Almacén</span><span><b class="mono">$ 18.600</b><small class="mono">12+</small></span></div>
+      <div><span class="foto t6"><svg><use href="#p-paquete"/></svg></span><span class="mono">0800</span><span>Jabón en polvo 800 g</span><span>Limpieza</span><span><b class="mono">$ 21.350</b><small class="mono">10+ · 60+</small></span></div>
+    </div></div>
+  </div>
+</div></div>
+<!--/APP-CATALOGO-->
+                </div>
+              </figure>
+            </li>
+          </ol>
+          <div class="rec-escenario"><div class="rec-progreso" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></div>
         </div>
       </div>
     </section>
@@ -358,7 +432,7 @@
           <p class="bajada">La pantalla del dueño arranca con la conclusión, no con una tabla: «Vas 12 % arriba de un día normal» o «Faltan 2 por reportar». Abajo están las ventas, el mapa y cuánto anduvo cada uno.</p>
           <ul class="lista-check">
             <li>Compara con un día normal, así un número suelto no te confunde.</li>
-            <li>Si el teléfono de alguien deja de reportar, te lo dice.</li>
+            <li>Ves cuántas paradas hizo cada uno y cuánto tiempo anduvo.</li>
             <li>Podés mirar el día, la semana o el mes.</li>
           </ul>
         </div>
@@ -408,7 +482,7 @@
       </div>
     </section>
 
-    <!-- FUNCIONES: sin lo que ya muestran Pantallas (mapa) y Cómo funciona (pedidos, ERP). -->
+    <!-- FUNCIONES: sin lo que ya muestran el recorrido (mapa, paradas, avisos, reportes, catálogo) y Cómo funciona (pedidos, ERP). -->
     <section class="seccion" id="funciones">
       <div class="wrap">
         <div class="titulo-seccion">
@@ -418,8 +492,8 @@
           <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span><h3>Seguir el reparto</h3><p>El repartidor ve las entregas del día y las va marcando. En la oficina sabés cuántas faltan.</p></div>
           <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V3h18v18z"/><path d="M8 15l3-3 2 2 4-5"/></svg></span><h3>Poner metas</h3><p>Metas del día, del mes y del año para cada vendedor, y cuánto le falta a cada uno.</p></div>
           <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><path d="M8 2v16M16 6v16"/></svg></span><h3>Repartir zonas y carteras</h3><p>Cada vendedor con sus clientes. Si uno falta, otro cubre su zona por ese día.</p></div>
-          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1-5h16l1 5M4 9v11h16V9M9 20v-6h6v6"/></svg></span><h3>Ver las paradas</h3><p>Cada parada en un comercio de la cartera queda registrada sola, aunque ese día no haya pedido.</p></div>
-          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><h3>Recibir avisos</h3><p>Si un celular deja de reportar o alguien pasa demasiado tiempo parado en el mismo lugar.</p></div>
+                    <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></span><h3>Ordenar la cartera</h3><p>Si un comercio quedó cargado dos veces, la app te muestra las fichas parecidas para que dejes una sola.</p></div>
+                    <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span><h3>Llevarte tus datos</h3><p>Pedidos, visitas, clientes y catálogo se descargan en planillas, mes por mes, cuando quieras.</p></div>
           <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><h3>Dar un usuario a cada uno</h3><p>El vendedor ve su cartera y el dueño ve todo. Los datos de tu empresa no se mezclan con los de otras.</p></div>
         </div>
       </div>
@@ -503,7 +577,7 @@
           </details>
           <details>
             <summary>¿Cómo empezamos?</summary>
-            <p>Nos escribís por WhatsApp y coordinamos una demo. Si te sirve, cargamos nosotros tu empresa, las zonas y el equipo, y cada persona recibe su usuario.</p>
+            <p>Completás el formulario de abajo (o nos escribís por WhatsApp) y coordinamos una demo. Si te sirve, cargamos nosotros tu empresa, las zonas y el equipo, y cada persona recibe su usuario.</p>
           </details>
           <details>
             <summary>¿Cuánto cuesta?</summary>
@@ -522,24 +596,71 @@
       </div>
     </section>
 
-    <!-- CONTACTO -->
-    <section class="seccion seccion-banda" id="contacto">
+    <!-- DEMO (plan 17): el formulario arma el mensaje y abre WhatsApp (o el mail). No hay servidor
+         ni se guarda nada. Sin JS el formulario no se muestra y quedan los dos enlaces directos. -->
+    <section class="seccion seccion-banda" id="demo">
       <div class="wrap">
-        <div class="contacto">
-          <div>
-            <h2>Contanos cómo trabaja tu distribuidora.</h2>
-            <p>Te mostramos <span class="sin-corte">DisT-At</span> con un caso parecido al tuyo. Respondemos por WhatsApp o por mail.</p>
+        <div class="demo">
+          <div class="demo-texto">
+            <h2>Pedí una demo con un caso parecido al tuyo.</h2>
+            <p>Contanos cómo trabaja tu distribuidora y te mostramos DisT-At con tus rubros y tu cantidad de vendedores. La demo no tiene costo.</p>
+            <div class="canales">
+              <a class="canal" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At%20para%20mi%20distribuidora." target="_blank" rel="noopener">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg></span>
+                <span><small>WhatsApp (solo mensajes)</small><span class="mono">+54 9 3877 404245</span></span>
+              </a>
+              <a class="canal" href="mailto:cardixteam@gmail.com?subject=Demo%20de%20DisT-At">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg></span>
+                <span><small>Correo electrónico</small><span class="mono">cardixteam@gmail.com</span></span>
+              </a>
+            </div>
           </div>
-          <div class="canales">
-            <a class="canal" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At." target="_blank" rel="noopener">
-              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg></span>
-              <span><small>WhatsApp (solo mensajes)</small><span class="mono">+54 9 3877 404245</span></span>
-            </a>
-            <a class="canal" href="mailto:cardixteam@gmail.com?subject=Consulta%20por%20DisT-At">
-              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg></span>
-              <span><small>Correo electrónico</small><span class="mono">cardixteam@gmail.com</span></span>
-            </a>
-          </div>
+
+          <form class="demo-form" id="demo-form" novalidate aria-labelledby="demo-form-tit">
+            <h3 id="demo-form-tit">Tus datos para la demo</h3>
+            <div class="campo">
+              <label for="f-nombre">Tu nombre</label>
+              <input id="f-nombre" name="nombre" type="text" autocomplete="name" required aria-describedby="e-nombre">
+              <p class="error" id="e-nombre" hidden></p>
+            </div>
+            <div class="campo">
+              <label for="f-empresa">Nombre de la distribuidora</label>
+              <input id="f-empresa" name="empresa" type="text" autocomplete="organization" required aria-describedby="e-empresa">
+              <p class="error" id="e-empresa" hidden></p>
+            </div>
+            <div class="campo">
+              <label for="f-ciudad">Ciudad y provincia</label>
+              <input id="f-ciudad" name="ciudad" type="text" autocomplete="address-level2" required placeholder="Por ejemplo: Tartagal, Salta" aria-describedby="e-ciudad">
+              <p class="error" id="e-ciudad" hidden></p>
+            </div>
+            <fieldset class="campo" aria-describedby="e-vendedores">
+              <legend>¿Cuántos vendedores salen a la calle?</legend>
+              <div class="opciones">
+                <label class="opcion"><input type="radio" name="vendedores" value="1 a 3" required><span>1 a 3</span></label>
+                <label class="opcion"><input type="radio" name="vendedores" value="4 a 10"><span>4 a 10</span></label>
+                <label class="opcion"><input type="radio" name="vendedores" value="11 a 25"><span>11 a 25</span></label>
+                <label class="opcion"><input type="radio" name="vendedores" value="más de 25"><span>Más de 25</span></label>
+              </div>
+              <p class="error" id="e-vendedores" hidden></p>
+            </fieldset>
+            <fieldset class="campo">
+              <legend>¿Qué te gustaría resolver? <small>Opcional</small></legend>
+              <div class="opciones">
+                <label class="opcion"><input type="checkbox" name="interes" value="tomar los pedidos en la calle"><span>Pedidos en la calle</span></label>
+                <label class="opcion"><input type="checkbox" name="interes" value="ver el recorrido del equipo"><span>Recorrido del equipo</span></label>
+                <label class="opcion"><input type="checkbox" name="interes" value="tener el catálogo y los precios al día"><span>Catálogo y precios</span></label>
+                <label class="opcion"><input type="checkbox" name="interes" value="tener los reportes del día"><span>Reportes del día</span></label>
+              </div>
+            </fieldset>
+            <div class="demo-acciones">
+              <button class="btn btn-primario btn-flecha btn-ancho" type="submit" data-canal="whatsapp">
+                Pedir la demo por WhatsApp
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+              <button class="enlace-mail" type="submit" data-canal="mail">Prefiero mandarlo por mail</button>
+            </div>
+            <p class="demo-estado" id="demo-estado" role="status" aria-live="polite"></p>
+          </form>
         </div>
       </div>
     </section>
@@ -555,10 +676,11 @@
         <h4>Secciones</h4>
         <ul>
           <li><a href="#como-funciona">Cómo funciona</a></li>
-          <li><a href="#pantallas">Pantallas</a></li>
+          <li><a href="#recorrido">La app</a></li>
           <li><a href="#dueno">Para el dueño</a></li>
           <li><a href="#local">DisT-At Local</a></li>
           <li><a href="#preguntas">Preguntas</a></li>
+          <li><a href="#demo">Pedir una demo</a></li>
         </ul>
       </div>
       <div>
@@ -573,42 +695,12 @@
     </div>
   </footer>
 
-  <script>
-    // Pestañas En la calle / En la oficina (con teclado: flechas izquierda/derecha).
-    (function () {
-      var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
-      function elegir(t) {
-        tabs.forEach(function (o) {
-          var sel = o === t;
-          o.setAttribute('aria-selected', String(sel));
-          o.tabIndex = sel ? 0 : -1;
-          document.getElementById(o.getAttribute('aria-controls')).hidden = !sel;
-        });
-      }
-      tabs.forEach(function (t, i) {
-        t.addEventListener('click', function () { elegir(t); });
-        t.addEventListener('keydown', function (e) {
-          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-          var n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
-          elegir(n); n.focus();
-        });
-      });
-    })();
-    // Tarjetas que aparecen al bajar. Sin IntersectionObserver o con movimiento reducido, se ven de entrada.
-    (function () {
-      var els = document.querySelectorAll('.aparece');
-      var quieto = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (!('IntersectionObserver' in window) || quieto) {
-        els.forEach(function (el) { el.classList.add('visible'); });
-        return;
-      }
-      var io = new IntersectionObserver(function (entradas) {
-        entradas.forEach(function (e) {
-          if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
-        });
-      }, { rootMargin: '0px 0px -8% 0px' });
-      els.forEach(function (el) { io.observe(el); });
-    })();
-  </script>
+  <script src="/vendor/gsap-3.15.0.min.js" defer></script>
+  <script src="/vendor/ScrollTrigger-3.15.0.min.js" defer></script>
+  <script src="/vendor/lenis-1.3.26.min.js" defer></script>
+  <script src="/js/motion.v3.js" defer></script>
+  <script src="/js/mundo.v3.js" defer></script>
+  <script src="/js/recorrido.v3.js" defer></script>
+  <script src="/js/demo.v3.js" defer></script>
 </body>
 </html>

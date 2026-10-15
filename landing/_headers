@@ -16,3 +16,14 @@
 # Fotos de rubros (plan 16): si se reemplazan, cambiar el nombre del archivo.
 /fotos/*
   Cache-Control: public, max-age=604800
+
+# Librerías y JS propio (plan 17): el número de versión va en el nombre; si cambian, cambiar el nombre.
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/js/*
+  Cache-Control: public, max-age=604800
+
+# Pósters del mundo (plan 17): si se reemplazan, cambiar el nombre del archivo.
+/mundo/*
+  Cache-Control: public, max-age=604800
