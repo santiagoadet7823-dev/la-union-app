@@ -3,30 +3,62 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DisT-At — Vendedores, reparto y supervisión para distribuidoras</title>
-  <meta name="description" content="DisT-At reúne a tu equipo de calle en una sola plataforma: pedidos desde el celular aunque no haya señal, el equipo en el mapa en tiempo real, catálogo con fotos y un panel para la dirección.">
+  <title>DisT-At — Preventa, reparto y supervisión para distribuidoras</title>
+  <meta name="description" content="DisT-At es la app de preventa y reparto para distribuidoras: el vendedor toma el pedido en el comercio, la oficina lo recibe al momento y el dueño ve cómo viene el día. Pedí una demo por WhatsApp.">
   <link rel="canonical" href="https://dist-at.com/">
-  <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0e0e10" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f4ee">
+  <meta name="color-scheme" content="light">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="preload" href="/fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/fonts/space-grotesk-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/nunito-sans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="es_AR">
   <meta property="og:site_name" content="DisT-At">
   <meta property="og:url" content="https://dist-at.com/">
-  <meta property="og:title" content="DisT-At — Tu equipo de calle, en un solo lugar">
-  <meta property="og:description" content="Pedidos desde el celular, el equipo en el mapa en tiempo real y un panel para la dirección.">
-  <meta property="og:image" content="https://dist-at.com/logo.png">
-  <meta property="og:image:width" content="512">
-  <meta property="og:image:height" content="512">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:title" content="DisT-At — Preventa y reparto para tu distribuidora">
+  <meta property="og:description" content="El vendedor toma el pedido en el comercio, la oficina lo recibe al momento y vos ves la ruta de cada uno. Pedí una demo.">
+  <meta property="og:image" content="https://dist-at.com/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
   <a class="salto" href="#contenido">Saltar al contenido</a>
 
+  <!-- Íconos de las pantallas simuladas (trazo de línea, como la app). -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-mapa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><path d="M8 2v16M16 6v16"/></symbol>
+      <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></symbol>
+      <symbol id="i-gestion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+      <symbol id="i-reloj" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-centrar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+      <symbol id="i-capas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></symbol>
+      <symbol id="i-gente" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+      <symbol id="i-camion" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></symbol>
+      <symbol id="i-buscar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+      <symbol id="i-inicio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5V21h-6v-6H9v6H3z"/></symbol>
+      <symbol id="i-ruta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/></symbol>
+      <symbol id="i-bolsa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></symbol>
+      <symbol id="i-perfil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></symbol>
+      <symbol id="p-botella" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v3l2 3v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8l2-3z"/><path d="M8 12h8"/></symbol>
+      <symbol id="p-caja" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+      <symbol id="p-bolsa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 14H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></symbol>
+      <symbol id="p-paquete" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 9h14"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- Contacto oficial (plan 14): WhatsApp +54 9 3877 404245 (solo WhatsApp, sin llamadas) y
+       cardixteam@gmail.com. Los textos de cada botón de WhatsApp van armados en el enlace.
+       Plan 16: cada idea aparece una sola vez (sin señal → paso 02 y una pregunta; mapa →
+       Pantallas y Dueño; ERP → Cómo funciona y una cifra). Antes de sumar un texto, fijarse que
+       no repita otra sección. -->
   <header class="cabecera">
     <div class="wrap">
       <a class="marca" href="/" aria-label="DisT-At, inicio">
@@ -34,358 +66,479 @@
         DisT-At
       </a>
       <nav class="menu" aria-label="Secciones">
-        <a href="#funciones">Funciones</a>
-        <a href="#roles">Para quién</a>
-        <a href="#preguntas">Preguntas</a>
-        <a href="#empezar">Cómo empezar</a>
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#pantallas">Pantallas</a>
+        <a href="#dueno">Para el dueño</a>
+        <a class="nuevo" href="#local">DisT-At Local</a>
+        <a href="#contacto">Contacto</a>
       </nav>
-      <a class="btn btn-borde btn-chico" href="https://app.dist-at.com/">
-        Ingresar
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-      </a>
+      <div class="cabecera-acciones">
+        <a class="btn btn-borde btn-chico" href="https://app.dist-at.com/" aria-label="Ingresar a la aplicación">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+          <span class="solo-ancho">Ingresar</span>
+        </a>
+        <a class="btn btn-primario btn-chico" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At%20para%20mi%20distribuidora." target="_blank" rel="noopener">Pedir demo</a>
+      </div>
     </div>
   </header>
 
   <main id="contenido">
-    <!-- PORTADA -->
+    <!-- PORTADA: la primera línea del título rota (solo CSS; con movimiento reducido queda fija). -->
     <section class="portada">
       <div class="wrap">
-        <div>
-          <span class="ceja">Para distribuidoras</span>
-          <h1>Tu equipo de calle, <em>en un solo lugar</em>.</h1>
-          <p class="bajada">DisT-At reúne a vendedores, repartidores y supervisión: pedidos desde el celular aunque no haya señal, el equipo en el mapa en tiempo real, el catálogo siempre al día y un panel para que la dirección vea cómo viene el mes.</p>
+        <div class="portada-texto">
+          <h1>
+            <span class="rota" aria-hidden="true"><span class="rota-tira"><span>Preventa</span><span>Reparto</span><span>Supervisión</span><span>Catálogo</span><span>Preventa</span></span></span>
+            <span class="rota-fija" aria-hidden="true">para tu distribuidora.</span>
+            <span class="solo-lector">Preventa, reparto, supervisión y catálogo para tu distribuidora.</span>
+          </h1>
+          <p class="bajada">El vendedor toma el pedido en el comercio, la oficina lo recibe al momento y vos ves la ruta de cada uno sin tener que llamar a nadie.</p>
           <div class="acciones">
-            <a class="btn btn-primario" href="https://app.dist-at.com/">Ingresar</a>
-            <a class="btn btn-borde" href="#funciones">Ver funciones</a>
+            <a class="btn btn-primario btn-flecha" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At%20para%20mi%20distribuidora." target="_blank" rel="noopener">
+              Pedir una demo
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="enlace-flecha" href="#pantallas">Ver las pantallas
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+            </a>
           </div>
-          <p class="nota-acceso">¿Ya trabajás con DisT-At? Tocá <strong>Ingresar</strong> y entrá con tu usuario.</p>
+          <p class="prueba-social">Hoy la usa todos los días una distribuidora de Salta.</p>
         </div>
 
-        <figure class="maqueta" style="margin:0" aria-label="Ejemplo: mapa con el equipo en la calle (datos inventados)">
-          <div class="maqueta-barra" aria-hidden="true"><i></i><i></i><i></i><span>Supervisión · en vivo</span></div>
-          <svg class="mapa" viewBox="0 0 420 310" aria-hidden="true">
-            <rect class="fondo" width="420" height="310"/>
-            <g class="manzanas">
-              <rect class="manzana" x="10" y="10" width="56" height="48" rx="4"/><rect class="manzana" x="80" y="10" width="56" height="48" rx="4"/><rect class="manzana" x="150" y="10" width="56" height="48" rx="4"/><rect class="manzana" x="220" y="10" width="56" height="48" rx="4"/><rect class="manzana" x="290" y="10" width="56" height="48" rx="4"/><rect class="manzana" x="360" y="10" width="56" height="48" rx="4"/>
-              <rect class="manzana" x="10" y="72" width="56" height="48" rx="4"/><rect class="manzana" x="80" y="72" width="56" height="48" rx="4"/><rect class="manzana" x="150" y="72" width="56" height="48" rx="4"/><rect class="manzana" x="220" y="72" width="56" height="48" rx="4"/><rect class="manzana" x="290" y="72" width="56" height="48" rx="4"/><rect class="manzana" x="360" y="72" width="56" height="48" rx="4"/>
-              <rect class="manzana" x="10" y="134" width="56" height="48" rx="4"/><rect class="manzana" x="80" y="134" width="56" height="48" rx="4"/><rect class="manzana" x="150" y="134" width="56" height="48" rx="4"/><rect class="manzana" x="220" y="134" width="56" height="48" rx="4"/><rect class="manzana" x="290" y="134" width="56" height="48" rx="4"/><rect class="manzana" x="360" y="134" width="56" height="48" rx="4"/>
-              <rect class="manzana" x="10" y="196" width="56" height="48" rx="4"/><rect class="manzana" x="80" y="196" width="56" height="48" rx="4"/><rect class="manzana" x="150" y="196" width="56" height="48" rx="4"/><rect class="manzana" x="220" y="196" width="56" height="48" rx="4"/><rect class="manzana" x="290" y="196" width="56" height="48" rx="4"/><rect class="manzana" x="360" y="196" width="56" height="48" rx="4"/>
-              <rect class="manzana" x="10" y="258" width="56" height="48" rx="4"/><rect class="manzana" x="80" y="258" width="56" height="48" rx="4"/><rect class="manzana" x="150" y="258" width="56" height="48" rx="4"/><rect class="manzana" x="220" y="258" width="56" height="48" rx="4"/><rect class="manzana" x="290" y="258" width="56" height="48" rx="4"/><rect class="manzana" x="360" y="258" width="56" height="48" rx="4"/>
-            </g>
-            <polyline class="ruta-2" points="0,127 143,127 143,251 353,251"/>
-            <polyline class="ruta" points="73,310 73,189 213,189 213,65 283,65"/>
-            <circle class="visitado" cx="60" cy="252" r="5"/><circle class="visitado" cx="86" cy="170" r="5"/><circle class="visitado" cx="160" cy="200" r="5"/><circle class="visitado" cx="200" cy="140" r="5"/><circle class="visitado" cx="226" cy="84" r="5"/>
-            <circle class="comercio" cx="300" cy="84" r="5"/><circle class="comercio" cx="340" cy="110" r="5"/><circle class="comercio" cx="392" cy="202" r="5"/><circle class="comercio" cx="110" cy="40" r="5"/><circle class="comercio" cx="262" cy="232" r="5"/><circle class="comercio" cx="330" cy="38" r="5"/>
-            <circle class="halo" cx="283" cy="65" r="14"/>
-            <circle class="pin" cx="283" cy="65" r="14"/>
-            <text class="pin-txt" x="283" y="69" text-anchor="middle">LR</text>
-            <circle class="pin-2" cx="353" cy="251" r="14"/>
-            <text class="pin-txt" x="353" y="255" text-anchor="middle">MA</text>
-          </svg>
-          <div class="tarjeta-flotante" style="left:14px;bottom:14px" aria-hidden="true">
-            <span class="estado">En visita</span>
-            <b>Almacén Don Julio</b>
-            <span class="mono">pedido $ 84.300 · hace 2 min</span>
+        <div class="escena">
+          <div class="escena-fondo" aria-hidden="true"></div>
+          <figure class="ventana">
+            <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Mapa del día</span></div>
+            <!--PC-MAPA-->
+<div class="pantalla-pc"><div class="app" role="img" aria-label="DisT-At en la PC: mapa en vivo con el recorrido del día de cada vendedor, cada uno con su color (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+  <div class="app-main" aria-hidden="true">
+    <div class="app-top"><div><small>Supervisión › Encargado</small><b>Mapa en vivo</b></div><div class="der"><span class="app-pill">En línea · 10:42</span><span class="app-sel">DISTRIBUIDORA<svg><use href="#i-chev"/></svg></span><span class="app-av">EG</span></div></div>
+    <div class="app-card app-mapa-card">
+      <div class="app-chips"><span class="app-chip"><i></i><span class="mono">6</span>Vendedores</span><span class="app-chip"><i style="background:#2e3a44"></i><span class="mono">1</span>Repartidor</span><span class="app-chip der"><svg><use href="#i-cal"/></svg><span class="mono">14/10/2026</span></span><span class="app-chip"><svg><use href="#i-reloj"/></svg>Paradas</span><span class="app-chip"><svg><use href="#i-pin"/></svg>Clientes</span><span class="app-chip"><svg><use href="#i-centrar"/></svg>Centrar</span></div>
+      <div class="app-mapa"><img src="/capturas/mapa.svg" alt="" width="1600" height="1000"><div class="app-zoom"><span>+</span><span>−</span></div><div class="app-leyenda"><span><i style="background:#0ea5e9"></i>Recorrido</span><span><i style="background:repeating-linear-gradient(90deg,#2e3a44 0 5px,transparent 5px 8px)"></i>Reparto</span><span><i style="width:.7em;height:.7em;border-radius:50%;background:#10b981"></i>Visita</span></div></div>
+    </div>
+  </div>
+</div></div>
+<!--/PC-MAPA-->
+          </figure>
+          <figure class="telefono">
+            <!--CEL-MAPA-->
+<div class="pantalla-cel"><div class="app" role="img" aria-label="DisT-At en el celular: monitoreo en vivo con los recorridos del equipo sobre el mapa (datos de ejemplo).">
+  <div class="cel-mapa" aria-hidden="true"><img src="/capturas/mapa-cel.svg" alt="" width="470" height="960"></div>
+  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
+  <div class="cel-cab vidrio" aria-hidden="true"><img src="/logo.png" alt=""><div><b>Monitoreo en vivo</b><small>6 en la calle · 1 en reparto</small></div></div>
+  <div class="cel-riel" aria-hidden="true"><span class="vidrio"><svg><use href="#i-gente"/></svg><b>6</b></span><span class="vidrio"><svg><use href="#i-camion"/></svg></span><span class="vidrio"><svg><use href="#i-cal"/></svg></span><span class="vidrio"><svg><use href="#i-capas"/></svg></span></div>
+  <div class="cel-hoja" aria-hidden="true"><div class="asa"></div><h5>Equipo en la calle <small>hoy</small></h5><div class="cel-kpis"><div><small>Visitas</small><b>48</b></div><div><small>Pedidos</small><b>31</b></div><div><small>Km</small><b>86</b></div></div></div>
+  <div class="cel-nav vidrio" aria-hidden="true"><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-menu"/></svg>Menú</span></div>
+</div></div>
+<!--/CEL-MAPA-->
+          </figure>
+          <div class="etiqueta-captura" aria-hidden="true"><b>Recorridos del día</b><span><span class="colores"><i style="background:#0ea5e9"></i><i style="background:#f59e0b"></i><i style="background:#10b981"></i><i style="background:#ef4444"></i><i style="background:#8b5cf6"></i></span>un color por vendedor</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CIFRAS: por ahora, hechos del producto. A mediados de diciembre de 2026 se cambian por
+         cifras de uso reales (vendedores, pedidos), con el OK del cliente (HANDOFF, plan 16). -->
+    <section class="cifras" aria-label="DisT-At en números">
+      <div class="wrap">
+        <ul>
+          <li class="aparece"><b>1 h</b><span>cada cuánto llegan a la calle los precios de tu sistema de gestión</span></li>
+          <li class="aparece"><b>4</b><span>perfiles, cada uno con su pantalla: vendedor, repartidor, supervisor y dueño</span></li>
+          <li class="aparece"><b>2</b><span>formas de usarla: la app de Android en la calle y la web en la oficina</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- CÓMO FUNCIONA -->
+    <section class="seccion" id="como-funciona">
+      <div class="wrap">
+        <div class="titulo-seccion">
+          <h2>Así viaja un pedido.</h2>
+          <p>Sale de tu sistema, se arma en el comercio y vuelve a tu sistema. Nadie lo carga dos veces.</p>
+        </div>
+        <ol class="pasos">
+          <li class="aparece"><div class="paso-cab" aria-hidden="true"><span class="paso-n">1</span><span class="paso-linea"></span><span class="paso-ruta">tu sistema → celular</span></div><h3>Cargás los precios una vez</h3><p>Productos, fotos y lista de precios salen de tu sistema de gestión. Si cambiás un precio, el vendedor lo ve actualizado sin que le mandes nada.</p></li>
+          <li class="aparece"><div class="paso-cab" aria-hidden="true"><span class="paso-n">2</span><span class="paso-linea"></span><span class="paso-ruta">en la ruta</span></div><h3>El vendedor vende en el comercio</h3><p>Recorre su cartera y arma el pedido frente al cliente. Si en ese local no hay señal, el pedido se guarda y sale solo cuando el celular vuelve a conectarse.</p></li>
+          <li class="aparece"><div class="paso-cab" aria-hidden="true"><span class="paso-n">3</span><span class="paso-linea"></span><span class="paso-ruta">celular → oficina</span></div><h3>La oficina factura sin tipear</h3><p>El pedido entra en la oficina en el momento y pasa a tu sistema para facturar y armar la carga del día siguiente.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- PANTALLAS -->
+    <section class="seccion seccion-blanca" id="pantallas">
+      <div class="wrap">
+        <div class="cab-pantallas">
+          <div class="titulo-seccion">
+            <h2>Lo que ve cada uno.</h2>
+            <p>Son las pantallas que usa el equipo, con nombres, comercios e importes inventados.</p>
+          </div>
+          <div class="pestanas" role="tablist" aria-label="Elegí el dispositivo">
+            <button type="button" role="tab" id="tab-cel" aria-controls="panel-cel" aria-selected="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+              En la calle
+            </button>
+            <button type="button" role="tab" id="tab-pc" aria-controls="panel-pc" aria-selected="false" tabindex="-1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              En la oficina
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-pantallas" id="panel-cel" role="tabpanel" aria-labelledby="tab-cel">
+          <div class="tira-celulares">
+            <figure>
+              <div class="telefono"><!--CEL-CATALOGO-->
+<div class="pantalla-cel"><div class="app" role="img" aria-label="Catálogo en el celular del vendedor: productos con foto y precio para armar el pedido (datos de ejemplo).">
+  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
+  <div class="cel-pantalla" aria-hidden="true">
+    <div class="cel-tit"><b>Catálogo</b><small>1.284 productos</small></div>
+    <div class="cel-buscar"><svg><use href="#i-buscar"/></svg>Buscar producto o código</div>
+    <div class="cel-cats"><span class="on">Todos</span><span>Bebidas</span><span>Almacén</span><span>Limpieza</span></div>
+    <div class="cel-prods">
+      <div class="cel-prod"><div class="foto t1"><svg><use href="#p-botella"/></svg></div><div><b>Agua mineral 2 L</b><small>pack x6</small><span class="precio">$ 7.920<i>+</i></span></div></div>
+      <div class="cel-prod"><div class="foto t2"><svg><use href="#p-botella"/></svg></div><div><b>Gaseosa cola 1,5 L</b><small>pack x6</small><span class="precio">$ 13.200<i>+</i></span></div></div>
+      <div class="cel-prod"><div class="foto t3"><svg><use href="#p-bolsa"/></svg></div><div><b>Yerba mate 1 kg</b><small>caja x10</small><span class="precio">$ 39.900<i>+</i></span></div></div>
+      <div class="cel-prod"><div class="foto t4"><svg><use href="#p-caja"/></svg></div><div><b>Galletitas surtidas</b><small>caja x12</small><span class="precio">$ 18.600<i>+</i></span></div></div>
+      <div class="cel-prod"><div class="foto t5"><svg><use href="#p-botella"/></svg></div><div><b>Aceite girasol</b><small>caja x12</small><span class="precio">$ 28.450<i>+</i></span></div></div>
+      <div class="cel-prod"><div class="foto t6"><svg><use href="#p-paquete"/></svg></div><div><b>Jabón en polvo</b><small>caja x10</small><span class="precio">$ 21.350<i>+</i></span></div></div>
+    </div>
+  </div>
+  <div class="cel-nav vidrio" aria-hidden="true"><span><svg><use href="#i-inicio"/></svg>Inicio</span><span><svg><use href="#i-ruta"/></svg>Ruta</span><span class="on"><svg><use href="#i-bolsa"/></svg>Catálogo</span><span><svg><use href="#i-perfil"/></svg>Perfil</span></div>
+</div></div>
+<!--/CEL-CATALOGO--></div>
+              <figcaption><b>El vendedor</b>Lleva el catálogo con fotos y precios para armar el pedido frente al cliente.</figcaption>
+            </figure>
+            <figure>
+              <div class="telefono"><!--CEL-MAPA-->
+<div class="pantalla-cel"><div class="app" role="img" aria-label="DisT-At en el celular: monitoreo en vivo con los recorridos del equipo sobre el mapa (datos de ejemplo).">
+  <div class="cel-mapa" aria-hidden="true"><img src="/capturas/mapa-cel.svg" alt="" width="470" height="960"></div>
+  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
+  <div class="cel-cab vidrio" aria-hidden="true"><img src="/logo.png" alt=""><div><b>Monitoreo en vivo</b><small>6 en la calle · 1 en reparto</small></div></div>
+  <div class="cel-riel" aria-hidden="true"><span class="vidrio"><svg><use href="#i-gente"/></svg><b>6</b></span><span class="vidrio"><svg><use href="#i-camion"/></svg></span><span class="vidrio"><svg><use href="#i-cal"/></svg></span><span class="vidrio"><svg><use href="#i-capas"/></svg></span></div>
+  <div class="cel-hoja" aria-hidden="true"><div class="asa"></div><h5>Equipo en la calle <small>hoy</small></h5><div class="cel-kpis"><div><small>Visitas</small><b>48</b></div><div><small>Pedidos</small><b>31</b></div><div><small>Km</small><b>86</b></div></div></div>
+  <div class="cel-nav vidrio" aria-hidden="true"><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-menu"/></svg>Menú</span></div>
+</div></div>
+<!--/CEL-MAPA--></div>
+              <figcaption><b>El supervisor</b>Ve dónde está cada vendedor y por qué comercios pasó hoy.</figcaption>
+            </figure>
+            <figure>
+              <div class="telefono"><!--CEL-PANEL-->
+<div class="pantalla-cel"><div class="app" role="img" aria-label="Panel en el celular: ventas, pedidos, visitas y meta del día, y el avance de cada vendedor (datos de ejemplo).">
+  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
+  <div class="cel-pantalla" aria-hidden="true">
+    <div class="cel-tit"><b>Dashboard</b><small>mar 14 oct</small></div>
+    <div class="cel-cuadro">
+      <div><small>Ventas hoy</small><b>$ 4,8 M</b><span>▲ 9 %</span></div>
+      <div><small>Pedidos</small><b>31</b><span>▲ 4</span></div>
+      <div><small>Visitas</small><b>48/62</b><div class="app-barra"><i style="width:77%"></i></div></div>
+      <div><small>Meta mes</small><b>74 %</b><div class="app-barra"><i style="width:74%"></i></div></div>
+    </div>
+    <div class="cel-lista">
+      <div class="app-fila"><i style="background:#0ea5e9"></i><span>M. Díaz<small>12 visitas · 8 pedidos</small></span><span class="mono">$ 1,3 M</span><div class="app-barra"><i style="width:88%;background:#0ea5e9"></i></div></div>
+      <div class="app-fila"><i style="background:#f59e0b"></i><span>P. Gómez<small>10 visitas · 6 pedidos</small></span><span class="mono">$ 1,0 M</span><div class="app-barra"><i style="width:79%;background:#f59e0b"></i></div></div>
+      <div class="app-fila"><i style="background:#10b981"></i><span>D. Sosa<small>9 visitas · 6 pedidos</small></span><span class="mono">$ 0,9 M</span><div class="app-barra"><i style="width:72%;background:#10b981"></i></div></div>
+      <div class="app-fila"><i style="background:#ef4444"></i><span>H. Ríos<small>8 visitas · 5 pedidos</small></span><span class="mono">$ 0,8 M</span><div class="app-barra"><i style="width:64%;background:#ef4444"></i></div></div>
+      <div class="app-fila"><i style="background:#8b5cf6"></i><span>M. Vega<small>6 visitas · 4 pedidos</small></span><span class="mono">$ 0,5 M</span><div class="app-barra"><i style="width:51%;background:#8b5cf6"></i></div></div>
+    </div>
+    <div class="cel-lista" style="padding:1em 1.1em 0.8em">
+      <div class="cel-tit" style="font-size:.6em"><b>Pedidos por hora</b><small>hoy</small></div>
+      <svg viewBox="0 0 300 90" style="width:100%;height:auto;margin-top:.6em">
+        <g fill="#2d6778" opacity=".32"><rect x="4" y="58" width="22" height="22" rx="4"/><rect x="34" y="34" width="22" height="46" rx="4"/><rect x="64" y="18" width="22" height="62" rx="4"/><rect x="94" y="26" width="22" height="54" rx="4"/><rect x="124" y="46" width="22" height="34" rx="4"/><rect x="154" y="62" width="22" height="18" rx="4"/><rect x="184" y="40" width="22" height="40" rx="4"/></g>
+        <rect x="214" y="30" width="22" height="50" rx="4" fill="#2d6778"/>
+        <g font-family="Nunito Sans, sans-serif" font-size="10" fill="#4c5f6b" text-anchor="middle"><text x="15" y="90">8</text><text x="75" y="90">10</text><text x="135" y="90">12</text><text x="195" y="90">14</text><text x="225" y="90">15</text></g>
+      </svg>
+    </div>
+  </div>
+  <div class="cel-nav vidrio" aria-hidden="true"><span><svg><use href="#i-mapa"/></svg>Mapa</span><span class="on"><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-menu"/></svg>Menú</span></div>
+</div></div>
+<!--/CEL-PANEL--></div>
+              <figcaption><b>También el supervisor</b>Sigue las ventas y los pedidos de cada uno, hora por hora.</figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="panel-pantallas" id="panel-pc" role="tabpanel" aria-labelledby="tab-pc" hidden>
+          <div class="tira-pc">
+            <figure>
+              <div class="ventana">
+                <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>app.dist-at.com · Mapa del día</span></div>
+                <!--PC-MAPA-->
+<div class="pantalla-pc"><div class="app" role="img" aria-label="DisT-At en la PC: mapa en vivo con el recorrido del día de cada vendedor, cada uno con su color (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span class="on"><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+  <div class="app-main" aria-hidden="true">
+    <div class="app-top"><div><small>Supervisión › Encargado</small><b>Mapa en vivo</b></div><div class="der"><span class="app-pill">En línea · 10:42</span><span class="app-sel">DISTRIBUIDORA<svg><use href="#i-chev"/></svg></span><span class="app-av">EG</span></div></div>
+    <div class="app-card app-mapa-card">
+      <div class="app-chips"><span class="app-chip"><i></i><span class="mono">6</span>Vendedores</span><span class="app-chip"><i style="background:#2e3a44"></i><span class="mono">1</span>Repartidor</span><span class="app-chip der"><svg><use href="#i-cal"/></svg><span class="mono">14/10/2026</span></span><span class="app-chip"><svg><use href="#i-reloj"/></svg>Paradas</span><span class="app-chip"><svg><use href="#i-pin"/></svg>Clientes</span><span class="app-chip"><svg><use href="#i-centrar"/></svg>Centrar</span></div>
+      <div class="app-mapa"><img src="/capturas/mapa.svg" alt="" width="1600" height="1000"><div class="app-zoom"><span>+</span><span>−</span></div><div class="app-leyenda"><span><i style="background:#0ea5e9"></i>Recorrido</span><span><i style="background:repeating-linear-gradient(90deg,#2e3a44 0 5px,transparent 5px 8px)"></i>Reparto</span><span><i style="width:.7em;height:.7em;border-radius:50%;background:#10b981"></i>Visita</span></div></div>
+    </div>
+  </div>
+</div></div>
+<!--/PC-MAPA-->
+              </div>
+              <figcaption><b>Mapa del día</b>Cada recorrido con su color y los comercios visitados.</figcaption>
+            </figure>
+            <div class="tira-pc-lado">
+              <figure>
+                <div class="ventana ventana-chica">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>Panel</span></div>
+                  <!--PC-PANEL-->
+<div class="pantalla-pc"><div class="app" role="img" aria-label="Panel de la dirección: ventas, pedidos, visitas y metas por vendedor (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span><svg><use href="#i-mapa"/></svg>Mapa</span><span class="on"><svg><use href="#i-dash"/></svg>Dashboard</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+  <div class="app-main" aria-hidden="true">
+    <div class="app-top"><div><small>Supervisión › Encargado</small><b>Dashboard total</b></div><div class="der"><span class="app-sel"><svg><use href="#i-cal"/></svg>Octubre 2026<svg><use href="#i-chev"/></svg></span><span class="app-av">EG</span></div></div>
+    <div class="app-kpis">
+      <div class="app-kpi"><small>Ventas del mes</small><b>$ 48,6 M</b><span>▲ 12 % vs. sept.</span></div>
+      <div class="app-kpi"><small>Pedidos</small><b>1.236</b><span>▲ 8 %</span></div>
+      <div class="app-kpi"><small>Visitas</small><b>3.410</b><span>87 % de la ruta</span></div>
+      <div class="app-kpi"><small>Meta del mes</small><b>74 %</b><div class="app-barra"><i style="width:74%"></i></div></div>
+    </div>
+    <div class="app-dos">
+      <div class="app-card"><h5>Ventas por día <span class="mono">últimos 14 días</span></h5>
+        <div class="app-grafico"><svg viewBox="0 0 300 150" style="width:100%;height:auto">
+          <g fill="#2d6778" opacity=".32"><rect x="6" y="62" width="14" height="70" rx="3"/><rect x="27" y="48" width="14" height="84" rx="3"/><rect x="48" y="70" width="14" height="62" rx="3"/><rect x="69" y="40" width="14" height="92" rx="3"/><rect x="90" y="54" width="14" height="78" rx="3"/><rect x="111" y="96" width="14" height="36" rx="3"/><rect x="132" y="58" width="14" height="74" rx="3"/><rect x="153" y="44" width="14" height="88" rx="3"/><rect x="174" y="66" width="14" height="66" rx="3"/><rect x="195" y="36" width="14" height="96" rx="3"/><rect x="216" y="50" width="14" height="82" rx="3"/><rect x="237" y="92" width="14" height="40" rx="3"/><rect x="258" y="46" width="14" height="86" rx="3"/></g>
+          <rect x="279" y="26" width="14" height="106" rx="3" fill="#2d6778"/>
+          <path d="M0 132.5H300" stroke="#dde4e1"/><path d="M0 60H300" stroke="#dde4e1" stroke-dasharray="3 4"/>
+          <text x="2" y="56" font-family="Nunito Sans, sans-serif" font-size="8" fill="#4c5f6b">meta diaria</text>
+          <g font-family="Nunito Sans, sans-serif" font-size="8" fill="#4c5f6b" text-anchor="middle"><text x="13" y="145">1</text><text x="76" y="145">4</text><text x="139" y="145">7</text><text x="202" y="145">10</text><text x="286" y="145">hoy</text></g>
+        </svg></div>
+      </div>
+      <div class="app-card"><h5>Vendedores <span class="mono">meta</span></h5>
+        <div class="app-filas">
+          <div class="app-fila"><i style="background:#0ea5e9"></i><span>M. Díaz<small>214 pedidos</small></span><span class="mono">$ 9,4 M</span><div class="app-barra"><i style="width:88%;background:#0ea5e9"></i></div></div>
+          <div class="app-fila"><i style="background:#f59e0b"></i><span>P. Gómez<small>198 pedidos</small></span><span class="mono">$ 8,7 M</span><div class="app-barra"><i style="width:81%;background:#f59e0b"></i></div></div>
+          <div class="app-fila"><i style="background:#10b981"></i><span>D. Sosa<small>187 pedidos</small></span><span class="mono">$ 8,1 M</span><div class="app-barra"><i style="width:76%;background:#10b981"></i></div></div>
+          <div class="app-fila"><i style="background:#ef4444"></i><span>H. Ríos<small>176 pedidos</small></span><span class="mono">$ 7,6 M</span><div class="app-barra"><i style="width:70%;background:#ef4444"></i></div></div>
+          <div class="app-fila"><i style="background:#8b5cf6"></i><span>M. Vega<small>161 pedidos</small></span><span class="mono">$ 7,2 M</span><div class="app-barra"><i style="width:66%;background:#8b5cf6"></i></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+<!--/PC-PANEL-->
+                </div>
+                <figcaption><b>Panel del mes</b>Ventas, pedidos y avance de la meta de cada vendedor.</figcaption>
+              </figure>
+              <figure>
+                <div class="ventana ventana-chica">
+                  <div class="ventana-barra" aria-hidden="true"><i></i><i></i><i></i><span>Catálogo</span></div>
+                  <!--PC-CATALOGO-->
+<div class="pantalla-pc"><div class="app" role="img" aria-label="Catálogo en la PC: productos con foto, código, categoría, precio y estado (datos de ejemplo).">
+  <div class="app-lado" aria-hidden="true"><img src="/logo.png" alt=""><span><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-dash"/></svg>Dashboard</span><span class="on"><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+  <div class="app-main" aria-hidden="true">
+    <div class="app-top"><div><small>Gestión</small><b>Catálogo</b></div><div class="der"><span class="app-pill">Precios al día · 08:00</span><span class="app-av">EG</span></div></div>
+    <div class="app-herr"><span class="app-buscar"><svg><use href="#i-buscar"/></svg>Buscar por nombre o código</span><span class="app-chip">Categoría: Todas<svg><use href="#i-chev"/></svg></span><span class="app-btn">+ Nuevo producto</span></div>
+    <div class="app-card"><div class="app-tabla">
+      <div><span></span><span>Producto</span><span>Categoría</span><span class="mono" style="font-family:inherit">Precio</span><span>Estado</span></div>
+      <div><span class="foto t1"><svg><use href="#p-botella"/></svg></span><span>Agua mineral 2 L<small>AGU-0020 · pack x6</small></span><span>Bebidas</span><span class="mono">$ 7.920</span><span class="app-estado">Activo</span></div>
+      <div><span class="foto t2"><svg><use href="#p-botella"/></svg></span><span>Gaseosa cola 1,5 L<small>GAS-0151 · pack x6</small></span><span>Bebidas</span><span class="mono">$ 13.200</span><span class="app-estado">Activo</span></div>
+      <div><span class="foto t3"><svg><use href="#p-bolsa"/></svg></span><span>Yerba mate 1 kg<small>YER-1000 · caja x10</small></span><span>Almacén</span><span class="mono">$ 39.900</span><span class="app-estado">Activo</span></div>
+      <div><span class="foto t4"><svg><use href="#p-caja"/></svg></span><span>Galletitas surtidas<small>GAL-0400 · caja x12</small></span><span>Almacén</span><span class="mono">$ 18.600</span><span class="app-estado bajo">Stock bajo</span></div>
+      <div><span class="foto t5"><svg><use href="#p-botella"/></svg></span><span>Aceite de girasol 900 ml<small>ACE-0900 · caja x12</small></span><span>Almacén</span><span class="mono">$ 28.450</span><span class="app-estado">Activo</span></div>
+      <div><span class="foto t6"><svg><use href="#p-paquete"/></svg></span><span>Jabón en polvo 800 g<small>JAB-0800 · caja x10</small></span><span>Limpieza</span><span class="mono">$ 21.350</span><span class="app-estado">Activo</span></div>
+    </div></div>
+  </div>
+</div></div>
+<!--/PC-CATALOGO-->
+                </div>
+                <figcaption><b>Lista de precios</b>Lo que llega de tu sistema, con el stock bajo marcado.</figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PARA EL DUEÑO: arma como la pantalla real (web/src/features/direccion/PanelDireccion.jsx) -->
+    <section class="seccion dueno" id="dueno">
+      <div class="wrap">
+        <div class="dueno-texto">
+          <h2>Abrís la app y en una frase sabés cómo viene el día.</h2>
+          <p class="bajada">La pantalla del dueño arranca con la conclusión, no con una tabla: «Vas 12 % arriba de un día normal» o «Faltan 2 por reportar». Abajo están las ventas, el mapa y cuánto anduvo cada uno.</p>
+          <ul class="lista-check">
+            <li>Compara con un día normal, así un número suelto no te confunde.</li>
+            <li>Si el teléfono de alguien deja de reportar, te lo dice.</li>
+            <li>Podés mirar el día, la semana o el mes.</li>
+          </ul>
+        </div>
+        <figure class="dueno-tel">
+          <div class="telefono"><!--CEL-DUENO-->
+<div class="pantalla-cel"><div class="app" role="img" aria-label="DisT-At para el dueño, en el celular: una frase que resume el día, las ventas comparadas con un día normal, el equipo en el mapa y cuánto anduvo cada uno (datos de ejemplo).">
+  <div class="cel-estado mono" aria-hidden="true"><span>10:42</span><span>4G · 82 %</span></div>
+  <div class="cel-pantalla" aria-hidden="true">
+    <div class="dueno-cab"><small>Miércoles 15 · media mañana</small><b>Vas 12 % arriba de un día normal</b><span>6 de 6 en la calle ahora · 86 km recorridos</span></div>
+    <div class="cel-lista dueno-ventas">
+      <div class="cel-tit"><b>Ventas</b><small>hoy</small></div>
+      <div class="dueno-monto"><b class="mono">$ 4,8 M</b><span>▲ 12 % vs. un día normal</span></div>
+      <svg viewBox="0 0 300 54" style="width:100%;height:auto;margin-top:.5em">
+        <g fill="#2d6778" opacity=".28"><rect x="2" y="30" width="32" height="24" rx="4"/><rect x="44" y="18" width="32" height="36" rx="4"/><rect x="86" y="24" width="32" height="30" rx="4"/><rect x="128" y="12" width="32" height="42" rx="4"/><rect x="170" y="20" width="32" height="34" rx="4"/><rect x="212" y="26" width="32" height="28" rx="4"/></g>
+        <rect x="254" y="6" width="32" height="48" rx="4" fill="#2d6778"/>
+      </svg>
+    </div>
+    <div class="cel-cuadro"><div><small>Paradas de 5 min o más</small><b>14</b></div><div><small>Tiempo en movimiento</small><b>5 h 40</b></div></div>
+    <div class="dueno-mapa"><img src="/capturas/mapa-cel.svg" alt="" width="470" height="960"><span class="vidrio dueno-en-calle mono">6 de 6 en la calle</span><span class="vidrio dueno-abrir">Abrir el mapa</span></div>
+    <div class="cel-tit dueno-equipo"><b>Equipo</b><small>por km recorridos</small></div>
+    <div class="cel-lista">
+      <div class="app-fila"><i style="background:#0ea5e9"></i><span>M. Díaz<small>12 visitas · 8 pedidos</small></span><span class="mono">19 km</span></div>
+      <div class="app-fila"><i style="background:#f59e0b"></i><span>P. Gómez<small>10 visitas · 6 pedidos</small></span><span class="mono">17 km</span></div>
+      <div class="app-fila"><i style="background:#10b981"></i><span>D. Sosa<small>9 visitas · 6 pedidos</small></span><span class="mono">15 km</span></div>
+    </div>
+  </div>
+  <div class="cel-nav vidrio" aria-hidden="true"><span class="on"><svg><use href="#i-inicio"/></svg>Inicio</span><span><svg><use href="#i-mapa"/></svg>Mapa</span><span><svg><use href="#i-gestion"/></svg>Gestión</span></div>
+</div></div>
+<!--/CEL-DUENO--></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- RUBROS: fotos con licencia libre (créditos en capturas-landing/CREDITOS-FOTOS.md). -->
+    <section class="seccion seccion-blanca" id="rubros">
+      <div class="wrap">
+        <div class="titulo-seccion">
+          <h2>Sirve para distribuidoras de cualquier rubro.</h2>
+          <p>Si tenés vendedores que salen a levantar pedidos, DisT-At se acomoda a lo que vendés.</p>
+        </div>
+        <ul class="rubros-grilla">
+          <li class="rubro aparece"><img src="/fotos/bebidas.jpg" alt="" width="640" height="480" loading="lazy"><div><h3>Bebidas</h3><p>Packs, cajones y bultos, cada presentación con su precio.</p></div></li>
+          <li class="rubro aparece"><img src="/fotos/almacen.jpg" alt="" width="640" height="480" loading="lazy"><div><h3>Almacén y consumo masivo</h3><p>Catálogos de cientos de productos, con buscador por nombre o código.</p></div></li>
+          <li class="rubro aparece"><img src="/fotos/golosinas.jpg" alt="" width="640" height="480" loading="lazy"><div><h3>Golosinas y kioscos</h3><p>Rutas largas con muchos comercios chicos y visitas cortas.</p></div></li>
+          <li class="rubro aparece"><img src="/fotos/limpieza.jpg" alt="" width="640" height="480" loading="lazy"><div><h3>Limpieza y perfumería</h3><p>La foto de cada producto, para que el cliente elija sin el muestrario.</p></div></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- FUNCIONES: sin lo que ya muestran Pantallas (mapa) y Cómo funciona (pedidos, ERP). -->
+    <section class="seccion" id="funciones">
+      <div class="wrap">
+        <div class="titulo-seccion">
+          <h2>¿Qué más podés hacer con DisT-At?</h2>
+        </div>
+        <div class="grilla">
+          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span><h3>Seguir el reparto</h3><p>El repartidor ve las entregas del día y las va marcando. En la oficina sabés cuántas faltan.</p></div>
+          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V3h18v18z"/><path d="M8 15l3-3 2 2 4-5"/></svg></span><h3>Poner metas</h3><p>Metas del día, del mes y del año para cada vendedor, y cuánto le falta a cada uno.</p></div>
+          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><path d="M8 2v16M16 6v16"/></svg></span><h3>Repartir zonas y carteras</h3><p>Cada vendedor con sus clientes. Si uno falta, otro cubre su zona por ese día.</p></div>
+          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1-5h16l1 5M4 9v11h16V9M9 20v-6h6v6"/></svg></span><h3>Ver las paradas</h3><p>Cada parada en un comercio de la cartera queda registrada sola, aunque ese día no haya pedido.</p></div>
+          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><h3>Recibir avisos</h3><p>Si un celular deja de reportar o alguien pasa demasiado tiempo parado en el mismo lugar.</p></div>
+          <div class="celda aparece"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><h3>Dar un usuario a cada uno</h3><p>El vendedor ve su cartera y el dueño ve todo. Los datos de tu empresa no se mezclan con los de otras.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DIST-AT LOCAL -->
+    <section class="seccion local" id="local">
+      <div class="wrap">
+        <div class="local-texto">
+          <span class="insignia">En desarrollo · nuevo</span>
+          <h2><small>DisT-At Local</small>Caja, stock y fiado para el comercio de barrio.</h2>
+          <p class="bajada">Para el kiosco, el almacén o la fiambrería: cobrás rápido en el mostrador y a la noche ves si la caja, el stock y el fiado cierran, aunque no hayas estado.</p>
+          <div class="rubros" aria-label="Pensado para">
+            <span>Kioscos</span><span>Almacenes</span><span>Fiambrerías</span><span>Uno o varios locales</span>
+          </div>
+          <div class="local-beneficios">
+            <div><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"/></svg></span><span><b>Cobrar en segundos</b>Lector de códigos, productos por peso y pago mixto.</span></div>
+            <div><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1-5h16l1 5M4 9v11h16V9M9 20v-6h6v6"/></svg></span><span><b>Cada local con lo suyo</b>Su precio, su stock y su caja, con un catálogo común.</span></div>
+            <div><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg></span><span><b>Cierre de caja</b>Apertura, movimientos y arqueo, a nombre de quien atendió.</span></div>
+            <div><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M8 7h8M8 11h6"/></svg></span><span><b>Fiado con límite</b>Cuenta corriente por cliente, con aviso cuando se pasa.</span></div>
+          </div>
+          <a class="btn btn-primario btn-flecha" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20ser%20de%20los%20primeros%20en%20probar%20DisT-At%20Local%20en%20mi%20comercio." target="_blank" rel="noopener">
+            Anotarme para el piloto
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <p class="nota">Abono mensual por comercio. Arrancamos con pocos locales.</p>
+        </div>
+
+        <figure class="caja" aria-label="Ejemplo de DisT-At Local: venta en el mostrador y balance del día (datos inventados)">
+          <div class="caja-top" aria-hidden="true"><b>Venta · Caja 1</b><span class="mono">Almacén Centro · 18:42</span></div>
+          <div class="caja-cuerpo" aria-hidden="true">
+            <div class="caja-productos">
+              <div class="buscador"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14"/></svg>Escaneá o buscá un producto</div>
+              <div class="prod"><span>Yerba mate 1 kg<small>7790001000012</small></span><span class="mono">$ 4.290</span></div>
+              <div class="prod"><span>Queso cremoso<small>por kg · 0,350</small></span><span class="mono">$ 3.115</span></div>
+              <div class="prod"><span>Leche entera 1 L<small>7790002000029</small></span><span class="mono">$ 1.450</span></div>
+              <div class="prod"><span>Pan francés<small>por kg · 0,500</small></span><span class="mono">$ 1.400</span></div>
+            </div>
+            <div class="caja-canasta">
+              <h4>Canasta · 4 ítems</h4>
+              <div class="item"><span>Yerba mate 1 kg</span><span class="mono">4.290</span></div>
+              <div class="item"><span>Queso cremoso 0,350</span><span class="mono">3.115</span></div>
+              <div class="item"><span>Leche entera ×2</span><span class="mono">2.900</span></div>
+              <div class="item"><span>Pan francés 0,500</span><span class="mono">1.400</span></div>
+              <div class="total-caja"><span>Total</span><span class="mono">$ 11.705</span></div>
+              <div class="medios"><span class="activo">Efectivo</span><span class="activo">Mercado Pago</span><span>Fiado</span></div>
+              <div class="cobrar">Cobrar</div>
+            </div>
+          </div>
+          <div class="balance" aria-hidden="true">
+            <div class="balance-tit"><span>Balance del día · 2 locales</span><span class="mono">hoy</span></div>
+            <div class="balance-kpis">
+              <div><small>Ventas</small><b>$ 486.300</b></div>
+              <div><small>Ganancia</small><b>$ 121.500</b></div>
+              <div class="alerta"><small>Alertas</small><b>2</b></div>
+            </div>
           </div>
         </figure>
       </div>
     </section>
 
-    <!-- DATOS RÁPIDOS -->
-    <section class="datos" aria-label="En pocas palabras">
-      <div class="wrap">
-        <ul>
-          <li><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M2 8.8a15 15 0 0 1 4.2-2.6M10.7 5.1A15 15 0 0 1 22 8.8M5 12.9a10 10 0 0 1 5.2-2.8M19 12.9a10 10 0 0 0-1.9-1.4M12 20h.01"/></svg></span><span><strong>Anda sin señal</strong>y sincroniza solo</span></li>
-          <li><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span><strong>Equipo en vivo</strong>en el mapa, en tiempo real</span></li>
-          <li><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="11" rx="2"/><path d="M6 19h6M9 15v4"/><rect x="17" y="8" width="5" height="12" rx="1.5"/></svg></span><span><strong>PC y celular</strong>la misma cuenta en los dos</span></li>
-          <li><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><span><strong>Tus datos, aparte</strong>cada empresa ve solo lo suyo</span></li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- FUNCIONES -->
-    <section class="seccion" id="funciones">
-      <div class="wrap">
-        <div class="titulo-seccion">
-          <span class="ceja">Funciones</span>
-          <h2>Todo lo que pasa en la calle, a la vista.</h2>
-          <p>Pensado junto a una distribuidora en funcionamiento, para el día a día real: zonas, carteras de clientes, señal que va y viene, y un sistema de gestión que ya existe.</p>
-        </div>
-
-        <article class="funcion">
-          <div class="funcion-texto">
-            <h3>Supervisión en tiempo real</h3>
-            <p>Ves dónde está cada vendedor y repartidor durante la jornada, qué comercios ya visitó y cuáles faltan. Sin llamar a nadie para preguntar "¿por dónde andás?".</p>
-            <ul class="lista-check">
-              <li>Posición y estado de todo el equipo en un mapa</li>
-              <li>Visitas detectadas solas al quedarse en el comercio</li>
-              <li>Recorrido del día para repasar cómo fue la jornada</li>
-            </ul>
-          </div>
-          <figure class="maqueta" style="margin:0" aria-label="Ejemplo: lista del equipo en vivo (datos inventados)">
-            <div class="maqueta-barra" aria-hidden="true"><i></i><i></i><i></i><span>Equipo · hoy</span></div>
-            <div class="vivo" aria-hidden="true">
-              <svg class="mapa" viewBox="0 0 300 240">
-                <rect class="fondo" width="300" height="240"/>
-                <rect class="manzana" x="8" y="8" width="62" height="50" rx="4"/><rect class="manzana" x="84" y="8" width="62" height="50" rx="4"/><rect class="manzana" x="160" y="8" width="62" height="50" rx="4"/><rect class="manzana" x="236" y="8" width="62" height="50" rx="4"/>
-                <rect class="manzana" x="8" y="72" width="62" height="50" rx="4"/><rect class="manzana" x="84" y="72" width="62" height="50" rx="4"/><rect class="manzana" x="160" y="72" width="62" height="50" rx="4"/><rect class="manzana" x="236" y="72" width="62" height="50" rx="4"/>
-                <rect class="manzana" x="8" y="136" width="62" height="50" rx="4"/><rect class="manzana" x="84" y="136" width="62" height="50" rx="4"/><rect class="manzana" x="160" y="136" width="62" height="50" rx="4"/><rect class="manzana" x="236" y="136" width="62" height="50" rx="4"/>
-                <rect class="manzana" x="8" y="200" width="62" height="50" rx="4"/><rect class="manzana" x="84" y="200" width="62" height="50" rx="4"/><rect class="manzana" x="160" y="200" width="62" height="50" rx="4"/><rect class="manzana" x="236" y="200" width="62" height="50" rx="4"/>
-                <polyline class="ruta" points="0,193 77,193 77,65 229,65"/>
-                <polyline class="ruta-2" points="153,240 153,129 300,129"/>
-                <circle class="visitado" cx="40" cy="180" r="5"/><circle class="visitado" cx="90" cy="150" r="5"/><circle class="visitado" cx="120" cy="78" r="5"/>
-                <circle class="comercio" cx="250" cy="90" r="5"/><circle class="comercio" cx="196" cy="214" r="5"/><circle class="comercio" cx="30" cy="30" r="5"/>
-                <circle class="halo" cx="229" cy="65" r="13"/><circle class="pin" cx="229" cy="65" r="13"/><text class="pin-txt" x="229" y="69" text-anchor="middle">LR</text>
-                <circle class="pin-2" cx="270" cy="129" r="13"/><text class="pin-txt" x="270" y="133" text-anchor="middle">MA</text>
-                <circle class="pin" cx="77" cy="193" r="13" style="opacity:.55"/><text class="pin-txt" x="77" y="197" text-anchor="middle">DS</text>
-              </svg>
-              <ul class="vivo-lista">
-                <li><span class="avatar">LR</span><span>L. Romero<small>en visita · 8 s</small></span></li>
-                <li><span class="avatar ambar">MA</span><span>M. Acosta<small>reparto · 14/22</small></span></li>
-                <li><span class="avatar gris">DS</span><span>D. Sosa<small>sin señal · 6 min</small></span></li>
-              </ul>
-            </div>
-          </figure>
-        </article>
-
-        <article class="funcion invertida">
-          <div class="funcion-texto">
-            <h3>Pedidos desde la calle, con o sin señal</h3>
-            <p>El vendedor arma el pedido en el comercio, con el catálogo y los precios de tu lista. Si no hay internet, queda guardado en el celular y se envía solo cuando vuelve la conexión.</p>
-            <ul class="lista-check">
-              <li>Nada se pierde por un sótano o una zona sin cobertura</li>
-              <li>El pedido llega a la oficina al instante</li>
-              <li>Historial de cada cliente a mano en la visita</li>
-            </ul>
-          </div>
-          <div aria-label="Ejemplo: pedido en el celular (datos inventados)" role="img">
-            <div class="celular" aria-hidden="true">
-              <div class="celular-top"><span>10:42</span><span>sin señal</span></div>
-              <div class="celular-cuerpo">
-                <h4>Kiosco La Esquina</h4>
-                <p class="sub">Pedido nuevo · Zona Centro</p>
-                <div class="renglon"><span class="foto f2"></span><span class="det">Agua mineral 2 L<small>pack x6</small></span><span class="cant">4</span></div>
-                <div class="renglon"><span class="foto f1"></span><span class="det">Galletitas surtidas<small>caja x12</small></span><span class="cant">2</span></div>
-                <div class="renglon"><span class="foto f4"></span><span class="det">Gaseosa cola 1,5 L<small>pack x6</small></span><span class="cant">3</span></div>
-                <div class="total"><span>Total</span><span class="mono">$ 96.840</span></div>
-                <div class="aviso-offline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg>Guardado. Se envía al volver la señal.</div>
-                <div class="boton-falso">Confirmar pedido</div>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="funcion">
-          <div class="funcion-texto">
-            <h3>Catálogo con fotos, siempre al día</h3>
-            <p>Productos, fotos y precios en el celular de cada vendedor. Cuando cambian los precios en tu sistema, cambian también en la calle, sin mandar listas por WhatsApp.</p>
-            <ul class="lista-check">
-              <li>Fotos y categorías para mostrarle al cliente</li>
-              <li>Precios actualizados desde tu sistema de gestión</li>
-              <li>Se puede consultar aunque no haya señal</li>
-            </ul>
-          </div>
-          <figure class="maqueta" style="margin:0" aria-label="Ejemplo: catálogo con fotos (productos inventados)">
-            <div class="maqueta-barra" aria-hidden="true"><i></i><i></i><i></i><span>Catálogo · 1.284 productos</span></div>
-            <div class="catalogo" aria-hidden="true">
-              <div class="producto"><div class="foto f2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v3l2 3v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8l2-3z"/><path d="M8 12h8"/></svg></div><div class="det"><b>Agua mineral 2 L</b>pack x6<span class="precio">$ 7.920</span></div></div>
-              <div class="producto"><div class="foto f1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div><div class="det"><b>Galletitas surtidas</b>caja x12<span class="precio">$ 18.600</span></div></div>
-              <div class="producto"><div class="foto f4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v3l2 3v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8l2-3z"/><path d="M8 12h8M8 16h8"/></svg></div><div class="det"><b>Gaseosa cola 1,5 L</b>pack x6<span class="precio">$ 13.200</span></div></div>
-              <div class="producto"><div class="foto f3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 14H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg></div><div class="det"><b>Caramelos frutales</b>bolsa x800 g<span class="precio">$ 5.480</span></div></div>
-              <div class="producto"><div class="foto f5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 9h14"/></svg></div><div class="det"><b>Jabón en polvo</b>caja x10<span class="precio">$ 21.350</span></div></div>
-              <div class="producto"><div class="foto f6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div><div class="det"><b>Yerba mate 1 kg</b>caja x10<span class="precio">$ 39.900</span></div></div>
-            </div>
-          </figure>
-        </article>
-
-        <article class="funcion invertida">
-          <div class="funcion-texto">
-            <h3>Un panel para la dirección</h3>
-            <p>Ventas, pedidos, visitas y avance contra las metas del mes, por vendedor y por zona. Desde la PC de la oficina o desde el celular.</p>
-            <ul class="lista-check">
-              <li>Metas por vendedor y cómo vienen</li>
-              <li>Clientes que dejaron de comprar, para ir a buscarlos</li>
-              <li>Reportes y exportación de pedidos</li>
-            </ul>
-          </div>
-          <figure class="maqueta" style="margin:0" aria-label="Ejemplo: panel con métricas del mes (números inventados)">
-            <div class="maqueta-barra" aria-hidden="true"><i></i><i></i><i></i><span>Panel · octubre</span></div>
-            <div class="panel" aria-hidden="true">
-              <div class="kpis">
-                <div class="kpi"><small>Ventas del mes</small><b>$ 18,4 M</b><span class="sube">▲ 12 %</span></div>
-                <div class="kpi"><small>Pedidos</small><b>1.236</b><span class="sube">▲ 8 %</span></div>
-                <div class="kpi"><small>Meta</small><b>74 %</b><span class="sube">día 21 de 31</span></div>
-              </div>
-              <div class="barras">
-                <div class="barras-tit"><span>Pedidos por día</span><span class="mono">última semana</span></div>
-                <svg viewBox="0 0 280 110">
-                  <rect class="b" x="6" y="46" width="28" height="48" rx="4"/>
-                  <rect class="b" x="46" y="30" width="28" height="64" rx="4"/>
-                  <rect class="b" x="86" y="38" width="28" height="56" rx="4"/>
-                  <rect class="b" x="126" y="20" width="28" height="74" rx="4"/>
-                  <rect class="b" x="166" y="26" width="28" height="68" rx="4"/>
-                  <rect class="b" x="206" y="62" width="28" height="32" rx="4"/>
-                  <rect class="b hoy" x="246" y="12" width="28" height="82" rx="4"/>
-                  <text class="eje" x="20" y="108" text-anchor="middle">L</text><text class="eje" x="60" y="108" text-anchor="middle">M</text><text class="eje" x="100" y="108" text-anchor="middle">M</text><text class="eje" x="140" y="108" text-anchor="middle">J</text><text class="eje" x="180" y="108" text-anchor="middle">V</text><text class="eje" x="220" y="108" text-anchor="middle">S</text><text class="eje" x="260" y="108" text-anchor="middle">L</text>
-                </svg>
-              </div>
-            </div>
-          </figure>
-        </article>
-
-        <article class="funcion">
-          <div class="funcion-texto">
-            <h3>Se conecta con tu sistema de gestión</h3>
-            <p>No hace falta cambiar lo que ya usás. Los precios y productos llegan desde tu sistema, y los pedidos de la calle vuelven a tu sistema para facturar y preparar.</p>
-            <ul class="lista-check">
-              <li>Sin cargar dos veces la misma información</li>
-              <li>Cada integración se arma a medida de tu sistema</li>
-            </ul>
-          </div>
-          <figure class="maqueta" style="margin:0" aria-label="Esquema: tu sistema de gestión envía precios y recibe pedidos">
-            <div class="flujo" aria-hidden="true">
-              <div class="nodo"><b>Tu sistema</b><span class="mono">facturación · stock</span></div>
-              <div class="flechas">
-                <span>precios</span>
-                <svg viewBox="0 0 34 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h28M24 2l6 5-6 5"/></svg>
-                <svg viewBox="0 0 34 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="vuelta"><path d="M2 7h28M24 2l6 5-6 5"/></svg>
-                <span>pedidos</span>
-              </div>
-              <div class="nodo centro"><img src="/logo.png" alt=""><b>DisT-At</b><span class="mono">en la nube</span></div>
-              <div class="flechas">
-                <span>catálogo</span>
-                <svg viewBox="0 0 34 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h28M24 2l6 5-6 5"/></svg>
-                <svg viewBox="0 0 34 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="vuelta"><path d="M2 7h28M24 2l6 5-6 5"/></svg>
-                <span>pedidos</span>
-              </div>
-              <div class="nodo"><b>Tu equipo</b><span class="mono">celular · PC</span></div>
-            </div>
-          </figure>
-        </article>
-
-        <div class="grilla">
-          <div class="celda">
-            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><path d="M8 2v16M16 6v16"/></svg></span>
-            <h3>Zonas y carteras</h3>
-            <p>Cada vendedor con su zona y sus clientes. Si alguien falta, otro cubre la zona por el día.</p>
-          </div>
-          <div class="celda">
-            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>
-            <h3>Reparto</h3>
-            <p>El repartidor ve sus entregas del día en el mapa y las va marcando; la oficina sigue el avance.</p>
-          </div>
-          <div class="celda">
-            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-            <h3>Alertas</h3>
-            <p>Avisos cuando un celular deja de reportar o alguien lleva demasiado tiempo parado en el mismo lugar.</p>
-          </div>
-          <div class="celda">
-            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span>
-            <h3>Metas</h3>
-            <p>Objetivos por persona para el día, el mes y el año, y cada vendedor ve en su celular cómo viene.</p>
-          </div>
-          <div class="celda">
-            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></span>
-            <h3>Reportes</h3>
-            <p>Pedidos del día, visitas, kilómetros y ventas, para mirar en pantalla o exportar.</p>
-          </div>
-          <div class="celda">
-            <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
-            <h3>Usuarios y permisos</h3>
-            <p>Das de alta a tu equipo y cada uno ve solo lo que le corresponde según su rol.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ROLES -->
-    <section class="seccion seccion-alt" id="roles">
-      <div class="wrap">
-        <div class="titulo-seccion">
-          <span class="ceja">Para quién</span>
-          <h2>Una sola plataforma, una pantalla para cada rol.</h2>
-          <p>Cada persona entra con su usuario y ve lo que necesita para su trabajo, nada más.</p>
-        </div>
-        <div class="roles">
-          <div class="rol"><span class="mono">celular</span><h3>Vendedor</h3><p>Su cartera y su recorrido, el catálogo con precios, pedidos aunque no haya señal y el avance de su meta.</p></div>
-          <div class="rol"><span class="mono">celular</span><h3>Repartidor</h3><p>Las entregas del día en el mapa, y marca cada una como entregada o no entregada.</p></div>
-          <div class="rol"><span class="mono">celular · PC</span><h3>Supervisión</h3><p>El equipo en vivo, las visitas, los recorridos y las alertas. Puede reasignar zonas en el día.</p></div>
-          <div class="rol"><span class="mono">PC · celular</span><h3>Dirección</h3><p>El panel con ventas, metas y clientes por recuperar, más la gestión de usuarios y del catálogo.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CÓMO EMPEZAR -->
-    <section class="seccion" id="empezar">
-      <div class="wrap">
-        <div class="titulo-seccion">
-          <span class="ceja">Cómo empezar</span>
-          <h2>De la primera charla a tu equipo trabajando.</h2>
-        </div>
-        <ol class="pasos">
-          <li><h3>Asesoría y demo</h3><p>Nos contás cómo trabaja tu distribuidora y te mostramos DisT-At funcionando con un caso parecido al tuyo.</p></li>
-          <li><h3>Cargamos tu empresa</h3><p>Armamos tu empresa con sus zonas, clientes, productos y equipo, y vemos juntos la conexión con tu sistema.</p></li>
-          <li><h3>Tu equipo sale a la calle</h3><p>Cada uno entra con su usuario desde el celular o la PC. Te acompañamos los primeros días.</p></li>
-        </ol>
-      </div>
-    </section>
-
     <!-- PREGUNTAS -->
-    <section class="seccion seccion-alt" id="preguntas">
-      <div class="wrap">
+    <section class="seccion" id="preguntas">
+      <div class="wrap preguntas-wrap">
         <div class="titulo-seccion">
-          <span class="ceja">Preguntas frecuentes</span>
-          <h2>Lo que más nos preguntan.</h2>
+          <h2>Preguntas frecuentes</h2>
         </div>
         <div class="preguntas">
+          <p class="grupo">DisT-At para distribuidoras</p>
           <details>
-            <summary>¿Funciona sin internet?</summary>
-            <p>Sí. El vendedor puede consultar el catálogo, armar pedidos y registrar visitas sin señal. Todo queda guardado en el celular y se envía solo cuando vuelve la conexión.</p>
+            <summary>¿Y si el vendedor se queda sin internet?</summary>
+            <p>Sigue trabajando: ve el catálogo, arma pedidos y registra visitas. Todo queda en el celular y se envía cuando vuelve la conexión.</p>
           </details>
           <details>
-            <summary>¿En qué equipos funciona?</summary>
-            <p>En la PC, desde cualquier navegador actual (y se puede instalar como una aplicación). En la calle, en celulares Android. La aplicación para el equipo de calle se entrega con el contrato de uso.</p>
+            <summary>¿Qué celulares y computadoras necesito?</summary>
+            <p>En la calle, celulares Android. En la oficina, cualquier navegador actual (y se puede instalar como una aplicación). La app de Android se entrega con el contrato.</p>
           </details>
           <details>
-            <summary>¿Se conecta con mi sistema de gestión?</summary>
-            <p>Sí. Se integra para traer productos y precios, y para que los pedidos lleguen a tu sistema. Como cada sistema es distinto, lo vemos juntos en la asesoría.</p>
+            <summary>¿Funciona con el sistema que ya uso?</summary>
+            <p>Lo conectamos para traer productos y precios y para devolverle los pedidos. Cada sistema es distinto, así que lo vemos en la demo.</p>
           </details>
           <details>
-            <summary>¿Cómo doy de alta mi empresa?</summary>
-            <p>Coordinamos una asesoría con demo. Si te sirve, nosotros cargamos tu empresa, tus zonas y tu equipo, y cada persona recibe su usuario.</p>
-          </details>
-          <details>
-            <summary>¿Quién ve los datos de mi empresa?</summary>
-            <p>Solo tu equipo, y cada uno según su rol: un vendedor ve su cartera, la dirección ve todo. Los datos de cada empresa están separados de los de las demás.</p>
+            <summary>¿Cómo empezamos?</summary>
+            <p>Nos escribís por WhatsApp y coordinamos una demo. Si te sirve, cargamos nosotros tu empresa, las zonas y el equipo, y cada persona recibe su usuario.</p>
           </details>
           <details>
             <summary>¿Cuánto cuesta?</summary>
-            <p>Depende del tamaño del equipo y de la integración con tu sistema. Después de la asesoría te pasamos una propuesta a medida.</p>
+            <p>Depende de cuántas personas usen la app y de la conexión con tu sistema. Después de la demo te pasamos una propuesta.</p>
+          </details>
+          <p class="grupo">DisT-At Local</p>
+          <details>
+            <summary>¿Cuándo va a estar DisT-At Local?</summary>
+            <p>Está en desarrollo y empieza con un piloto en pocos comercios. Si querés estar, escribinos y te avisamos.</p>
           </details>
           <details>
-            <summary>Ya tengo cuenta, ¿cómo entro?</summary>
-            <p>Tocá <a href="https://app.dist-at.com/">Ingresar</a> o entrá directo a <a href="https://app.dist-at.com/">app.dist-at.com</a> con tu usuario. Si tu cuenta todavía no tiene una empresa asignada, vas a ver un aviso hasta que el administrador te habilite.</p>
+            <summary>¿Qué necesito en el local?</summary>
+            <p>Una PC con navegador y, si querés, un lector de códigos USB. Más adelante, también celular, impresora de tickets y balanza.</p>
           </details>
         </div>
       </div>
     </section>
 
-    <!-- CIERRE: ingresar. El contacto (WhatsApp/mail para pedir asesoría y demo) se sacó a pedido
-         del usuario hasta el rediseño profesional (11/10/2026); el bloque original está en el commit
-         bb0ff01. -->
-    <section class="seccion" id="ingresar">
+    <!-- CONTACTO -->
+    <section class="seccion seccion-banda" id="contacto">
       <div class="wrap">
         <div class="contacto">
           <div>
-            <h2>¿Ya trabajás con DisT-At?</h2>
-            <p>Entrá con tu usuario desde la PC o el celular. Si tu cuenta todavía no tiene una empresa asignada, vas a ver un aviso hasta que el administrador te habilite.</p>
+            <h2>Contanos cómo trabaja tu distribuidora.</h2>
+            <p>Te mostramos <span class="sin-corte">DisT-At</span> con un caso parecido al tuyo. Respondemos por WhatsApp o por mail.</p>
           </div>
-          <div class="acciones">
-            <a class="btn btn-primario" href="https://app.dist-at.com/">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-              Ingresar
+          <div class="canales">
+            <a class="canal" href="https://wa.me/5493877404245?text=Hola%2C%20quiero%20pedir%20una%20demo%20de%20DisT-At." target="_blank" rel="noopener">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg></span>
+              <span><small>WhatsApp (solo mensajes)</small><span class="mono">+54 9 3877 404245</span></span>
             </a>
-            <p class="chico">app.dist-at.com</p>
+            <a class="canal" href="mailto:cardixteam@gmail.com?subject=Consulta%20por%20DisT-At">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg></span>
+              <span><small>Correo electrónico</small><span class="mono">cardixteam@gmail.com</span></span>
+            </a>
           </div>
         </div>
       </div>
@@ -394,14 +547,68 @@
 
   <footer class="pie">
     <div class="wrap">
-      <a class="marca" href="/"><img src="/logo.png" alt="" width="34" height="34">DisT-At</a>
-      <nav aria-label="Pie">
-        <a href="#funciones">Funciones</a>
-        <a href="#preguntas">Preguntas</a>
-        <a href="https://app.dist-at.com/">Ingresar</a>
-      </nav>
-      <span>© 2026 DisT-At</span>
+      <div>
+        <a class="marca" href="/"><img src="/logo.png" alt="" width="34" height="34">DisT-At</a>
+        <p>Preventa, reparto y supervisión para distribuidoras. Pronto, DisT-At Local para comercios de barrio.</p>
+      </div>
+      <div>
+        <h4>Secciones</h4>
+        <ul>
+          <li><a href="#como-funciona">Cómo funciona</a></li>
+          <li><a href="#pantallas">Pantallas</a></li>
+          <li><a href="#dueno">Para el dueño</a></li>
+          <li><a href="#local">DisT-At Local</a></li>
+          <li><a href="#preguntas">Preguntas</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contacto</h4>
+        <ul>
+          <li><a href="https://wa.me/5493877404245" target="_blank" rel="noopener">WhatsApp +54 9 3877 404245</a></li>
+          <li><a href="mailto:cardixteam@gmail.com">cardixteam@gmail.com</a></li>
+          <li><a href="https://app.dist-at.com/">Ingresar</a></li>
+          <li>© 2026 DisT-At</li>
+        </ul>
+      </div>
     </div>
   </footer>
+
+  <script>
+    // Pestañas En la calle / En la oficina (con teclado: flechas izquierda/derecha).
+    (function () {
+      var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+      function elegir(t) {
+        tabs.forEach(function (o) {
+          var sel = o === t;
+          o.setAttribute('aria-selected', String(sel));
+          o.tabIndex = sel ? 0 : -1;
+          document.getElementById(o.getAttribute('aria-controls')).hidden = !sel;
+        });
+      }
+      tabs.forEach(function (t, i) {
+        t.addEventListener('click', function () { elegir(t); });
+        t.addEventListener('keydown', function (e) {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+          var n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+          elegir(n); n.focus();
+        });
+      });
+    })();
+    // Tarjetas que aparecen al bajar. Sin IntersectionObserver o con movimiento reducido, se ven de entrada.
+    (function () {
+      var els = document.querySelectorAll('.aparece');
+      var quieto = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!('IntersectionObserver' in window) || quieto) {
+        els.forEach(function (el) { el.classList.add('visible'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entradas) {
+        entradas.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
+        });
+      }, { rootMargin: '0px 0px -8% 0px' });
+      els.forEach(function (el) { io.observe(el); });
+    })();
+  </script>
 </body>
 </html>

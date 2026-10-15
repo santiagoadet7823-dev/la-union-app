@@ -8,3 +8,11 @@
 # Las fuentes no cambian de nombre si cambian: se renuevan cada 30 días.
 /fonts/*
   Cache-Control: public, max-age=2592000
+
+# Capturas de la app (plan 14): si se reemplazan, cambiar el nombre del archivo.
+/capturas/*
+  Cache-Control: public, max-age=604800
+
+# Fotos de rubros (plan 16): si se reemplazan, cambiar el nombre del archivo.
+/fotos/*
+  Cache-Control: public, max-age=604800
