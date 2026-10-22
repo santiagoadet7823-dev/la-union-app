@@ -6,6 +6,8 @@ import { primerCodigoLibre, codigoOcupado } from '../../lib/codigoCliente'
 import { useCatalog } from '../../context/CatalogContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
+import CamposFiscales from '../../components/CamposFiscales'
+import useClienteFiscal from '../../hooks/useClienteFiscal'
 import Overlay from '../../components/Overlay'
 import { Field, inputStyle } from '../../components/form'
 import { Alerta, Crosshair } from '../../components/icons'
@@ -38,6 +40,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   const [locBusy, setLocBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [abierto, setAbierto] = useState(true) // ver Overlay.jsx: el padre monta condicionalmente
+  const fiscal = useClienteFiscal(null) // situación fiscal + CUIT/CUIL (db/88): en el alta no hay nada que leer
 
 
   // Candidatos a duplicado, recalculados mientras se escribe. Es 100 % local (la cartera ya está
@@ -97,6 +100,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     if (!nombre.trim()) { onToast?.('Poné el nombre del comercio'); return }
     if (ocupadoPor) { onToast?.(`El código ${codigo.trim()} ya lo usa ${ocupadoPor.name}`); return }
     if (!punto) { onToast?.('Marcá la ubicación en el mapa'); return }
+    if (fiscal.error) { onToast?.('Revisá el CUIT/CUIL: ' + fiscal.error); return }
     setSaving(true)
     const diasStr = formatDias(DIAS.filter((d) => dias[d]))
     const res = await addCliente({
@@ -113,6 +117,8 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
       geofence_radio: geofence,
     })
     const { ok, error } = res
+    // Lo fiscal va en su tabla (db/88), encolado DETRÁS del alta: la cola es FIFO y en serie.
+    if (ok) await fiscal.guardar(res.cliente.id)
     setSaving(false)
     if (!ok) { onToast?.('Error: ' + (error?.message || 'no se pudo guardar')); return }
     onToast?.(res?.requiereConfirmacion
@@ -195,6 +201,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
         <Field label="Teléfono"><input value={telefono} onChange={(e) => setTelefono(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="3877 123456" style={inputStyle} className="lu-input" /></Field>
         <Field label="Contacto"><input value={contacto} onChange={(e) => setContacto(e.target.value)} placeholder="Con quién se habla" style={inputStyle} className="lu-input" /></Field>
       </div>
+      <CamposFiscales fiscal={fiscal} />
 
       <Field label="Ubicación *">
         <button type="button" onClick={usarMiUbicacion} disabled={locBusy} className="lu-press" style={{ ...sx('width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--primary);border-radius:var(--r-md);background:var(--primary-tint);color:var(--deep);font-size:var(--fs-sm);font-weight:600;margin-bottom:8px'), ...(locBusy ? apagado : { cursor: 'pointer' }) }}>

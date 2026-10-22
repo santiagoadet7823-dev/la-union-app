@@ -7,6 +7,7 @@ import { useAuth } from '../../../context/AuthContext'
 import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
 import ImportarClientes from '../ImportarClientes'
 import { exportarClientes } from '../exportarClientes'
+import { fetchClientesFiscal } from '../../../services/data/catalogo'
 import FichaCliente from './FichaCliente'
 import { panel, label10, cliGrid, miniLbl, EmptyState } from '../ui'
 import { Bajar, Check, Mas, Search } from '../../../components/icons'
@@ -26,7 +27,7 @@ import AvisoCuarentena from '../../../components/AvisoCuarentena'
  */
 export default function ClientesTab({ onToast, onNuevoCliente }) {
   const { isMobile } = useDevice()
-  const { rol } = useAuth()
+  const { rol, idEmpresa } = useAuth()
   const { clientes: vigentes, clientesTodos, zonas, loading: catLoading, updateCliente, archivarClientes } = useCatalog()
   // Editar a profundidad y eliminar es permiso de GESTIÓN (la RLS clientes_upd/clientes_del lo
   // exige): admin, encargado y superadmin. El resto solo ve/ubica.
@@ -101,7 +102,9 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   async function descargar(formato) {
     setDescargaOpen(false)
     setDescargando(true)
-    await exportarClientes({ clientes: clientesTodos, zonas, perfiles, formato, completarHuecos, onToast })
+    // Situación fiscal y CUIT (db/88): viven en otra tabla y se leen recién acá, al exportar.
+    const { data: fiscal, error: eFiscal } = await fetchClientesFiscal(idEmpresa)
+    await exportarClientes({ clientes: clientesTodos, zonas, perfiles, fiscal, fiscalFallo: !!eFiscal, formato, completarHuecos, onToast })
     setDescargando(false)
   }
 

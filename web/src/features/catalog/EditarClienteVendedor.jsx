@@ -5,6 +5,8 @@ import { useCatalog } from '../../context/CatalogContext'
 import { useGps } from '../../context/GpsContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
+import CamposFiscales from '../../components/CamposFiscales'
+import useClienteFiscal from '../../hooks/useClienteFiscal'
 import Overlay from '../../components/Overlay'
 import { Crosshair } from '../../components/icons'
 import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
@@ -46,6 +48,7 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   // nos arrancaría del árbol antes de que corra la animación de salida. Cerramos
   // con setAbierto(false) y el Overlay avisa al padre recién cuando terminó.
   const [abierto, setAbierto] = useState(true)
+  const fiscal = useClienteFiscal(clienteId) // situación fiscal + CUIT/CUIL (db/88), se lee al abrir
   // Los demás comercios como contexto en el mapa (plan 20): al reubicar se ve si el pin cae sobre
   // otro cliente. `clientes` ya son los vigentes.
   const vecinos = useMemo(
@@ -69,6 +72,7 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   }
 
   async function guardar() {
+    if (fiscal.error) { onToast?.('Revisá el CUIT/CUIL: ' + fiscal.error); return }
     setSaving(true)
     const diasStr = formatDias(DIAS.filter((d) => dias[d]))
     const patch = {
@@ -81,6 +85,7 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
     }
     if (punto) { patch.lat = punto.lat; patch.lng = punto.lng }
     const { ok, error } = await updateCliente(c.id, patch)
+    if (ok) await fiscal.guardar()
     setSaving(false)
     if (!ok) { onToast?.('Error: ' + (error?.message || 'no se pudo guardar')); return }
     onToast?.(`${c.name} actualizado`)
@@ -128,6 +133,8 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
         className="lu-input"
         style={{ ...inputStyle, marginBottom: 'var(--sp-4)' }}
       />
+
+      <CamposFiscales fiscal={fiscal} />
 
       <div style={label}>Ubicación</div>
       <button type="button" onClick={usarMiUbicacion} disabled={locBusy} className="lu-press" style={{ ...sx('width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--primary);border-radius:var(--r-md);background:var(--primary-tint);color:var(--deep);font-size:var(--fs-sm);font-weight:600;margin-bottom:8px'), ...(locBusy ? apagado : { cursor: 'pointer' }) }}>

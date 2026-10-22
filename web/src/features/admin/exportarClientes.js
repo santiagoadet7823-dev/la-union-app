@@ -1,5 +1,6 @@
 import { descargarArchivo } from '../../services/download'
 import { hoyStr } from '../../lib/format'
+import { etiquetaIva, formatoCuit } from '../../lib/cuit'
 
 /**
  * Baja la cartera COMPLETA a una planilla (.xlsx o .csv) para editarla afuera y volver a subirla
@@ -10,6 +11,10 @@ import { hoyStr } from '../../lib/format'
  * el catálogo exporta los deshabilitados con `habilitado` (CatalogoTab): si faltaran, subir la
  * planilla como "cartera completa" los daría por ausentes y, peor, la persona no podría ver qué
  * códigos considera ocupados el sistema — que es justo lo que necesita para no repetir uno.
+ *
+ * `situacion_fiscal` y `cuit` (db/88, plan 20) vienen de `clientes_fiscal`, que se lee aparte al
+ * exportar (`fetchClientesFiscal`): no forman parte del catálogo que baja a los teléfonos. El
+ * importador las entiende y las vuelve a esa tabla.
  *
  * `vendedor`, `abrev_zona` y `confirmado` son INFORMATIVAS: el importador las ignora. El vendedor lo da la zona
  * ("la zona lleva el vendedor") y confirmar es una acción explícita de gestión.
@@ -35,7 +40,7 @@ import { hoyStr } from '../../lib/format'
 const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 // Columnas en el orden en que salen. `INFORMATIVAS` son las que el importador ignora.
-const COLUMNAS = ['codigo', 'nombre', 'localidad', 'zona', 'abrev_zona', 'vendedor', 'dias', 'frecuencia', 'horario', 'telefono', 'contacto', 'lat', 'lng', 'confirmado', 'archivado']
+const COLUMNAS = ['codigo', 'nombre', 'localidad', 'zona', 'abrev_zona', 'vendedor', 'dias', 'frecuencia', 'horario', 'telefono', 'contacto', 'situacion_fiscal', 'cuit', 'lat', 'lng', 'confirmado', 'archivado']
 const INFORMATIVAS = new Set(['abrev_zona', 'vendedor', 'confirmado'])
 
 // Colores, en el orden de las columnas que explican (de izquierda a derecha). Tonos "claro" de la
@@ -55,7 +60,7 @@ const MAX_HUECOS = 20000
 const esEntero = (v) => /^\d+$/.test(String(v ?? '').trim())
 
 /** Filas planas, una por cliente, con los encabezados que el importador entiende. */
-export function filasPlanillaClientes(clientes, zonas, perfiles) {
+export function filasPlanillaClientes(clientes, zonas, perfiles, fiscal = null) {
   const zonaPorId = new Map((zonas || []).map((z) => [z.id, z]))
   const nombrePorId = new Map((perfiles || []).map((p) => [p.id, p.nombre]))
   return (clientes || []).map((c) => ({
@@ -72,6 +77,8 @@ export function filasPlanillaClientes(clientes, zonas, perfiles) {
     horario: c.horario || '',
     telefono: c.telefono || '',
     contacto: c.contacto || '',
+    situacion_fiscal: etiquetaIva(fiscal?.get(c.id)?.condicion_iva),
+    cuit: fiscal?.get(c.id)?.cuit ? formatoCuit(fiscal.get(c.id).cuit) : '',
     lat: c.lat ?? '',
     lng: c.lng ?? '',
     confirmado: c.activo ? 'si' : 'no',
@@ -193,18 +200,20 @@ function hojaZonas(XLSX, zonas, perfiles, clientes) {
 }
 
 /**
- * @param {{ clientes: object[], zonas: object[], perfiles?: object[], formato?: 'xlsx'|'csv', completarHuecos?: boolean, onToast?: (s:string)=>void }} p
+ * `fiscal` = `Map(id_cliente → {condicion_iva, cuit})`; `fiscalFallo` = no se pudo leer (sin red).
+ *
+ * @param {{ clientes: object[], zonas: object[], perfiles?: object[], fiscal?: Map, fiscalFallo?: boolean, formato?: 'xlsx'|'csv', completarHuecos?: boolean, onToast?: (s:string)=>void }} p
  */
-export async function exportarClientes({ clientes, zonas, perfiles, formato = 'xlsx', completarHuecos = true, onToast }) {
+export async function exportarClientes({ clientes, zonas, perfiles, fiscal = null, fiscalFallo = false, formato = 'xlsx', completarHuecos = true, onToast }) {
   try {
     const XLSX = await import('xlsx-js-style')
-    const base = filasPlanillaClientes(clientes, zonas, perfiles)
+    const base = filasPlanillaClientes(clientes, zonas, perfiles, fiscal)
     const { filas, huecos, sinCodigo, archivados, huecosOmitidos } = ordenarPlanilla(base, { completarHuecos })
     const ws = XLSX.utils.json_to_sheet(filas.map(({ _hueco, ...f }) => f), { header: COLUMNAS })
     // Un ancho por columna, en el orden de `COLUMNAS`.
     ws['!cols'] = [
       { wch: 8 }, { wch: 36 }, { wch: 16 }, { wch: 6 }, { wch: 7 }, { wch: 18 }, { wch: 14 }, { wch: 11 },
-      { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 },
+      { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 },
     ]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
@@ -238,6 +247,7 @@ export async function exportarClientes({ clientes, zonas, perfiles, formato = 'x
     // volvería a entrar como nuevo. Se avisa para que se los complete antes.
     if (sinCodigo) partes.push(`${sinCodigo} sin código (no se pueden reimportar)`)
     if (archivados) partes.push(`${archivados} archivados`)
+    if (fiscalFallo) partes.push('sin situación fiscal ni CUIT: no se pudieron leer (¿sin conexión?)')
     if (huecosOmitidos) partes.push('hay un código enorme: no se rellenaron los huecos')
     onToast?.(`Planilla descargada · ${partes.join(' · ')}`)
     return { ok: true }

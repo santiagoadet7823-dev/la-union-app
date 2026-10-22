@@ -517,11 +517,11 @@ export function CatalogProvider({ children }) {
    * Solo alcanza a los que TIENEN código: un cliente sin código nunca estuvo en ninguna lista, así
    * que su ausencia no prueba nada.
    *
-   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?, archivado?: boolean|null}>} rows
-   * @param {{listaCompleta?: boolean}} [opts]
+   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?, archivado?: boolean|null, condicion_iva?, cuit?}>} rows
+   * @param {{listaCompleta?: boolean, fiscalActual?: Map}} [opts]  `fiscalActual` = `fetchClientesFiscal`
    * @returns {{insertados:number, actualizados:number, archivados:number, desarchivados:number, saltados:number, avisos:string[]}}
    */
-  const importClientes = useCallback(async (rows, { listaCompleta = false } = {}) => {
+  const importClientes = useCallback(async (rows, { listaCompleta = false, fiscalActual = null } = {}) => {
     // Map codigo→cliente (con su id) para poder ACTUALIZAR, no solo detectar duplicado.
     const porCodigo = new Map()
     clientes.forEach((c) => { const k = codigoKey(c.codigo); if (k) porCodigo.set(k, c) })
@@ -529,6 +529,18 @@ export function CatalogProvider({ children }) {
     const avisos = []
     const nuevos = []
     const updates = [] // { id, patch }
+    // SITUACIÓN FISCAL Y CUIT (db/88, plan 20). Van a `clientes_fiscal`, no a `clientes`. Mismo
+    // criterio que el resto: vacío no pisa, y lo igual a lo que ya hay (`fiscalActual`, leído al
+    // abrir la planilla) no se manda — bajar y volver a subir la planilla no reescribe 2.000 filas
+    // ni pisa quién y cuándo las cargó. Si no se pudo leer, se manda todo lo que traiga dato.
+    const fiscales = []
+    const anotarFiscal = (idCliente, r) => {
+      const actual = fiscalActual?.get(idCliente)
+      const f = { id_cliente: idCliente, id_empresa: idEmpresa }
+      if (r.condicion_iva && r.condicion_iva !== actual?.condicion_iva) f.condicion_iva = r.condicion_iva
+      if (r.cuit && r.cuit !== actual?.cuit) f.cuit = r.cuit
+      if ('condicion_iva' in f || 'cuit' in f) fiscales.push(f)
+    }
     const ahora = new Date().toISOString()
     let archivados = 0
     let desarchivados = 0
@@ -566,9 +578,10 @@ export function CatalogProvider({ children }) {
           patch.archivado_ts = null; desarchivados++
         }
         if (Object.keys(patch).length) updates.push({ id: existente.id, patch })
+        anotarFiscal(existente.id, r)
         continue
       }
-      nuevos.push({
+      const nuevo = {
         id: uid(),
         id_empresa: idEmpresa,
         codigo: cod || null,
@@ -587,7 +600,9 @@ export function CatalogProvider({ children }) {
         activo: true, // importación de admin → confirmados
         // Puede nacer archivado: el ERP ya lo tiene dado de baja pero lo lista igual.
         archivado_ts: r.archivado === true ? ahora : null,
-      })
+      }
+      nuevos.push(nuevo)
+      anotarFiscal(nuevo.id, r)
     }
 
     // Bajas por ausencia. Va DESPUÉS del recorrido completo porque la pregunta es "¿este código
@@ -644,7 +659,19 @@ export function CatalogProvider({ children }) {
       setClientes((prev) => prev.map((c) => (set.has(c.id) ? { ...c, archivado: true } : c)))
       await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'updateMany', ids: idsAusentes, payload: { archivado_ts: ahora } })
     }
-    if (nuevos.length || updates.length || idsAusentes.length) flushMutaciones()
+    // Lo fiscal, DETRÁS de las altas (la FK pide el cliente). Un upsert por cada combinación de
+    // columnas presentes (máx. 3): en un lote, una columna que una fila no trae viajaría como NULL
+    // y borraría lo cargado. Nunca una mutación por fila (ver `updateMany` en writeQueue.js).
+    const gruposFiscal = new Map()
+    for (const f of fiscales) {
+      const k = Object.keys(f).sort().join(',')
+      if (!gruposFiscal.has(k)) gruposFiscal.set(k, [])
+      gruposFiscal.get(k).push(f)
+    }
+    for (const payload of gruposFiscal.values()) {
+      await enqueueMutacion({ op_uid: uid(), table: 'clientes_fiscal', op: 'upsert', onConflict: 'id_cliente', payload })
+    }
+    if (nuevos.length || updates.length || idsAusentes.length || fiscales.length) flushMutaciones()
     const total = rows?.length || 0
     return {
       insertados: nuevos.length,
@@ -653,6 +680,7 @@ export function CatalogProvider({ children }) {
       archivados: archivados + idsAusentes.length,
       desarchivados,
       saltados: total - nuevos.length - updates.length,
+      fiscales: fiscales.length, // clientes con situación fiscal o CUIT nuevos o cambiados
       avisos,
     }
   }, [idEmpresa, clientes])

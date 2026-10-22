@@ -64,6 +64,31 @@ async function traerTodo(tabla, idEmpresa, columnaOrden) {
 const SIN_FILAS = Promise.resolve({ data: [], error: null })
 
 /**
+ * Situación fiscal + CUIT de TODA la empresa (`clientes_fiscal`, db/88), como `Map(id_cliente →
+ * fila)`. Sólo para la planilla de gestión: NO es parte de `fetchCatalogo` ni de su caché, a
+ * propósito — esos datos no bajan en bloque a los teléfonos (ver db/88). Pagina igual que
+ * `traerTodo`; el orden por `id_cliente` (la PK) ya es total.
+ */
+export async function fetchClientesFiscal(idEmpresa) {
+  const porCliente = new Map()
+  if (!idEmpresa) return { data: porCliente, error: null }
+  let offset = 0
+  for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+    const { data, error } = await supabase
+      .from('clientes_fiscal')
+      .select('id_cliente, condicion_iva, cuit')
+      .eq('id_empresa', idEmpresa)
+      .order('id_cliente', { ascending: true })
+      .range(offset, offset + PAGE - 1)
+    if (error) return { data: porCliente, error }
+    if (!data || !data.length) break
+    for (const f of data) porCliente.set(f.id_cliente, f)
+    offset += data.length
+  }
+  return { data: porCliente, error: null }
+}
+
+/**
  * Trae las tablas del catálogo de una empresa en paralelo. Devuelve filas crudas + el primer error si hubo.
  *
  * `soloCatalogo` (rol marketing, db/82): NO pide `clientes` ni `zonas`. La base ya se los niega con

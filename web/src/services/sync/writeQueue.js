@@ -8,8 +8,11 @@ import { persistence } from '../persistence'
  * la conexión. Usa el puerto `persistence` (async), así en la APK puede pasar a
  * SQLite sin tocar este archivo.
  *
- * Cada mutación: { op_uid, table, op:'insert'|'update'|'updateMany'|'delete'|'borrarArchivos', payload, id?, ids?, verificar? }.
+ * Cada mutación: { op_uid, table, op:'insert'|'upsert'|'update'|'updateMany'|'delete'|'borrarArchivos', payload, id?, ids?, onConflict?, verificar? }.
  * - insert:     upsert(onConflict:'id', ignoreDuplicates) → reintentar no duplica.
+ * - upsert:     upsert(onConflict) que PISA: crea o reemplaza la fila de esa clave. `payload` puede
+ *               ser una fila o un array (UNA entrada para N filas, como `updateMany`). Reintentar
+ *               escribe lo mismo otra vez: es idempotente. Lo usa `clientes_fiscal` (db/88).
  * - update:     update(payload).eq('id', id).
  * - updateMany: update(payload).in('id', ids) → UNA entrada para N filas.
  * - delete:     delete().eq('id', id) → reintentar es idempotente (borrar lo ya borrado no falla).
@@ -279,6 +282,11 @@ export async function flushMutaciones() {
       let error = null
       if (m.op === 'insert') {
         ({ error } = await supabase.from(m.table).upsert(m.payload, { onConflict: 'id', ignoreDuplicates: true }))
+      } else if (m.op === 'upsert') {
+        /* A diferencia de `insert`, NO ignora el duplicado: la segunda carga del CUIT de un cliente
+         * tiene que reemplazar a la primera (22/10/2026, plan 20). Sólo viajan las columnas del
+         * payload, así que una columna que no se mandó no se pisa con NULL. */
+        ({ error } = await supabase.from(m.table).upsert(m.payload, { onConflict: m.onConflict || 'id' }))
       } else if (m.op === 'rpc') {
         /* Una función de la base en UN request (22/10/2026). La primera es `registrar_pedido`
          * (db/87): cabecera + renglones en una transacción, idempotente por id, y devuelve el número

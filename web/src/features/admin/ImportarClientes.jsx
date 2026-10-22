@@ -2,6 +2,9 @@ import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { normalizar, buscarParecidos, codigoKey } from '../../lib/texto'
 import { useCatalog } from '../../context/CatalogContext'
+import { useAuth } from '../../context/AuthContext'
+import { fetchClientesFiscal } from '../../services/data/catalogo'
+import { normalizarCuit, cuitValido, CONDICIONES_IVA } from '../../lib/cuit'
 import { descargarArchivo } from '../../services/download'
 import { Bajar, ChevronLeft, Subir } from '../../components/icons'
 
@@ -40,6 +43,9 @@ const ALIAS = {
   lat: 'lat', latitud: 'lat', latitude: 'lat',
   lng: 'lng', lon: 'lng', long: 'lng', longitud: 'lng', longitude: 'lng',
   archivado: 'archivado', archivada: 'archivado', baja: 'archivado',
+  // Datos fiscales (db/88, plan 20): van a `clientes_fiscal`, ver `importClientes`.
+  'situacion fiscal': 'condicion_iva', 'condicion iva': 'condicion_iva', 'condicion frente al iva': 'condicion_iva', iva: 'condicion_iva',
+  cuit: 'cuit', cuil: 'cuit', 'cuit cuil': 'cuit',
   // `vendedor` y `confirmado` vienen en la planilla exportada pero NO se importan: el vendedor lo
   // da la zona y confirmar es una acción explícita de gestión. Al no estar acá, caen solas.
 }
@@ -64,6 +70,13 @@ const siNo = (v) => {
 // Qué filas entran: nuevos ('ok'/'zona?'/'parecido') + existentes a actualizar ('update'). Los
 // 'dup' (repetidos dentro del lote), 'sin-nombre' y 'vacia' se saltan. Una sola definición para el
 // import y para el conteo de bajas: si difieren, la vista miente sobre lo que se va a archivar.
+// Situación fiscal: acepta el código de la base o la etiqueta que exporta la app, y las formas
+// de escribirla que se ven en las planillas. Lo que no se reconoce da `null` y se avisa.
+const IVA_POR_TEXTO = new Map([
+  ...CONDICIONES_IVA.flatMap(([cod, txt]) => [[normalizar(cod), cod], [normalizar(txt), cod]]),
+  ['resp inscripto', 'RI'], ['monotributista', 'MONOTRIBUTO'], ['mt', 'MONOTRIBUTO'], ['cf', 'CONSUMIDOR_FINAL'],
+])
+const ivaDeCelda = (v) => IVA_POR_TEXTO.get(normalizar(v)) || null
 const esImportable = (f) => f.estado === 'ok' || f.estado === 'zona?' || f.estado === 'update' || f.estado === 'parecido'
 
 export default function ImportarClientes({ onClose, onToast }) {
@@ -72,6 +85,10 @@ export default function ImportarClientes({ onClose, onToast }) {
   // inexistente, el insert reventaría contra el índice. Con los archivados a la vista, cae en la
   // rama de "se actualiza" — que además es lo correcto: ese comercio volvió.
   const { zonas, clientesTodos: clientes, importClientes } = useCatalog()
+  const { idEmpresa } = useAuth()
+  // Lo fiscal que ya está en la base, para no reescribir lo que la planilla trae igual. `null` si no
+  // se pudo leer (sin red): entonces se manda todo lo que traiga dato.
+  const [fiscalActual, setFiscalActual] = useState(null)
   const fileRef = useRef(null)
   const [parsed, setParsed] = useState(null) // filas parseadas + estado
   const [busy, setBusy] = useState(false)
@@ -108,8 +125,8 @@ export default function ImportarClientes({ onClose, onToast }) {
     try {
       const XLSX = await import('xlsx')
       const ejemplo = [
-        { codigo: '1', nombre: 'Kiosco Central', localidad: 'Las Lajitas', zona: 1, dias: 'LU · JU', frecuencia: 'Semanal', horario: '', telefono: '3877 123456', contacto: 'Marta', lat: '', lng: '', archivado: 'no' },
-        { codigo: '2', nombre: 'Almacén Doña Rosa', localidad: 'Las Lajitas', zona: 2, dias: 'MA', frecuencia: 'Quincenal', horario: '', telefono: '', contacto: '', lat: '', lng: '', archivado: 'no' },
+        { codigo: '1', nombre: 'Kiosco Central', localidad: 'Las Lajitas', zona: 1, dias: 'LU · JU', frecuencia: 'Semanal', horario: '', telefono: '3877 123456', contacto: 'Marta', situacion_fiscal: 'Monotributo', cuit: '20-12345678-6', lat: '', lng: '', archivado: 'no' },
+        { codigo: '2', nombre: 'Almacén Doña Rosa', localidad: 'Las Lajitas', zona: 2, dias: 'MA', frecuencia: 'Quincenal', horario: '', telefono: '', contacto: '', situacion_fiscal: '', cuit: '', lat: '', lng: '', archivado: 'no' },
       ]
       const ws = XLSX.utils.json_to_sheet(ejemplo)
       const wb = XLSX.utils.book_new()
@@ -138,6 +155,8 @@ export default function ImportarClientes({ onClose, onToast }) {
       // y "Almacén" deja de parecerse a "Almacén" para el detector de duplicados. Un CSV con BOM
       // (como el que exporta la app) lo ignora y se lee como UTF-8.
       const wb = XLSX.read(buf, { type: 'array', codepage: 1252 })
+      const { data: fis, error: eFis } = await fetchClientesFiscal(idEmpresa)
+      setFiscalActual(eFis ? null : fis)
       const ws = wb.Sheets[wb.SheetNames[0]]
       const raw = XLSX.utils.sheet_to_json(ws, { defval: '' })
       const vistos = new Set()
@@ -155,6 +174,12 @@ export default function ImportarClientes({ onClose, onToast }) {
         const codKey = codigoKey(codigo)
         const existente = codKey ? porCodigo.get(codKey) : null
         const archivado = siNo(campo.archivado)
+        const ivaTexto = String(campo.condicion_iva ?? '').trim()
+        const condicion_iva = ivaTexto ? ivaDeCelda(ivaTexto) : null
+        const cuitDigitos = normalizarCuit(campo.cuit)
+        const cuit = cuitDigitos && cuitValido(cuitDigitos) ? cuitDigitos : null
+        // Un dato fiscal inválido NO frena la fila: se importa todo lo demás y ese dato se ignora.
+        const fiscalMal = (!!ivaTexto && !condicion_iva) || (!!cuitDigitos && !cuit)
         let estado = 'ok'
         let parecidoA = null
         // Una fila con sólo el código (o nada) es una fila LILA de la planilla que baja la app: un
@@ -193,6 +218,7 @@ export default function ImportarClientes({ onClose, onToast }) {
           lat: coord(campo.lat),
           lng: coord(campo.lng),
           archivado, cambioArchivo,
+          condicion_iva, cuit, fiscalMal,
           zonaTexto, zona, estado,
         }
       })
@@ -208,8 +234,9 @@ export default function ImportarClientes({ onClose, onToast }) {
 
   const resumen = useMemo(() => {
     if (!parsed) return null
-    const c = { ok: 0, update: 0, dup: 0, parecido: 0, 'zona?': 0, 'sin-nombre': 0, vacia: 0, archivan: 0, vuelven: 0 }
+    const c = { ok: 0, update: 0, dup: 0, parecido: 0, 'zona?': 0, 'sin-nombre': 0, vacia: 0, archivan: 0, vuelven: 0, fiscalMal: 0 }
     parsed.forEach((f) => {
+      if (f.fiscalMal) c.fiscalMal++
       c[f.estado] = (c[f.estado] || 0) + 1
       if (f.cambioArchivo === 'archiva') c.archivan++
       if (f.cambioArchivo === 'vuelve') c.vuelven++
@@ -257,16 +284,19 @@ export default function ImportarClientes({ onClose, onToast }) {
         lng: f.lat != null && f.lng != null ? f.lng : null,
         // `null` = la celda/columna no vino → no se toca (salvo que estuviera archivado: vuelve).
         archivado: f.archivado,
+        condicion_iva: f.condicion_iva,
+        cuit: f.cuit,
       }))
     if (!rows.length && !(listaCompleta && bajasSiCompleta)) { onToast?.('No hay filas válidas para importar'); return }
     setBusy(true)
-    const { insertados, actualizados, archivados, desarchivados, saltados } = await importClientes(rows, { listaCompleta })
+    const { insertados, actualizados, archivados, desarchivados, saltados, fiscales } = await importClientes(rows, { listaCompleta, fiscalActual })
     setBusy(false)
     const partes = []
     if (insertados) partes.push(`${insertados} nuevo${insertados === 1 ? '' : 's'}`)
     if (actualizados) partes.push(`${actualizados} actualizado${actualizados === 1 ? '' : 's'}`)
     if (archivados) partes.push(`${archivados} archivado${archivados === 1 ? '' : 's'}`)
     if (desarchivados) partes.push(`${desarchivados} de vuelta en la cartera`)
+    if (fiscales) partes.push(`${fiscales} con situación fiscal o CUIT`)
     if (saltados) partes.push(`${saltados} saltado${saltados === 1 ? '' : 's'}`)
     onToast?.(`Clientes: ${partes.join(' · ') || 'sin cambios'}`)
     onClose?.()
@@ -347,6 +377,7 @@ export default function ImportarClientes({ onClose, onToast }) {
                   porque no hay código con qué parearlos, y hay que verlo antes de confirmar. */}
               {resumen.parecido > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{resumen.parecido} parecidos a existentes (entran como nuevos)</span>}
               {resumen.vuelven > 0 &&<span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--success)', background: 'var(--success-tint)' }}>{resumen.vuelven} vuelven a la cartera</span>}
+              {resumen.fiscalMal > 0 && <span title="La fila se importa igual; sólo se ignora el dato fiscal que no se entiende." style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{resumen.fiscalMal} con CUIT o situación fiscal inválidos (se ignoran)</span>}
               {resumen.archivan > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{resumen.archivan} se archivan</span>}
               {listaCompleta && bajasSiCompleta > 0 && <span style={{ ...sx('padding:5px 11px;border-radius:99px'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>{bajasSiCompleta} se archivan por no figurar</span>}
             </div>

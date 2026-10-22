@@ -10,6 +10,8 @@ import useFormasPago from '../../../hooks/useFormasPago'
 import LeafletMap from '../../../components/LeafletMap'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 import SelectorUbicacion from '../../../components/SelectorUbicacion'
+import CamposFiscales from '../../../components/CamposFiscales'
+import useClienteFiscal from '../../../hooks/useClienteFiscal'
 import { fieldLabel } from '../ui'
 
 /**
@@ -65,6 +67,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [guardando, setGuardando] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const fiscal = useClienteFiscal(fc.id) // situación fiscal + CUIT/CUIL (db/88), se lee al abrir
 
   const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body)')
 
@@ -94,6 +97,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
 
   async function guardar() {
     if (puedeEditar && ocupadoPor) { onToast(`El código ${codigoEdit.trim()} ya lo usa ${ocupadoPor.name}`); return }
+    if (fiscal.error) { onToast('Revisá el CUIT/CUIL: ' + fiscal.error); return }
     setGuardando(true)
     const dias_visita = formatDias(DIAS.filter((d) => diasSel[d]))
     const patch = { geofence_radio: geoRadio, dias_visita: dias_visita || null, frecuencia: freqSel }
@@ -113,6 +117,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
       }
     }
     const { ok, error } = await updateCliente(fc.id, patch)
+    if (ok) await fiscal.guardar()
     setGuardando(false)
     onToast(ok ? `${(puedeEditar ? nombreEdit.trim() : '') || fc.name} actualizado` : 'Error: ' + (error?.message || ''))
   }
@@ -197,6 +202,8 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
           <div style={sx('font-size:11px;color:var(--faint);line-height:1.4')}>Al cambiar la zona, el cliente hereda el vendedor dueño de esa zona.</div>
         </div>
       )}
+
+      <CamposFiscales fiscal={fiscal} estiloInput={inp} />
 
       {fc.lat != null && !moviendo ? (
         <div style={sx('margin-bottom:12px')}>
