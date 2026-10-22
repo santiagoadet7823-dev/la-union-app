@@ -390,8 +390,9 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
           // `confirmarPedido` es lo que ESCRIBE el pedido (cabecera + líneas) por la write queue y
           // recién después cierra la visita. Antes acá se llamaba `endVisit` a secas y el pedido no
           // se guardaba en ningún lado — ver el comentario de `useJornada`.
-          confirmarPedido(datos)
-          showToast(`Pedido confirmado · ${fmtPesos(total)}`)
+          // El "confirmado" se dice SOLO si quedó guardado (22/10/2026, plan 19): si no, el error lo
+          // muestra `confirmarPedido` y la visita sigue abierta con el carrito.
+          confirmarPedido(datos).then((g) => { if (g) showToast(`Pedido confirmado · ${fmtPesos(total)}`) })
         }}
       />
 

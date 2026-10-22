@@ -59,8 +59,10 @@ function serialize(fn) {
   return next
 }
 
+// Estricta (22/10/2026, plan 19): si SQLite no contesta, `get` devolvía `[]` y el próximo encolado
+// escribía `[punto]` encima de toda la cola. Ahora lanza: se pierde ese punto, no el recorrido.
 async function read() {
-  return (await persistence.get(KEY, [])) || []
+  return (await persistence.getEstricto(KEY, [])) || []
 }
 async function writeRaw(arr) {
   if (arr.length > MAX) {

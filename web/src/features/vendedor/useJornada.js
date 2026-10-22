@@ -8,6 +8,7 @@ import { duenoDe, esMiComercio } from '../../lib/carteraDe'
 import { persistence } from '../../services/persistence'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
+import { rescatarPedidos } from '../../services/sync/rescate'
 import { useVidriera } from '../vidriera/useVidriera'
 import useFormasPago from '../../hooks/useFormasPago'
 import useCoberturasZona from '../../hooks/useCoberturasZona'
@@ -109,6 +110,9 @@ export function useJornada() {
 
   useEffect(() => () => { clearInterval(timerRef.current); clearTimeout(toastRef.current) }, [])
 
+  // Rescate de pedidos aislados en este teléfono (plan 19): una vez por arranque con sesión.
+  useEffect(() => { if (userId && idEmpresa) rescatarPedidos({ userId, idEmpresa }) }, [userId, idEmpresa])
+
   // --- restaurar la jornada abierta (una sola vez, al montar) ---
   useEffect(() => {
     let vivo = true
@@ -120,7 +124,9 @@ export function useJornada() {
         if (vivo && g && g.fecha === hoyStr()) {
           visitaActualRef.current = g.visitaId || null
           visitaTsRef.current = g.visitaTs || null
-          if (g.visit) setVisit(g.visit)
+          // Con una visita abierta se vuelve DERECHO al catálogo (22/10/2026, plan 19): arrancar en
+          // Inicio se leía como "se cerró el pedido", y el vendedor volvía a tocar el comercio.
+          if (g.visit) { setVisit(g.visit); setTab('catalogo') }
           if (g.cart) setCart(g.cart)
           if (g.quitados) setQuitados(g.quitados)
           if (g.visitState) setVisitState(g.visitState)
@@ -159,6 +165,10 @@ export function useJornada() {
     toastRef.current = setTimeout(() => setToast(null), 2800)
   }
   function startVisit(id) {
+    // 🩸 EL MISMO COMERCIO QUE YA ESTÁ ABIERTO SE RETOMA, NO SE REABRE (22/10/2026, plan 19).
+    // Cuando la pantalla "se cerraba" (GpsGate, o Android matando la app) el vendedor volvía a
+    // tocar el comercio, y esto vaciaba el carrito restaurado y registraba un segundo check-in.
+    if (id && id === visit) { setTab('catalogo'); return }
     clearInterval(timerRef.current)
     setSeconds(0)
     visitaTsRef.current = Date.now()
@@ -461,22 +471,33 @@ export function useJornada() {
    * línea de código. Lo único que se escribía era `visitas.monto`, un escalar — y los ítems, las
    * cantidades, los precios y los kg se descartaban al confirmar. Ver `db/43`.
    *
-   * Va por la write queue (§7: nunca `supabase.from().insert()` desde un componente) en DOS
-   * mutaciones y en este orden, que no es casual: la policy `items_ins` exige que el pedido padre
-   * ya exista, y la cola es FIFO y corta al primer fallo. Las dos son idempotentes —`upsert` por
-   * `id` con `ignoreDuplicates`— así que un reintento no duplica ni el pedido ni sus líneas, y el
-   * número de pedido tampoco se consume dos veces (lo asigna un trigger BEFORE INSERT).
+   * Va por la write queue (§7: nunca `supabase.from().insert()` desde un componente) en UNA
+   * mutación `rpc` → `registrar_pedido` (db/87, desde la 1.44.3): cabecera + líneas en una
+   * transacción, idempotente por `id`. Un reintento devuelve el MISMO número y no consume otro (el
+   * `upsert` de antes sí lo consumía: el trigger BEFORE INSERT corre antes que el ON CONFLICT).
    *
    * `created_at` se estampa ACÁ y no se deja en el `now()` de la base: el pedido puede subir horas
    * después si el vendedor estaba sin señal, y entonces la hora de la base sería la de la subida.
    * La hora del pedido es la del comercio.
    */
   async function guardarPedido({ idCliente, idVisita, monto, kg, datos = null }) {
-    if (!userId || !idEmpresa || !idCliente) return null
-    const lineas = Object.entries(cart)
+    // 🩸 YA NO DEVUELVE `null` CALLADO (22/10/2026, plan 19). Devolvía null y `confirmarPedido`
+    // cerraba la visita igual: el comercio quedaba "Visitado" con su monto, el contador de Inicio
+    // sumaba, y el pedido no existía en ningún lado. Ahora cada motivo es un error con texto, y quien
+    // confirma lo muestra y deja la visita abierta con el carrito intacto.
+    if (!userId || !idEmpresa) throw new Error('la sesión todavía está cargando. Esperá unos segundos y volvé a confirmar.')
+    if (!idCliente) throw new Error('no hay un comercio abierto.')
+    const enCarrito = Object.entries(cart).filter(([, cantidad]) => cantidad > 0)
+    const lineas = enCarrito
       .map(([id, cantidad]) => ({ p: prodById(id), cantidad }))
-      .filter((l) => l.p && l.cantidad > 0)
-    if (!lineas.length) return null
+      .filter((l) => l.p)
+    // Un producto del carrito que no está en el catálogo en memoria (se está recargando, o lo
+    // dieron de baja) se caía del pedido sin aviso: el comerciante pedía 8 cosas y viajaban 7.
+    const faltan = enCarrito.length - lineas.length
+    if (faltan > 0) {
+      throw new Error(`${faltan === 1 ? 'un producto del carrito no está' : `${faltan} productos del carrito no están`} en el catálogo cargado. Esperá a que termine de cargar o sacalo${faltan === 1 ? '' : 's'} del carrito.`)
+    }
+    if (!lineas.length) throw new Error('el carrito está vacío.')
     // El `numero` lo asigna un trigger BEFORE INSERT en la base, así que acá todavía no se conoce
     // — y no se puede esperar: el pedido puede subir horas después si el vendedor está sin señal.
     // El ticket que se imprime en el momento sale de estos datos locales, no de una relectura.
@@ -571,14 +592,17 @@ export function useJornada() {
       peso_kg: prod.kg || 0,
     }))
 
-    try {
-      // 🔴 EL ORDEN NO ES INTERCAMBIABLE. La policy `items_ins` exige que el pedido padre exista, y
-      // la cola es FIFO y corta al primer fallo: al revés, las líneas rebotarían por RLS y
-      // taponarían la cola detrás suyo.
-      await enqueueMutacion({ op_uid: idPedido, table: 'pedidos', op: 'insert', payload: cabecera })
-      await enqueueMutacion({ op_uid: idPedido + ':items', table: 'pedido_items', op: 'insert', payload: items })
-      flushMutaciones()
-    } catch (_) { /* queda en cola; la cola es la que garantiza que no se pierda */ }
+    // 🔑 UNA SOLA MUTACIÓN (22/10/2026, plan 19): `registrar_pedido` (db/87) sube cabecera y
+    // renglones en una transacción y devuelve el número. Antes eran dos (cabecera, después líneas),
+    // y si la segunda rebotaba quedaba un pedido con monto y sin artículos que el ERP nunca bajaba.
+    // `table: 'pedidos'` no la usa el flush: es para que "Mis pedidos" y el rescate la reconozcan.
+    // Si NO se pudo anotar en la cola, lanza: el pedido no está guardado y el vendedor lo tiene que
+    // saber (antes un `catch` vacío se tragaba hasta el "almacenamiento lleno").
+    await enqueueMutacion({
+      op_uid: idPedido, op: 'rpc', fn: 'registrar_pedido', table: 'pedidos',
+      args: { p_pedido: cabecera, p_items: items },
+    })
+    flushMutaciones()
 
     // Se devuelve lo ARMADO y no un id: el ticket se imprime en el momento, y si el vendedor está
     // sin señal el pedido todavía no existe en la base para releerlo.
@@ -594,8 +618,15 @@ export function useJornada() {
     const idVisita = visitaActualRef.current
     const monto = cartTotal
     const kg = cartKg
-    const guardado = await guardarPedido({ idCliente, idVisita, monto, kg, datos })
-    endVisit('visitado', { monto, idPedido: guardado?.pedido?.id || null })
+    let guardado
+    try {
+      guardado = await guardarPedido({ idCliente, idVisita, monto, kg, datos })
+    } catch (e) {
+      // La visita sigue abierta y el carrito como estaba: el vendedor puede volver a confirmar.
+      showToast('No se guardó el pedido: ' + (e?.message || 'error desconocido'))
+      return null
+    }
+    endVisit('visitado', { monto, idPedido: guardado.pedido.id })
     // El ticket vive en el hook y no en la pestaña: `endVisit` vuelve a "Inicio" y eso DESMONTA
     // `VisitaCatalogo`, así que un ticket que colgara de ahí desaparecería en el mismo frame en
     // que se crea. Lo dibuja `VendedorView`, que está siempre montado.

@@ -70,6 +70,19 @@ export default function GpsGate({ children }) {
   // todavía) es "buscando", no una falla.
   const permisoDenegado = esPermisoDenegado(error)
 
+  /* 🩸 "SI TARDAN EN TOMAR EL PEDIDO, SE CIERRA" (22/10/2026, plan 19 — reclamo de la calle).
+   *
+   * Era esta puerta. Dentro de un comercio el GPS no entrega posiciones nuevas (el filtro de
+   * distancia descarta las de alguien quieto, y el latido de 60 s bajo techo suele vencer), así que
+   * a los 2 minutos `activo` caía y la puerta REEMPLAZABA toda la vista del vendedor por "Buscando
+   * señal GPS…": el catálogo y el carrito desmontados en medio del pedido. Al volver, Inicio.
+   *
+   * Ahora la puerta bloquea solo ANTES del primer enganche de la sesión (y ante permiso denegado,
+   * que es accionable). Si el GPS ya enganchó y después se queda sin fix, la app sigue montada con
+   * una franja arriba; el aviso `gps-off` al panel sale igual que antes. */
+  const yaEnganchoRef = useRef(false)
+  if (activo) yaEnganchoRef.current = true
+
   // Auto-recupero: reintenta pedir la ubicación mientras no haya fix. Antes cortaba ante
   // CUALQUIER error; ahora sigue reintentando ante timeout/posición-no-disponible (el GPS
   // puede enganchar en cualquier momento) y solo se detiene si el permiso está denegado
@@ -110,6 +123,22 @@ export default function GpsGate({ children }) {
   // Fuera del horario de rastreo configurado: el GPS está apagado A PROPÓSITO
   // (ahorro de batería). No es una falla — no hay que bloquear la app.
   if (!enHorario) return <>{children}</>
+
+  // Ya enganchó en esta sesión y ahora no hay fix nuevo: se trabaja igual (ver arriba).
+  if (yaEnganchoRef.current && !permisoDenegado) {
+    const min = pos?.ts ? Math.max(2, Math.round((now - pos.ts) / 60000)) : null
+    return (
+      <>
+        {children}
+        <div
+          role="status"
+          style={sx('position:fixed;top:calc(env(safe-area-inset-top, 0px) + 6px);left:50%;transform:translateX(-50%);z-index:560;pointer-events:none;display:flex;align-items:center;gap:7px;padding:5px 11px;border-radius:99px;border:1px solid var(--warning);background:var(--warning-tint);color:var(--text);font-size:11.5px;font-weight:600;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.12)')}
+        >
+          <Pin size={13} /> Sin GPS{min ? ` hace ${min} min` : ''} · podés seguir trabajando
+        </div>
+      </>
+    )
+  }
 
   // Permiso denegado / ubicación apagada → cartel ACCIONABLE (el único caso de alarma roja).
   if (permisoDenegado) {

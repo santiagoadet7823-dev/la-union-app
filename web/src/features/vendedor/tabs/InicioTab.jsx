@@ -7,6 +7,7 @@ import Logo from '../../../components/Logo'
 import { useGps } from '../../../context/GpsContext'
 import { useAuth } from '../../../context/AuthContext'
 import { card, Stat } from '../ui'
+import EstadoEnvioPedidos from '../EstadoEnvioPedidos'
 import { Chip } from '../../../components/ui'
 
 const hoy = () => new Date().toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()
@@ -33,7 +34,7 @@ const SIN_DUENO_TOPE = 30
 
 /** Pestaña "Inicio": activación de GPS, resumen del día y lista de clientes con check-in. */
 export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarCliente, onAbrirCatalogo }) {
-  const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
+  const { pos: livePos, error: gpsError, request: pedirGps, id: userIdEnvio } = useGps()
   const { perfil, permisos } = useAuth()
   const puedeCatalogo = !!onAbrirCatalogo && (permisos || []).includes('catalogo')
   const nombre = perfil?.nombre || 'Vendedor'
@@ -115,6 +116,7 @@ export default function InicioTab({ j, onCheckIn, onNuevoCliente, onEditarClient
           <Stat label="Pedidos" value={conPedido.length} />
           <Stat label="Monto" value={fmtPesos(montoHoy)} color="var(--deep)" />
         </div>
+        <EstadoEnvioPedidos userId={userIdEnvio} hayPedidos={conPedido.length > 0} />
         {clients.length > 0 && (
           <div style={sx('margin-top:12px;height:5px;border-radius:99px;background:var(--surface2);overflow:hidden;border:1px solid var(--line)')}>
             <div style={{ ...sx('height:100%;border-radius:99px;background:var(--primary);transition:width .4s'), width: `${Math.round((done / clients.length) * 100)}%` }} />

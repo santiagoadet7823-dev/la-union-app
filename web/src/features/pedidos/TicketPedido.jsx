@@ -1,10 +1,45 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, hace } from '../../lib/format'
 import Overlay from '../../components/Overlay'
 import { useTenant } from '../../context/TenantContext'
 import { compartirPdfNodo, imprimirNodo, montarImpresion } from '../../services/report/imprimir'
+import { EVENTO_PEDIDO_NUMERADO, esperarNumero } from '../../services/sync/writeQueue'
 import { fmtFecha } from './DetallePedido'
+
+/**
+ * 🔴 EL NÚMERO LO DA EL SERVIDOR, Y EL TICKET LO ESPERA (22/10/2026, plan 19; decisión del usuario).
+ *
+ * Un pedido recién confirmado todavía no tiene número: se lo pone la base al recibirlo. El ticket
+ * espera hasta 8 s a que suba (`esperarNumero`), y después sigue escuchando: si el vendedor estaba
+ * sin señal, el número aparece solo cuando el pedido llega. NUNCA se muestra un número que el
+ * servidor no confirmó — el "151 de otro cliente" de la calle salió de comparar números a ojo.
+ * 'numerado' · 'enviando' (la espera corta) · 'pendiente' (sin señal: se manda solo).
+ */
+function useNumeroDelServidor(pedido) {
+  const [numero, setNumero] = useState(pedido?.numero || null)
+  const [estado, setEstado] = useState(pedido?.numero ? 'numerado' : 'enviando')
+  const id = pedido?.id
+  const yaTenia = pedido?.numero || null
+
+  useEffect(() => {
+    if (yaTenia) { setNumero(yaTenia); setEstado('numerado'); return }
+    if (!id) { setEstado('pendiente'); return }
+    let vivo = true
+    setEstado('enviando')
+    esperarNumero(id, 8000).then((n) => {
+      if (!vivo) return
+      if (n) { setNumero(n); setEstado('numerado') } else setEstado('pendiente')
+    })
+    const oir = (e) => {
+      if (vivo && e?.detail?.id === id && e.detail.numero) { setNumero(e.detail.numero); setEstado('numerado') }
+    }
+    window.addEventListener(EVENTO_PEDIDO_NUMERADO, oir)
+    return () => { vivo = false; window.removeEventListener(EVENTO_PEDIDO_NUMERADO, oir) }
+  }, [id, yaTenia])
+
+  return { numero, estado }
+}
 
 /**
  * EL COMPROBANTE DEL PEDIDO.
@@ -43,6 +78,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
   const { nombreEmpresa } = useTenant()
   // Engancha `beforeprint` mientras el ticket está en pantalla: cubre el Ctrl+P además del botón.
   useEffect(() => montarImpresion('lu-ticket'), [])
+  const { numero, estado: estadoNumero } = useNumeroDelServidor(pedido)
 
   const anulado = pedido?.estado === 'Anulado'
   const total = lineas.reduce((a, l) => a + l.cantidad * l.precio_unitario, 0)
@@ -53,7 +89,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
   // El título viaja a Android como asunto del envío y como nombre de archivo. Lleva el comercio
   // porque lo que le llega al comerciante no puede llamarse "Pedido" a secas: en su galería, seis
   // comprobantes con el mismo nombre son seis archivos que no se distinguen.
-  const titulo = `Pedido ${pedido?.numero ? '#' + pedido.numero : ''}${comercio?.name ? ' · ' + comercio.name : ''}`.trim()
+  const titulo = `Pedido ${numero ? '#' + numero : ''}${comercio?.name ? ' · ' + comercio.name : ''}`.trim()
   const dl = (v) => (v == null ? null : Number(v).toFixed(5))
 
   /**
@@ -76,7 +112,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
       onClose={onCerrar}
       variant="sheet"
       alto="medio"
-      title={`Pedido ${pedido?.numero ? '#' + pedido.numero : ''}`}
+      title={`Pedido ${numero ? '#' + numero : ''}`}
       subtitle={comercio?.name || ''}
       footer={
         <div style={sx('display:flex;flex-direction:column;gap:8px;width:100%')}>
@@ -84,7 +120,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
               principal del ticket. El vendedor no imprime —no tiene impresora en la calle—, le
               manda el comprobante al comerciante por WhatsApp. Imprimir queda de segunda. */}
           <button
-            onClick={() => compartirPdfNodo('lu-ticket', titulo, `pedido-${pedido?.numero || 's-n'}`)}
+            onClick={() => compartirPdfNodo('lu-ticket', titulo, `pedido-${numero || 's-n'}`)}
             className="lu-press lu-no-print"
             style={sx('width:100%;min-height:50px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border-radius:12px;font-weight:600;font-size:14.5px;cursor:pointer;border:none')}
           >
@@ -122,16 +158,29 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
           (db/43), así que recién confirmado NO existe todavía y el ticket muestra `#—`. Eso, sumado
           a un pie con sólo "compartir" e "imprimir", era lo que hacía creer que el pedido no se
           había guardado. Se dice lo que es cierto en cada caso. */}
-      {!anulado && (
+      {!anulado && estadoNumero === 'numerado' && (
         <div className="lu-no-print" style={sx('display:flex;align-items:center;gap:9px;margin-bottom:12px;padding:9px 11px;border:1px solid var(--success);background:var(--success-tint);border-radius:11px')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M20 6L9 17l-5-5" /></svg>
           <div style={sx('flex:1;min-width:0;line-height:1.4')}>
-            <div style={sx('font-size:12.5px;font-weight:700;color:var(--success)')}>Pedido guardado</div>
+            <div style={sx('font-size:12.5px;font-weight:700;color:var(--success)')}>Pedido recibido por el servidor</div>
             <div style={sx('font-size:11px;color:var(--muted)')}>
-              {pedido?.numero
-                ? <>Quedó registrado como <b style={sx('font-family:var(--font-mono);color:var(--text)')}>Nº {pedido.numero}</b>.</>
-                : 'El número se asigna cuando se sube. Si estás sin señal, se manda solo.'}
+              Quedó registrado como <b style={sx('font-family:var(--font-mono);color:var(--text)')}>Nº {numero}</b>.
             </div>
+          </div>
+        </div>
+      )}
+      {!anulado && estadoNumero === 'enviando' && (
+        <div className="lu-no-print" style={sx('display:flex;align-items:center;gap:9px;margin-bottom:12px;padding:9px 11px;border:1px solid var(--line2);background:var(--surface2);border-radius:11px')}>
+          <div className="lu-spin" style={sx('flex:none;width:14px;height:14px;border-radius:99px;border:2px solid var(--line2);border-top-color:var(--primary)')} />
+          <div style={sx('flex:1;min-width:0;font-size:12.5px;font-weight:600;line-height:1.4')}>Enviando al servidor…</div>
+        </div>
+      )}
+      {!anulado && estadoNumero === 'pendiente' && (
+        <div className="lu-no-print" style={sx('margin-bottom:12px;padding:9px 11px;border:1px solid var(--warning);background:var(--warning-tint);border-radius:11px;line-height:1.4')}>
+          <div style={sx('font-size:12.5px;font-weight:700;color:var(--warning)')}>PENDIENTE de envío</div>
+          <div style={sx('font-size:11px;color:var(--muted)')}>
+            Está guardado en el teléfono y se manda solo cuando haya señal. El número lo da el
+            servidor al recibirlo: hasta entonces este pedido no tiene número.
           </div>
         </div>
       )}
@@ -163,7 +212,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
             </div>
           </div>
           <div style={sx('text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--muted)')}>
-            <div style={sx('font-weight:700;color:var(--text);font-size:13px')}>#{pedido?.numero || '—'}</div>
+            <div style={sx('font-weight:700;color:var(--text);font-size:13px')}>{numero ? `#${numero}` : 'SIN NÚMERO (pendiente)'}</div>
             {fecha && <div>{fecha.toLocaleDateString('es-AR')} · {fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</div>}
           </div>
         </div>

@@ -166,7 +166,7 @@ export function procesarFix(fix) {
   if (!uploaderNativoActivo) {
     // Guardar SIEMPRE en la cola local (mutex en queue.js). Esto NO se throttlea: un
     // punto encolado nunca se pierde, solo se difiere su subida.
-    enqueuePosicion(row)
+    enqueuePosicion(row).catch(() => { /* SQLite no contestó: se pierde este punto, no la cola */ })
 
     // El flush SÍ se throttlea. Antes se llamaba en cada fix aceptado → una request HTTP (y su
     // handshake TLS) por punto: medido en producción, la mediana entre fixes es de 2,8 s (75,7% en

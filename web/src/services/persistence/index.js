@@ -63,8 +63,8 @@ export function desalojarCaches(exceptoKey) {
 // (SQLite → localStorage) y de "si no entra, desalojar cachés y reintentar" — una sola vez.
 // ─────────────────────────────────────────────────────────────────────────────
 const webStoreRaw = {
-  async get(key) {
-    try { return localStorage.getItem(key) } catch { return null }
+  async get(key, estricto = false) {
+    try { return localStorage.getItem(key) } catch (e) { if (estricto) throw e; return null }
   },
   async set(key, raw) {
     try {
@@ -211,15 +211,16 @@ async function escribirSqlite(key, promesa, etiqueta) {
 // caemos a localStorage en vez de dejar el await colgado (lo que trababa la cola GPS y, al
 // leerla desde el latido de estado, podía colgar también la telemetría).
 const nativeStoreRaw = {
-  async get(key) {
+  async get(key, estricto = false) {
     // Sin SQLite en esta corrida, localStorage es el único lugar: se lee tal cual (como siempre).
-    if (!(await initNative())) return webStoreRaw.get(key)
-    if (tieneMarca(key)) return webStoreRaw.get(key)
+    if (!(await initNative())) return webStoreRaw.get(key, estricto)
+    if (tieneMarca(key)) return webStoreRaw.get(key, estricto)
     try {
       const res = await conTimeout(sqlite.query('SELECT v FROM kv WHERE k = ?;', [key]), 5000, 'query')
       return res?.values?.[0]?.v ?? null
     } catch (e) {
       console.warn('[persistence] no se pudo leer', key, 'de SQLite:', e?.message || e)
+      if (estricto) throw e
       return null
     }
   },
@@ -278,6 +279,20 @@ export const persistence = {
     const raw = await storeRaw.get(key)
     if (raw == null) return fallback
     try { return JSON.parse(raw) } catch { return fallback }
+  },
+  /**
+   * 🩸 COMO `get`, PERO UNA LECTURA QUE FALLA LANZA EN VEZ DE DEVOLVER EL FALLBACK (22/10/2026).
+   *
+   * Para las COLAS, "no pude leer" y "está vacía" no pueden ser el mismo valor. `get` devolvía `[]`
+   * cuando SQLite se colgaba más de 5 s (pasa: la cola de GPS y el catálogo lo saturan), y el que
+   * leía para agregar una mutación escribía `[nueva]` encima de la cola entera. Con esto, el que
+   * encola recibe el error y el que vacía corta: la cola que no se pudo leer queda como estaba.
+   * Lo que no existe sigue siendo el fallback; lo que existe y no se puede parsear también lanza.
+   */
+  async getEstricto(key, fallback = null) {
+    const raw = await storeRaw.get(key, true)
+    if (raw == null) return fallback
+    return JSON.parse(raw)
   },
   async set(key, value) {
     return storeRaw.set(key, JSON.stringify(value))

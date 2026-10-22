@@ -109,7 +109,46 @@ const MAX_INTENTOS = 20
 /** Nombre del evento que se emite en `window` cuando una mutación NO se pudo ni anotar. */
 export const EVENTO_ESCRITURA_PERDIDA = 'lu-write-perdida'
 
-async function read() { return (await persistence.get(KEY, [])) || [] }
+/** Evento que se emite cuando el servidor le dio número a un pedido: `detail = { id, numero }`. */
+export const EVENTO_PEDIDO_NUMERADO = 'lu-pedido-numerado'
+const NKEY = 'lu-pedidos-numero'
+const MAX_N = 300
+
+/**
+ * 🩸 EL CANDADO QUE FALTABA — Y POR QUÉ SE PERDÍAN PEDIDOS EN LA CALLE (22/10/2026, plan 19).
+ *
+ * Encolar y vaciar son leer → modificar → escribir sobre la MISMA clave, con un `await` de SQLite
+ * en el medio. Sin exclusión, dos que se cruzan se pisan: el vaciado lee [A, B], el check-in lee
+ * [A, B] y escribe [A, B, C], el vaciado escribe [B] → **C desapareció**. Lo mismo dos encolados
+ * seguidos (`startVisit` encola la visita y el `updateCliente` del comercio casi a la vez).
+ *
+ * Medido en el log del servidor del 13 al 22/10: 39 altas de visita que nunca llegaron (1, 5, 8 y
+ * 24 por día) y 27 pedidos rechazados por apuntar a esas visitas — que la cola mandó a cuarentena
+ * sin que el vendedor se enterara. Más uso, más cruces: por eso crecía día a día.
+ *
+ * Todo leer→escribir de la cola y de la cuarentena pasa por acá, en fila. El request de red queda
+ * AFUERA: con mala señal tarda 10 s, y encolar un pedido no puede esperar a eso.
+ * 🔴 No anidar `enSerie` adentro de `enSerie`: el de adentro espera al de afuera, que espera al de
+ * adentro.
+ */
+let cadena = Promise.resolve()
+function enSerie(fn) {
+  const r = cadena.then(fn)
+  cadena = r.catch(() => {})
+  return r
+}
+
+// Estricta: si la cola existe y no se pudo leer, LANZA. Devolver `[]` hacía que el próximo encolado
+// escribiera `[nueva]` encima de la cola entera (ver `persistence.getEstricto`).
+async function read() { return (await persistence.getEstricto(KEY, [])) || [] }
+
+/** Saca la cabeza de la cola si sigue siendo `m` (en serie). */
+function quitarCabeza(m) {
+  return enSerie(async () => {
+    const q = await read()
+    if (q.length && q[0].op_uid === m.op_uid) await write(q.slice(1))
+  })
+}
 /**
  * 🔴 SI LA COLA NO SE PUDO GUARDAR, SE DICE (18/09/2026). `persistence.set` devolvía `undefined`
  * pasara lo que pasara, y el 18/09 el `localStorage` de la PC de la oficina se llenó con las
@@ -138,10 +177,15 @@ async function leerCuarentena() { return (await persistence.get(QKEY, [])) || []
  */
 async function aislar(m, motivo) {
   const marcada = { ...m, _motivo: motivo, _aislado_en: new Date().toISOString() }
-  let q = (await leerCuarentena()).concat([marcada])
-  if (q.length > MAX_Q) q = q.slice(-MAX_Q)
+  // En serie y con lectura estricta: una cuarentena que no se pudo leer no se pisa con `[marcada]`.
+  // Si falla, lanza: la mutación queda al frente de la cola y el próximo flush la vuelve a aislar.
+  const q = await enSerie(async () => {
+    let c = ((await persistence.getEstricto(QKEY, [])) || []).concat([marcada])
+    if (c.length > MAX_Q) c = c.slice(-MAX_Q)
+    try { await persistence.set(QKEY, c) } catch (_) { /* si no entra, ya estaba trabada igual */ }
+    return c
+  })
   console.warn(`[writeQueue] mutación a CUARENTENA (${motivo}):`, m.op, m.table, m.id, '· en cuarentena:', q.length)
-  try { await persistence.set(QKEY, q) } catch (_) { /* si no entra, ya estaba trabada igual */ }
   // Aviso para las pantallas que aplicaron la mutación en local sin releer (usePedidos, 13/09/2026):
   // lo que mostraron ya no es lo que hay en la base, y tienen que revalidar. Es un evento del
   // documento y no un callback registrado porque la cola no sabe quién está montado.
@@ -166,11 +210,56 @@ async function conVerificacion(m, consulta) {
   return null
 }
 
-/** Encola una mutación para sincronizar. */
-export async function enqueueMutacion(mut) {
-  const q = await read()
-  q.push(mut)
-  await write(q)
+/** Encola una mutación para sincronizar. Lanza si no se pudo anotar: quien encola tiene que saberlo. */
+export function enqueueMutacion(mut) {
+  return enSerie(async () => {
+    const q = await read()
+    q.push(mut)
+    await write(q)
+  })
+}
+
+/** Anota el número que el servidor le dio a un pedido y avisa a las pantallas. */
+async function anotarNumero(id, numero) {
+  if (!id || !numero) return
+  try {
+    const mapa = (await persistence.get(NKEY, {})) || {}
+    mapa[id] = numero
+    const claves = Object.keys(mapa)
+    if (claves.length > MAX_N) for (const k of claves.slice(0, claves.length - MAX_N)) delete mapa[k]
+    await persistence.set(NKEY, mapa)
+  } catch (_) { /* el número igual está en la base; esto es solo para el ticket */ }
+  try { window.dispatchEvent(new CustomEvent(EVENTO_PEDIDO_NUMERADO, { detail: { id, numero } })) } catch (_) { /* sin window */ }
+}
+
+/** El número que el servidor ya le dio a un pedido de este teléfono, o null si todavía no subió. */
+export async function numeroDePedido(id) {
+  try { return ((await persistence.get(NKEY, {})) || {})[id] || null } catch (_) { return null }
+}
+
+/**
+ * Espera hasta `ms` a que el servidor numere el pedido `id`. Devuelve el número o null (sin señal,
+ * o la cola tenía cosas delante). Nunca inventa uno: si vuelve null, el ticket dice PENDIENTE.
+ */
+export function esperarNumero(id, ms = 8000) {
+  return new Promise((resolve) => {
+    let listo = false
+    const fin = (n) => {
+      if (listo) return
+      listo = true
+      clearTimeout(t)
+      clearInterval(iv)
+      try { window.removeEventListener(EVENTO_PEDIDO_NUMERADO, oir) } catch (_) { /* sin window */ }
+      resolve(n || null)
+    }
+    const oir = (e) => { if (e?.detail?.id === id) fin(e.detail.numero) }
+    const mirar = () => numeroDePedido(id).then((n) => { if (n) fin(n) })
+    const t = setTimeout(() => fin(null), ms)
+    // El evento es lo rápido; mirar lo anotado cada segundo es el respaldo si el evento se perdió.
+    const iv = setInterval(mirar, 1000)
+    try { window.addEventListener(EVENTO_PEDIDO_NUMERADO, oir) } catch (_) { /* sin window */ }
+    mirar()
+  })
 }
 
 /** Sube las mutaciones pendientes en orden (FIFO). Corta al primer fallo/sin red. */
@@ -184,12 +273,19 @@ export async function flushMutaciones() {
   try {
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const q = await read()
+      const q = await enSerie(read)
       if (!q.length) break
       const m = q[0]
       let error = null
       if (m.op === 'insert') {
         ({ error } = await supabase.from(m.table).upsert(m.payload, { onConflict: 'id', ignoreDuplicates: true }))
+      } else if (m.op === 'rpc') {
+        /* Una función de la base en UN request (22/10/2026). La primera es `registrar_pedido`
+         * (db/87): cabecera + renglones en una transacción, idempotente por id, y devuelve el número
+         * que el ticket muestra. Sin red falla como cualquier request y se reintenta igual. */
+        const { data, error: eRpc } = await supabase.rpc(m.fn, m.args || {})
+        error = eRpc || null
+        if (!error && m.fn === 'registrar_pedido') await anotarNumero(m.args?.p_pedido?.id, data)
       } else if (m.op === 'update') {
         error = await conVerificacion(m, supabase.from(m.table).update(m.payload).eq('id', m.id))
       } else if (m.op === 'updateMany') {
@@ -236,8 +332,7 @@ export async function flushMutaciones() {
       if (error) {
         if (CODIGOS_PERMANENTES.has(error.code)) {
           await aislar(m, `${error.code}: ${error.message}`)
-          const qp = await read()
-          await write(qp.slice(1))
+          await quitarCabeza(m)
           continue // la cola SIGUE con la próxima
         }
         /* El servidor contestó, pero con un error que no está catalogado. Se cuenta. Un
@@ -245,21 +340,23 @@ export async function flushMutaciones() {
         const contestoElServidor = !!error.code
         if (contestoElServidor) {
           const intentos = (m._intentos || 0) + 1
-          const qi = await read()
-          if (qi.length && qi[0].op_uid === m.op_uid) {
-            if (intentos >= MAX_INTENTOS) {
-              await aislar(m, `${error.code}: ${error.message} (${intentos} intentos)`)
-              await write(qi.slice(1))
-              continue // la cola SIGUE: el techo cumplió su función
-            }
-            qi[0] = { ...qi[0], _intentos: intentos }
-            await write(qi)
+          if (intentos >= MAX_INTENTOS) {
+            await aislar(m, `${error.code}: ${error.message} (${intentos} intentos)`)
+            await quitarCabeza(m)
+            continue // la cola SIGUE: el techo cumplió su función
           }
+          await enSerie(async () => {
+            const qi = await read()
+            if (qi.length && qi[0].op_uid === m.op_uid) {
+              qi[0] = { ...qi[0], _intentos: intentos }
+              await write(qi)
+            }
+          })
         }
         break // transitorio: se reintenta en el próximo flush, sin perder el orden
       }
-      const q2 = await read()
-      await write(q2.slice(1)) // re-leer por si entraron nuevas mientras tanto
+      // Re-leer adentro del candado: lo que se encoló mientras volaba el request queda.
+      await quitarCabeza(m)
     }
   } catch (_) {
     /* sin red: las mutaciones quedan encoladas */
@@ -269,7 +366,7 @@ export async function flushMutaciones() {
 }
 
 /** Cantidad de mutaciones pendientes (para diagnóstico/estado). */
-export async function pendingMutaciones() { return (await read()).length }
+export async function pendingMutaciones() { return ((await persistence.get(KEY, [])) || []).length }
 
 /**
  * Las mutaciones aisladas, para poder MOSTRARLAS y decidir qué hacer con ellas.
@@ -282,7 +379,39 @@ export async function pendingMutaciones() { return (await read()).length }
 export async function cuarentenaMutaciones() { return await leerCuarentena() }
 
 /** Vacía la cuarentena. Sólo para después de haber MIRADO qué había (regla 20). */
-export async function limpiarCuarentena() { await persistence.set(QKEY, []) }
+export function limpiarCuarentena() { return enSerie(() => persistence.set(QKEY, [])) }
+
+/**
+ * 🩸 RESCATE: VUELVE A ENCOLAR, UNA SOLA VEZ, LO QUE LA CUARENTENA TIENE Y YA PUEDE ENTRAR (22/10/2026).
+ *
+ * Los 27 pedidos de la calle quedaron aislados por un 23503 (su visita se había perdido). Desde
+ * db/87 la base crea la visita que falta, así que el mismo pedido ahora entra. `debeVolver(m)`
+ * decide qué vuelve; lo que vuelve se marca `_rescatado` y sale de la cuarentena — si vuelve a
+ * rebotar, `aislar` lo trae de nuevo, con la marca, y no se reintenta más (no hay ciclo).
+ * Va al FINAL de la cola y en orden de dependencia: visitas → pedidos → renglones (la policy
+ * `items_ins` exige el pedido padre). Cola y cuarentena se reescriben en el mismo turno del candado.
+ * Devuelve cuántas volvieron.
+ */
+const ORDEN_RESCATE = { visitas: 0, pedidos: 1, pedido_items: 2 }
+export function reencolarCuarentena(debeVolver) {
+  return enSerie(async () => {
+    const cuar = (await persistence.getEstricto(QKEY, [])) || []
+    const vuelven = cuar.filter((m) => !m._rescatado && debeVolver(m))
+    if (!vuelven.length) return 0
+    const quedan = cuar.filter((m) => !vuelven.includes(m))
+    const ordenadas = vuelven
+      .map((m, i) => ({ m, i }))
+      .sort((a, b) => ((ORDEN_RESCATE[a.m.table] ?? 9) - (ORDEN_RESCATE[b.m.table] ?? 9)) || (a.i - b.i))
+      .map(({ m }) => {
+        const { _motivo, _aislado_en, _intentos, ...limpia } = m
+        return { ...limpia, _rescatado: { motivo: _motivo || null, aislado_en: _aislado_en || null } }
+      })
+    const q = await read()
+    await write(q.concat(ordenadas))
+    await persistence.set(QKEY, quedan)
+    return ordenadas.length
+  })
+}
 
 /**
  * Las mutaciones pendientes de UNA tabla, para poder MOSTRARLAS.
@@ -296,8 +425,18 @@ export async function limpiarCuarentena() { await persistence.set(QKEY, []) }
  * "sin subir" y no mezclarlas de callado con lo confirmado.
  */
 export async function pendientesDe(table, op = 'insert') {
-  const q = await read()
-  return q.filter((m) => m.table === table && m.op === op).map((m) => m.payload)
+  const q = (await persistence.get(KEY, [])) || [] // solo para mostrar: no hace falta la estricta
+  const out = []
+  for (const m of q) {
+    if (m.table === table && m.op === op) out.push(m.payload)
+    // Desde la 1.44.3 el pedido viaja como `registrar_pedido` (cabecera + renglones en una sola
+    // mutación). Para quien lo muestra sigue siendo un alta de `pedidos` y otra de `pedido_items`.
+    else if (op === 'insert' && m.op === 'rpc' && m.fn === 'registrar_pedido') {
+      if (table === 'pedidos' && m.args?.p_pedido) out.push(m.args.p_pedido)
+      if (table === 'pedido_items' && m.args?.p_items) out.push(m.args.p_items)
+    }
+  }
+  return out
 }
 
 /**

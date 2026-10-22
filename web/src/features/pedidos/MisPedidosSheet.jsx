@@ -9,7 +9,7 @@ import DetallePedido, { fmtFecha } from './DetallePedido'
 import EditarPedidoSheet from './EditarPedidoSheet'
 import { usePedidos, itemsDePedido } from './usePedidos'
 import { textoPapelera, porVencer, DIAS_PAPELERA } from './papelera'
-import { pendientesDe } from '../../services/sync/writeQueue'
+import { EVENTO_PEDIDO_NUMERADO, pendientesDe } from '../../services/sync/writeQueue'
 
 /**
  * MIS PEDIDOS — la misma revisión, del lado del vendedor.
@@ -83,6 +83,15 @@ export default function MisPedidosSheet({ open, onCerrar, onToast }) {
   }, [userId])
 
   useEffect(() => { if (open) releerCola() }, [open, releerCola, pedidos])
+
+  // Un pedido que estaba "sin subir" y el servidor acaba de numerar (plan 19): se relee la lista
+  // para que aparezca con su número y deje de figurar como pendiente.
+  useEffect(() => {
+    if (!open) return
+    const alNumerar = () => { recargar(); releerCola() }
+    window.addEventListener(EVENTO_PEDIDO_NUMERADO, alNumerar)
+    return () => window.removeEventListener(EVENTO_PEDIDO_NUMERADO, alNumerar)
+  }, [open, recargar, releerCola])
 
   // Las que ya llegaron a la base se sacan de la lista de "sin subir": la cola puede conservar la
   // entrada un rato más y quedarían las dos.

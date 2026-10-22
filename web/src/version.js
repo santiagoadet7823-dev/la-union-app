@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.44.2'   // 11/10/2026: mismo código que 1.44.1, servidor propio
+export const APP_VERSION = '1.44.3'   // 22/10/2026: plan 19 — cola sin pérdidas, número del servidor, rescate
