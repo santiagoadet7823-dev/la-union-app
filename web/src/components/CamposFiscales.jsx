@@ -32,7 +32,9 @@ export default function CamposFiscales({ fiscal, estiloInput = inputStyle }) {
             autoComplete="off"
             placeholder={cargando ? 'Cargando…' : '20-12345678-9'}
             aria-invalid={!!error}
-            style={{ ...estiloInput, ...(error ? { borderColor: 'var(--danger)' } : null) }}
+            // `border` entero y no `borderColor`: mezclar el atajo con la propiedad suelta hace que
+            // React no saque el rojo al corregir el número (avisa en consola).
+            style={{ ...estiloInput, ...(error ? { border: '1px solid var(--danger)' } : null) }}
             className="lu-input"
           />
         </Field>
