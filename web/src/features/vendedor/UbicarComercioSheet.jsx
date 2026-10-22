@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import Overlay from '../../components/Overlay'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { Pin } from '../../components/icons'
 import { useGps } from '../../context/GpsContext'
+import { useCatalog } from '../../context/CatalogContext'
 
 /**
  * EL CARTEL DEL CHECK-IN EN UN COMERCIO SIN UBICACIÓN. Sale antes de arrancar la visita y es
@@ -33,6 +34,14 @@ export default function UbicarComercioSheet({ comercio, onConfirmar, onSeguirSin
   const [paso, setPaso] = useState(1)
   const [punto, setPunto] = useState(null)
   const [guardando, setGuardando] = useState(false)
+  // Los demás comercios como contexto (plan 20): si el pin cae sobre uno que ya está ubicado, puede
+  // ser el mismo comercio cargado dos veces, y se ve antes de confirmar.
+  const { clientes } = useCatalog()
+  const vecinos = useMemo(
+    () => clientes.filter((x) => x.id !== comercio?.id && Number.isFinite(x.lat) && Number.isFinite(x.lng))
+      .map((x) => ({ lat: x.lat, lng: x.lng, nombre: x.name, abrev: x.codigo || '', glifo: '' })),
+    [clientes, comercio?.id],
+  )
   const sinConexion = typeof navigator !== 'undefined' && navigator.onLine === false
 
   // Con GPS, el centro inicial ya es un punto válido y el botón está habilitado desde el arranque:
@@ -102,7 +111,7 @@ export default function UbicarComercioSheet({ comercio, onConfirmar, onSeguirSin
           )}
         </div>
       ) : (
-        <SelectorUbicacion inicial={inicial} live={live} nombre={comercio.name} alto="52vh" onCambio={setPunto} />
+        <SelectorUbicacion inicial={inicial} live={live} nombre={comercio.name} alto="52vh" onCambio={setPunto} vecinos={vecinos} />
       )}
     </Overlay>
   )

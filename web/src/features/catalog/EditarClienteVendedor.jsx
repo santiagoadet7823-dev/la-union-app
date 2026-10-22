@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { DIAS, parseDias, formatDias } from '../../lib/diasVisita'
 import { useCatalog } from '../../context/CatalogContext'
@@ -46,6 +46,13 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   // nos arrancaría del árbol antes de que corra la animación de salida. Cerramos
   // con setAbierto(false) y el Overlay avisa al padre recién cuando terminó.
   const [abierto, setAbierto] = useState(true)
+  // Los demás comercios como contexto en el mapa (plan 20): al reubicar se ve si el pin cae sobre
+  // otro cliente. `clientes` ya son los vigentes.
+  const vecinos = useMemo(
+    () => clientes.filter((x) => x.id !== clienteId && Number.isFinite(x.lat) && Number.isFinite(x.lng))
+      .map((x) => ({ lat: x.lat, lng: x.lng, nombre: x.name, abrev: x.codigo || '', glifo: '' })),
+    [clientes, clienteId],
+  )
 
   if (!c) return null
   async function usarMiUbicacion() {
@@ -131,7 +138,7 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
 
       {/* Pin fijo al centro, se mueve el mapa (17/09/2026). Antes era "tocá el mapa", que con el
           dedo no se puede afinar. Ver `SelectorUbicacion`. */}
-      <SelectorUbicacion inicial={inicial} live={livePos} nombre={c.name} alto={230} onCambio={setPunto} />
+      <SelectorUbicacion inicial={inicial} live={livePos} nombre={c.name} alto={230} onCambio={setPunto} vecinos={vecinos} />
       <div style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);margin-top:6px')}>
         {punto ? `${punto.lat.toFixed(5)}, ${punto.lng.toFixed(5)}` : 'Sin ubicación marcada'}
       </div>

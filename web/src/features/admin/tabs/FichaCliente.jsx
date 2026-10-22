@@ -73,6 +73,14 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   // después de que la pantalla dijo "actualizado". Ver lib/codigoCliente.js.
   const ocupadoPor = useMemo(() => codigoOcupado(codigoEdit, clientesTodos, fc.id), [codigoEdit, clientesTodos, fc.id])
 
+  // Los demás comercios vigentes como contexto al ubicar/mover (plan 20): se ve si el pin cae sobre
+  // otro cliente. Con el mouse, el tooltip dice cuál es.
+  const vecinos = useMemo(
+    () => clientesTodos.filter((x) => x.id !== fc.id && !x.archivado && Number.isFinite(x.lat) && Number.isFinite(x.lng))
+      .map((x) => ({ lat: x.lat, lng: x.lng, nombre: x.name, abrev: x.codigo || '', glifo: '' })),
+    [clientesTodos, fc.id],
+  )
+
   async function guardarUbicacion() {
     if (!puntoNuevo) return
     setSavingLoc(true)
@@ -220,6 +228,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
             nombre={fc.name}
             alto={280}
             onCambio={setPuntoNuevo}
+            vecinos={vecinos}
           />
           <div style={sx('display:flex;gap:8px;margin-top:8px')}>
             {moviendo && (

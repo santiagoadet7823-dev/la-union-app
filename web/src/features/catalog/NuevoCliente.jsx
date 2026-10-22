@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { DIAS, formatDias } from '../../lib/diasVisita'
-import { buscarParecidos, motivoTexto } from '../../lib/texto'
+import { buscarParecidos, motivoTexto, cercanos, RADIO_CERCA_M } from '../../lib/texto'
 import { primerCodigoLibre, codigoOcupado } from '../../lib/codigoCliente'
 import { useCatalog } from '../../context/CatalogContext'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
@@ -46,6 +46,31 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     () => buscarParecidos(nombre, clientesTodos, { lat: punto?.lat, lng: punto?.lng }),
     [nombre, clientesTodos, punto],
   )
+
+  // VECINOS EN EL MAPA (22/10/2026, plan 20). Los demás comercios vigentes con ubicación, como pines
+  // de contexto en el selector, y la lista "Cerca de acá" con los que quedan a ≤ 50 m del pin aunque
+  // el nombre no se parezca (ver `RADIO_CERCA_M`). Los archivados no: no están en la calle.
+  const [tocadoId, setTocadoId] = useState(null) // el vecino que se tocó en el mapa
+  const vigentesUbicados = useMemo(
+    () => clientesTodos.filter((c) => !c.archivado && Number.isFinite(c.lat) && Number.isFinite(c.lng)),
+    [clientesTodos],
+  )
+  const vecinos = useMemo(
+    () => vigentesUbicados.map((c) => ({ lat: c.lat, lng: c.lng, nombre: c.name, abrev: c.codigo || '', glifo: '', sel: c.id === tocadoId })),
+    [vigentesUbicados, tocadoId],
+  )
+  const cerca = useMemo(() => {
+    const yaAvisados = new Set(parecidos.map((p) => p.cliente.id))
+    const lista = cercanos(punto, vigentesUbicados).filter((x) => !yaAvisados.has(x.cliente.id))
+    // El tocado va primero aunque esté a más de 50 m: si la persona lo tocó, es porque duda.
+    const tocado = tocadoId && vigentesUbicados.find((c) => c.id === tocadoId)
+    if (!tocado || yaAvisados.has(tocado.id)) return lista
+    const distancia = punto ? cercanos(punto, [tocado], Infinity)[0]?.distancia ?? null : null
+    return [{ cliente: tocado, distancia }, ...lista.filter((x) => x.cliente.id !== tocado.id)]
+  }, [punto, vigentesUbicados, parecidos, tocadoId])
+
+  // Desde gestión no se pasa `onAbrirCliente`: las tarjetas quedan, sin el botón.
+  const esEste = onAbrirCliente ? (id) => { setAbierto(false); onAbrirCliente(id) } : null
 
   // CÓDIGO (12/09/2026). El código lo emite el ERP de la distribuidora, así que acá NO se precarga:
   // se SUGIERE el primer hueco libre desde el 1 (los archivados cuentan como ocupados) con un botón
@@ -108,7 +133,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
           {/* El label cambia cuando hay parecidos: el botón deja de decir "guardar" y pasa a decir
               qué se está afirmando al tocarlo. Es lo que convierte el aviso en una decisión. */}
           <button type="button" onClick={guardar} disabled={saving} className="lu-press" style={{ ...btnPrimario, flex: 1, ...(saving ? apagado : null) }}>
-            {saving ? 'Guardando…' : parecidos.length ? 'Es otro · guardar igual' : 'Guardar cliente'}
+            {saving ? 'Guardando…' : parecidos.length || cerca.length ? 'Es otro · guardar igual' : 'Guardar cliente'}
           </button>
         </>
       }
@@ -131,21 +156,8 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
           </div>
           <div style={sx('display:flex;flex-direction:column;gap:7px;margin-top:9px')}>
             {parecidos.map((p) => (
-              <div key={p.cliente.id} style={sx('display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px')}>
-                <div style={sx('flex:1;min-width:0')}>
-                  <div style={sx('font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p.cliente.name}</div>
-                  <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint);margin-top:2px')}>
-                    {p.cliente.codigo || 's/código'} · {p.cliente.loc || 'sin localidad'} · {motivoTexto(p)}
-                    {p.distancia != null && ` · a ${p.distancia} m`}
-                  </div>
-                </div>
-                {onAbrirCliente && (
-                  <button type="button" onClick={() => { setAbierto(false); onAbrirCliente(p.cliente.id) }} className="lu-press"
-                    style={sx('flex:none;border:1px solid var(--line2);background:var(--surface2);color:var(--deep);border-radius:var(--r-sm);padding:7px 11px;font-size:var(--fs-2xs);font-weight:700;cursor:pointer')}>
-                    Es este
-                  </button>
-                )}
-              </div>
+              <Candidato key={p.cliente.id} cliente={p.cliente} onEsEste={esEste}
+                detalle={`${motivoTexto(p)}${p.distancia != null ? ` · a ${p.distancia} m` : ''}`} />
             ))}
           </div>
           <div style={sx('margin-top:9px;font-size:var(--fs-2xs);color:var(--muted);line-height:1.5')}>
@@ -192,10 +204,30 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
         <div style={sx('font-size:var(--fs-xs);color:var(--faint);margin-bottom:6px')}>…y movés el mapa hasta que el pin quede sobre el comercio.</div>
         {/* Pin fijo al centro (17/09/2026): ver `SelectorUbicacion`. `center` es la posición viva
             del vendedor cuando lo abre él; desde gestión no hay GPS y el mapa arranca en el pueblo. */}
-        <SelectorUbicacion inicial={inicial} live={center || null} nombre={nombre || 'Nuevo cliente'} alto={200} onCambio={setPunto} />
+        <SelectorUbicacion inicial={inicial} live={center || null} nombre={nombre || 'Nuevo cliente'} alto={200} onCambio={setPunto}
+          vecinos={vecinos} onVecino={(i) => setTocadoId(vigentesUbicados[i]?.id ?? null)} />
         <div style={sx('font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--muted);margin-top:6px')}>
           {punto ? `${punto.lat.toFixed(5)}, ${punto.lng.toFixed(5)}` : 'Sin ubicación marcada'}
         </div>
+        {/* CERCA DE ACÁ. Mismo criterio que el aviso de parecidos: no bloquea, pone el dato a la
+            vista. Es el aviso que faltaba para el repetido con otro nombre ("335Julio jamime"). */}
+        {cerca.length > 0 && (
+          <div style={sx('margin-top:10px;padding:11px 13px;border-radius:var(--r-md);background:var(--warning-tint);border:1px solid var(--warning)')}>
+            <div style={sx('display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);font-weight:700;color:var(--warning)')}>
+              <Alerta size={15} w={2.2} style={{ flex: 'none' }} />
+              Cerca de acá (≤ {RADIO_CERCA_M} m)
+            </div>
+            <div style={sx('display:flex;flex-direction:column;gap:7px;margin-top:9px')}>
+              {cerca.map((x) => (
+                <Candidato key={x.cliente.id} cliente={x.cliente} onEsEste={esEste}
+                  detalle={x.distancia != null ? `a ${x.distancia} m del pin` : 'tocado en el mapa'} />
+              ))}
+            </div>
+            <div style={sx('margin-top:9px;font-size:var(--fs-2xs);color:var(--muted);line-height:1.5')}>
+              Si es el mismo comercio, tocá «Es este» y corregilo ahí. Si es otro, seguí.
+            </div>
+          </div>
+        )}
       </Field>
 
       <Field label="Días de visita">
@@ -222,5 +254,25 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
         <input type="range" min="50" max="150" step="5" value={geofence} onChange={(e) => setGeofence(+e.target.value)} style={{ width: '100%', accentColor: 'var(--primary)' }} />
       </Field>
     </Overlay>
+  )
+}
+
+/** Una tarjeta de "puede que ya esté cargado": la usan los parecidos por nombre y los cercanos. */
+function Candidato({ cliente, detalle, onEsEste }) {
+  return (
+    <div style={sx('display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px')}>
+      <div style={sx('flex:1;min-width:0')}>
+        <div style={sx('font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{cliente.name}</div>
+        <div style={sx('font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--faint);margin-top:2px')}>
+          {cliente.codigo || 's/código'} · {cliente.loc || 'sin localidad'} · {detalle}
+        </div>
+      </div>
+      {onEsEste && (
+        <button type="button" onClick={() => onEsEste(cliente.id)} className="lu-press"
+          style={sx('flex:none;border:1px solid var(--line2);background:var(--surface2);color:var(--deep);border-radius:var(--r-sm);padding:7px 11px;font-size:var(--fs-2xs);font-weight:700;cursor:pointer')}>
+          Es este
+        </button>
+      )}
+    </div>
   )
 }

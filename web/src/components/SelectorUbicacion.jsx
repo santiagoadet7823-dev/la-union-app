@@ -31,6 +31,11 @@ import { CENTRO } from '../data/demoGeo'
  *   centroPorDefecto  {lat,lng} donde abre el mapa si no hay `inicial` ni `live` (la base de la
  *              empresa en la ficha del admin). NO cuenta como punto elegido: hasta que no se mueve
  *              el mapa no se emite nada.
+ *   vecinos    [{lat,lng,nombre,abrev,glifo,sel}] — los OTROS comercios, como capa de contexto
+ *              (`clients` de LeafletMap). Que se vean al ubicar uno es lo que frena el repetido:
+ *              el vendedor ve que ya hay un pin en esa puerta (22/10/2026, plan 20). Tiene que
+ *              llegar memoizado: la capa se redibuja cada vez que cambia la referencia.
+ *   onVecino   (index) al tocar un vecino. Sin esto, el vecino muestra su nombre en un tooltip.
  *
  * NO tiene botón de confirmar: lo pone quien lo usa, porque el texto del botón depende de la
  * pantalla ("Guardar ubicación", "Confirmar ubicación", "Crear cliente").
@@ -40,8 +45,10 @@ import { CENTRO } from '../data/demoGeo'
 // silueta del pin, son tres lugares y están enlazados por este comentario.
 const W = 30
 const H = Math.round(W * 1.207)
+// Default estable: un `[]` nuevo en cada render haría redibujar la capa de clientes en cada tecla.
+const SIN_VECINOS = []
 
-export default function SelectorUbicacion({ inicial = null, live = null, onCambio, alto = 260, nombre = '', centroPorDefecto = null }) {
+export default function SelectorUbicacion({ inicial = null, live = null, onCambio, alto = 260, nombre = '', centroPorDefecto = null, vecinos = SIN_VECINOS, onVecino }) {
   const { theme } = useTheme()
   const [focus, setFocus] = useState(null)
   const enfocar = (p) => setFocus({ points: [p], nonce: Date.now() })
@@ -73,6 +80,8 @@ export default function SelectorUbicacion({ inicial = null, live = null, onCambi
             // El círculo de precisión sólo cuando vale la pena verlo: con ±10 m es un puntito.
             circle={live && acc != null && acc > 30 ? { lat: live.lat, lng: live.lng, radiusM: acc, color: theme === 'dark' ? (gpsMalo ? '#D2A857' : '#93B3D3') : (gpsMalo ? '#735D21' : '#39638A') } : null}
             onMoveEnd={(c) => onCambioRef.current?.(c)}
+            clients={vecinos}
+            onClientClick={onVecino}
           />
         </ErrorBoundary>
 
