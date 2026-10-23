@@ -5,6 +5,7 @@ import { escaleraDe, precioPara } from '../../lib/precios'
 import CantidadInput from '../../components/CantidadInput'
 import ConfirmarDobleToque from '../../components/ConfirmarDobleToque'
 import { ImagenVacia } from '../../components/icons'
+import { fotoDe } from '../../services/data/espejoFotos'
 import Overlay from '../../components/Overlay'
 
 /**
@@ -255,7 +256,7 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
             ficha, que es lo que importa. */}
         <div style={sx('position:relative;width:100%;padding-top:62%;border-radius:14px;overflow:hidden;background:var(--surface2)')}>
           {p.imagen ? (
-            <img src={p.imagen} alt="" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:contain')} />
+            <img src={fotoDe(p)} alt="" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:contain')} />
           ) : (
             <div style={sx('position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)')}>
               <ImagenVacia size={44} />

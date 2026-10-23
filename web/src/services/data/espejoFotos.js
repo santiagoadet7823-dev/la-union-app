@@ -235,3 +235,37 @@ export function pesoLegible(bytes) {
   if (mb < 1) return `${Math.round(bytes / 1024)} KB`
   return `${mb.toFixed(1).replace('.', ',')} MB`
 }
+
+/**
+ * 🩸 EL CATÁLOGO DEL VENDEDOR TAMBIÉN USA LA COPIA LOCAL (23/10/2026, plan 22).
+ *
+ * Hasta hoy el espejo sólo lo leía la vidriera: la grilla del vendedor pedía siempre la URL de
+ * Storage, y sin señal toda foto que el caché HTTP del WebView ya hubiera tirado salía vacía ("se
+ * pierden las imágenes del catálogo"). `fotoDe` devuelve el archivo local cuando está y es de la
+ * MISMA URL (o sea, la foto vigente); si no, la URL de siempre. Síncrona, para usarla en el render:
+ * el mapa se arma una vez con `cargarFotosLocales`.
+ */
+let locales = new Map()
+export async function cargarFotosLocales() {
+  if (!isNative()) return 0
+  try {
+    const { Filesystem, Directory } = await fs()
+    const [indice, { uri }, { Capacitor }] = await Promise.all([
+      leerIndice(),
+      Filesystem.getUri({ path: CARPETA, directory: Directory.Data }),
+      import('@capacitor/core'),
+    ])
+    const m = new Map()
+    for (const [id, v] of Object.entries(indice)) {
+      if (v?.url) m.set(id, { url: v.url, src: Capacitor.convertFileSrc(`${uri}/${id}.${v.ext || extDeUrl(v.url)}`) })
+    }
+    locales = m
+    return m.size
+  } catch (_) {
+    return 0
+  }
+}
+export function fotoDe(p) {
+  const l = p?.imagen ? locales.get(p.id) : null
+  return l && l.url === p.imagen ? l.src : p?.imagen
+}

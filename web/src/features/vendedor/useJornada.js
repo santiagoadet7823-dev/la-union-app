@@ -8,6 +8,7 @@ import { duenoDe, esMiComercio } from '../../lib/carteraDe'
 import { persistence } from '../../services/persistence'
 import { distanciaMetros } from '../../services/geolocation/geofence'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
+import { guardarRespaldo } from '../../services/sync/respaldoPedidos'
 import { rescatarPedidos } from '../../services/sync/rescate'
 import { useVidriera } from '../vidriera/useVidriera'
 import useFormasPago from '../../hooks/useFormasPago'
@@ -598,10 +599,16 @@ export function useJornada() {
     // `table: 'pedidos'` no la usa el flush: es para que "Mis pedidos" y el rescate la reconozcan.
     // Si NO se pudo anotar en la cola, lanza: el pedido no está guardado y el vendedor lo tiene que
     // saber (antes un `catch` vacío se tragaba hasta el "almacenamiento lleno").
-    await enqueueMutacion({
-      op_uid: idPedido, op: 'rpc', fn: 'registrar_pedido', table: 'pedidos',
-      args: { p_pedido: cabecera, p_items: items },
-    })
+    // Primero el archivo propio del pedido (plan 22, ver `respaldoPedidos.js`): si después la cola
+    // se pierde, al reabrir se repone desde acá. Si la cola falla pero el archivo quedó, el pedido
+    // está a salvo igual y se repone solo; si fallan los dos, lanza y el vendedor se entera.
+    const args = { p_pedido: cabecera, p_items: items }
+    const respaldado = await guardarRespaldo(idPedido, args)
+    try {
+      await enqueueMutacion({ op_uid: idPedido, op: 'rpc', fn: 'registrar_pedido', table: 'pedidos', args })
+    } catch (e) {
+      if (!respaldado) throw e
+    }
     flushMutaciones()
 
     // Se devuelve lo ARMADO y no un id: el ticket se imprime en el momento, y si el vendedor está

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { cargarFotosLocales, fotoDe } from '../services/data/espejoFotos'
 import { sx } from '../lib/sx'
 import { fmtPesos } from '../lib/format'
 import { escaleraDe, precioPara } from '../lib/precios'
@@ -105,6 +106,9 @@ export default function GrillaCatalogo({
   // en cada mutación (una foto nueva, un precio corregido) y un objeto capturado acá se quedaría
   // mostrando el precio viejo con el comerciante mirando la pantalla.
   const [zoomId, setZoomId] = useState(null)
+  // Fotos del espejo local (plan 22): al cargar el mapa se re-renderiza para pasar a los archivos.
+  const [, setFotosLocales] = useState(0)
+  useEffect(() => { cargarFotosLocales().then(setFotosLocales) }, [])
   const zoom = zoomId ? productos.find((x) => x.id === zoomId) : null
 
   /**
@@ -228,7 +232,7 @@ export default function GrillaCatalogo({
                       WebViews viejos). object-fit:cover recorta sin deformar. */}
                   <div style={sx('position:relative;width:100%;padding-top:100%;background:var(--surface2)')}>
                     {p.imagen ? (
-                      <img src={p.imagen} alt="" loading="lazy" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
+                      <img src={fotoDe(p)} alt="" loading="lazy" style={sx('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
                     ) : (
                       <div style={sx('position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)')}>
                         <ImagenVacia size={30} />
