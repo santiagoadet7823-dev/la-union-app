@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.44.6'   // 23/10/2026: plan 22 — respaldo de pedidos en archivo propio y fotos locales del catálogo
+export const APP_VERSION = '1.44.7'   // 23/10/2026: plan 22 — respaldo de pedidos, fotos locales y sesión que no se pierde al reabrir sin red

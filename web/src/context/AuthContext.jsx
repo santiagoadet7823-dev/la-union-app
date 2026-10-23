@@ -27,7 +27,17 @@ import {
 // vencido y no pudo refrescar, y tarda ~25–30 s en decirlo (reintenta con backoff hasta agotar
 // los 30 s del tick). Sin el espejo, en esa ventana no habría con qué abrir la app.
 const SESSION_KEY = 'lu-session-cache'
-const leerCacheSesion = () => persistence.get(SESSION_KEY, null)
+// 🩸 ESTRICTA Y CON REINTENTOS (23/10/2026, plan 22). Con la lectura común, un SQLite lento en el
+// arranque en frío (>5 s) devolvía `null` como si no hubiera espejo, y la app mandaba al login SIN
+// RED: Gabriel quedó afuera de 12:00 a 14:04 hasta agarrar wifi. "No se pudo leer" no es "no hay".
+const leerCacheSesion = async () => {
+  for (let i = 0; i < 4; i++) {
+    try { return await persistence.getEstricto(SESSION_KEY, null) } catch (_) {
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+  }
+  return persistence.get(SESSION_KEY, null)
+}
 const escribirCacheSesion = (s) => { if (s?.access_token) persistence.set(SESSION_KEY, s) }
 const borrarCacheSesion = () => persistence.set(SESSION_KEY, null)
 
