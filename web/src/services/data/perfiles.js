@@ -30,10 +30,15 @@ export async function fetchPerfil(userId, { intentos = 3, timeoutMs = 8000 } = {
   let lastErr = null
   for (let i = 0; i < intentos; i++) {
     try {
-      const { data } = await Promise.race([
+      const { data, error } = await Promise.race([
         supabase.from('perfiles').select('*').eq('id', userId).maybeSingle(),
         new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs)),
       ])
+      // 🩸 supabase-js NO lanza ante un fallo de red o un 401: devuelve `{ data: null, error }`
+      // (23/10/2026, plan 22). Ignorar el `error` hacía que "no pude consultar" pareciera "no tenés
+      // perfil": el Gate mostraba "Tu cuenta está esperando permiso", el vendedor tocaba "Volver al
+      // ingreso" y tenía que entrar de nuevo con Google (Orlando, 6 logins en un día).
+      if (error) throw error
       return { data }
     } catch (e) {
       lastErr = e
