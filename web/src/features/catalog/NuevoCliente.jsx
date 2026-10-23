@@ -4,6 +4,8 @@ import { DIAS, formatDias } from '../../lib/diasVisita'
 import { buscarParecidos, motivoTexto, cercanos, RADIO_CERCA_M } from '../../lib/texto'
 import { primerCodigoLibre, codigoOcupado } from '../../lib/codigoCliente'
 import { useCatalog } from '../../context/CatalogContext'
+import { useAuth } from '../../context/AuthContext'
+import { misZonas, etiquetaZona } from '../../lib/carteraDe'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import CamposFiscales from '../../components/CamposFiscales'
@@ -23,7 +25,14 @@ const FRECUENCIAS = ['Semanal', 'Quincenal', 'Mensual']
 export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente }) {
   // `clientesTodos` incluye los archivados: si alguien vuelve a cargar un comercio que se archivó,
   // avisarlo es MÁS importante, no menos — es la señal de que hay que desarchivarlo, no duplicarlo.
-  const { addCliente, clientesTodos } = useCatalog()
+  const { addCliente, clientesTodos, zonas } = useCatalog()
+  const { user } = useAuth()
+  // ZONA (plan 21): el vendedor pone el cliente en una de SUS zonas, así nace con dueño y no queda
+  // "a medias". Con una sola, va puesta. Gestión no es dueña de zonas: no ve el campo (la zona la
+  // asigna desde la ficha). La base rechaza una zona ajena (db/89, `zona-ajena`).
+  const propias = useMemo(() => misZonas(zonas, user?.id), [zonas, user?.id])
+  const [zona, setZona] = useState(() => (propias.length === 1 ? propias[0].id : ''))
+  const [avisoZona, setAvisoZona] = useState(false) // ya se avisó que va sin zona: el 2.º toque guarda
   const [nombre, setNombre] = useState('')
   const [codigo, setCodigo] = useState('')
   const [localidad, setLocalidad] = useState('Las Lajitas')
@@ -101,9 +110,15 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     if (ocupadoPor) { onToast?.(`El código ${codigo.trim()} ya lo usa ${ocupadoPor.name}`); return }
     if (!punto) { onToast?.('Marcá la ubicación en el mapa'); return }
     if (fiscal.error) { onToast?.('Revisá el CUIT/CUIL: ' + fiscal.error); return }
+    if (propias.length > 1 && !zona && !avisoZona) {
+      setAvisoZona(true)
+      onToast?.('Elegí la zona del cliente · si no, tocá Guardar de nuevo y queda sin zona')
+      return
+    }
     setSaving(true)
     const diasStr = formatDias(DIAS.filter((d) => dias[d]))
     const res = await addCliente({
+      id_zona: zona || null,
       nombre_comercio: nombre.trim(),
       codigo: codigo.trim() || null,
       localidad: localidad.trim() || null,
@@ -201,6 +216,16 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
         <Field label="Teléfono"><input value={telefono} onChange={(e) => setTelefono(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="3877 123456" style={inputStyle} className="lu-input" /></Field>
         <Field label="Contacto"><input value={contacto} onChange={(e) => setContacto(e.target.value)} placeholder="Con quién se habla" style={inputStyle} className="lu-input" /></Field>
       </div>
+      {propias.length > 0 && (
+        <Field label={propias.length > 1 ? 'Zona *' : 'Zona'}>
+          <select value={zona} onChange={(e) => { setZona(e.target.value); setAvisoZona(false) }} className="lu-input"
+            style={{ ...inputStyle, cursor: 'pointer', ...(avisoZona && !zona ? { border: '1px solid var(--warning)' } : null) }}>
+            <option value="">Elegí la zona</option>
+            {propias.map((z) => <option key={z.id} value={z.id}>{etiquetaZona(z)}</option>)}
+          </select>
+        </Field>
+      )}
+
       <CamposFiscales fiscal={fiscal} />
 
       <Field label="Ubicación *">

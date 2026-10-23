@@ -21,6 +21,12 @@ import { cuarentenaMutaciones, EVENTO_ESCRITURA_PERDIDA } from '../services/sync
  *
  * props: { tabla?: string }  — `tabla` acota el aviso a una sola (p. ej. 'pedidos'); sin ella, todas.
  */
+// Reglas de la base con nombre propio (`raise exception`), dichas en palabras.
+const EN_PALABRAS = [
+  ['zona-ajena', 'Esa zona es de otro vendedor: el cliente no se cambió de zona.'],
+  ['rastreo-de-alta-no-editable', 'Quién creó el cliente y cuándo no se pueden cambiar.'],
+]
+
 export default function AvisoCuarentena({ tabla = null }) {
   const [items, setItems] = useState([])
   const [abierto, setAbierto] = useState(false)
@@ -98,6 +104,10 @@ export default function AvisoCuarentena({ tabla = null }) {
                   muestran tal cual a propósito — quien tiene que entender esto es quien va a poder
                   arreglarlo, y traducirlo a "hubo un problema" le saca justo el dato que sirve. */}
               <div style={sx('color:var(--danger)')}>{m._motivo || 'sin motivo registrado'}</div>
+              {/* Debajo del crudo, y no en su lugar: la explicación para quien está en la calle. */}
+              {EN_PALABRAS.filter(([clave]) => m._motivo?.includes(clave)).map(([clave, texto]) => (
+                <div key={clave} style={sx('font-family:var(--font-body);color:var(--text)')}>{texto}</div>
+              ))}
             </div>
           ))}
         </div>

@@ -7,14 +7,21 @@ import { pedirUbicacionUnaVez } from '../../services/geolocation'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import CamposFiscales from '../../components/CamposFiscales'
 import useClienteFiscal from '../../hooks/useClienteFiscal'
+import HistorialCliente from '../../components/HistorialCliente'
+import { useAuth } from '../../context/AuthContext'
+import { misZonas, etiquetaZona } from '../../lib/carteraDe'
 import Overlay from '../../components/Overlay'
 import { Crosshair } from '../../components/icons'
 import { btnPrimario, btnSecundario, apagado } from '../../lib/botones'
 import { inputStyle } from '../../components/form'
 
 /**
- * Edición ACOTADA de un cliente por el VENDEDOR: ubicación (mapa), días de visita y contacto.
- * No toca razón social/código/zona/etc. (eso es gestión).
+ * Edición ACOTADA de un cliente por el VENDEDOR: ubicación (mapa), días de visita, contacto y zona.
+ * No toca razón social/código/etc. (eso es gestión).
+ *
+ * ZONA (plan 21): sólo entre SUS zonas, y sólo si el cliente no tiene zona ni dueño o ya es suyo.
+ * Así una carga no queda "a medias" (sin dueño, invisible) y nadie se lleva un cliente de otro.
+ * La base lo exige igual (db/89, `zona-ajena`).
  *
  * Sobre la RLS: `clientes_upd` acepta al rol `vendedor` sobre CUALQUIER cliente de su empresa, no
  * solo los que tiene asignados. Verificado contra la base viva el 09/09/2026 — y es lo que hace
@@ -25,7 +32,8 @@ import { inputStyle } from '../../components/form'
  */
 
 export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
-  const { clientes, updateCliente } = useCatalog()
+  const { clientes, updateCliente, zonas } = useCatalog()
+  const { user } = useAuth()
   const { pos: livePos } = useGps()
   const c = clientes.find((x) => x.id === clienteId) || null
 
@@ -41,6 +49,12 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
   })
   const [telefono, setTelefono] = useState(c?.telefono || '')
   const [contacto, setContacto] = useState(c?.contacto || '')
+  const propias = useMemo(() => misZonas(zonas, user?.id), [zonas, user?.id])
+  const puedeZona = !!c && propias.length > 0
+    && (!c.idZona || propias.some((z) => z.id === c.idZona))
+    && (!c.idVendedor || c.idVendedor === user?.id)
+  // Sin zona y con una sola propia, va puesta: es justo el caso que dejaba las cargas a medias.
+  const [zona, setZona] = useState(() => c?.idZona || (puedeZona && propias.length === 1 ? propias[0].id : ''))
   const [locBusy, setLocBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   // El padre monta este componente con `{editCliId && <EditarClienteVendedor …/>}`,
@@ -84,6 +98,7 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
       contacto: contacto.trim() || null,
     }
     if (punto) { patch.lat = punto.lat; patch.lng = punto.lng }
+    if (puedeZona && zona !== (c.idZona || '')) patch.id_zona = zona || null
     const { ok, error } = await updateCliente(c.id, patch)
     if (ok) await fiscal.guardar()
     setSaving(false)
@@ -134,6 +149,20 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
         style={{ ...inputStyle, marginBottom: 'var(--sp-4)' }}
       />
 
+      {puedeZona ? (
+        <>
+          <div style={label}>Zona</div>
+          <select value={zona} onChange={(e) => setZona(e.target.value)} className="lu-input" style={{ ...inputStyle, cursor: 'pointer', marginBottom: 'var(--sp-4)' }}>
+            <option value="">{c.idZona ? 'Sin zona' : 'Elegí la zona'}</option>
+            {propias.map((z) => <option key={z.id} value={z.id}>{etiquetaZona(z)}</option>)}
+          </select>
+        </>
+      ) : c.idZona ? (
+        <div style={sx('font-size:var(--fs-xs);color:var(--muted);margin-bottom:var(--sp-4)')}>
+          Zona: <b style={sx('color:var(--text)')}>{etiquetaZona(zonas.find((z) => z.id === c.idZona))}</b>
+        </div>
+      ) : null}
+
       <CamposFiscales fiscal={fiscal} />
 
       <div style={label}>Ubicación</div>
@@ -173,6 +202,9 @@ export default function EditarClienteVendedor({ clienteId, onClose, onToast }) {
           )
         })}
       </div>
+
+      {/* Historial (db/89): sólo para quien creó el cliente; a otro vendedor la base le devuelve vacío. */}
+      {c.creadoPor && c.creadoPor === user?.id && <HistorialCliente idCliente={c.id} style={sx('margin-top:var(--sp-4)')} />}
     </Overlay>
   )
 }

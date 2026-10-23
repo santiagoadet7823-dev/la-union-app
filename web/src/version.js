@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.44.4'   // 22/10/2026: plan 20 — vecinos al ubicar, "Cerca de acá", situación fiscal y CUIT/CUIL (db/88)
+export const APP_VERSION = '1.44.5'   // 23/10/2026: plan 21 — historial de clientes (db/89), zona propia al cargar, calendario en Pedidos

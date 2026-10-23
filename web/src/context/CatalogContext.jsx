@@ -42,6 +42,10 @@ function mapCliente(c) {
     // La condición de pago pactada con el comercio (db/62). Sin esto el vendedor elegiría lo
     // mismo cuarenta veces por día, y a la cuadragésima elegiría mal.
     formaPagoDefault: c.forma_pago_default || null,
+    // Quién lo dio de alta y cuándo (db/89, los pone el servidor). Null en los anteriores al
+    // historial. Decide si el vendedor ve el desplegable "Historial": sólo el que lo creó.
+    creadoPor: c.creado_por || null,
+    creadoTs: c.creado_ts || null,
   }
 }
 
@@ -289,6 +293,8 @@ export function CatalogProvider({ children }) {
       id_vendedor: esMovil ? (user?.id || null) : (c.id_vendedor || null),
       id_zona: c.id_zona || null,
       activo: !esMovil,
+      // Lo pisa el servidor con `auth.uid()` (db/89); va acá para que la vista sepa ya quién lo creó.
+      creado_por: user?.id || null,
     }
     setClientes((prev) => [...prev, mapCliente(row)].sort((a, b) => a.name.localeCompare(b.name)))
     await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: row })

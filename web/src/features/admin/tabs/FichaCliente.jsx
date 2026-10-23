@@ -11,6 +11,7 @@ import LeafletMap from '../../../components/LeafletMap'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 import SelectorUbicacion from '../../../components/SelectorUbicacion'
 import CamposFiscales from '../../../components/CamposFiscales'
+import HistorialCliente from '../../../components/HistorialCliente'
 import useClienteFiscal from '../../../hooks/useClienteFiscal'
 import { fieldLabel } from '../ui'
 
@@ -317,6 +318,9 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
           )}
         </div>
       )}
+
+      {/* Quién lo creó y quién cambió qué (db/89). Cerrado: se lee al abrirlo. */}
+      <HistorialCliente idCliente={fc.id} style={sx('margin-top:12px')} />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtPesos, hoyStr } from '../../lib/format'
 import { useAuth } from '../../context/AuthContext'
 import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
@@ -43,12 +43,16 @@ import { normalizar } from '../../lib/texto'
  * props: { onToast }
  */
 
-// Los rangos que se ofrecen. Nada de un calendario libre: lo que se revisa es lo reciente, y un
-// selector de dos fechas para eso son cuatro toques en un teléfono en vez de uno.
+// Los rangos que se ofrecen: tres atajos de un toque y "Elegir fechas".
+// 🩸 EL CALENDARIO VOLVIÓ (23/10/2026, plan 21). Se había dejado afuera porque lo reciente se
+// revisa con un toque, pero en La Unión "no se acostumbran a hoy, 7 días y 30": piensan en fechas
+// ("los del martes", "del 1 al 15"). Los atajos quedan; "Elegir fechas" abre Desde/Hasta con el
+// calendario nativo del teléfono o la PC (`<input type="date">`, sin librerías).
 const RANGOS = [
   { key: 'hoy', label: 'Hoy', dias: 0 },
   { key: '7', label: '7 días', dias: 6 },
   { key: '30', label: '30 días', dias: 29 },
+  { key: 'fechas', label: 'Elegir fechas' },
 ]
 
 /* 🩸 BUSCADOR Y FILTROS EN MEMORIA (16/09/2026). `usePedidos` ya trae todas las filas del rango
@@ -79,9 +83,22 @@ function rangoDe(dias) {
   return { desde: desde.toISOString(), hasta: hasta.toISOString() }
 }
 
+/** [desde, hasta) de dos días 'YYYY-MM-DD' elegidos en el calendario, inclusive los dos, en hora
+ *  LOCAL. Si vienen al revés se dan vuelta: nadie quiere un "no hay pedidos" por eso. */
+function rangoDeFechas(a, b) {
+  const dia = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
+  let [d1, d2] = [dia(a), dia(b)]
+  if (d1 > d2) [d1, d2] = [d2, d1]
+  const hasta = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate() + 1)
+  return { desde: d1.toISOString(), hasta: hasta.toISOString() }
+}
+
 export default function PedidosView({ onToast }) {
   const { user, rol } = useAuth()
   const [rango, setRango] = useState('7')
+  // "Elegir fechas": arranca en la última semana, así al tocarlo no cambia lo que se está viendo.
+  const [fechaDesde, setFechaDesde] = useState(() => hoyStr(new Date(Date.now() - 6 * 86400000)))
+  const [fechaHasta, setFechaHasta] = useState(() => hoyStr())
   const [filtroVendedor, setFiltroVendedor] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')         // '' | uno de ESTADOS_ENTREGA
@@ -103,7 +120,11 @@ export default function PedidosView({ onToast }) {
   const dias = RANGOS.find((r) => r.key === rango)?.dias ?? 6
   // `useMemo` sobre el rango: sin él, cada render arma dos Date nuevas, cambian las dependencias
   // del efecto de `usePedidos` y la pantalla consulta en loop.
-  const { desde, hasta } = useMemo(() => rangoDe(dias), [dias])
+  const conFechas = rango === 'fechas' && !!fechaDesde && !!fechaHasta
+  const { desde, hasta } = useMemo(
+    () => (conFechas ? rangoDeFechas(fechaDesde, fechaHasta) : rangoDe(dias)),
+    [conFechas, fechaDesde, fechaHasta, dias],
+  )
   /* Dos consultas, una por pestaña, y las dos montadas siempre. La de la papelera no está de más:
      sin ella no habría con qué numerar la pestaña, y una papelera que no dice cuánto tiene adentro
      es una que nadie abre. Entre las dos traen las mismas filas que traía la consulta única de
@@ -250,6 +271,21 @@ export default function PedidosView({ onToast }) {
             >{r.label}</button>
           ))}
         </div>
+
+        {rango === 'fechas' && (
+          <div style={sx('display:flex;gap:6px;align-items:center;flex-wrap:wrap')}>
+            <label style={sx('display:flex;gap:5px;align-items:center;font-size:12px;color:var(--muted)')}>
+              Desde
+              <input type="date" value={fechaDesde} max={hoyStr()} onChange={(e) => setFechaDesde(e.target.value)} className="lu-input"
+                style={sx('padding:6px 8px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')} />
+            </label>
+            <label style={sx('display:flex;gap:5px;align-items:center;font-size:12px;color:var(--muted)')}>
+              Hasta
+              <input type="date" value={fechaHasta} max={hoyStr()} onChange={(e) => setFechaHasta(e.target.value)} className="lu-input"
+                style={sx('padding:6px 8px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')} />
+            </label>
+          </div>
+        )}
 
         <select
           value={filtroVendedor}

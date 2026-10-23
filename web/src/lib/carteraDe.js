@@ -42,3 +42,19 @@ export function esMiComercio(c, { userId, zonaPorId, zonasCubiertas = null, conS
   if (dueno === userId) return true
   return !!(zonasCubiertas && c.idZona && zonasCubiertas.has(c.idZona))
 }
+
+/**
+ * Las zonas de las que soy dueño (plan 21): las únicas en las que un vendedor puede poner un
+ * cliente. La base lo exige igual (db/89, `zona-ajena`); esto es para no ofrecer lo que rebotaría.
+ * @param {Array<{ id: string, id_vendedor?: string|null }>} zonas  filas de `zonas`
+ * @param {string} userId
+ */
+export function misZonas(zonas, userId) {
+  return (zonas || []).filter((z) => userId && z.id_vendedor === userId)
+}
+
+/** Cómo se nombra una zona en un selector: `Z3 · AS · APOLINARIO SARAVIA 1`. */
+export function etiquetaZona(z) {
+  if (!z) return ''
+  return `${z.numero != null ? `Z${z.numero} · ` : ''}${z.abrev ? `${z.abrev} · ` : ''}${z.nombre}`
+}
