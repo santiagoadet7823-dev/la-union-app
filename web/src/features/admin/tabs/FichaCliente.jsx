@@ -40,7 +40,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const { idEmpresa } = useAuth()
   const base = useEmpresaBase(idEmpresa) // dónde abre el mini-mapa si el cliente no tiene ubicación
   const formasPago = useFormasPago(idEmpresa) // códigos del ERP, si el cliente los pasó (db/62)
-  const { zonas, clientesTodos, updateCliente, deleteCliente } = useCatalog()
+  const { zonas, clientesTodos, updateCliente, deleteCliente, historialDeCliente, archivarClientes } = useCatalog()
 
   // Estado inicializado del cliente. Al remontar por `key`, arranca limpio.
   const [geoRadio, setGeoRadio] = useState(fc.geofence || 75)
@@ -68,6 +68,8 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [guardando, setGuardando] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Por qué no se borró: { pedidos, visitas } si tiene historial, 'sin-red' si el servidor no contestó.
+  const [noBorra, setNoBorra] = useState(null)
   const fiscal = useClienteFiscal(fc.id) // situación fiscal + CUIT/CUIL (db/88), se lee al abrir
 
   const inp = sx('width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-size:max(13px, var(--piso-entrada));font-family:var(--font-body)')
@@ -309,21 +311,42 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
         {guardando ? 'Guardando…' : 'Guardar cambios'}
       </button>
 
-      {/* Baja del cliente (solo gestión), con confirmación en dos pasos. */}
+      {/* Baja del cliente (solo gestión), con confirmación en dos pasos. Con pedidos o visitas no
+          se borra (la base lo rechaza por FK): se ofrece archivar. Ver `deleteCliente`. */}
       {puedeEditar && (
         <div style={sx('margin-top:10px')}>
           {confirmDel ? (
             <div style={sx('display:flex;flex-direction:column;gap:8px;padding:11px;border:1px solid var(--danger);border-radius:var(--r-md);background:var(--danger-tint)')}>
-              <span style={sx('font-size:12px;color:var(--danger);font-weight:600;line-height:1.4')}>¿Eliminar “{fc.name}”? Esta acción no se puede deshacer.</span>
+              <span style={sx('font-size:12px;color:var(--danger);font-weight:600;line-height:1.4')}>
+                {noBorra === 'sin-red'
+                  ? 'Sin conexión: para eliminar hay que revisar primero si tiene pedidos o visitas. Probá con señal o archivalo.'
+                  : noBorra
+                    ? `No se puede eliminar “${fc.name}”: tiene ${noBorra.pedidos} ${noBorra.pedidos === 1 ? 'pedido' : 'pedidos'} y ${noBorra.visitas} ${noBorra.visitas === 1 ? 'visita' : 'visitas'}. Archivarlo lo saca de la cartera sin perder la historia (se puede volver desde “archivados”).`
+                    : `¿Eliminar “${fc.name}”? Esta acción no se puede deshacer.`}
+              </span>
               <div style={sx('display:flex;gap:8px')}>
-                <button disabled={deleting} className="lu-press" onClick={async () => {
-                  setDeleting(true)
-                  const { ok, error } = await deleteCliente(fc.id)
-                  setDeleting(false); setConfirmDel(false)
-                  if (ok) { onCerrar(); onToast(`${fc.name} eliminado`) }
-                  else onToast('Error al eliminar: ' + (error?.message || ''))
-                }} style={sx('flex:1;min-height:44px;border:none;border-radius:var(--r-sm);background:var(--danger);color:var(--on-danger);font-weight:700;font-size:13px;cursor:pointer')}>{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button>
-                <button disabled={deleting} className="lu-press" onClick={() => setConfirmDel(false)} style={sx('flex:1;min-height:44px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer')}>Cancelar</button>
+                {noBorra ? (
+                  <button disabled={deleting || fc.archivado} className="lu-press" onClick={async () => {
+                    setDeleting(true)
+                    const { ok } = await archivarClientes([fc.id], true)
+                    setDeleting(false); setConfirmDel(false); setNoBorra(null)
+                    if (ok) { onCerrar(); onToast(`${fc.name} archivado`) }
+                  }} style={{ ...sx('flex:1;min-height:44px;border:none;border-radius:var(--r-sm);background:var(--danger);color:var(--on-danger);font-weight:700;font-size:13px'), ...(fc.archivado ? { opacity: 0.55, cursor: 'not-allowed' } : { cursor: 'pointer' }) }}>{fc.archivado ? 'Ya está archivado' : deleting ? 'Archivando…' : 'Archivar'}</button>
+                ) : (
+                  <button disabled={deleting} className="lu-press" onClick={async () => {
+                    setDeleting(true)
+                    const hist = await historialDeCliente(fc.id)
+                    if (!hist || hist.pedidos > 0 || hist.visitas > 0) {
+                      setDeleting(false); setNoBorra(hist || 'sin-red')
+                      return
+                    }
+                    const { ok, error } = await deleteCliente(fc.id)
+                    setDeleting(false); setConfirmDel(false)
+                    if (ok) { onCerrar(); onToast(`${fc.name} eliminado`) }
+                    else onToast('Error al eliminar: ' + (error?.message || ''))
+                  }} style={sx('flex:1;min-height:44px;border:none;border-radius:var(--r-sm);background:var(--danger);color:var(--on-danger);font-weight:700;font-size:13px;cursor:pointer')}>{deleting ? 'Revisando…' : 'Sí, eliminar'}</button>
+                )}
+                <button disabled={deleting} className="lu-press" onClick={() => { setConfirmDel(false); setNoBorra(null) }} style={sx('flex:1;min-height:44px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer')}>Cancelar</button>
               </div>
             </div>
           ) : (

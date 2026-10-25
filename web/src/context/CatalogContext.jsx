@@ -4,6 +4,7 @@ import { inferCategoria } from '../lib/categoria'
 import { codigoKey } from '../lib/texto'
 import { normalizarEscalas } from '../lib/precios'
 import { uid } from '../lib/uid'
+import { supabase, hasSupabase } from '../services/supabase'
 import { enqueueMutacion, flushMutaciones, startWriteQueue } from '../services/sync/writeQueue'
 import { iniciarRespaldoPedidos } from '../services/sync/respaldoPedidos'
 import { startPosQueue } from '../services/sync/queue'
@@ -467,12 +468,37 @@ export function CatalogProvider({ children }) {
    * Baja de cliente (solo gestión: admin/encargado/superadmin — la RLS `clientes_del` lo
    * exige). Offline-first: saca la fila del estado local YA y encola el DELETE; si no hay
    * red, se sincroniza al reconectar. Reintentar es idempotente (borrar lo ya borrado no falla).
+   *
+   * 🩸 Un cliente con pedidos o visitas NO se borra: `pedidos.id_cliente` y `visitas.id_cliente`
+   * son FK sin ON DELETE a propósito, y el DELETE rebota con 23503 DESPUÉS de que la pantalla ya
+   * dijo "eliminado" (25/10/2026: "Prueba pedido 2" rebotó 4 veces, primero por un pedido anulado
+   * y después por dos visitas del día). Antes de llamar a esto, `historialDeCliente`; con
+   * historial, se archiva.
    */
   const deleteCliente = useCallback(async (id) => {
     setClientes((prev) => prev.filter((c) => c.id !== id))
     await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'delete', id })
     flushMutaciones()
     return { ok: true }
+  }, [])
+
+  /**
+   * Cuántos pedidos y visitas apuntan a un cliente, preguntado al servidor. `null` si no contestó
+   * (sin señal): en ese caso no se sabe si borrar va a rebotar, así que no se borra.
+   * @returns {Promise<{pedidos:number, visitas:number}|null>}
+   */
+  const historialDeCliente = useCallback(async (id) => {
+    if (!hasSupabase) return null
+    try {
+      const [p, v] = await Promise.all([
+        supabase.from('pedidos').select('id', { count: 'exact', head: true }).eq('id_cliente', id),
+        supabase.from('visitas').select('id', { count: 'exact', head: true }).eq('id_cliente', id),
+      ])
+      if (p.error || v.error || p.count == null || v.count == null) return null
+      return { pedidos: p.count, visitas: v.count }
+    } catch (_) {
+      return null
+    }
   }, [])
 
   /**
@@ -1010,7 +1036,7 @@ export function CatalogProvider({ children }) {
   const productosVigentes = useMemo(() => productos.filter((p) => !p.descontinuado), [productos])
 
   return (
-    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, catalogoMeta, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, deleteZona, addCategoria, updateCategoria, deleteCategoria }}>
+    <CatalogContext.Provider value={{ productos: productosVigentes, productosTodos: productos, clientes: clientesVigentes, clientesTodos: clientes, zonas, categorias, catalogoMeta, loading, error, recargar, addCliente, addProducto, updateProducto, deleteProducto, updateCliente, deleteCliente, historialDeCliente, archivarClientes, importClientes, importProductos, addZona, updateZona, deleteZona, addCategoria, updateCategoria, deleteCategoria }}>
       {children}
     </CatalogContext.Provider>
   )
