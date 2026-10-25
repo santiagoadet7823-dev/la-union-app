@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     if (loteCliente || repetir) {
       /* REPONER: "la respuesta salió bien pero el archivo se perdió del lado del cliente". No mueve
        * el cursor: sale de lo guardado en la bitácora, con el estado ACTUAL de cada cliente. */
-      const { data, error } = await admin.rpc('repetir_lote_clientes', {
+      const { data, error } = await admin.rpc('repetir_lote_clientes_json', {
         p_empresa: tk.id_empresa,
         p_lote: loteCliente ? Number(loteCliente) : null,
       })
@@ -126,8 +126,10 @@ Deno.serve(async (req) => {
       filasLote = data
       lote = data[0].lote
     } else {
-      // 🔑 Marca y devuelve en una sola transacción (db/92, calcada de db/62).
-      const { data, error } = await admin.rpc('tomar_lote_clientes', {
+      /* 🔑 Marca y devuelve en una sola transacción (db/92, calcada de db/62).
+       * 🩸 La versión `_json` (db/93): la `returns table` pasaba por el `max-rows` de PostgREST (1000)
+       * y el primer lote (2029) quedaba marcado entero pero llegaba cortado. */
+      const { data, error } = await admin.rpc('tomar_lote_clientes_json', {
         p_empresa: tk.id_empresa,
         p_usuario: tk.id_usuario,
         p_marcar: !probar,
