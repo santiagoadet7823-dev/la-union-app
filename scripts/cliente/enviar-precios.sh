@@ -64,6 +64,29 @@ fi
 
 escribir "Enviando $ARCHIVO ($(wc -c < "$ARCHIVO") bytes) a $DESTINO"
 
+# De dónde sale el archivo (db/90). Se manda una copia fija y su hash: si el ERP reescribe el
+# archivo durante el envío, el servidor no lo confunde con uno cortado. La ruta y el equipo van
+# codificados como URL porque una cabecera no admite acentos.
+VERSION_AGENTE="sh-2026-10-25"
+COPIA="$(mktemp)"
+trap 'rm -f "$COPIA"' EXIT
+cp "$ARCHIVO" "$COPIA"
+SHA256="$( (sha256sum "$COPIA" 2>/dev/null || shasum -a 256 "$COPIA") | cut -d' ' -f1)"
+MODIFICADO="$(date -u -r "$ARCHIVO" +%Y-%m-%dT%H:%M:%SZ)"
+codificar() {
+  local s="$1" i c out=''
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%s' "$c" | od -An -tx1 | tr ' ' '\n' | sed '/^$/d; s/^/%/' | tr -d '\n')" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+RUTA_ORIGEN="$(codificar "$(cd "$(dirname "$ARCHIVO")" && pwd)/$(basename "$ARCHIVO")")"
+EQUIPO="$(codificar "$(hostname)")"
+
 intento=0
 while :; do
   # `-w` separa el código HTTP del cuerpo; `--fail` NO se usa a propósito: con él curl esconde el
@@ -72,7 +95,12 @@ while :; do
       -X POST "$DESTINO" \
       -H "Authorization: Bearer $TOKEN" \
       -H 'Content-Type: text/csv; charset=utf-8' \
-      --data-binary "@$ARCHIVO" 2>&1)"
+      -H "X-Archivo-Origen: $RUTA_ORIGEN" \
+      -H "X-Archivo-Modificado: $MODIFICADO" \
+      -H "X-Archivo-Sha256: $SHA256" \
+      -H "X-Equipo: $EQUIPO" \
+      -H "X-Agente-Version: $VERSION_AGENTE" \
+      --data-binary "@$COPIA" 2>&1)"
   curl_rc=$?
   codigo="$(printf '%s' "$salida" | tail -n1)"
   cuerpo="$(printf '%s' "$salida" | sed '$d')"

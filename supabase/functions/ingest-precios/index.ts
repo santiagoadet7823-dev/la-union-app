@@ -24,7 +24,7 @@
 // que es la regla 36 de CLAUDE.md y el modo de falla más caro del proyecto.
 //
 // ⚠️ Los tres archivos de `lib/` se COPIAN desde `web/src/lib/` al desplegar
-// (`scripts/deploy-ingest-precios.sh`). No editarlos acá: la fuente es la del bundle.
+// (`scripts/sync-ingest-precios.mjs`). No editarlos acá: la fuente es la del bundle.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { ALIAS, filaAImportar, mapearEncabezados, parsearTexto, resolverEscalasDelArchivo } from './lib/planillaProductos.js'
 import { normalizar } from './lib/texto.js'
@@ -68,7 +68,11 @@ Deno.serve(async (req) => {
     // Por defecto NO se pisan las descripciones (ver la llamada a la RPC más abajo). Se puede pedir
     // lo contrario con `?pisar_descripcion=1`, para el día que su export mande los nombres completos.
     const pisarDescripcion = url.searchParams.get('pisar_descripcion') === '1'
-    const crudo = await req.text()
+    /* Se lee como BYTES y se decodifica aparte (25/10/2026, db/90): la copia del bucket tiene que
+     * ser el archivo que mandó el ERP, no lo que quedó después de pasarlo a texto. El decodificado
+     * es el mismo UTF-8 que hacía `req.text()`, así que el parseo no cambia. */
+    const bytes = new Uint8Array(await req.arrayBuffer())
+    const crudo = new TextDecoder().decode(bytes)
     const tipo = (req.headers.get('content-type') || '').toLowerCase()
     const esJson = tipo.includes('application/json')
 
@@ -76,6 +80,24 @@ Deno.serve(async (req) => {
      * puede renombrar a sí mismo, y dos máquinas con el mismo token se distinguen. */
     const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || null
     const agente = req.headers.get('user-agent') || null
+    /* DE DÓNDE SALIÓ EL ARCHIVO (db/90). Lo declara el agente del cliente: sirve para auditar y
+     * para ver cuál de dos PCs manda, pero no autoriza nada. La ruta viaja codificada como URL
+     * porque una cabecera HTTP no admite acentos. */
+    const cabecera = (n: string, max = 500) => {
+      const v = req.headers.get(n)
+      if (!v) return null
+      try { return decodeURIComponent(v).slice(0, max) } catch (_) { return v.slice(0, max) }
+    }
+    const rutaOrigen = cabecera('x-archivo-origen')
+    const equipo = cabecera('x-equipo', 100)
+    const versionAgente = cabecera('x-agente-version', 50)
+    const modif = new Date(req.headers.get('x-archivo-modificado') || '')
+    const modificadoOrigen = isNaN(modif.getTime()) ? null : modif.toISOString()
+    const sha256Cliente = (req.headers.get('x-archivo-sha256') || '').trim().toLowerCase() || null
+    const sha256Servidor = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
+      .map((b) => b.toString(16).padStart(2, '0')).join('')
+    // Ruta en el bucket; queda nula si la copia falla o si el request era sólo una consulta.
+    let archivo: string | null = null
     // Se llenan al parsear; se declaran acá porque `registrarEmisor` corre en todos los caminos,
     // incluidos los que se van antes de parsear.
     let encabezadoCrudo: string | null = null
@@ -86,7 +108,14 @@ Deno.serve(async (req) => {
     // El token va en el header, que es lo que se le documentó al cliente. Se acepta también dentro
     // del cuerpo JSON por comodidad de quien lo pruebe con un `curl` a mano.
     let cuerpoJson: Record<string, unknown> | null = null
-    if (esJson) {
+    /* 🩸 `crudo.trim()` y no sólo `esJson` (10/09/2026). Una consulta de config (`?solo_config=1`)
+     * viaja con el cuerpo VACÍO, y `JSON.parse('')` tira: el request moría acá con `json-invalido`,
+     * varias líneas antes del corte que lo iba a atender. El cliente no lo sufre —manda `text/csv`—
+     * pero sí cualquier herramienta con la que se diagnostique esto: `pg_net`, por ejemplo, EXIGE
+     * `Content-Type: application/json` y no deja mandar otra cosa.
+     * Un cuerpo vacío con content-type JSON deja de ser `json-invalido` y cae más abajo en
+     * `sin-filas`, que además lo describe mejor: el JSON no está mal escrito, no está. */
+    if (esJson && crudo.trim()) {
       try { cuerpoJson = JSON.parse(crudo) } catch (_) { return json({ error: 'json-invalido' }, 400) }
     }
     const auth = req.headers.get('authorization') || ''
@@ -98,13 +127,49 @@ Deno.serve(async (req) => {
     // 1) El token → identidad. El payload no aporta ni la empresa ni el usuario.
     const { data: tk } = await admin
       .from('ingesta_tokens')
-      .select('id_usuario, id_empresa, revocado, proposito')
+      .select('id_usuario, id_empresa, revocado, proposito, config')
       .eq('token', token)
       .maybeSingle()
     if (!tk || tk.revocado) return json({ error: 'token-invalido' }, 401)
     // 🔑 Un token del uploader de GPS no puede escribir el catálogo. Son dos superficies distintas y
     // una de ellas vive dentro de nueve teléfonos que andan por la calle.
     if (tk.proposito !== 'precios') return json({ error: 'token-sin-permiso-de-precios' }, 401)
+
+    /* ── El canal de vuelta (10/09/2026, db/59) ────────────────────────────────────────────────
+     * Hasta hoy esta función solo recibía. El horario del envío vivía DENTRO del disparador de una
+     * tarea programada de Windows en la PC del cliente, así que cambiarlo exigía que alguien
+     * estuviera en esa máquina con permisos de administrador. Ahora el agente pregunta y nosotros
+     * contestamos: `?solo_config=1` con el cuerpo vacío devuelve la config y NO toca el catálogo.
+     *
+     * Va en este endpoint y no en uno nuevo porque acá ya está resuelto lo único que hacía falta
+     * —el token → la empresa—, y porque una sola URL en el script del cliente es una sola cosa que
+     * puede quedar mal escrita en una PC a la que no tenemos acceso.
+     *
+     * 🔴 El corte va DESPUÉS de validar `proposito`, no antes: un token de GPS no puede leer la
+     * config del canal de precios. Y va ANTES del parseo y de la copia al bucket, así una consulta
+     * no gasta nada.
+     *
+     * ⚠️ Lo que sale por acá lo obedece un script que corre como SYSTEM con RunLevel Highest.
+     * `config` es lo que la base dejó pasar por el CHECK de db/59: dos enteros. No agregar rutas,
+     * URLs, nombres de archivo ni versiones de script — eso sería ejecución remota con máximos
+     * privilegios autorizada por un token que viajó por mail. El código del agente se actualiza
+     * mandando un ZIP, y así tiene que seguir siendo. */
+    const config = (tk.config ?? null) as Record<string, unknown> | null
+    if (url.searchParams.get('solo_config') === '1') return json({ config })
+
+    /* 🩸 COPIA DEL ARCHIVO ANTES DE PARSEAR (25/10/2026, db/90). Va antes de cualquier rechazo para
+     * que también quede el archivo que falló, que es el que más se quiere mirar. Si la copia falla,
+     * la importación sigue: el catálogo al día importa más que el respaldo de una corrida. */
+    if (bytes.length) {
+      const ahora = new Date(Date.now() - 3 * 3600 * 1000).toISOString() // hora de Argentina
+      const ruta = `${tk.id_empresa}/${ahora.slice(0, 10)}/${ahora.slice(11, 19).replaceAll(':', '-')}`
+        + `-${sha256Servidor.slice(0, 8)}.${esJson ? 'json' : 'csv'}`
+      try {
+        const { error: eSubida } = await admin.storage.from('ingestas-precios')
+          .upload(ruta, bytes, { contentType: tipo || 'text/csv', upsert: true })
+        if (!eSubida) archivo = ruta
+      } catch (_) { /* sin copia, pero con catálogo */ }
+    }
 
     /* 🩸 UN ENVÍO RECHAZADO TAMBIÉN DEJA FILA (09/09/2026).
      *
@@ -144,14 +209,29 @@ Deno.serve(async (req) => {
           id_usuario: tk.id_usuario,
           ip,
           agente,
-          bytes: crudo.length,
+          bytes: bytes.length,
           separador: separadorDetectado,
           encabezado: encabezadoCrudo,
           columnas_ok: columnasOk,
           columnas_ignoradas: columnasIgnoradas,
           resultado,
+          ruta_origen: rutaOrigen,
+          equipo,
+          version_agente: versionAgente,
+          modificado_origen: modificadoOrigen,
+          sha256_cliente: sha256Cliente,
+          sha256_servidor: sha256Servidor,
+          archivo,
         })
       } catch (_) { /* un diagnóstico que rompe el envío es peor que no tenerlo */ }
+    }
+
+    /* 🔴 ARCHIVO CORTADO (db/90). Si el agente declaró el hash de lo que mandó y no es el de lo que
+     * llegó, el cuerpo se perdió en el camino. No se importa: con `lista_completa` prendida, un
+     * archivo a medias da de baja todo lo que no alcanzó a llegar (el freno del 20 % ataja lo grueso,
+     * no un corte chico). La copia ya quedó en el bucket para ver qué llegó. */
+    if (sha256Cliente && sha256Cliente !== sha256Servidor) {
+      return await registrarRechazo('archivo-incompleto', { bytes_recibidos: bytes.length, sha256_recibido: sha256Servidor }, 400)
     }
 
     // 2) El archivo → filas crudas `{encabezado: valor}`.
@@ -172,7 +252,7 @@ Deno.serve(async (req) => {
     } else {
       const r = parsearTexto(crudo)
       // Diagnóstico del emisor (db/60). Se recorta a 500: el encabezado alcanza para saber qué
-      // manda el ERP, y guardar el cuerpo serían 24 copias del catálogo por día.
+      // manda el ERP. El archivo entero está en el bucket `ingestas-precios` (db/90).
       encabezadoCrudo = (r.primeraLinea || '').slice(0, 500)
       separadorDetectado = r.separador === '\t' ? 'TAB' : r.separador
       // Sólo tiene sentido clasificar si la primera línea ES un encabezado: si no, `columnas` son
@@ -309,7 +389,10 @@ Deno.serve(async (req) => {
     // hacerlo sin que nadie mire". El cuerpo trae el número exacto para que se pueda decidir.
     if (data?.error === 'demasiadas-bajas') {
       await registrarEmisor('demasiadas-bajas')
-      return json({ ...data, rechazadas, separador }, 409)
+      // `config` viaja también acá: un cliente trabado en 409 durante días igual tiene que poder
+      // enterarse de un cambio de horario. Si sólo la mandáramos en el camino feliz, el único
+      // cliente que necesita que lo ayudemos sería el que se queda sin recibir nada.
+      return json({ ...data, rechazadas, separador, config }, 409)
     }
 
     // Las rechazadas de la RPC (filas sin código ni descripción) y las de acá (avisos de parseo)
@@ -328,7 +411,9 @@ Deno.serve(async (req) => {
           escalas_borradas: esc.aBorrar }
       : (esc.neutralizadas > 0 ? { escalas_sin_tocar: esc.neutralizadas } : {})
     await registrarEmisor('ok')
-    return json({ ...data, rechazadas: todas, separador, ...infoCategorias, ...infoEscalas })
+    // `config` va al final para que gane sobre cualquier clave homónima que devuelva la RPC.
+    // `archivo` le dice al cliente dónde quedó la copia (null si no se pudo guardar).
+    return json({ ...data, rechazadas: todas, separador, ...infoCategorias, ...infoEscalas, archivo, config })
   } catch (e) {
     return json({ error: 'excepcion', detalle: String((e as Error)?.message || e) }, 500)
   }

@@ -115,6 +115,42 @@ function metros(a, b) {
 export const RADIO_MISMO_LUGAR_M = 100
 
 /**
+ * A esta distancia se avisa "Cerca de acá" AUNQUE el nombre no se parezca (22/10/2026, plan 20).
+ *
+ * 🩸 POR QUÉ HACE FALTA ADEMÁS DE `buscarParecidos`. En la base de La Unión había 61 clientes sin
+ * código que eran repetidos de comercios ya cargados: "335Julio jamime" era 335 "RV JULIO JAIME".
+ * El nombre tipeado en la calle no se parece lo suficiente al del ERP, así que el aviso por nombre
+ * no saltaba, y la cercanía sólo reforzaba un candidato que ya había matcheado por nombre. Con 50 m
+ * y sin mirar el nombre, el vendedor parado en la puerta ve el comercio que ya existe.
+ */
+export const RADIO_CERCA_M = 50
+
+/**
+ * Los clientes de `cartera` a menos de `radio` metros de `punto`, del más cercano al más lejano.
+ * Corre en memoria, igual que `buscarParecidos`.
+ *
+ * @param {{lat:number, lng:number}|null} punto
+ * @param {Array} cartera  clientes en forma de vista ({id, name, lat, lng})
+ * @param {number} [radio]
+ * @param {{excluirId?:string, max?:number}} [opts]
+ * @returns {Array<{cliente, distancia:number}>}
+ */
+export function cercanos(punto, cartera, radio = RADIO_CERCA_M, { excluirId, max = 5 } = {}) {
+  if (!punto || !Number.isFinite(punto.lat) || !Number.isFinite(punto.lng) || !Array.isArray(cartera)) return []
+  const out = []
+  for (const c of cartera) {
+    if (!c || c.id === excluirId || !Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue
+    // Prefiltro barato antes del haversine: 1° de latitud son ~111 km en cualquier lado, así que si
+    // sólo la diferencia de latitud ya supera el radio, está lejos. Corre en cada `moveend` contra
+    // ~2.000 comercios.
+    if (Math.abs(c.lat - punto.lat) * 111000 > radio) continue
+    const d = metros(punto, c)
+    if (d <= radio) out.push({ cliente: c, distancia: Math.round(d) })
+  }
+  return out.sort((a, b) => a.distancia - b.distancia).slice(0, max)
+}
+
+/**
  * Busca en la cartera los clientes que podrían ser el mismo que `nombre`.
  *
  * Corre en memoria y sin red: `CatalogContext` ya tiene la cartera entera cargada, así que esto

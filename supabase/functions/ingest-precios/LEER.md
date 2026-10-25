@@ -29,18 +29,31 @@ y **Deno no**: sin la extensión el módulo carga perfecto en la app y la funci�
 
 ---
 
-## 🔴 PENDIENTE: la versión desplegada no es la de esta carpeta
+## Dónde está cada archivo que mandó el ERP (db/90, 25/10/2026)
 
-**Estado al 28/08/2026.** La función está desplegada y **verificada de punta a punta** (archivo
-tabulado real, decimales con coma, escalas, los cuatro caminos de error), pero se desplegó con
-copias **condensadas** de los tres módulos —mismo comportamiento, comentarios recortados— antes de
-que existiera el script de sincronización.
+Cada envío, también los rechazados, se guarda **tal cual llegó** antes de parsearlo:
 
-**No está en uso**: no hay ningún token con `proposito = 'precios'` emitido, así que hoy el endpoint
-rechaza todo con 401.
+- **Servidor:** panel de Supabase → Storage → bucket `ingestas-precios` (privado) →
+  `<id_empresa>/<AAAA-MM-DD>/<HH-MM-SS>-<sha>.csv`, hora de Argentina. `<sha>` son los 8 primeros
+  caracteres del SHA-256 del archivo.
+- **Disco:** `D:\Respaldos\precios\<AAAA-MM-DD>\`, copiado todas las noches a las 03:30 por
+  `infra/selfhost/espejar_precios.sh` (cron de `distat`).
+- Se guarda un año; después se borra del bucket y del disco.
 
-**Antes de emitir el primer token, redesplegar desde esta carpeta** para que lo desplegado sea
-idéntico al repo. Es el paso que cierra la última fuente de divergencia posible.
+Para cada envío, `ingestas_emisor` dice qué archivo es (`archivo`) y de dónde salió. Esos datos los
+manda el agente del cliente en cabeceras: `ruta_origen` (ruta completa en su PC), `equipo`,
+`version_agente`, `modificado_origen` y `sha256_cliente`. Hasta que La Unión instale el agente nuevo
+(va por ZIP), esas cinco columnas quedan vacías; `archivo` y `sha256_servidor` se llenan igual.
+
+```sql
+select ts, resultado, equipo, ruta_origen, sha256_cliente = sha256_servidor as integro, archivo
+  from ingestas_emisor order by ts desc limit 10;
+```
+
+Si `sha256_cliente` no coincide con lo recibido, el archivo llegó cortado: se responde
+`400 archivo-incompleto` y **no se importa** (la copia queda igual en el bucket).
+
+`?solo_config=1` (db/59) responde la config del token y no guarda archivo ni toca el catálogo.
 
 ---
 

@@ -30,12 +30,17 @@
  */
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 
 public class EnviarPrecios {
@@ -46,6 +51,18 @@ public class EnviarPrecios {
     private static String servidor() {
         String s = System.getenv("DISTAT_URL");
         return (s == null || s.isBlank() ? "https://api.dist-at.com" : s.strip()).replaceAll("/+$", "");
+    }
+
+    private static final String VERSION_AGENTE = "java-2026-10-25";
+
+    /** Nombre de la máquina que manda, para distinguir dos PCs con el mismo token. */
+    private static String equipo() {
+        String e = System.getenv("COMPUTERNAME");
+        if (e == null || e.isBlank()) e = System.getenv("HOSTNAME");
+        if (e == null || e.isBlank()) {
+            try { e = InetAddress.getLocalHost().getHostName(); } catch (IOException x) { e = ""; }
+        }
+        return e;
     }
 
     /** Lo que devolvió el servidor. El cuerpo es el JSON con el resumen: hay que guardarlo. */
@@ -81,13 +98,32 @@ public class EnviarPrecios {
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
 
+        // Se lee una sola vez y se manda eso mismo: el hash que va en la cabecera tiene que ser el
+        // de estos bytes, aunque el ERP reescriba el archivo mientras tanto.
+        byte[] cuerpo = Files.readAllBytes(archivo);
+        String sha256;
+        try {
+            StringBuilder hex = new StringBuilder();
+            for (byte b : MessageDigest.getInstance("SHA-256").digest(cuerpo)) hex.append(String.format("%02x", b));
+            sha256 = hex.toString();   // sin HexFormat: ése es de Java 17 y esto corre desde 11
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+
         HttpRequest pedido = HttpRequest.newBuilder(URI.create(destino))
                 .header("Authorization", "Bearer " + token)
                 // El charset importa: sin UTF-8 explícito, las eñes y los acentos de las
                 // descripciones llegan rotos y nadie se entera hasta que el vendedor lee la grilla.
                 .header("Content-Type", "text/csv; charset=utf-8")
+                // De dónde sale el archivo (db/90). La ruta va codificada: una cabecera no admite
+                // acentos. `+` → `%20` porque el servidor decodifica con `decodeURIComponent`.
+                .header("X-Archivo-Origen", URLEncoder.encode(archivo.toAbsolutePath().toString(), StandardCharsets.UTF_8).replace("+", "%20"))
+                .header("X-Archivo-Modificado", Files.getLastModifiedTime(archivo).toInstant().toString())
+                .header("X-Archivo-Sha256", sha256)
+                .header("X-Equipo", URLEncoder.encode(equipo(), StandardCharsets.UTF_8).replace("+", "%20"))
+                .header("X-Agente-Version", VERSION_AGENTE)
                 .timeout(Duration.ofMinutes(5))
-                .POST(HttpRequest.BodyPublishers.ofFile(archivo))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(cuerpo))
                 .build();
 
         HttpResponse<String> r = cliente.send(pedido, HttpResponse.BodyHandlers.ofString());

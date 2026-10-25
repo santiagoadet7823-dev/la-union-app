@@ -127,14 +127,25 @@ Escribir "Enviando $Archivo ($($info.Length) bytes) a $destino"
 # se cae sin un mensaje que ayude.
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# De dónde sale el archivo (db/90): el servidor lo guarda junto a la copia del archivo, para poder
+# auditar qué PC mandó qué. La ruta va codificada como URL porque una cabecera no admite acentos.
+$versionAgente = '2026-10-25'
 $cabeceras = @{
-  'Authorization' = "Bearer $token"
-  'Content-Type'  = 'text/csv; charset=utf-8'
+  'Authorization'        = "Bearer $token"
+  'Content-Type'         = 'text/csv; charset=utf-8'
+  'X-Archivo-Origen'     = [uri]::EscapeDataString($info.FullName)
+  'X-Archivo-Modificado' = $info.LastWriteTimeUtc.ToString('o')
+  'X-Equipo'             = [uri]::EscapeDataString($env:COMPUTERNAME)
+  'X-Agente-Version'     = $versionAgente
 }
 
 for ($intento = 0; $intento -le $Reintentos; $intento++) {
   try {
     $cuerpo = [System.IO.File]::ReadAllBytes($Archivo)
+    # El hash de los bytes que se mandan, no el de `$hashActual`: si el ERP reescribe el archivo
+    # entre una lectura y la otra, el servidor rechazaría como "cortado" un envío que llegó entero.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $cabeceras['X-Archivo-Sha256'] = ([System.BitConverter]::ToString($sha.ComputeHash($cuerpo)) -replace '-', '').ToLower()
     $r = Invoke-WebRequest -Uri $destino -Method Post -Headers $cabeceras -Body $cuerpo -UseBasicParsing -TimeoutSec 300
     Escribir "HTTP $($r.StatusCode) $($r.Content)"
     # El hash se guarda SÓLO si el envío entró. Si falló, la próxima corrida lo tiene que seguir
