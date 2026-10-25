@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { sx } from '../lib/sx'
 import { cuarentenaMutaciones, EVENTO_ESCRITURA_PERDIDA } from '../services/sync/writeQueue'
+import ReintentarEnvio from './ReintentarEnvio'
 
 /**
  * LO QUE LA COLA NO PUDO SUBIR, DICHO EN LA PANTALLA DONDE IMPORTA.
@@ -86,6 +87,8 @@ export default function AvisoCuarentena({ tabla = null }) {
         Quedaron apartados para que el resto siguiera subiendo. <b>No se perdieron</b>, pero
         tampoco se aplicaron: lo que se ve en pantalla es lo que hay en la base.
       </div>
+
+      <ReintentarEnvio filtro={(m) => !tabla || m.table === tabla} alTerminar={releer} />
 
       <button
         onClick={() => setAbierto((v) => !v)}

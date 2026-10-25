@@ -93,3 +93,23 @@ export async function rescatarPedidos({ userId, idEmpresa }) {
     corridos.delete(clave) // que lo intente de nuevo en el próximo montaje
   }
 }
+
+/**
+ * REINTENTO A MANO (25/10/2026, plan 23). Lo dispara el botón "Reintentar envío": vuelve a la cola
+ * TODO lo de la cuarentena que `debeVolver` acepte —sin filtrar por motivo y aunque ya se haya
+ * rescatado una vez—, lo manda y cuenta lo que volvió a quedar aislado. Nada se borra (regla 20):
+ * lo que rebota otra vez vuelve a la cuarentena por `aislar`.
+ * Devuelve `{ vuelven, quedan, enCola }`: `quedan` = lo que `debeVolver` acepta y volvió a la
+ * cuarentena; `enCola` = la cola entera después del envío (sin señal, lo reencolado sigue ahí y NO
+ * se puede contar como enviado).
+ */
+export async function reintentarCuarentena(debeVolver = () => true) {
+  const vuelven = await reencolarCuarentena(debeVolver, { forzar: true })
+  if (vuelven) await flushMutaciones()
+  const quedan = ((await cuarentenaMutaciones()) || []).filter(debeVolver).length
+  const enCola = (await pendingMutaciones().catch(() => 0)) || 0
+  return { vuelven, quedan, enCola }
+}
+
+/** Lo de pedidos de ESTA cuenta: lo que reintenta el vendedor desde su pantalla. */
+export const esPedidoDe = (userId) => (m) => TABLAS.has(m.table) && esMia(m, userId)

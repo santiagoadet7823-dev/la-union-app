@@ -127,7 +127,7 @@ export default function MfaActivar() {
               style={{ ...sx('display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;margin-top:14px;border-radius:var(--r-md);background:var(--primary);color:var(--on-primary);border:none;font-size:var(--fs-md);font-weight:700;cursor:pointer') }}>
               Reintentar
             </button>
-            <button onClick={signOut}
+            <button onClick={() => signOut({ motivo: 'mfa-activar' })}
               style={sx('min-height:44px;margin-top:6px;background:transparent;border:none;font-size:var(--fs-sm);color:var(--muted);cursor:pointer')}>
               Cerrar sesión
             </button>

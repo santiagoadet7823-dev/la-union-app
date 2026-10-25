@@ -278,7 +278,7 @@ function CuerpoCuenta({ abierto, onCerrar, onIrAJornada, propios, extra, onPerfi
 
       {/* ── Cerrar sesión ── */}
       <GrupoLista>
-        <FilaLista icono={LogOut} etiqueta="Cerrar sesión" destructiva onClick={() => signOut()} />
+        <FilaLista icono={LogOut} etiqueta="Cerrar sesión" destructiva onClick={() => signOut({ motivo: 'menu' })} />
       </GrupoLista>
     </div>
   )

@@ -112,7 +112,10 @@ function CargandoPerfil({ error, onRetry, mensaje = 'tu perfil' }) {
   return (
     <div style={sx('min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg-app);color:var(--text);text-align:center;padding:24px')}>
       <div style={sx('font-family:var(--font-mono);font-size:13px;color:var(--muted)')}>
-        {error ? `No pudimos cargar ${mensaje} (revisá tu conexión).` : `Cargando ${mensaje}…`}
+        {/* Sólo culpa a la red si el teléfono dice que no tiene (25/10/2026, plan 23). */}
+        {!error ? `Cargando ${mensaje}…`
+          : navigator.onLine === false ? `No pudimos cargar ${mensaje}: el teléfono no tiene internet.`
+            : `No pudimos cargar ${mensaje}: el servidor no respondió. Probá de nuevo.`}
       </div>
       {error && (
         <button onClick={onRetry} style={sx('min-height:46px;padding:0 22px;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer')}>

@@ -75,7 +75,7 @@ export default function AceptarPolitica() {
             {aceptando && <span className="lu-spin" style={{ width: 20, height: 20, borderRadius: 999, border: '2.5px solid rgba(0,0,0,.18)', borderTopColor: 'var(--on-primary)' }} />}
             <span>{aceptando ? 'Guardando…' : 'Acepto'}</span>
           </button>
-          <button onClick={signOut}
+          <button onClick={() => signOut({ motivo: 'politica' })}
             style={sx('min-height:44px;background:transparent;border:none;font-size:var(--fs-sm);color:var(--muted);cursor:pointer')}>
             Cerrar sesión
           </button>

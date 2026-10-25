@@ -399,12 +399,15 @@ export function limpiarCuarentena() { return enSerie(() => persistence.set(QKEY,
  * Va al FINAL de la cola y en orden de dependencia: visitas → pedidos → renglones (la policy
  * `items_ins` exige el pedido padre). Cola y cuarentena se reescriben en el mismo turno del candado.
  * Devuelve cuántas volvieron.
+ *
+ * `forzar` (25/10/2026, plan 23): el botón "Reintentar envío" lo pide una PERSONA, así que vuelve
+ * también lo ya marcado `_rescatado`. No hay ciclo: cada vuelta la dispara un toque.
  */
 const ORDEN_RESCATE = { visitas: 0, pedidos: 1, pedido_items: 2 }
-export function reencolarCuarentena(debeVolver) {
+export function reencolarCuarentena(debeVolver, { forzar = false } = {}) {
   return enSerie(async () => {
     const cuar = (await persistence.getEstricto(QKEY, [])) || []
-    const vuelven = cuar.filter((m) => !m._rescatado && debeVolver(m))
+    const vuelven = cuar.filter((m) => (forzar || !m._rescatado) && debeVolver(m))
     if (!vuelven.length) return 0
     const quedan = cuar.filter((m) => !vuelven.includes(m))
     const ordenadas = vuelven

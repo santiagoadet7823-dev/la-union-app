@@ -110,7 +110,7 @@ export default function MfaVerificar() {
             style={sx('min-height:44px;background:transparent;border:none;font-size:var(--fs-sm);font-weight:600;color:var(--deep);cursor:pointer')}>
             Perdí el teléfono — usar un código de recuperación
           </button>
-          <button type="button" onClick={signOut}
+          <button type="button" onClick={() => signOut({ motivo: 'mfa-verificar' })}
             style={sx('min-height:40px;background:transparent;border:none;font-size:var(--fs-sm);color:var(--muted);cursor:pointer')}>
             Cerrar sesión
           </button>

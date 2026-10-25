@@ -3,6 +3,8 @@ import { sx } from '../../lib/sx'
 import {
   EVENTO_CUARENTENA, EVENTO_PEDIDO_NUMERADO, cuarentenaMutaciones, pendientesDe,
 } from '../../services/sync/writeQueue'
+import { esPedidoDe } from '../../services/sync/rescate'
+import ReintentarEnvio from '../../components/ReintentarEnvio'
 
 /**
  * ¿LLEGARON MIS PEDIDOS? — el renglón que le faltaba al vendedor (22/10/2026, plan 19).
@@ -72,6 +74,8 @@ export default function EstadoEnvioPedidos({ userId, hayPedidos }) {
           <b>{conProblema} {conProblema === 1 ? 'pedido con problema' : 'pedidos con problema'}</b> · no
           {conProblema === 1 ? ' llegó' : ' llegaron'} al servidor. Avisá a tu encargado: están guardados
           en este teléfono y se pueden recuperar.
+          {/* Pedidos, renglones y visitas de esta cuenta: un pedido sin su visita rebota (23503). */}
+          <ReintentarEnvio filtro={esPedidoDe(userId)} />
         </div>
       )}
     </div>

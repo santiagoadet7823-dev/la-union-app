@@ -4,6 +4,7 @@ import { App as CapApp } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { supabase, hasSupabase } from '../services/supabase'
+import { APP_VERSION } from '../version'
 import { persistence } from '../services/persistence'
 import { fetchPerfil, leerCachePerfil, escribirCachePerfil, borrarCachePerfil, actualizarMiPerfil as actualizarMiPerfilSvc } from '../services/data/perfiles'
 import { cerrarSesionUploader } from '../services/uploaderNativo'
@@ -102,6 +103,40 @@ function veredictoCuenta(s) {
 }
 
 const AVISO_SESION_AJENA = 'Se cerró la sesión por seguridad. Ingresá de nuevo.'
+
+/**
+ * 🩸 POR QUÉ SE CERRÓ LA SESIÓN (25/10/2026, plan 23, db/91). El 24/10 un vendedor entró y salió 26
+ * veces en una tarde y el servidor no podía decir si tocó un botón o si la app lo echó: los siete
+ * caminos terminan en el mismo `POST /logout`.
+ *
+ * Se anota PRIMERO en el teléfono y después se manda: en el rechazo de "sesión ajena" el cliente ya
+ * filtra la sesión, la RPC sale como anon y la base devuelve `false` (no anotó). Lo que no se
+ * confirma queda y sale con el próximo login (`enviarCierresPendientes`). Techo de 2,5 s: anotar
+ * nunca puede demorar ni bloquear una salida.
+ */
+const CIERRES_KEY = 'lu-cierres-pendientes'
+const leerCierres = () => { try { return JSON.parse(localStorage.getItem(CIERRES_KEY) || '[]') } catch (_) { return [] } }
+const guardarCierres = (l) => { try { localStorage.setItem(CIERRES_KEY, JSON.stringify(l.slice(-20))) } catch (_) { /* sin storage no hay rastro, y la salida sigue */ } }
+
+async function enviarCierresPendientes() {
+  const pendientes = leerCierres()
+  if (!pendientes.length) return
+  const quedan = []
+  for (const c of pendientes) {
+    const { data, error } = await supabase.rpc('registrar_cierre_sesion', { p_motivo: c.motivo, p_detalle: c.detalle })
+      .then((r) => r, () => ({ data: false }))
+    if (error || data !== true) quedan.push(c)
+  }
+  guardarCierres(quedan)
+}
+
+function anotarCierre(motivo, detalle = {}) {
+  guardarCierres([...leerCierres(), {
+    motivo,
+    detalle: { ...detalle, ts: new Date().toISOString(), version: APP_VERSION, online: typeof navigator !== 'undefined' ? navigator.onLine : null },
+  }])
+  return Promise.race([enviarCierresPendientes(), new Promise((r) => setTimeout(r, 2500))]).catch(() => {})
+}
 
 const ULTIMO_KEY = 'lu-ultimo-ingreso'
 const RECORDAR_KEY = 'lu-recordar-usuario'
@@ -255,6 +290,8 @@ export function AuthProvider({ children }) {
         if (!sigueRechazada()) return
         try { await borrarCacheSesion() } catch (_) { /* idem */ }
         if (!sigueRechazada()) return
+        await anotarCierre('sesion-ajena', { origen: info?.origen || null, recibida: info?.recibida || null, activa: activa || null })
+        if (!sigueRechazada()) return
         try { await supabase.auth.signOut({ scope: 'local' }) } catch (_) { /* idem */ }
       } finally {
         setTimeout(() => { rechazandoRef.current = false }, 3000)
@@ -273,6 +310,8 @@ export function AuthProvider({ children }) {
     if (!s?.user?.id) return
     fijarCuentaActiva(s.user.id)
     setAvisoSesion(null)
+    // Los motivos de salida que no llegaron a anotarse (db/91) salen con la sesión nueva.
+    setTimeout(() => { enviarCierresPendientes().catch(() => {}) }, 3000)
     tokenDegradadoRef.current = null
     escribirCacheSesion(s); recordarIngreso(s); setSession(s); cargarPerfil(s.user.id)
     setLoading(false)
@@ -714,7 +753,11 @@ export function AuthProvider({ children }) {
     return { data, error: null }
   }
 
-  const signOut = async () => {
+  // `motivo`: desde qué botón se salió (db/91). Usado como `onClick={signOut}` llega el evento, que
+  // no trae `motivo` → queda 'boton'.
+  const signOut = async (opciones) => {
+    const motivo = typeof opciones?.motivo === 'string' ? opciones.motivo : 'boton'
+    await anotarCierre(motivo)
     // 🩸 PRIMERO: soltar el uploader NATIVO (02/08/2026). Va antes que nada porque necesita la
     // sesión viva, y porque si algo de lo de abajo falla el teléfono no puede quedar rastreando a
     // nombre de esta cuenta. Hasta 1.7.0 el signOut no lo tocaba: el token quedaba en las prefs y

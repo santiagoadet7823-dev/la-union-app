@@ -232,10 +232,18 @@ export default function LoginView({ onTablet }) {
           <div className="lu-rise" style={{ ...sx('margin-top:18px;display:flex;align-items:flex-start;padding:14px;border-radius:var(--r-lg);background:var(--warning-tint);border:1px solid var(--warning)'), '--gx': '12px' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.8" strokeLinecap="round" style={{ flex: 'none', marginTop: 1 }}><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01M3 3l18 18" /></svg>
             <div>
-              <div style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.35')}>Sin conexión</div>
+              {/* 🩸 (25/10/2026, plan 23) Antes decía SIEMPRE "el teléfono no tiene señal", también
+                  cuando el teléfono tenía red y lo que tardó fue el servidor o Google: el vendedor
+                  creía que el problema era suyo y dejaba de intentar. `navigator.onLine` sólo es
+                  confiable cuando dice `false`, así que es lo único que se afirma. */}
+              <div style={sx('font-size:var(--fs-md);font-weight:600;line-height:1.35')}>
+                {navigator.onLine === false ? 'Sin conexión' : 'No hubo respuesta'}
+              </div>
               <div style={sx('font-size:var(--fs-sm);color:var(--muted);line-height:1.5;margin-top:3px')}>
-                No es tu contraseña: el teléfono no tiene señal. Cuando vuelva la red vas a poder
-                entrar. Si ya entraste antes en este teléfono, la app abre sola sin internet.
+                {navigator.onLine === false
+                  ? 'No es tu contraseña: el teléfono no tiene internet. Cuando vuelva la red vas a poder entrar.'
+                  : 'No es tu contraseña: el servidor tardó demasiado en contestar. Probá de nuevo en unos segundos.'}
+                {' '}Si ya entraste antes en este teléfono, la app abre sola sin internet.
               </div>
             </div>
           </div>

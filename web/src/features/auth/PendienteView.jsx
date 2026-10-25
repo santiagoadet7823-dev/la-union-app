@@ -110,7 +110,7 @@ export default function PendienteView() {
             {consultando && <span className="lu-spin" style={{ width: 20, height: 20, borderRadius: 999, border: '2.5px solid rgba(0,0,0,.18)', borderTopColor: 'var(--on-primary)' }} />}
             {consultando ? 'Consultando…' : 'Ya me habilitaron, reintentar'}
           </button>
-          <button onClick={() => signOut()} className="lu-press"
+          <button onClick={() => signOut({ motivo: 'pendiente' })} className="lu-press"
             style={sx('width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:var(--r-md);border:1px solid var(--line);background:transparent;font-size:var(--fs-md);font-weight:600;color:var(--muted);cursor:pointer')}>
             {/* "Volver al ingreso" y no "Salir" (hoja Ingreso v3, 01/10/2026): dice adónde lleva.
                 Hace lo mismo de siempre, `signOut()`. */}

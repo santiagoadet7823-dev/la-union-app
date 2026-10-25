@@ -72,8 +72,21 @@ const esStorage = (input) => {
   return u.includes('/storage/v1/')
 }
 
+/**
+ * 🩸 EL LOGIN TAMBIÉN VA CON TECHO PROPIO (25/10/2026, plan 23). Los vendedores contaban que al
+ * cerrárseles la sesión el login decía "Sin conexión" y no los dejaba entrar. En el servidor los
+ * `/token` tardan < 1 s, pero el de Google pasa por Play Services + el túnel, y con una antena floja
+ * 10 s no alcanzan: el `timeout 10000ms` se leía como "no hay señal". Un login que tarda 15 s es un
+ * login que entra; uno abortado a los 10 s deja a la persona afuera.
+ */
+const TIMEOUT_AUTH_MS = 30000
+const esAuth = (input) => {
+  const u = typeof input === 'string' ? input : input?.url || ''
+  return u.includes('/auth/v1/')
+}
+
 const fetchConTimeout = (input, init = {}) => {
-  const ms = esStorage(input) ? TIMEOUT_STORAGE_MS : TIMEOUT_MS
+  const ms = esStorage(input) ? TIMEOUT_STORAGE_MS : esAuth(input) ? TIMEOUT_AUTH_MS : TIMEOUT_MS
   const ctrl = new AbortController()
   // `AbortError` y no un `Error` cualquiera (18/09/2026): postgrest-js ≥ 2.110 reintenta los GET
   // tres veces (1/2/4 s) ante cualquier fallo de red que NO sea un abort. Con `new Error(...)` el
