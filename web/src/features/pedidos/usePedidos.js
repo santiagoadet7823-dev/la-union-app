@@ -222,7 +222,8 @@ export async function itemsDePedido(idPedido) {
  *
  * ⚠️ Paginado por partida: PostgREST corta en 1.000 filas y **devuelve 200 igual**. Diez líneas por
  * pedido hacen que 100 pedidos ya pasen el techo, así que acá no es hipotético. Se parte por LOTE DE
- * IDS y no por `range()`: un `in` con mil uuid también hace explotar la URL.
+ * IDS (un `in` con mil uuid también hace explotar la URL) y, adentro de cada lote, por `range()` de
+ * a 500: el lote de ids solo no alcanza (25/10/2026: 100 pedidos seguidos llegaron a 690 líneas).
  *
  * 🔑 EL CÓDIGO DEL PRODUCTO SALE DE LA LÍNEA (db/62). Desde el 10/09/2026 se copia al confirmar,
  * igual que `descripcion` y `precio_unitario`: es el campo 18 del archivo del ERP, y con la relación
@@ -236,18 +237,24 @@ export async function itemsDePedidos(ids) {
   const porPedido = new Map()
   if (!ids?.length) return porPedido
   const LOTE = 100
+  const PAGINA = 500
   for (let i = 0; i < ids.length; i += LOTE) {
     const trozo = ids.slice(i, i + LOTE)
-    const { data, error } = await supabase
-      .from('pedido_items')
-      .select('id, id_pedido, id_producto, codigo_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( codigo )')
-      .in('id_pedido', trozo)
-      .order('descripcion', { ascending: true })
-    if (error) throw error
-    for (const l of data || []) {
-      const arr = porPedido.get(l.id_pedido) || []
-      arr.push({ ...l, codigoProducto: l.codigo_producto || l.producto?.codigo || null })
-      porPedido.set(l.id_pedido, arr)
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data, error } = await supabase
+        .from('pedido_items')
+        .select('id, id_pedido, id_producto, codigo_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( codigo )')
+        .in('id_pedido', trozo)
+        .order('descripcion', { ascending: true })
+        .order('id', { ascending: true }) // desempate estable: sin él, `range` puede repetir o saltear
+        .range(desde, desde + PAGINA - 1)
+      if (error) throw error
+      for (const l of data || []) {
+        const arr = porPedido.get(l.id_pedido) || []
+        arr.push({ ...l, codigoProducto: l.codigo_producto || l.producto?.codigo || null })
+        porPedido.set(l.id_pedido, arr)
+      }
+      if ((data || []).length < PAGINA) break
     }
   }
   return porPedido
