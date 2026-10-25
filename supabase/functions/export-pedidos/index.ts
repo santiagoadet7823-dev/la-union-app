@@ -40,6 +40,9 @@ const json = (b: unknown, status = 200) =>
 // Los ids se piden de a 100, igual que en la app: un `in` con mil uuid hace explotar la URL de
 // PostgREST, y PostgREST además corta en 1.000 filas devolviendo 200 igual, sin ninguna señal.
 const LOTE_IDS = 100
+// Los renglones, en cambio, no son uno por id: 100 pedidos llegaron a sumar 690 (25/10/2026). Se
+// paginan de a 500 (debajo del corte de 1.000, así una página llena nunca es una página cortada).
+const PAGINA_LINEAS = 500
 
 const SELECT_PEDIDOS = `id, numero, id_empresa, created_at, estado, monto_total, forma_pago,
   fecha_entrega, observaciones,
@@ -153,7 +156,9 @@ Deno.serve(async (req) => {
       /* 🔑 EL LOTE SE TOMA CON UNA RPC QUE MARCA Y DEVUELVE EN UN SOLO STATEMENT (db/62). Un
        * `select` seguido de un `update` tendría una ventana entre los dos, y esa ventana es
        * exactamente el bug que hace que dos ejecuciones del `.bat` se lleven el mismo pedido. */
-      const { data, error } = await admin.rpc('tomar_lote_pedidos', {
+      /* 🩸 La versión `_json` (db/96, 25/10/2026): la `returns table` pasaba por el `max-rows` de
+       * PostgREST (1000) y un lote más grande quedaba marcado entero pero llegaba cortado. */
+      const { data, error } = await admin.rpc('tomar_lote_pedidos_json', {
         p_empresa: tk.id_empresa,
         p_usuario: tk.id_usuario,
         p_marcar: !probar,
@@ -197,18 +202,23 @@ Deno.serve(async (req) => {
 
     const lineasPorPedido = new Map<string, Record<string, unknown>[]>()
     for (let i = 0; i < ids.length; i += LOTE_IDS) {
-      const { data, error } = await admin.from('pedido_items')
-        .select(SELECT_ITEMS)
-        .in('id_pedido', ids.slice(i, i + LOTE_IDS))
-        .order('descripcion', { ascending: true })
-      if (error) return await rechazar('leer-lineas', 500, { detalle: error.message })
-      for (const l of data || []) {
-        const fila = l as Record<string, any>
-        const arr = lineasPorPedido.get(fila.id_pedido) || []
-        // El código sale de la LÍNEA (db/62). La relación es respaldo para los pedidos anteriores a
-        // la migración; el orden del `||` no es intercambiable.
-        arr.push({ ...fila, codigoProducto: fila.codigo_producto || fila.producto?.codigo || null })
-        lineasPorPedido.set(fila.id_pedido, arr)
+      for (let desde = 0; ; desde += PAGINA_LINEAS) {
+        const { data, error } = await admin.from('pedido_items')
+          .select(SELECT_ITEMS)
+          .in('id_pedido', ids.slice(i, i + LOTE_IDS))
+          .order('descripcion', { ascending: true })
+          .order('id', { ascending: true }) // desempate estable: sin él, `range` puede repetir o saltear
+          .range(desde, desde + PAGINA_LINEAS - 1)
+        if (error) return await rechazar('leer-lineas', 500, { detalle: error.message })
+        for (const l of data || []) {
+          const fila = l as Record<string, any>
+          const arr = lineasPorPedido.get(fila.id_pedido) || []
+          // El código sale de la LÍNEA (db/62). La relación es respaldo para los pedidos anteriores a
+          // la migración; el orden del `||` no es intercambiable.
+          arr.push({ ...fila, codigoProducto: fila.codigo_producto || fila.producto?.codigo || null })
+          lineasPorPedido.set(fila.id_pedido, arr)
+        }
+        if ((data || []).length < PAGINA_LINEAS) break
       }
     }
 
