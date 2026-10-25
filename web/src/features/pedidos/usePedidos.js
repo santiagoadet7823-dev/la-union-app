@@ -45,7 +45,7 @@ const SELECT = `
   id, numero, id_empresa, id_vendedor, id_cliente, id_repartidor, id_visita, estado, monto_total, peso_total,
   created_at, lat, lng, accuracy, distancia_m, origen, motivo_anulacion, anulado_por, anulado_ts,
   anulado_srv_ts, forma_pago, fecha_entrega, observaciones, exportado_ts, export_lote,
-  cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng, telefono, contacto ),
+  cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng, telefono, contacto, exportado_ts ),
   vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre, codigo_erp, numero )
 `
 
@@ -55,6 +55,9 @@ export function mapComercio(c) {
   return {
     id: c.id, codigo: c.codigo, name: c.nombre_comercio, loc: c.localidad || '', lat: c.lat, lng: c.lng,
     telefono: c.telefono || '', contacto: c.contacto || '',
+    // db/92: ¿el ERP ya recibió a este comercio? Tri-estado a propósito: `undefined` cuando la fila
+    // no trajo la columna (otro select), para que `motivoRetencion` no lo confunda con "no salió".
+    exportado: c.exportado_ts === undefined ? undefined : !!c.exportado_ts,
   }
 }
 

@@ -1,11 +1,13 @@
 ﻿# =============================================================================
 #  DisT-At — DESINSTALAR el envio automatico de la lista de precios
+#  (y, desde el 07/10/2026, tambien la bajada automatica de clientes)
 #
 #  NO SE EJECUTA ESTE ARCHIVO A MANO: doble clic en DESINSTALAR.bat.
 #  Este .ps1 es el motor (ver el encabezado de INSTALAR.bat para el porque).
 #
-#  Saca la tarea programada, y con eso el equipo deja de mandar la lista.
-#  NO borra nada mas: ni el token, ni los registros, ni la carpeta.
+#  Saca las tareas programadas que encuentre, y con eso el equipo deja de mandar
+#  la lista y de bajar clientes.
+#  NO borra nada mas: ni los tokens, ni los registros, ni la carpeta.
 #
 #  Para que sirve, en la vida real:
 #    - Se instalo en el equipo equivocado (fue exactamente lo que paso el
@@ -18,7 +20,9 @@ $ErrorActionPreference = 'Stop'
 $base = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $base
 
-$TAREA = 'DisT-At - enviar lista de precios'
+# Las dos tareas que instala este paquete (INSTALAR.bat e INSTALAR-CLIENTES.bat). Se quitan las que
+# esten: un equipo puede tener una sola.
+$TAREAS = @('DisT-At - enviar lista de precios', 'DisT-At - bajar clientes')
 $LOG   = Join-Path $base 'instalacion.log'
 
 function Registrar($t) {
@@ -54,14 +58,14 @@ Registrar 'Arranca la desinstalacion'
 Clear-Host
 Write-Host ''
 Write-Host '  ===============================================================' -ForegroundColor Cyan
-Write-Host '   DisT-At - Apagar el envio automatico de precios' -ForegroundColor Cyan
+Write-Host '   DisT-At - Apagar el envio automatico (precios y clientes)' -ForegroundColor Cyan
 Write-Host '  ===============================================================' -ForegroundColor Cyan
 
 # --- 1) Que hay instalado ----------------------------------------------------
 Titulo '1 de 2 - Que hay instalado en este equipo'
 
-$t = Get-ScheduledTask -TaskName $TAREA -ErrorAction SilentlyContinue
-if (-not $t) {
+$instaladas = @($TAREAS | Where-Object { Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue })
+if ($instaladas.Count -eq 0) {
   Ok 'No hay ninguna tarea instalada. Este equipo NO esta mandando nada.'
   Info 'No hay nada que hacer.'
   Write-Host ''
@@ -70,27 +74,35 @@ if (-not $t) {
   exit 0
 }
 
-$inf = Get-ScheduledTaskInfo -TaskName $TAREA -ErrorAction SilentlyContinue
-Aviso "Este equipo TIENE programado el envio automatico."
-Info  "Tarea         : $TAREA"
-Info  "Estado        : $($t.State)"
-Info  "Repite cada   : $($t.Triggers[0].Repetition.Interval)  (PT1H = 1 hora)"
-Info  "Proxima corrida: $($inf.NextRunTime)"
+foreach ($TAREA in $instaladas) {
+  $t = Get-ScheduledTask -TaskName $TAREA
+  $inf = Get-ScheduledTaskInfo -TaskName $TAREA -ErrorAction SilentlyContinue
+  Aviso "Este equipo TIENE programada esta tarea:"
+  Info  "Tarea         : $TAREA"
+  Info  "Estado        : $($t.State)"
+  Info  "Repite cada   : $($t.Triggers[0].Repetition.Interval)  (PT1H = 1 hora, PT30M = 30 minutos)"
+  Info  "Proxima corrida: $($inf.NextRunTime)"
+  Write-Host ''
+}
 
 $config = Join-Path $base 'config.txt'
 if (Test-Path -LiteralPath $config) {
-  Info "Archivo que envia: $((Get-Content -LiteralPath $config -Raw).Trim())"
+  Info "Archivo de precios que envia: $((Get-Content -LiteralPath $config -Raw).Trim())"
+}
+$configCli = Join-Path $base 'config-clientes.txt'
+if (Test-Path -LiteralPath $configCli) {
+  Info "Carpeta donde deja Clientes.txt: $((Get-Content -LiteralPath $configCli -Raw).Trim())"
 }
 
-# --- 2) Sacarla --------------------------------------------------------------
+# --- 2) Sacarlas -------------------------------------------------------------
 Titulo '2 de 2 - Apagarlo'
 
 Write-Host ''
-Write-Host '  Se va a QUITAR la tarea programada. A partir de ahi, este equipo' -ForegroundColor White
-Write-Host '  deja de mandar la lista de precios.' -ForegroundColor White
+Write-Host '  Se van a QUITAR las tareas de arriba. A partir de ahi, este equipo' -ForegroundColor White
+Write-Host '  deja de mandar la lista de precios y de bajar clientes.' -ForegroundColor White
 Write-Host ''
 Info 'No se borra el token, ni los registros, ni ningun archivo de la carpeta:'
-Info 'si algun dia hace falta, se vuelve a dejar andando con INSTALAR.bat.'
+Info 'si algun dia hace falta, se vuelve a dejar andando con INSTALAR.bat (o INSTALAR-CLIENTES.bat).'
 Write-Host ''
 $r = Read-Host '  Escribi SI (en mayusculas) para confirmar, o Enter para cancelar'
 
@@ -103,34 +115,34 @@ if ($r -ne 'SI') {
   exit 0
 }
 
-Unregister-ScheduledTask -TaskName $TAREA -Confirm:$false
+foreach ($TAREA in $instaladas) { Unregister-ScheduledTask -TaskName $TAREA -Confirm:$false }
 
 # Comprobar de verdad. Dar por hecho que un comando funciono porque no tiro error
 # es como se cierran los problemas que despues vuelven.
-$sigue = Get-ScheduledTask -TaskName $TAREA -ErrorAction SilentlyContinue
-if ($sigue) {
-  Malo 'La tarea SIGUE existiendo. No se pudo quitar.'
+$siguen = @($instaladas | Where-Object { Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue })
+if ($siguen.Count -gt 0) {
+  Malo "Esta(s) tarea(s) SIGUE(N) existiendo: $($siguen -join ', '). No se pudo quitar."
   Info 'Probá de nuevo, y si insiste avisanos.'
   Write-Host ''
   Read-Host '  Enter para cerrar'
   exit 1
 }
 
-Ok 'Listo: la tarea fue eliminada.'
-Ok 'Este equipo ya NO manda la lista de precios.'
+Ok 'Listo: las tareas fueron eliminadas.'
+Ok 'Este equipo ya NO manda la lista de precios ni baja clientes.'
 
 Write-Host ''
 Write-Host '  ---------------------------------------------------------------' -ForegroundColor DarkGray
 Write-Host '   Lo que quedo en la carpeta (y se puede borrar a mano):' -ForegroundColor White
 Write-Host ''
-foreach ($f in @('config.txt', 'instalacion.log', 'registros')) {
+foreach ($f in @('config.txt', 'config-clientes.txt', 'instalacion.log', 'instalacion-clientes.log', 'registros')) {
   $p = Join-Path $base $f
   if (Test-Path -LiteralPath $p) { Write-Host "     - $f" -ForegroundColor Gray }
 }
 Write-Host ''
-Write-Host '   El token.txt sigue siendo la llave de la distribuidora: si esta' -ForegroundColor Gray
+Write-Host '   token.txt y token-clientes.txt siguen siendo llaves de la distribuidora: si esta' -ForegroundColor Gray
 Write-Host '   carpeta no se va a usar mas, borrala entera.' -ForegroundColor Gray
 Write-Host '  ---------------------------------------------------------------' -ForegroundColor DarkGray
 Write-Host ''
-Registrar 'Tarea eliminada correctamente'
+Registrar "Tareas eliminadas correctamente: $($instaladas -join ', ')"
 Read-Host '  Enter para cerrar'

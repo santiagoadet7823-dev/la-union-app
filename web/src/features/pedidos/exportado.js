@@ -42,17 +42,26 @@ export function frenarSiExportado(pedido) {
  * quedaron esperando, y qué dato hay que cargar para que salgan (Usuarios → "Código ERP", o el
  * código del comercio en Clientes).
  *
- * @param {object} pedido  fila de la lista (`comercio.codigo`, `codigoVendedor`, `exportado_ts`, `estado`)
- * @returns {'cliente'|'vendedor'|null}
+ * 'clienteSinEnviar' (db/92, 25/10/2026): el comercio tiene código pero el ERP todavía no lo
+ * recibió (`clientes.exportado_ts` vacío) y la llave `export_erp.clientes_activo` está prendida.
+ * `pedido_exportable` no deja salir el pedido antes que su cliente: el ERP recibiría un código que
+ * no conoce. No hay que cargar nada — sale solo cuando la PC del ERP baje el próximo `Clientes.txt`
+ * (cada 30 minutos). Con la llave apagada no se retiene, igual que en la base.
+ *
+ * @param {object} pedido  fila de la lista (`comercio.codigo`, `comercio.exportado`, `codigoVendedor`, `exportado_ts`, `estado`)
+ * @param {{ clientesActivo?: boolean }} [opts]  la llave (`useEnvioClientesErp().activo`)
+ * @returns {'cliente'|'clienteSinEnviar'|'vendedor'|null}
  */
-export function motivoRetencion(pedido) {
+export function motivoRetencion(pedido, { clientesActivo = false } = {}) {
   if (!pedido || pedido.exportado_ts || pedido.estado === 'Anulado') return null
   if (!String(pedido.comercio?.codigo || '').trim()) return 'cliente'
+  if (clientesActivo && pedido.comercio?.exportado === false) return 'clienteSinEnviar'
   if (!pedido.codigoVendedor) return 'vendedor'
   return null
 }
 
 export const TEXTO_RETENCION = {
   cliente: 'sin código de cliente',
+  clienteSinEnviar: 'cliente todavía no enviado al ERP',
   vendedor: 'sin código de vendedor',
 }

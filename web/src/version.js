@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.44.9'   // 25/10/2026: plan 23 — "Reintentar envío" de pedidos aislados, login con 30 s y motivo de cada cierre de sesión
+export const APP_VERSION = '1.45.0'   // 25/10/2026: plan 24 — código de cliente asignado por DisT-At (desde 2803) y envío de clientes al ERP (db/92)

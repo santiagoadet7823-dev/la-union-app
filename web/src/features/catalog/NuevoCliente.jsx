@@ -5,6 +5,7 @@ import { buscarParecidos, motivoTexto, cercanos, RADIO_CERCA_M } from '../../lib
 import { primerCodigoLibre, codigoOcupado } from '../../lib/codigoCliente'
 import { useCatalog } from '../../context/CatalogContext'
 import { useAuth } from '../../context/AuthContext'
+import useCodigoClienteMin from '../../hooks/useCodigoClienteMin'
 import { misZonas, etiquetaZona } from '../../lib/carteraDe'
 import { pedirUbicacionUnaVez } from '../../services/geolocation'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
@@ -26,7 +27,11 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   // `clientesTodos` incluye los archivados: si alguien vuelve a cargar un comercio que se archivó,
   // avisarlo es MÁS importante, no menos — es la señal de que hay que desarchivarlo, no duplicarlo.
   const { addCliente, clientesTodos, zonas } = useCatalog()
-  const { user } = useAuth()
+  const { user, rol, idEmpresa } = useAuth()
+  // Sólo gestión cambia el número propuesto (como en la ficha). El vendedor lo ve pero no lo toca:
+  // el número lo da la app, no la persona.
+  const puedeCambiarCodigo = rol === 'admin' || rol === 'encargado' || rol === 'superadmin'
+  const pisoCodigo = useCodigoClienteMin(idEmpresa)
   // ZONA (plan 21): el vendedor pone el cliente en una de SUS zonas, así nace con dueño y no queda
   // "a medias". Con una sola, va puesta. Gestión no es dueña de zonas: no ve el campo (la zona la
   // asigna desde la ficha). La base rechaza una zona ajena (db/89, `zona-ajena`).
@@ -34,7 +39,8 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   const [zona, setZona] = useState(() => (propias.length === 1 ? propias[0].id : ''))
   const [avisoZona, setAvisoZona] = useState(false) // ya se avisó que va sin zona: el 2.º toque guarda
   const [nombre, setNombre] = useState('')
-  const [codigo, setCodigo] = useState('')
+  // `null` = no se tocó: vale el propuesto. Un string = lo que escribió gestión.
+  const [codigo, setCodigo] = useState(null)
   const [localidad, setLocalidad] = useState('Las Lajitas')
   const [dias, setDias] = useState({})
   const [frecuencia, setFrecuencia] = useState('Semanal')
@@ -84,13 +90,15 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   // Desde gestión no se pasa `onAbrirCliente`: las tarjetas quedan, sin el botón.
   const esEste = onAbrirCliente ? (id) => { setAbierto(false); onAbrirCliente(id) } : null
 
-  // CÓDIGO (12/09/2026). El código lo emite el ERP de la distribuidora, así que acá NO se precarga:
-  // se SUGIERE el primer hueco libre desde el 1 (los archivados cuentan como ocupados) con un botón
-  // para usarlo, y se avisa que hay que verificarlo contra el ERP. Lo que sí se bloquea es guardar
-  // un código que ya está en uso: el índice único de la base lo rechazaría con 23505 y la cola lo
-  // mandaría a cuarentena — la pantalla diría "agregado" y el cliente no existiría.
-  const sugerido = useMemo(() => primerCodigoLibre(clientesTodos), [clientesTodos])
-  const ocupadoPor = useMemo(() => codigoOcupado(codigo, clientesTodos), [codigo, clientesTodos])
+  // CÓDIGO (25/10/2026, db/92, plan 24). Hasta acá lo emitía el ERP y la app sólo sugería. Ahora lo
+  // da DisT-At: el alta lleva el primer libre desde el piso de la empresa (2803 en La Unión) y el ERP
+  // lo recibe por `export-clientes`. Es PROVISORIO hasta sincronizar: si otro vendedor sin señal tomó
+  // el mismo, el servidor resuelve por hora de creación y a uno de los dos le da otro
+  // (`clientes_resolver_codigo`). Lo que se sigue bloqueando es que gestión escriba a mano uno ya
+  // usado: el servidor lo correría igual, pero la persona tiene que saber que eligió uno ocupado.
+  const sugerido = useMemo(() => primerCodigoLibre(clientesTodos, pisoCodigo), [clientesTodos, pisoCodigo])
+  const codigoEfectivo = (puedeCambiarCodigo && codigo !== null) ? codigo : sugerido
+  const ocupadoPor = useMemo(() => codigoOcupado(codigoEfectivo, clientesTodos), [codigoEfectivo, clientesTodos])
 
   async function usarMiUbicacion() {
     setLocBusy(true)
@@ -107,7 +115,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
 
   async function guardar() {
     if (!nombre.trim()) { onToast?.('Poné el nombre del comercio'); return }
-    if (ocupadoPor) { onToast?.(`El código ${codigo.trim()} ya lo usa ${ocupadoPor.name}`); return }
+    if (ocupadoPor) { onToast?.(`El código ${codigoEfectivo.trim()} ya lo usa ${ocupadoPor.name}`); return }
     if (!punto) { onToast?.('Marcá la ubicación en el mapa'); return }
     if (fiscal.error) { onToast?.('Revisá el CUIT/CUIL: ' + fiscal.error); return }
     if (propias.length > 1 && !zona && !avisoZona) {
@@ -120,7 +128,8 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
     const res = await addCliente({
       id_zona: zona || null,
       nombre_comercio: nombre.trim(),
-      codigo: codigo.trim() || null,
+      // Vacío viaja como null y el servidor le asigna uno (db/92): nunca nace un cliente sin código.
+      codigo: codigoEfectivo.trim() || null,
       localidad: localidad.trim() || null,
       lat: punto.lat,
       lng: punto.lng,
@@ -187,28 +196,33 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
         </div>
       )}
       <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
-        <Field label="Código (opcional)">
-          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="El que tiene en el ERP" inputMode="numeric" style={{ ...inputStyle, ...(ocupadoPor ? { borderColor: 'var(--danger)' } : null) }} className="lu-input" aria-invalid={!!ocupadoPor} />
+        <Field label="Código">
+          <input value={codigoEfectivo} onChange={(e) => setCodigo(e.target.value)} readOnly={!puedeCambiarCodigo}
+            inputMode="numeric" aria-invalid={!!ocupadoPor}
+            style={{ ...inputStyle, ...(puedeCambiarCodigo ? null : { background: 'var(--surface2)', color: 'var(--muted)' }), ...(ocupadoPor ? { borderColor: 'var(--danger)' } : null) }}
+            className="lu-input" />
         </Field>
         <Field label="Localidad"><input value={localidad} onChange={(e) => setLocalidad(e.target.value)} style={inputStyle} className="lu-input" /></Field>
       </div>
-      {/* Sugerencia y colisión del código. Una sola línea debajo de la grilla, para no
+      {/* Aclaración y colisión del código. Una sola línea debajo de la grilla, para no
           desalinear las dos columnas. */}
       {ocupadoPor ? (
         <div style={sx('margin:-6px 0 12px;display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--danger);font-weight:600;line-height:1.4')}>
           <Alerta size={14} w={2.2} style={{ flex: 'none' }} />
-          <span>El código {codigo.trim()} ya lo usa <b>{ocupadoPor.name}</b>{ocupadoPor.archivado ? ' (archivado)' : ''}. Elegí otro.</span>
+          <span>El código {codigoEfectivo.trim()} ya lo usa <b>{ocupadoPor.name}</b>{ocupadoPor.archivado ? ' (archivado)' : ''}. Elegí otro.</span>
         </div>
       ) : (
         <div style={sx('margin:-6px 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-xs);color:var(--muted);line-height:1.4')}>
-          <span>Libre en DisT-At: <b style={sx('font-family:var(--font-mono);color:var(--deep)')}>{sugerido}</b></span>
-          {codigo.trim() !== sugerido && (
-            <button type="button" onClick={() => setCodigo(sugerido)} className="lu-press"
-              style={sx('border:1px solid var(--line2);background:var(--surface2);color:var(--deep);border-radius:var(--r-sm);padding:4px 9px;font-size:var(--fs-2xs);font-weight:700;cursor:pointer')}>
-              Usar
-            </button>
+          {puedeCambiarCodigo && codigoEfectivo.trim() !== sugerido && (
+            <>
+              <span>Primer libre: <b style={sx('font-family:var(--font-mono);color:var(--deep)')}>{sugerido}</b></span>
+              <button type="button" onClick={() => setCodigo(null)} className="lu-press"
+                style={sx('border:1px solid var(--line2);background:var(--surface2);color:var(--deep);border-radius:var(--r-sm);padding:4px 9px;font-size:var(--fs-2xs);font-weight:700;cursor:pointer')}>
+                Usar
+              </button>
+            </>
           )}
-          <span style={sx('color:var(--faint)')}>· Verificalo con el ERP: acá sólo se ven los códigos cargados en la app (los archivados cuentan como ocupados).</span>
+          <span style={sx('color:var(--faint)')}>Lo asigna la app y es provisorio hasta sincronizar: si otro vendedor tomó el mismo número sin señal, el sistema le da otro a uno de los dos.</span>
         </div>
       )}
 

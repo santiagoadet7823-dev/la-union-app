@@ -13,6 +13,7 @@ import AvisoCuarentena from '../../components/AvisoCuarentena'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import useLotesExport from './useLotesExport'
 import { motivoRetencion, TEXTO_RETENCION } from './exportado'
+import { useEnvioClientesErp } from '../../hooks/useCodigoClienteMin'
 import { normalizar } from '../../lib/texto'
 
 /**
@@ -94,7 +95,11 @@ function rangoDeFechas(a, b) {
 }
 
 export default function PedidosView({ onToast }) {
-  const { user, rol } = useAuth()
+  const { user, rol, idEmpresa } = useAuth()
+  // La llave del envío de clientes (db/92): con ella prendida, un pedido espera a que su cliente
+  // nuevo llegue al ERP. Va como argumento para que la lista diga lo mismo que `pedido_exportable`.
+  const { activo: clientesActivo } = useEnvioClientesErp(idEmpresa)
+  const retencion = useCallback((p) => motivoRetencion(p, { clientesActivo }), [clientesActivo])
   const [rango, setRango] = useState('7')
   // "Elegir fechas": arranca en la última semana, así al tocarlo no cambia lo que se está viendo.
   const [fechaDesde, setFechaDesde] = useState(() => hoyStr(new Date(Date.now() - 6 * 86400000)))
@@ -152,30 +157,39 @@ export default function PedidosView({ onToast }) {
       if (filtroEstado && p.estado !== filtroEstado) return false
       if (filtroRepartidor === 'sin' ? !!p.id_repartidor : (filtroRepartidor && p.id_repartidor !== filtroRepartidor)) return false
       if (filtroLote === 'sin' && p.exportado_ts) return false
-      if (filtroLote === 'ret' && !motivoRetencion(p)) return false
+      if (filtroLote === 'ret' && !retencion(p)) return false
       if (filtroLote && filtroLote !== 'sin' && filtroLote !== 'ret' && String(p.export_lote || '') !== filtroLote) return false
       return true
     })
-  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, filtroLote])
+  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, filtroLote, retencion])
   const cargandoAhora = enPapelera ? cargandoPapelera : cargando
 
   /* RETENIDOS (18/09/2026, db/74): pedidos vivos que el canal al ERP NO va a mandar hasta que alguien
      cargue el código que falta. Se cuentan sobre la lista completa del rango (no la filtrada) y se
      agrupan por lo que falta, con los nombres: "falta el código de vendedor de Nelson y Javier" es
      accionable; "3 retenidos" no. Es la contracara de retenerlos en la base — que nadie los pierda. */
-  const retenidos = useMemo(() => activos.filter((p) => motivoRetencion(p)), [activos])
+  const retenidos = useMemo(() => activos.filter((p) => retencion(p)), [activos, retencion])
   const avisoRetenidos = useMemo(() => {
     if (!retenidos.length) return null
     const vend = new Set(), cli = new Set()
+    // db/92: los que esperan a que su cliente salga al ERP. No falta cargar nada: se cuentan aparte
+    // para no mandar a nadie a "cargar un código" que ya está.
+    let esperanCliente = 0
     for (const p of retenidos) {
-      if (motivoRetencion(p) === 'vendedor') vend.add(p.nombreVendedor || 'alguien sin nombre')
+      const m = retencion(p)
+      if (m === 'vendedor') vend.add(p.nombreVendedor || 'alguien sin nombre')
+      else if (m === 'clienteSinEnviar') esperanCliente++
       else cli.add(p.comercio?.name || 'un comercio sin nombre')
     }
+    const frases = []
     const partes = []
     if (vend.size) partes.push(`el código de vendedor de ${[...vend].join(', ')} (Menú → Usuarios → "Código ERP")`)
     if (cli.size) partes.push(`el código de cliente de ${[...cli].join(', ')} (Menú → Clientes)`)
-    return `${retenidos.length} pedido${retenidos.length === 1 ? '' : 's'} no sale${retenidos.length === 1 ? '' : 'n'} al ERP hasta cargar ${partes.join(' y ')}.`
-  }, [retenidos])
+    const nCargar = retenidos.length - esperanCliente
+    if (nCargar) frases.push(`${nCargar} pedido${nCargar === 1 ? '' : 's'} no sale${nCargar === 1 ? '' : 'n'} al ERP hasta cargar ${partes.join(' y ')}.`)
+    if (esperanCliente) frases.push(`${esperanCliente} espera${esperanCliente === 1 ? '' : 'n'} a que su cliente nuevo llegue al ERP (sale solo, cada 30 minutos).`)
+    return frases.join(' ')
+  }, [retenidos, retencion])
   const errorAhora = enPapelera ? errorPapelera : error
 
   /* Las dos listas se recargan juntas SIEMPRE (botón "Reintentar"). Anular saca una fila de una y la
@@ -529,10 +543,13 @@ export default function PedidosView({ onToast }) {
                     ERP{p.export_lote ? ` #${p.export_lote}` : ''}
                   </span>
                 )}
-                {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta. */}
-                {motivoRetencion(p) && (
-                  <span title={`No sale al ERP: ${TEXTO_RETENCION[motivoRetencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
-                    Retenido · {TEXTO_RETENCION[motivoRetencion(p)]}
+                {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta.
+                    db/92: o hasta que su cliente nuevo llegue al ERP, que no pide cargar nada. */}
+                {retencion(p) && (
+                  <span title={retencion(p) === 'clienteSinEnviar'
+                    ? 'No sale al ERP hasta que su cliente nuevo llegue al sistema de gestión. Sale solo en el próximo lote.'
+                    : `No sale al ERP: ${TEXTO_RETENCION[retencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
+                    Retenido · {TEXTO_RETENCION[retencion(p)]}
                   </span>
                 )}
                 <span>
