@@ -31,21 +31,27 @@ Write-Host "  ---------------------------------------"
 Write-Host ""
 
 # --- 1. El token ----------------------------------------------------------------------------------
-$token = $env:DISTAT_TOKEN
-$deDonde = 'la variable DISTAT_TOKEN'
-if ([string]::IsNullOrWhiteSpace($token)) {
-  $archivoToken = Join-Path $aca 'token.txt'
-  if (Test-Path $archivoToken) {
-    $token = (Get-Content $archivoToken -Raw).Trim()
-    $deDonde = 'token.txt'
+# Mismo orden que bajar-pedidos.ps1: lo específico de pedidos primero (26/10/2026, la llave de
+# precios pisó a la de pedidos porque las dos se llamaban token.txt).
+$token = $null
+$deDonde = ''
+foreach ($fuente in @(
+  @('la variable DISTAT_TOKEN_PEDIDOS', $env:DISTAT_TOKEN_PEDIDOS),
+  @('token-pedidos.txt', $(if (Test-Path (Join-Path $aca 'token-pedidos.txt')) { Get-Content (Join-Path $aca 'token-pedidos.txt') -Raw })),
+  @('la variable DISTAT_TOKEN', $env:DISTAT_TOKEN),
+  @('token.txt', $(if (Test-Path (Join-Path $aca 'token.txt')) { Get-Content (Join-Path $aca 'token.txt') -Raw }))
+)) {
+  if ([string]::IsNullOrWhiteSpace($token) -and -not [string]::IsNullOrWhiteSpace($fuente[1])) {
+    $token = $fuente[1].Trim()
+    $deDonde = $fuente[0]
   }
 }
 if ([string]::IsNullOrWhiteSpace($token)) {
-  Mal "No hay token. Tiene que estar en token.txt o en la variable DISTAT_TOKEN."
+  Mal "No hay token. Tiene que estar en token-pedidos.txt (o token.txt) en esta carpeta."
   Write-Host ""
   exit 1
 }
-Bien "Token encontrado (en $deDonde)"
+Bien "Token encontrado (en $deDonde, termina en ...$($token.Substring([Math]::Max(0, $token.Length - 4))))"
 
 # --- 2. La carpeta destino ------------------------------------------------------------------------
 $carpeta = $null
@@ -82,12 +88,30 @@ try {
         -OutFile $tmp -PassThru -TimeoutSec 60 -UseBasicParsing
   $codigo = [int]$r.StatusCode
 } catch {
+  # 🩸 Antes esto quedaba en "-1" y nada más (26/10/2026: La Unión vio "[FALLA] El servidor
+  # respondio HTTP -1" sin pista de qué pasaba). Ahora se guarda el porqué: la respuesta del
+  # servidor si la hubo, o el mensaje de Windows si no se llegó.
   $codigo = -1
-  if ($_.Exception.Response) { $codigo = [int]$_.Exception.Response.StatusCode }
+  $cuerpoError = ''
+  $resp = $_.Exception.Response
+  if ($resp) {
+    $codigo = [int]$resp.StatusCode
+    try { $cuerpoError = (New-Object System.IO.StreamReader($resp.GetResponseStream())).ReadToEnd() } catch {}
+  } else {
+    $cuerpoError = $_.Exception.Message
+  }
 }
 
-if ($codigo -eq 401) {
+if ($codigo -eq -1) {
+  Mal "No se pudo llegar al servidor ($URL)"
+  Nota $cuerpoError
+  Nota "Revisar la conexion a internet de esta PC, el proxy o el antivirus."
+} elseif ($codigo -eq 401 -and $cuerpoError -match 'token-sin-permiso-de-pedidos') {
+  Mal "La llave de esta carpeta es de OTRO canal (precios o clientes), no de pedidos."
+  Nota "Copiar aca la llave de pedidos (token-pedidos.txt). Cada carpeta lleva la suya."
+} elseif ($codigo -eq 401) {
   Mal "El servidor rechazo el token (HTTP 401). Pedinos uno nuevo."
+  if ($cuerpoError) { Nota $cuerpoError }
 } elseif ($codigo -eq 204) {
   Bien "Conexion y token correctos"
   Nota "Ahora mismo no hay pedidos nuevos esperando. Es normal fuera del horario de venta."
@@ -107,7 +131,7 @@ if ($codigo -eq 401) {
   }
 } else {
   Mal "El servidor respondio HTTP $codigo"
-  if (Test-Path $tmp) { Nota (Get-Content $tmp -Raw) }
+  if ($cuerpoError) { Nota $cuerpoError } elseif (Test-Path $tmp) { Nota (Get-Content $tmp -Raw) }
 }
 if (Test-Path $tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 

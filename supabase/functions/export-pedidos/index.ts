@@ -84,7 +84,9 @@ Deno.serve(async (req) => {
       .eq('token', token)
       .maybeSingle()
     if (!tk || tk.revocado) return json({ error: 'token-invalido' }, 401)
-    if (tk.proposito !== 'pedidos') return json({ error: 'token-sin-permiso-de-pedidos' }, 401)
+    // El canal de la llave que llegó va en la respuesta (26/10/2026): La Unión copió la llave de
+    // precios en la carpeta de pedidos y lo único que veía era "401". Quien la manda ya la tiene.
+    if (tk.proposito !== 'pedidos') return json({ error: 'token-sin-permiso-de-pedidos', canal_del_token: tk.proposito }, 401)
 
     /* 🩸 UN PEDIDO RECHAZADO TAMBIÉN DEJA FILA. Es la lección textual de `ingest-precios`: los 400
      * se devolvían antes de llegar a la capa que escribía la bitácora, así que un emisor que fallaba

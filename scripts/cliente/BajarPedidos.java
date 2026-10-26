@@ -146,9 +146,11 @@ public class BajarPedidos {
         }
         boolean repetir = args.length > 1 && "--repetir".equals(args[1]);
 
-        String token = System.getenv("DISTAT_TOKEN");
+        // Llave por canal (26/10/2026): DISTAT_TOKEN la compartían pedidos y precios; la específica gana.
+        String token = System.getenv("DISTAT_TOKEN_PEDIDOS");
+        if (token == null || token.isBlank()) token = System.getenv("DISTAT_TOKEN");
         if (token == null || token.isBlank()) {
-            System.err.println("Falta la variable de entorno DISTAT_TOKEN.");
+            System.err.println("Falta la variable de entorno DISTAT_TOKEN_PEDIDOS (o DISTAT_TOKEN).");
             System.exit(2);
         }
 

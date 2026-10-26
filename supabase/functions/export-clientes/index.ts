@@ -75,7 +75,8 @@ Deno.serve(async (req) => {
       .eq('token', token)
       .maybeSingle()
     if (!tk || tk.revocado) return json({ error: 'token-invalido' }, 401)
-    if (tk.proposito !== 'clientes') return json({ error: 'token-sin-permiso-de-clientes' }, 401)
+    // Igual que export-pedidos (26/10/2026): decir de qué canal es la llave que llegó.
+    if (tk.proposito !== 'clientes') return json({ error: 'token-sin-permiso-de-clientes', canal_del_token: tk.proposito }, 401)
 
     /* 🩸 UN PEDIDO RECHAZADO TAMBIÉN DEJA FILA, y `supabase-js` NO LANZA: devuelve `{ error }`. Las
      * dos lecciones de `export-pedidos` (11/09/2026), juntas: se lee el error y se grita por consola,

@@ -14,7 +14,7 @@
 # Y se le puede pasar una ruta distinta para una prueba puntual:
 #   .\enviar-precios.ps1 -Archivo "C:\ERP\export\lista-precios.txt"
 #
-# 🔴 EL TOKEN NO VA ESCRITO EN ESTE ARCHIVO. Se lee de la variable de entorno DISTAT_TOKEN o del
+# 🔴 EL TOKEN NO VA ESCRITO EN ESTE ARCHIVO. Se lee de `token-precios.txt` (o de DISTAT_TOKEN_PRECIOS) o del
 #    archivo `token.txt` que está al lado de este script. Ese archivo NO se comparte, no se sube a
 #    ningún repositorio y no se manda por correo: identifica a la distribuidora y quien lo tenga
 #    puede escribir el catálogo.
@@ -55,13 +55,18 @@ $archivoServidor = Join-Path $base 'servidor.txt'
 if (Test-Path $archivoServidor) { $s = (Get-Content $archivoServidor -Raw).Trim(); if ($s) { $servidor = $s.TrimEnd('/') } }
 $url = "$servidor/functions/v1/ingest-precios"
 
-$token = $env:DISTAT_TOKEN
+# 🩸 LLAVE POR CANAL (26/10/2026). Este `token.txt` y el de pedidos se llamaban igual: copiado en
+# la carpeta equivocada, pisó la llave de pedidos de La Unión. Primero lo específico de precios;
+# `token.txt` y DISTAT_TOKEN quedan de respaldo para las instalaciones viejas.
+$token = $env:DISTAT_TOKEN_PRECIOS
+$archivoToken = Join-Path $base 'token-precios.txt'
+if ([string]::IsNullOrWhiteSpace($token) -and (Test-Path $archivoToken)) { $token = Get-Content $archivoToken -Raw }
+if ([string]::IsNullOrWhiteSpace($token)) { $token = $env:DISTAT_TOKEN }
+$archivoToken = Join-Path $base 'token.txt'
+if ([string]::IsNullOrWhiteSpace($token) -and (Test-Path $archivoToken)) { $token = Get-Content $archivoToken -Raw }
+if ($token) { $token = $token.Trim() }
 if ([string]::IsNullOrWhiteSpace($token)) {
-  $archivoToken = Join-Path $base 'token.txt'
-  if (Test-Path $archivoToken) { $token = (Get-Content $archivoToken -Raw).Trim() }
-}
-if ([string]::IsNullOrWhiteSpace($token)) {
-  throw "Falta el token. Ponerlo en la variable de entorno DISTAT_TOKEN o en $base\token.txt"
+  throw "Falta el token. Ponerlo en $base\token-precios.txt (o token.txt)"
 }
 
 # 🩸 El token de EJEMPLO se ataja acá y con un mensaje claro (31/08/2026, encontrado probando).
@@ -69,7 +74,7 @@ if ([string]::IsNullOrWhiteSpace($token)) {
 # `401 token-invalido` — técnicamente correcto y completamente inútil: manda a pedir un token nuevo
 # cuando el que hay nunca se pegó. Es el primer error que va a cometer quien instale.
 if ($token -like '*PEGAR-ACA*') {
-  throw "El archivo token.txt todavia tiene el texto de ejemplo. Hay que pegar adentro el token real que les entregamos."
+  throw "El archivo de la llave (token-precios.txt o token.txt) todavia tiene el texto de ejemplo. Hay que pegar adentro el token real que les entregamos."
 }
 
 # ── Registro ─────────────────────────────────────────────────────────────────
@@ -129,7 +134,7 @@ Escribir "Enviando $Archivo ($($info.Length) bytes) a $destino"
 
 # De dónde sale el archivo (db/90): el servidor lo guarda junto a la copia del archivo, para poder
 # auditar qué PC mandó qué. La ruta va codificada como URL porque una cabecera no admite acentos.
-$versionAgente = '2026-10-25'
+$versionAgente = '2026-10-26'
 $cabeceras = @{
   'Authorization'        = "Bearer $token"
   'Content-Type'         = 'text/csv; charset=utf-8'

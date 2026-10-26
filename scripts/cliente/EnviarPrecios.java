@@ -53,7 +53,7 @@ public class EnviarPrecios {
         return (s == null || s.isBlank() ? "https://api.dist-at.com" : s.strip()).replaceAll("/+$", "");
     }
 
-    private static final String VERSION_AGENTE = "java-2026-10-25";
+    private static final String VERSION_AGENTE = "java-2026-10-26";
 
     /** Nombre de la máquina que manda, para distinguir dos PCs con el mismo token. */
     private static String equipo() {
@@ -86,7 +86,7 @@ public class EnviarPrecios {
             throws IOException, InterruptedException {
 
         if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("Falta el token (DISTAT_TOKEN).");
+            throw new IllegalArgumentException("Falta el token (DISTAT_TOKEN_PRECIOS o DISTAT_TOKEN).");
         }
         if (!Files.exists(archivo) || Files.size(archivo) == 0) {
             throw new IOException("El archivo no existe o esta vacio: " + archivo);
@@ -136,7 +136,9 @@ public class EnviarPrecios {
             System.exit(2);
         }
         boolean completa = args.length > 1 && "--lista-completa".equals(args[1]);
-        String token = System.getenv("DISTAT_TOKEN");
+        // Llave por canal (26/10/2026): DISTAT_TOKEN la compartían pedidos y precios; la específica gana.
+        String token = System.getenv("DISTAT_TOKEN_PRECIOS");
+        if (token == null || token.isBlank()) token = System.getenv("DISTAT_TOKEN");
 
         int intentos = 0;
         while (true) {

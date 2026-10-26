@@ -65,14 +65,29 @@ function Escribir($texto) {
 }
 
 # --- El token -----------------------------------------------------------------------------------
-$token = $env:DISTAT_TOKEN
+# 🩸 LLAVE POR CANAL (26/10/2026). Pedidos y precios leían el mismo `token.txt`: La Unión copió la
+# actualización de precios (que trae SU token.txt) en la carpeta de pedidos y desde las 09:01 todo
+# rebotó con `token-sin-permiso-de-pedidos`. Primero lo específico de pedidos; `token.txt` y
+# DISTAT_TOKEN quedan de respaldo para las instalaciones viejas.
+$token = $env:DISTAT_TOKEN_PEDIDOS
+$archivoToken = Join-Path $aca 'token-pedidos.txt'
+if ([string]::IsNullOrWhiteSpace($token) -and (Test-Path $archivoToken)) { $token = Get-Content $archivoToken -Raw }
+if ([string]::IsNullOrWhiteSpace($token)) { $token = $env:DISTAT_TOKEN }
+$archivoToken = Join-Path $aca 'token.txt'
+if ([string]::IsNullOrWhiteSpace($token) -and (Test-Path $archivoToken)) { $token = Get-Content $archivoToken -Raw }
+if ($token) { $token = $token.Trim() }
 if ([string]::IsNullOrWhiteSpace($token)) {
-  $archivoToken = Join-Path $aca 'token.txt'
-  if (Test-Path $archivoToken) { $token = (Get-Content $archivoToken -Raw).Trim() }
-}
-if ([string]::IsNullOrWhiteSpace($token)) {
-  Escribir "ERROR  falta el token (variable DISTAT_TOKEN o token.txt)"
+  Escribir "ERROR  falta el token (token-pedidos.txt, token.txt o la variable DISTAT_TOKEN_PEDIDOS)"
   exit 2
+}
+
+# Lo que contesta el servidor cuando algo sale mal, en palabras. El código solo ("401", y peor "-1")
+# no le dice a nadie qué hacer.
+function Explicar($cuerpo) {
+  if ($cuerpo -match 'token-sin-permiso-de-pedidos') { return 'esta llave es de OTRO canal (precios o clientes): en esta carpeta va la llave de pedidos' }
+  if ($cuerpo -match 'token-invalido') { return 'la llave no existe o fue dada de baja: pedile una nueva a DisT-At' }
+  if ($cuerpo -match 'sin-token') { return 'no llego ninguna llave' }
+  return ''
 }
 
 # --- La llamada ---------------------------------------------------------------------------------
@@ -85,10 +100,17 @@ try {
          -OutFile $tmpDescarga -PassThru -TimeoutSec 120 -UseBasicParsing
   $codigo = [int]$r.StatusCode
 } catch {
-  $codigo = -1
-  if ($_.Exception.Response) { $codigo = [int]$_.Exception.Response.StatusCode }
-  Escribir ("ERROR  HTTP {0}  {1}" -f $codigo, $_.Exception.Message)
+  $resp = $_.Exception.Response
   if (Test-Path $tmpDescarga) { Remove-Item $tmpDescarga -Force }
+  if (-not $resp) {
+    # Sin respuesta = no se llegó al servidor (red, proxy, antivirus). El mensaje de Windows dice cuál.
+    Escribir ("ERROR  sin respuesta del servidor ({0}): {1}" -f $URL, $_.Exception.Message)
+    exit 1
+  }
+  $codigo = [int]$resp.StatusCode
+  $cuerpo = ''
+  try { $cuerpo = (New-Object System.IO.StreamReader($resp.GetResponseStream())).ReadToEnd() } catch {}
+  Escribir ("ERROR  HTTP {0}  {1}  {2}" -f $codigo, $cuerpo, (Explicar $cuerpo))
   exit 1
 }
 

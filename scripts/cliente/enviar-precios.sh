@@ -34,12 +34,17 @@ if [ -z "$ARCHIVO" ]; then
   exit 2
 fi
 
-TOKEN="${DISTAT_TOKEN:-}"
+# Llave por canal (26/10/2026): token-precios.txt primero; token.txt y DISTAT_TOKEN de respaldo.
+TOKEN="${DISTAT_TOKEN_PRECIOS:-}"
+if [ -z "$TOKEN" ] && [ -f "$BASE/token-precios.txt" ]; then
+  TOKEN="$(tr -d '[:space:]' < "$BASE/token-precios.txt")"
+fi
+[ -z "$TOKEN" ] && TOKEN="${DISTAT_TOKEN:-}"
 if [ -z "$TOKEN" ] && [ -f "$BASE/token.txt" ]; then
   TOKEN="$(tr -d '[:space:]' < "$BASE/token.txt")"
 fi
 if [ -z "$TOKEN" ]; then
-  echo "Falta el token: poner DISTAT_TOKEN o $BASE/token.txt" >&2
+  echo "Falta el token: poner $BASE/token-precios.txt (o token.txt)" >&2
   exit 2
 fi
 
@@ -67,7 +72,7 @@ escribir "Enviando $ARCHIVO ($(wc -c < "$ARCHIVO") bytes) a $DESTINO"
 # De dónde sale el archivo (db/90). Se manda una copia fija y su hash: si el ERP reescribe el
 # archivo durante el envío, el servidor no lo confunde con uno cortado. La ruta y el equipo van
 # codificados como URL porque una cabecera no admite acentos.
-VERSION_AGENTE="sh-2026-10-25"
+VERSION_AGENTE="sh-2026-10-26"
 COPIA="$(mktemp)"
 trap 'rm -f "$COPIA"' EXIT
 cp "$ARCHIVO" "$COPIA"

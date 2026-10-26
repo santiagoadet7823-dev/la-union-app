@@ -135,16 +135,19 @@ try { Get-ChildItem -LiteralPath $base -Recurse -File | Unblock-File -ErrorActio
 # --- 1) El token -------------------------------------------------------------
 Titulo '1 de 6 - La llave (token)'
 
-$archToken = Join-Path $base 'token.txt'
+# token-precios.txt primero; token.txt queda para las instalaciones viejas. Mismo orden que
+# enviar-precios.ps1 (26/10/2026: la llave de precios, llamada token.txt, pisó a la de pedidos).
+$archToken = Join-Path $base 'token-precios.txt'
+if (-not (Test-Path $archToken)) { $archToken = Join-Path $base 'token.txt' }
 if (-not (Test-Path $archToken)) {
-  Malo "No existe el archivo token.txt en esta carpeta."
-  Info 'Pedile el token a DisT-At y guardalo en un archivo llamado token.txt,'
+  Malo "No existe el archivo token-precios.txt en esta carpeta."
+  Info 'Pedile el token a DisT-At y guardalo en un archivo llamado token-precios.txt,'
   Info 'en esta misma carpeta, con el token en una sola linea.'
   Write-Host ''; Read-Host '  Enter para cerrar'; exit 1
 }
 $token = (Get-Content $archToken -Raw).Trim()
 if ([string]::IsNullOrWhiteSpace($token) -or $token -like '*PEGAR-ACA*') {
-  Malo 'El archivo token.txt todavia tiene el texto de ejemplo.'
+  Malo "El archivo $(Split-Path $archToken -Leaf) todavia tiene el texto de ejemplo."
   Info 'Abrilo con el Bloc de notas, borra esa linea, pega el token que te dieron y guarda.'
   Write-Host ''; Read-Host '  Enter para cerrar'; exit 1
 }
