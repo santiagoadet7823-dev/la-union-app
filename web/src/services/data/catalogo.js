@@ -64,6 +64,19 @@ async function traerTodo(tabla, idEmpresa, columnaOrden) {
 const SIN_FILAS = Promise.resolve({ data: [], error: null })
 
 /**
+ * La cartera ENTERA leída del servidor en este momento (filas crudas, con archivados). Para el
+ * importador de clientes, que no puede cruzar la planilla contra la memoria de la app.
+ *
+ * 🩸 POR QUÉ (26/10/2026, plan 28). Una PC recién logueada abrió el importador con la cartera a
+ * medio bajar: no encontró ningún código, mandó las 2027 filas como altas y nacieron 2000 copias
+ * con código nuevo. La memoria puede estar vacía, a medias o vieja; el servidor no.
+ */
+export async function fetchClientesServidor(idEmpresa) {
+  if (!idEmpresa) return { data: [], error: new Error('sin-empresa') }
+  return traerTodo('clientes', idEmpresa, 'nombre_comercio')
+}
+
+/**
  * Situación fiscal + CUIT de TODA la empresa (`clientes_fiscal`, db/88), como `Map(id_cliente →
  * fila)`. Sólo para la planilla de gestión: NO es parte de `fetchCatalogo` ni de su caché, a
  * propósito — esos datos no bajan en bloque a los teléfonos (ver db/88). Pagina igual que

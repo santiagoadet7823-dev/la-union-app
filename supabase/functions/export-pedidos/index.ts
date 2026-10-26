@@ -46,7 +46,7 @@ const PAGINA_LINEAS = 500
 
 const SELECT_PEDIDOS = `id, numero, id_empresa, created_at, estado, monto_total, forma_pago,
   fecha_entrega, observaciones,
-  cliente:clientes!pedidos_id_cliente_fkey ( codigo ),
+  cliente:clientes!pedidos_id_cliente_fkey ( codigo, nombre_comercio ),
   vendedor:perfiles!pedidos_id_vendedor_fkey ( codigo_erp, numero )`
 
 const SELECT_ITEMS =
@@ -195,7 +195,8 @@ Deno.serve(async (req) => {
         const fila = p as Record<string, any>
         pedidos.push({
           ...fila,
-          comercio: { codigo: fila.cliente?.codigo || '' },
+          // `name` = campo 26 (nombre del cliente), sólo con la llave `campo_26_nombre_cliente`.
+          comercio: { codigo: fila.cliente?.codigo || '', name: fila.cliente?.nombre_comercio || '' },
           // `codigo_erp` o `numero` a 3 dígitos (lote 3, 18/09/2026: todo salía como 002).
           codigoVendedor: codigoVendedorErp(fila.vendedor),
         })

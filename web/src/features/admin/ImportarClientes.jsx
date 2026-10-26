@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { normalizar, buscarParecidos, codigoKey } from '../../lib/texto'
-import { useCatalog } from '../../context/CatalogContext'
+import { useCatalog, mapCliente } from '../../context/CatalogContext'
 import { useAuth } from '../../context/AuthContext'
-import { fetchClientesFiscal } from '../../services/data/catalogo'
+import { fetchClientesFiscal, fetchClientesServidor } from '../../services/data/catalogo'
 import { normalizarCuit, cuitValido, CONDICIONES_IVA } from '../../lib/cuit'
 import { descargarArchivo } from '../../services/download'
 import { Bajar, ChevronLeft, Subir } from '../../components/icons'
@@ -80,11 +80,12 @@ const ivaDeCelda = (v) => IVA_POR_TEXTO.get(normalizar(v)) || null
 const esImportable = (f) => f.estado === 'ok' || f.estado === 'zona?' || f.estado === 'update' || f.estado === 'parecido'
 
 export default function ImportarClientes({ onClose, onToast }) {
-  // `clientesTodos` y no `clientes`: acá hacen falta TAMBIÉN los archivados. `codigo` es UNIQUE en
-  // la base, así que si una planilla trae el código de un cliente archivado y lo tratáramos como
-  // inexistente, el insert reventaría contra el índice. Con los archivados a la vista, cae en la
-  // rama de "se actualiza" — que además es lo correcto: ese comercio volvió.
-  const { zonas, clientesTodos: clientes, importClientes } = useCatalog()
+  // 🩸 LA CARTERA CONTRA LA QUE SE CRUZA SE LEE DEL SERVIDOR al elegir la planilla, no de la memoria
+  // (26/10/2026, plan 28): una PC recién logueada tenía la cartera a medio bajar, el cruce no encontró
+  // ningún código y 2027 filas entraron como altas. Incluye los archivados: `codigo` es UNIQUE en la
+  // base, y un archivado que vuelve en la planilla cae en "se actualiza" — ese comercio volvió.
+  const { zonas, importClientes, loading: catLoading } = useCatalog()
+  const [clientes, setClientes] = useState([])
   const { idEmpresa } = useAuth()
   // Lo fiscal que ya está en la base, para no reescribir lo que la planilla trae igual. `null` si no
   // se pudo leer (sin red): entonces se manda todo lo que traiga dato.
@@ -95,12 +96,6 @@ export default function ImportarClientes({ onClose, onToast }) {
   const [nombreArchivo, setNombreArchivo] = useState('')
   const [listaCompleta, setListaCompleta] = useState(false)
 
-  // codigo → cliente. Por `codigoKey`, igual que el contexto y que el índice de la base.
-  const porCodigo = useMemo(() => {
-    const m = new Map()
-    clientes.forEach((c) => { const k = codigoKey(c.codigo); if (k) m.set(k, c) })
-    return m
-  }, [clientes])
   // Resuelve la columna "zona" de la planilla. Hasta el 18/09/2026 sólo por NÚMERO; ahora también
   // por abreviatura o por nombre, porque la planilla de clientes trae una hoja «Zonas» para copiar
   // de ahí y pegar, y lo que se copia es lo que resulte cómodo ("LJ1", "LAS LAJITAS 1" o "16").
@@ -155,6 +150,17 @@ export default function ImportarClientes({ onClose, onToast }) {
       // y "Almacén" deja de parecerse a "Almacén" para el detector de duplicados. Un CSV con BOM
       // (como el que exporta la app) lo ignora y se lee como UTF-8.
       const wb = XLSX.read(buf, { type: 'array', codepage: 1252 })
+      const { data: cartera, error: eCartera } = await fetchClientesServidor(idEmpresa)
+      if (eCartera) {
+        onToast?.('No se pudo leer la cartera del servidor. Revisá la conexión y volvé a elegir la planilla.')
+        setParsed(null)
+        return
+      }
+      const base = cartera.map(mapCliente)
+      setClientes(base)
+      // codigo → cliente. Por `codigoKey`, igual que el contexto y que el índice de la base.
+      const porCodigo = new Map()
+      base.forEach((c) => { const k = codigoKey(c.codigo); if (k) porCodigo.set(k, c) })
       const { data: fis, error: eFis } = await fetchClientesFiscal(idEmpresa)
       setFiscalActual(eFis ? null : fis)
       const ws = wb.Sheets[wb.SheetNames[0]]
@@ -202,7 +208,7 @@ export default function ImportarClientes({ onClose, onToast }) {
         // entraron a la cartera pares como "SA MARTINEZ MARIELA" / "SA MARIELA MARTINEZ". Es un
         // AVISO, no un descarte — la fila se importa igual y queda marcada para revisar.
         if (estado === 'ok' && nombre) {
-          const p = buscarParecidos(nombre, clientes)[0]
+          const p = buscarParecidos(nombre, base)[0]
           if (p) { estado = 'parecido'; parecidoA = p }
         }
         if (codKey) vistos.add(codKey)
@@ -289,8 +295,10 @@ export default function ImportarClientes({ onClose, onToast }) {
       }))
     if (!rows.length && !(listaCompleta && bajasSiCompleta)) { onToast?.('No hay filas válidas para importar'); return }
     setBusy(true)
-    const { insertados, actualizados, archivados, desarchivados, saltados, fiscales } = await importClientes(rows, { listaCompleta, fiscalActual })
+    const { insertados, actualizados, archivados, desarchivados, saltados, fiscales, error } = await importClientes(rows, { listaCompleta, fiscalActual, clientesBase: clientes })
     setBusy(false)
+    if (error === 'sin-cartera-del-servidor') { onToast?.('Volvé a elegir la planilla: no se pudo leer la cartera del servidor'); return }
+    if (error === 'demasiados-cambios') { onToast?.('Son demasiados cambios distintos para una sola subida: dividí la planilla en partes'); return }
     const partes = []
     if (insertados) partes.push(`${insertados} nuevo${insertados === 1 ? '' : 's'}`)
     if (actualizados) partes.push(`${actualizados} actualizado${actualizados === 1 ? '' : 's'}`)
@@ -345,9 +353,9 @@ export default function ImportarClientes({ onClose, onToast }) {
             <Bajar size={15} />
             Descargar plantilla
           </button>
-          <button onClick={() => fileRef.current?.click()} disabled={busy} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
+          <button onClick={() => fileRef.current?.click()} disabled={busy || catLoading} title={catLoading ? 'Esperá a que termine de cargar la cartera' : undefined} style={sx('display:flex;align-items:center;gap:7px;padding:10px 14px;border:none;border-radius:10px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;cursor:pointer')}>
             <Subir size={15} />
-            {nombreArchivo ? 'Elegir otra planilla' : 'Elegir planilla'}
+            {catLoading ? 'Esperá a que termine de cargar la cartera' : nombreArchivo ? 'Elegir otra planilla' : 'Elegir planilla'}
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onFile} style={{ display: 'none' }} />
           {nombreArchivo && <span style={sx('align-self:center;font-size:12px;color:var(--muted);font-family:var(--font-mono)')}>{nombreArchivo}</span>}

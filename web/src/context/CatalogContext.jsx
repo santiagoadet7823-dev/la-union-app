@@ -21,7 +21,7 @@ import { BUCKET_PRODUCTOS, rutasImagenProducto } from '../services/data/producto
 const CatalogContext = createContext(null)
 
 // Mapea fila de `clientes` (DB) a la forma que consumen las vistas.
-function mapCliente(c) {
+export function mapCliente(c) {
   return {
     id: c.id,
     codigo: c.codigo,
@@ -573,13 +573,21 @@ export function CatalogProvider({ children }) {
    * que su ausencia no prueba nada.
    *
    * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?, archivado?: boolean|null, condicion_iva?, cuit?}>} rows
-   * @param {{listaCompleta?: boolean, fiscalActual?: Map}} [opts]  `fiscalActual` = `fetchClientesFiscal`
+   * @param {{listaCompleta?: boolean, fiscalActual?: Map, clientesBase: object[]}} [opts]  `fiscalActual` = `fetchClientesFiscal`;
+   *   `clientesBase` = `fetchClientesServidor` pasado por `mapCliente` (OBLIGATORIO, ver 🩸 adentro)
    * @returns {{insertados:number, actualizados:number, archivados:number, desarchivados:number, saltados:number, avisos:string[]}}
    */
-  const importClientes = useCallback(async (rows, { listaCompleta = false, fiscalActual = null } = {}) => {
+  const importClientes = useCallback(async (rows, { listaCompleta = false, fiscalActual = null, clientesBase = null } = {}) => {
+    // 🩸 `clientesBase` = la cartera LEÍDA DEL SERVIDOR al abrir la planilla (`fetchClientesServidor`).
+    // Cruzar contra `clientes` (la memoria) creó 2000 copias el 26/10/2026: la PC tenía la cartera a
+    // medio bajar y ningún código se encontró. Sin la lectura del servidor no se importa.
+    if (!Array.isArray(clientesBase)) {
+      return { insertados: 0, actualizados: 0, archivados: 0, desarchivados: 0, saltados: rows?.length || 0, fiscales: 0, avisos: [], error: 'sin-cartera-del-servidor' }
+    }
+    const base = clientesBase
     // Map codigo→cliente (con su id) para poder ACTUALIZAR, no solo detectar duplicado.
     const porCodigo = new Map()
-    clientes.forEach((c) => { const k = codigoKey(c.codigo); if (k) porCodigo.set(k, c) })
+    base.forEach((c) => { const k = codigoKey(c.codigo); if (k) porCodigo.set(k, c) })
     const vistosEnLote = new Set()
     const avisos = []
     const nuevos = []
@@ -668,20 +676,37 @@ export function CatalogProvider({ children }) {
     // viejas todavía sin subir, y se pierden calladas.
     const idsAusentes = []
     if (listaCompleta) {
-      for (const c of clientes) {
+      for (const c of base) {
         const k = codigoKey(c.codigo)
         if (!k || vistosEnLote.has(k) || c.archivado) continue
         idsAusentes.push(c.id)
       }
-      const sinCodigo = clientes.filter((c) => !c.archivado && !codigoKey(c.codigo)).length
+      const sinCodigo = base.filter((c) => !c.archivado && !codigoKey(c.codigo)).length
       if (sinCodigo) avisos.push(`${sinCodigo} cliente(s) sin código: quedan en la cartera (no se pueden cruzar con la planilla)`)
+    }
+
+    // Ediciones agrupadas: las que cambian lo MISMO (p. ej. 300 clientes a la misma zona) viajan en
+    // un solo `updateMany`. Las distintas siguen de a una.
+    const gruposUpdate = new Map()
+    for (const u of updates) {
+      const k = JSON.stringify(u.patch)
+      if (!gruposUpdate.has(k)) gruposUpdate.set(k, { patch: u.patch, ids: [] })
+      gruposUpdate.get(k).ids.push(u.id)
+    }
+    // 🩸 LA COLA TIENE TOPE DE 2000 Y DESCARTA LO MÁS VIEJO (writeQueue.js). El 26/10/2026 un import
+    // de 2027 altas, una por mutación, perdió las 27 primeras sin avisar. Las altas ahora van en
+    // lotes de 500; si las ediciones distintas igual no entran con margen, no se encola nada.
+    const LOTE_ALTAS = 500
+    const entradas = Math.ceil(nuevos.length / LOTE_ALTAS) + gruposUpdate.size + (idsAusentes.length ? 1 : 0) + 3
+    if (entradas > 1500) {
+      return { insertados: 0, actualizados: 0, archivados: 0, desarchivados: 0, saltados: rows?.length || 0, fiscales: 0, avisos, error: 'demasiados-cambios', entradas }
     }
 
     // Aplicar altas (optimista + encolar).
     if (nuevos.length) {
       setClientes((prev) => [...prev, ...nuevos.map(mapCliente)].sort((a, b) => a.name.localeCompare(b.name)))
-      for (const row of nuevos) {
-        await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: row })
+      for (let i = 0; i < nuevos.length; i += LOTE_ALTAS) {
+        await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'insert', payload: nuevos.slice(i, i + LOTE_ALTAS) })
       }
     }
     // Aplicar actualizaciones (mismo merge de vista que updateCliente).
@@ -705,8 +730,10 @@ export function CatalogProvider({ children }) {
         if ('archivado_ts' in p) v.archivado = !!p.archivado_ts
         return { ...c, ...v }
       }).sort((a, b) => a.name.localeCompare(b.name)))
-      for (const u of updates) {
-        await enqueueMutacion({ op_uid: uid(), table: 'clientes', op: 'update', id: u.id, payload: u.patch })
+      for (const g of gruposUpdate.values()) {
+        await enqueueMutacion(g.ids.length === 1
+          ? { op_uid: uid(), table: 'clientes', op: 'update', id: g.ids[0], payload: g.patch }
+          : { op_uid: uid(), table: 'clientes', op: 'updateMany', ids: g.ids, payload: g.patch })
       }
     }
     if (idsAusentes.length) {
@@ -738,7 +765,7 @@ export function CatalogProvider({ children }) {
       fiscales: fiscales.length, // clientes con situación fiscal o CUIT nuevos o cambiados
       avisos,
     }
-  }, [idEmpresa, clientes])
+  }, [idEmpresa])
 
   /**
    * Edición de zona (número, abreviatura, nombre, color, vendedor), offline-first.
