@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.2'   // 26/10/2026: plan 28 — el importador de clientes cruza contra el servidor (no la memoria) y sube las altas en lotes; campo 26 (nombre del cliente) en el archivo de pedidos, detrás de una llave
+export const APP_VERSION = '1.45.3'   // 26/10/2026: el buscador del catálogo se borra al confirmar una cantidad escrita y se selecciona entero al tocarlo

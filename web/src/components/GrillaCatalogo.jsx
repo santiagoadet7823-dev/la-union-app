@@ -144,7 +144,11 @@ export default function GrillaCatalogo({
             Safari de iPhone hace zoom de la página al enfocar el buscador (brief v2 §4.6). */}
         <div className="lu-campo" style={sx('flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-md);padding:0 12px;min-height:44px')}>
           <Search />
-          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" style={sx('flex:1;min-width:0;min-height:42px;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:16px;color:var(--text)')} />
+          {/* Al tocarlo se SELECCIONA lo que ya había (26/10/2026, pedido de los vendedores): lo que
+              se escribe reemplaza la búsqueda anterior sin tener que borrarla. Va en un `setTimeout`
+              porque en el WebView el mismo toque que enfoca vuelve a poner el cursor y deshace la
+              selección. */}
+          <input {...propsBusqueda} value={search} onChange={(e) => setSearch(e.target.value)} onFocus={(e) => { const el = e.currentTarget; setTimeout(() => { try { el.select() } catch { /* input desmontado */ } }, 0) }} placeholder="Buscar producto…" style={sx('flex:1;min-width:0;min-height:42px;border:none;outline:none;background:transparent;font-family:Inter,sans-serif;font-size:16px;color:var(--text)')} />
         </div>
         {accionBuscador}
       </div>
@@ -341,7 +345,11 @@ export default function GrillaCatalogo({
                           tarjeta es tocable en toda la grilla, así que sin estas tres líneas el
                           stepper queda inservible en la pantalla entera, no en un rincón. */}
                       <button type="button" aria-label="Quitar una unidad" onClick={(e) => { e.stopPropagation(); addCart(p.id, -1) }} disabled={qty === 0} style={{ ...sx('width:44px;min-height:52px;flex:none;display:grid;place-items:center;padding:0;border:1px solid var(--line2);border-radius:var(--r-md);font-size:19px;user-select:none;background:transparent;font-family:inherit'), color: qty === 0 ? 'var(--faint)' : 'var(--muted)', cursor: qty === 0 ? 'default' : 'pointer', opacity: qty === 0 ? 0.5 : 1 }}>−</button>
-                      <CantidadInput qty={qty} onCambiar={(n) => addCart(p.id, n - qty)} flex caja alto={52} minAncho={0} />
+                      {/* Cantidad ESCRITA y confirmada (OK o salir de la caja) → se borra el buscador:
+                          el producto ya se encontró y lo próximo es buscar otro (26/10/2026, pedido de
+                          los vendedores). Con + y − no: el producto desaparecería de la lista entre un
+                          toque y el siguiente. Ahí alcanza con que el buscador se seleccione al tocarlo. */}
+                      <CantidadInput qty={qty} onCambiar={(n) => { addCart(p.id, n - qty); if (search) setSearch?.('') }} flex caja alto={52} minAncho={0} />
                       <button type="button" aria-label="Agregar una unidad" onClick={(e) => { e.stopPropagation(); addCart(p.id, 1) }} style={sx('width:44px;min-height:52px;flex:none;display:grid;place-items:center;padding:0;background:var(--primary);border:1px solid var(--primary);border-radius:var(--r-md);cursor:pointer;color:var(--on-primary);font-size:19px;font-weight:600;user-select:none;font-family:inherit')}>+</button>
                     </div>
                   </div>
