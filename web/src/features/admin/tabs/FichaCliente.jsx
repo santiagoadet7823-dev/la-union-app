@@ -10,6 +10,8 @@ import useFormasPago from '../../../hooks/useFormasPago'
 import LeafletMap from '../../../components/LeafletMap'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 import SelectorUbicacion from '../../../components/SelectorUbicacion'
+import { Crosshair } from '../../../components/icons'
+import { pedirUbicacionUnaVez } from '../../../services/geolocation'
 import CamposFiscales from '../../../components/CamposFiscales'
 import HistorialCliente from '../../../components/HistorialCliente'
 import useClienteFiscal from '../../../hooks/useClienteFiscal'
@@ -64,6 +66,11 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   // 🐛 (17/09/2026) Un cliente YA ubicado no se podía reubicar: el mini-mapa era de sólo lectura.
   // `moviendo` cambia el mini-mapa por el selector, con el pin arrancando donde está hoy.
   const [moviendo, setMoviendo] = useState(false)
+  // (26/10/2026, plan 29) "Usar mi ubicación actual", como en el alta y en la edición del vendedor:
+  // el encargado parado en el comercio no tenía que arrastrar el mapa desde la ubicación vieja.
+  // `gpsFix` es el GPS tomado UNA vez: arranca el pin ahí y se muestra como punto azul (`live`).
+  const [gpsFix, setGpsFix] = useState(null)
+  const [locBusy, setLocBusy] = useState(false)
   const [savingLoc, setSavingLoc] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -95,8 +102,31 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
     if (!ok) { onToast('Error: ' + (error?.message || '')); return }
     setPuntoNuevo(null)
     setMoviendo(false)
+    setGpsFix(null)
     onToast(`${fc.name} ubicado`)
   }
+
+  async function usarMiUbicacion() {
+    setLocBusy(true)
+    try {
+      const p = await pedirUbicacionUnaVez()
+      setGpsFix(p)
+      setMoviendo(true)
+      onToast('Ubicación tomada del GPS · ajustá el pin si hace falta')
+    } catch {
+      onToast('No se pudo obtener el GPS. Mové el mapa hasta el comercio.')
+    } finally {
+      setLocBusy(false)
+    }
+  }
+
+  const btnGps = (
+    <button type="button" onClick={usarMiUbicacion} disabled={locBusy} className="lu-press"
+      style={{ ...sx('flex:2;width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--primary);border-radius:var(--r-md);background:var(--primary-tint);color:var(--deep);font-size:13px;font-weight:600'), ...(locBusy ? { opacity: 0.55, cursor: 'not-allowed' } : { cursor: 'pointer' }) }}>
+      <Crosshair />
+      {locBusy ? 'Obteniendo…' : 'Usar mi ubicación actual'}
+    </button>
+  )
 
   async function guardar() {
     if (puedeEditar && !fc.exportado && ocupadoPor) { onToast(`El código ${codigoEdit.trim()} ya lo usa ${ocupadoPor.name}`); return }
@@ -235,10 +265,13 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
               />
             </ErrorBoundary>
           </div>
-          <button onClick={() => { setPuntoNuevo(null); setMoviendo(true) }} className="lu-press"
-            style={sx('width:100%;margin-top:8px;min-height:40px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-weight:600;font-size:13px;cursor:pointer')}>
-            Mover la ubicación
-          </button>
+          <div style={sx('display:flex;gap:8px;margin-top:8px')}>
+            {btnGps}
+            <button onClick={() => { setPuntoNuevo(null); setMoviendo(true) }} className="lu-press"
+              style={sx('flex:1;min-height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-weight:600;font-size:13px;cursor:pointer')}>
+              Mover la ubicación
+            </button>
+          </div>
         </div>
       ) : (
         // Sin coordenadas (importado) o reubicando: pin fijo al centro, se mueve el mapa. Ver
@@ -248,8 +281,10 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
           <div style={sx('font-size:11.5px;color:var(--warning);font-weight:600;margin-bottom:6px')}>
             {moviendo ? 'Mové el mapa hasta que el pin quede sobre el comercio.' : 'Este cliente no tiene ubicación: mové el mapa hasta que el pin quede sobre el comercio.'}
           </div>
+          <div style={sx('margin-bottom:8px')}>{btnGps}</div>
           <SelectorUbicacion
-            inicial={moviendo ? { lat: fc.lat, lng: fc.lng } : null}
+            inicial={gpsFix || (moviendo ? { lat: fc.lat, lng: fc.lng } : null)}
+            live={gpsFix}
             centroPorDefecto={base}
             nombre={fc.name}
             alto={280}
@@ -258,7 +293,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
           />
           <div style={sx('display:flex;gap:8px;margin-top:8px')}>
             {moviendo && (
-              <button onClick={() => { setMoviendo(false); setPuntoNuevo(null) }} className="lu-press"
+              <button onClick={() => { setMoviendo(false); setPuntoNuevo(null); setGpsFix(null) }} className="lu-press"
                 style={sx('flex:1;min-height:44px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--surface);color:var(--text);font-weight:600;font-size:13px;cursor:pointer')}>
                 Cancelar
               </button>

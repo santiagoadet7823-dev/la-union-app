@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.3'   // 26/10/2026: el buscador del catálogo se borra al confirmar una cantidad escrita y se selecciona entero al tocarlo
+export const APP_VERSION = '1.45.4'   // 26/10/2026: botón "Usar mi ubicación actual" en la ficha de cliente de gestión (plan 29)
