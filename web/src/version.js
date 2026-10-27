@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.4'   // 26/10/2026: botón "Usar mi ubicación actual" en la ficha de cliente de gestión (plan 29)
+export const APP_VERSION = '1.45.5'   // 27/10/2026: plan 30 — dirección del comercio en el alta, la ficha, el buscador, la planilla, el repartidor y el ticket
