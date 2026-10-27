@@ -168,7 +168,7 @@ function TarjetaEntrega({ d, color, etiqueta, distancia, onCerrar, onAbrir, styl
         <div style={sx('flex:1;min-width:0')}>
           <div style={sx('font-family:var(--font-display);font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{d.client}</div>
           <div style={sx('font-size:11px;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
-            {d.loc || '—'} · <span style={sx('font-family:var(--font-mono)')}>#{d.numero}</span>
+            {[d.direccion, d.loc].filter(Boolean).join(', ') || '—'} · <span style={sx('font-family:var(--font-mono)')}>#{d.numero}</span>
           </div>
           <div style={sx('display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:6px')}>
             <span style={{ ...sx('display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:600'), border: `1px solid ${color}`, color }}>

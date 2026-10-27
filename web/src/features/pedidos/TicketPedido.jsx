@@ -210,6 +210,8 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
             <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono)')}>
               {[comercio?.codigo, comercio?.loc].filter(Boolean).join(' · ')}
             </div>
+            {/* La dirección del comercio (db/99, plan 30), en su renglón: es para encontrarlo. */}
+            {comercio?.direccion && <div style={sx('font-size:11px;color:var(--muted);margin-top:1px')}>{comercio.direccion}</div>}
           </div>
           <div style={sx('text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--muted)')}>
             <div style={sx('font-weight:700;color:var(--text);font-size:13px')}>{numero ? `#${numero}` : 'SIN NÚMERO (pendiente)'}</div>

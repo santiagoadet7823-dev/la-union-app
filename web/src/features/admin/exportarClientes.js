@@ -40,7 +40,7 @@ import { etiquetaIva, formatoCuit } from '../../lib/cuit'
 const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 // Columnas en el orden en que salen. `INFORMATIVAS` son las que el importador ignora.
-const COLUMNAS = ['codigo', 'nombre', 'localidad', 'zona', 'abrev_zona', 'vendedor', 'dias', 'frecuencia', 'horario', 'telefono', 'contacto', 'situacion_fiscal', 'cuit', 'lat', 'lng', 'confirmado', 'archivado']
+const COLUMNAS = ['codigo', 'nombre', 'localidad', 'direccion', 'zona', 'abrev_zona', 'vendedor', 'dias', 'frecuencia', 'horario', 'telefono', 'contacto', 'situacion_fiscal', 'cuit', 'lat', 'lng', 'confirmado', 'archivado']
 const INFORMATIVAS = new Set(['abrev_zona', 'vendedor', 'confirmado'])
 
 // Colores, en el orden de las columnas que explican (de izquierda a derecha). Tonos "claro" de la
@@ -69,6 +69,7 @@ export function filasPlanillaClientes(clientes, zonas, perfiles, fiscal = null) 
     codigo: esEntero(c.codigo) ? Number(c.codigo) : (c.codigo || ''),
     nombre: c.name || '',
     localidad: c.loc || '',
+    direccion: c.direccion || '',
     zona: zonaPorId.get(c.idZona)?.numero ?? '',
     abrev_zona: zonaPorId.get(c.idZona)?.abrev || '',
     vendedor: nombrePorId.get(c.idVendedor) || '',
@@ -212,7 +213,7 @@ export async function exportarClientes({ clientes, zonas, perfiles, fiscal = nul
     const ws = XLSX.utils.json_to_sheet(filas.map(({ _hueco, ...f }) => f), { header: COLUMNAS })
     // Un ancho por columna, en el orden de `COLUMNAS`.
     ws['!cols'] = [
-      { wch: 8 }, { wch: 36 }, { wch: 16 }, { wch: 6 }, { wch: 7 }, { wch: 18 }, { wch: 14 }, { wch: 11 },
+      { wch: 8 }, { wch: 36 }, { wch: 16 }, { wch: 30 }, { wch: 6 }, { wch: 7 }, { wch: 18 }, { wch: 14 }, { wch: 11 },
       { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 },
     ]
     const wb = XLSX.utils.book_new()

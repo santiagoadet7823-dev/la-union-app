@@ -34,6 +34,8 @@ const ALIAS = {
   codigo: 'codigo', cod: 'codigo', code: 'codigo',
   nombre: 'nombre', 'nombre comercio': 'nombre', comercio: 'nombre', 'razon social': 'nombre', razonsocial: 'nombre',
   localidad: 'localidad', loc: 'localidad', ciudad: 'localidad',
+  // Calle y número (db/99, plan 30).
+  direccion: 'direccion', domicilio: 'direccion', calle: 'direccion',
   zona: 'zona', 'n zona': 'zona', 'nro zona': 'zona', 'numero zona': 'zona',
   dias: 'dias', 'dias visita': 'dias',
   frecuencia: 'frecuencia', freq: 'frecuencia',
@@ -120,8 +122,8 @@ export default function ImportarClientes({ onClose, onToast }) {
     try {
       const XLSX = await import('xlsx')
       const ejemplo = [
-        { codigo: '1', nombre: 'Kiosco Central', localidad: 'Las Lajitas', zona: 1, dias: 'LU · JU', frecuencia: 'Semanal', horario: '', telefono: '3877 123456', contacto: 'Marta', situacion_fiscal: 'Monotributo', cuit: '20-12345678-6', lat: '', lng: '', archivado: 'no' },
-        { codigo: '2', nombre: 'Almacén Doña Rosa', localidad: 'Las Lajitas', zona: 2, dias: 'MA', frecuencia: 'Quincenal', horario: '', telefono: '', contacto: '', situacion_fiscal: '', cuit: '', lat: '', lng: '', archivado: 'no' },
+        { codigo: '1', nombre: 'Kiosco Central', localidad: 'Las Lajitas', direccion: 'San Martín 123', zona: 1, dias: 'LU · JU', frecuencia: 'Semanal', horario: '', telefono: '3877 123456', contacto: 'Marta', situacion_fiscal: 'Monotributo', cuit: '20-12345678-6', lat: '', lng: '', archivado: 'no' },
+        { codigo: '2', nombre: 'Almacén Doña Rosa', localidad: 'Las Lajitas', direccion: '', zona: 2, dias: 'MA', frecuencia: 'Quincenal', horario: '', telefono: '', contacto: '', situacion_fiscal: '', cuit: '', lat: '', lng: '', archivado: 'no' },
       ]
       const ws = XLSX.utils.json_to_sheet(ejemplo)
       const wb = XLSX.utils.book_new()
@@ -216,6 +218,7 @@ export default function ImportarClientes({ onClose, onToast }) {
           fila: i + 2, // +2: fila 1 = encabezados
           codigo, nombre, parecidoA,
           localidad: String(campo.localidad ?? '').trim(),
+          direccion: String(campo.direccion ?? '').trim(),
           dias: String(campo.dias ?? '').trim(),
           frecuencia: String(campo.frecuencia ?? '').trim(),
           horario: String(campo.horario ?? '').trim(),
@@ -278,6 +281,7 @@ export default function ImportarClientes({ onClose, onToast }) {
         codigo: f.codigo || null,
         nombre_comercio: f.nombre,
         localidad: f.localidad || null,
+        direccion: f.direccion || null,
         dias_visita: f.dias || null,
         frecuencia: f.frecuencia || null,
         horario: f.horario || null,
@@ -362,7 +366,7 @@ export default function ImportarClientes({ onClose, onToast }) {
         </div>
 
         <div style={sx('font-size:11.5px;color:var(--faint);line-height:1.5')}>
-          Columnas: <b>codigo</b>, <b>nombre</b>, <b>localidad</b>, <b>zona</b> (el N°, la abreviatura o el nombre: están en la hoja Zonas de la planilla), y opcionales <b>dias</b>, <b>frecuencia</b>, <b>horario</b>, <b>telefono</b>, <b>contacto</b>, <b>lat</b>, <b>lng</b> y <b>archivado</b> (si/no).
+          Columnas: <b>codigo</b>, <b>nombre</b>, <b>localidad</b>, <b>zona</b> (el N°, la abreviatura o el nombre: están en la hoja Zonas de la planilla), y opcionales <b>direccion</b>, <b>dias</b>, <b>frecuencia</b>, <b>horario</b>, <b>telefono</b>, <b>contacto</b>, <b>lat</b>, <b>lng</b> y <b>archivado</b> (si/no).
           Creá primero las zonas (con su número y vendedor) en la pestaña Zonas.
           <br />Si el <b>código ya existe</b>, el cliente se <b>actualiza</b> solo con los datos que traiga la planilla (las celdas vacías no borran lo que ya tenía). Si no existe, se <b>crea</b>. Un archivado que aparece en la planilla <b>vuelve a la cartera</b>, salvo que traiga <b>archivado = si</b>.
           <br />Para editar la cartera entera: <b>Clientes → Descargar planilla</b>, editala en Excel y volvé a subirla acá con la tilde de <b>cartera completa</b> — las filas que borres se archivan.

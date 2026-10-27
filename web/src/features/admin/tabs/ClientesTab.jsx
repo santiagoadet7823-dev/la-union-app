@@ -72,6 +72,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
       return (c.name || '').toLowerCase().includes(q)
         || (c.codigo || '').toLowerCase().includes(q)
         || (c.loc || '').toLowerCase().includes(q)
+        || (c.direccion || '').toLowerCase().includes(q)
         || (c.idZona && (zonaTxt.get(c.idZona) || '').includes(q))
     })
   }, [cartera, zonas, busqueda, soloSinUbicar])
@@ -218,7 +219,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             {...propsBusqueda}
-            placeholder="Buscar por nombre, código, localidad o zona…"
+            placeholder="Buscar por nombre, código, dirección, localidad o zona…"
             style={sx('flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:max(13px, var(--piso-entrada));color:var(--text)')}
           />
           {busqueda && (
@@ -303,6 +304,8 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                       <div style={sx('min-width:0;flex:1')}>
                         <div style={sx('font-size:14px;font-weight:600')}>{c.name}</div>
                         <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);margin-top:2px')}>{c.codigo || '—'} · {c.loc || '—'}</div>
+                        {/* La dirección (db/99): el buscador la encuentra, así que se ve por qué apareció. */}
+                        {c.direccion && <div style={sx('font-size:11px;color:var(--muted);margin-top:1px;overflow-wrap:anywhere')}>{c.direccion}</div>}
                       </div>
                       <span onClick={(e) => e.stopPropagation()} style={sx('flex:none')}>{chipEstado(c)}</span>
                     </div>

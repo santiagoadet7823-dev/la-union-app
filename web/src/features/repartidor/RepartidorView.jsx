@@ -40,9 +40,12 @@ const abierta = (d) => d.status === 'pendiente' || d.status === 'en_camino'
 // Abre el navegador GPS del teléfono (Google Maps o el que esté). Con coordenada va directo; sin
 // ella (el 70 % de la cartera todavía no está geolocalizada) se busca por la dirección. Es un
 // enlace común: en el APK lo atiende la app de mapas y en la PWA una pestaña nueva.
+// Calle y número + localidad (db/99, plan 30): lo que se muestra y lo que se le pide a Maps.
+const dondeQueda = (d) => [d.direccion, d.loc].filter(Boolean).join(', ')
+
 function urlNavegar(d) {
   if (d.lat != null && d.lng != null) return `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}`
-  if (d.loc) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.loc)}`
+  if (dondeQueda(d)) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dondeQueda(d))}`
   return null
 }
 
@@ -399,7 +402,7 @@ export default function RepartidorView() {
             </div>
             <div style={sx('font-family:var(--font-display);font-weight:700;font-size:23px;line-height:1.15;margin-top:6px;word-break:break-word')}>{actual.client}</div>
             <div style={sx('font-size:14px;color:var(--muted);margin-top:4px;word-break:break-word')}>
-              {actual.loc || 'Sin dirección cargada'} · <span style={sx('font-family:var(--font-mono)')}>{actual.numero}</span>
+              {dondeQueda(actual) || 'Sin dirección cargada'} · <span style={sx('font-family:var(--font-mono)')}>{actual.numero}</span>
             </div>
             <div style={sx('display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:12px')}>
               <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:700')}>{arts(actual)}</span>
@@ -456,7 +459,7 @@ export default function RepartidorView() {
                 </span>
                 <span style={sx('flex:1;min-width:0')}>
                   <span style={sx('display:block;font-size:14px;font-weight:600;word-break:break-word')}>{d.client}</span>
-                  <span style={sx('display:block;font-size:11px;color:var(--faint);word-break:break-word')}>{d.loc || 'Sin dirección'}</span>
+                  <span style={sx('display:block;font-size:11px;color:var(--faint);word-break:break-word')}>{dondeQueda(d) || 'Sin dirección'}</span>
                   {/* Si eligió otra parada a mano, la que estaba EN CAMINO cae acá: no puede perder
                       el estado de vista (el pedido sigue "En camino" en la base). */}
                   {d.status === 'en_camino' && <PildoraEstado tipo="info" style={{ marginTop: 3 }}>En camino</PildoraEstado>}

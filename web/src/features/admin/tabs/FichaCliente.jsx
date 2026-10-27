@@ -50,6 +50,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
   const [nombreEdit, setNombreEdit] = useState(fc.name || '')
   const [codigoEdit, setCodigoEdit] = useState(fc.codigo || '')
   const [locEdit, setLocEdit] = useState(fc.loc || '')
+  const [direccionEdit, setDireccionEdit] = useState(fc.direccion || '')
   const [horarioEdit, setHorarioEdit] = useState(fc.horario || '')
   const [telefonoEdit, setTelefonoEdit] = useState(fc.telefono || '')
   const [contactoEdit, setContactoEdit] = useState(fc.contacto || '')
@@ -141,6 +142,7 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
       // los cambios de la ficha. La guarda que evita encolar vive acá; el trigger es la red.
       if (!fc.exportado) patch.codigo = codigoEdit.trim() || null
       patch.localidad = locEdit.trim() || null
+      patch.direccion = direccionEdit.trim() || null
       patch.horario = horarioEdit.trim() || null
       patch.telefono = telefonoEdit.trim() || null
       patch.contacto = contactoEdit.trim() || null
@@ -210,6 +212,11 @@ export default function FichaCliente({ cliente: fc, puedeEditar, onToast, onCerr
               <div style={fieldLabel}>Localidad</div>
               <input value={locEdit} onChange={(e) => setLocEdit(e.target.value)} placeholder="—" className="lu-input" style={inp} />
             </div>
+          </div>
+          {/* Calle y número (db/99, plan 30). Fila entera: no entra en media columna. */}
+          <div>
+            <div style={fieldLabel}>Dirección</div>
+            <input value={direccionEdit} onChange={(e) => setDireccionEdit(e.target.value)} placeholder="Calle y número" autoComplete="off" className="lu-input" style={inp} />
           </div>
           <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:9px')}>
             <div>

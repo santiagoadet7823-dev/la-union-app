@@ -27,6 +27,8 @@ export function mapCliente(c) {
     codigo: c.codigo,
     name: c.nombre_comercio,
     loc: c.localidad || '',
+    // Calle y número (db/99, plan 30). No viaja al ERP: es para encontrar el comercio.
+    direccion: c.direccion || '',
     lat: c.lat,
     lng: c.lng,
     dias: c.dias_visita || '',
@@ -304,6 +306,7 @@ export function CatalogProvider({ children }) {
       lat: c.lat ?? null,
       lng: c.lng ?? null,
       localidad: c.localidad || null,
+      direccion: c.direccion || null,
       dias_visita: c.dias_visita || null,
       frecuencia: c.frecuencia || null,
       geofence_radio: c.geofence_radio || 75,
@@ -446,6 +449,7 @@ export function CatalogProvider({ children }) {
     if ('archivado_ts' in patch) vista.archivado = !!patch.archivado_ts
     if ('nombre_comercio' in patch) vista.name = patch.nombre_comercio
     if ('localidad' in patch) vista.loc = patch.localidad || ''
+    if ('direccion' in patch) vista.direccion = patch.direccion || ''
     // Edición a profundidad (ficha admin): reflejar también estos campos en la vista al toque.
     if ('codigo' in patch) vista.codigo = patch.codigo || null
     if ('horario' in patch) vista.horario = patch.horario || ''
@@ -572,7 +576,7 @@ export function CatalogProvider({ children }) {
    * Solo alcanza a los que TIENEN código: un cliente sin código nunca estuvo en ninguna lista, así
    * que su ausencia no prueba nada.
    *
-   * @param {Array<{codigo?, nombre_comercio, localidad?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?, archivado?: boolean|null, condicion_iva?, cuit?}>} rows
+   * @param {Array<{codigo?, nombre_comercio, localidad?, direccion?, dias_visita?, frecuencia?, horario?, telefono?, contacto?, id_zona?, id_vendedor?, lat?, lng?, archivado?: boolean|null, condicion_iva?, cuit?}>} rows
    * @param {{listaCompleta?: boolean, fiscalActual?: Map, clientesBase: object[]}} [opts]  `fiscalActual` = `fetchClientesFiscal`;
    *   `clientesBase` = `fetchClientesServidor` pasado por `mapCliente` (OBLIGATORIO, ver 🩸 adentro)
    * @returns {{insertados:number, actualizados:number, archivados:number, desarchivados:number, saltados:number, avisos:string[]}}
@@ -626,6 +630,7 @@ export function CatalogProvider({ children }) {
         const pon = (col, valor, actual) => { if (valor && valor !== actual) patch[col] = valor }
         pon('nombre_comercio', r.nombre_comercio, existente.name)
         pon('localidad', r.localidad, existente.loc)
+        pon('direccion', r.direccion, existente.direccion)
         pon('dias_visita', r.dias_visita, existente.dias)
         pon('frecuencia', r.frecuencia, existente.frecuencia)
         pon('horario', r.horario, existente.horario)
@@ -652,6 +657,7 @@ export function CatalogProvider({ children }) {
         lat: r.lat ?? null,
         lng: r.lng ?? null,
         localidad: r.localidad || null,
+        direccion: r.direccion || null,
         dias_visita: r.dias_visita || null,
         frecuencia: r.frecuencia || null,
         geofence_radio: 75,
@@ -718,6 +724,7 @@ export function CatalogProvider({ children }) {
         const p = u.patch
         if ('nombre_comercio' in p) v.name = p.nombre_comercio
         if ('localidad' in p) v.loc = p.localidad || ''
+        if ('direccion' in p) v.direccion = p.direccion || ''
         if ('id_zona' in p) v.idZona = p.id_zona || null
         if ('id_vendedor' in p) v.idVendedor = p.id_vendedor || null
         if ('dias_visita' in p) v.dias = p.dias_visita || ''

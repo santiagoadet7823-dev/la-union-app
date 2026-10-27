@@ -42,7 +42,7 @@ const DE_BASE = { Pendiente: 'pendiente', 'En camino': 'en_camino', Entregado: '
 
 const SELECT = `
   id, numero, estado, monto_total, peso_total, created_at, ts_en_camino, ts_entregado,
-  cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, lat, lng )
+  cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, direccion, lat, lng )
 `
 
 const hhmm = (ts) => (ts ? new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : null)
@@ -100,6 +100,7 @@ function mapEntrega(p, lineas) {
     numero: p.numero || '—',
     client: p.cliente?.nombre_comercio || 'Comercio sin nombre',
     loc: p.cliente?.localidad || '',
+    direccion: p.cliente?.direccion || '',
     lat: p.cliente?.lat ?? null,
     lng: p.cliente?.lng ?? null,
     kg: Number(p.peso_total) || 0,

@@ -42,6 +42,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
   // `null` = no se tocó: vale el propuesto. Un string = lo que escribió gestión.
   const [codigo, setCodigo] = useState(null)
   const [localidad, setLocalidad] = useState('Las Lajitas')
+  const [direccion, setDireccion] = useState('')
   const [dias, setDias] = useState({})
   const [frecuencia, setFrecuencia] = useState('Semanal')
   const [horario, setHorario] = useState('')
@@ -131,6 +132,7 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
       // Vacío viaja como null y el servidor le asigna uno (db/92): nunca nace un cliente sin código.
       codigo: codigoEfectivo.trim() || null,
       localidad: localidad.trim() || null,
+      direccion: direccion.trim() || null,
       lat: punto.lat,
       lng: punto.lng,
       dias_visita: diasStr || null,
@@ -225,6 +227,11 @@ export default function NuevoCliente({ onClose, onToast, center, onAbrirCliente 
           <span style={sx('color:var(--faint)')}>Lo asigna la app y es provisorio hasta sincronizar: si otro vendedor tomó el mismo número sin señal, el sistema le da otro a uno de los dos.</span>
         </div>
       )}
+
+      {/* Calle y número (db/99, plan 30, pedido de La Unión). Ancho completo: una dirección no entra
+          en media columna del celular. `autoComplete="off"`: el navegador ofrecería la dirección
+          del vendedor, no la del comercio. */}
+      <Field label="Dirección"><input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle y número" autoComplete="off" style={inputStyle} className="lu-input" /></Field>
 
       <div style={sx('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
         <Field label="Teléfono"><input value={telefono} onChange={(e) => setTelefono(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="3877 123456" style={inputStyle} className="lu-input" /></Field>
