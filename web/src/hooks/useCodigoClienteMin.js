@@ -10,8 +10,12 @@ import { persistence } from '../services/persistence'
  *   · `activo` = `clientes_activo`: la llave de la retención. Prendida, un pedido no sale al ERP
  *     hasta que su cliente llegó (`pedido_exportable`); apagada, sale como siempre.
  *
- * 🔴 SIN SEÑAL EL PISO NO PUEDE CAER EN 1. Debajo del piso están los códigos que el ERP ya conoce:
- * reusar uno choca en SU sistema, y eso el trigger de db/92 no lo puede ver. Por eso:
+ * (27/10/2026, plan 29) El piso de La Unión es 1: los clientes nuevos llenan huecos (primero los
+ * códigos que el ERP dio de baja, hoja LAS A) y los códigos de clientes eliminados cuya BAJA ya salió
+ * (db/98). Hasta esa fecha era 2803, para no reusar nada.
+ *
+ * 🔴 SIN SEÑAL EL PISO NO PUEDE CAER EN 1 POR DEFECTO. Un piso alto se elige para no reusar códigos
+ * que el ERP todavía conoce, y eso el trigger de db/92 no lo puede ver. Por eso:
  *   · el último valor que se leyó con red queda guardado en el dispositivo y se usa offline;
  *   · si este teléfono NUNCA lo supo, `piso` es `null`, que `primerCodigoLibre` traduce como
  *     "después del último código cargado" — la opción que no reutiliza nada.
