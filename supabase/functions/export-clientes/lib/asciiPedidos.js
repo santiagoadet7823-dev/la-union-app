@@ -15,7 +15,8 @@
  * 🔑 QUÉ ES ESTE FORMATO. Lo que el cliente llamó "asqui" es **ASCII**, la exportación de texto
  * plano de varios ERP argentinos. Se trabajó sobre un archivo real (`20260909164538.txt`, 09/09/2026):
  *
- *   · 25 campos separados por TAB, **sin fila de encabezado**;
+ *   · 25 campos separados por TAB, **sin fila de encabezado** (26 con la llave del nombre del
+ *     cliente, ver `CAMPO_26`);
  *   · una fila por renglón, con la cabecera del pedido REPETIDA en cada una;
  *   · fin de línea `\r\n`;
  *   · números con punto decimal, sin separador de miles y **sin decimales de relleno**
@@ -153,6 +154,9 @@ export const CFG_POR_DEFECTO = {
   campo_11: '0', campo_12: '0', campo_13: '0', campo_15: '0', campo_16: '01',
   campo_20: '1', campo_22: '0', campo_23: '1', campo_24: '', campo_25: 'SIN GRUPO',
   forma_pago_default: '3',
+  // Campo 26 = nombre del cliente (pedido de La Unión, 26/10/2026). Apagado hasta que su programador
+  // confirme que el importador acepta una columna más: uno que exija 25 dejaría de importar todo.
+  campo_26_nombre_cliente: false,
   id_pedido: 'epoch',
   decimales_fijos: false,
   zona_horaria: ZONA_POR_DEFECTO,
@@ -239,6 +243,14 @@ export const CAMPOS = [
 ]
 
 /**
+ * 26 — el NOMBRE del cliente, al final y sólo con `campo_26_nombre_cliente: true` en
+ * `empresas.export_erp`. Va aparte de `CAMPOS` porque la cantidad de columnas es justo lo que la
+ * llave decide: con la llave apagada el archivo es byte a byte el de siempre. Va al final y no
+ * reemplaza el 24 (vacío): de ése no sabemos qué significa para su ERP.
+ */
+export const CAMPO_26 = ['cliente_nombre', (p) => p.comercio?.name || '']
+
+/**
  * Arma el texto del archivo. **Pura y exportada a propósito**: es lo que permite comparar la salida
  * contra el archivo real del cliente sin bajar nada ni tocar la base — que es el criterio de
  * aceptación del formato, no "se ve parecido".
@@ -254,6 +266,7 @@ export const CAMPOS = [
  */
 export function armarAscii(pedidos, lineasPorPedido, cfg = null) {
   const c = { ...CFG_POR_DEFECTO, ...(cfg || {}) }
+  const campos = c.campo_26_nombre_cliente === true ? [...CAMPOS, CAMPO_26] : CAMPOS
   const filas = []
   let sinLineas = 0
 
@@ -271,7 +284,7 @@ export function armarAscii(pedidos, lineasPorPedido, cfg = null) {
     const pedido = { ...p, totalCalculado }
 
     lineas.forEach((l, idx) => {
-      filas.push(CAMPOS.map(([, val]) => celda(val(pedido, l, idx + 1, c))).join(SEP))
+      filas.push(campos.map(([, val]) => celda(val(pedido, l, idx + 1, c))).join(SEP))
     })
   }
 

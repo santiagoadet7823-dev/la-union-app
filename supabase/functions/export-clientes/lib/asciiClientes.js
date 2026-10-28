@@ -18,6 +18,10 @@
  * hace upsert por código: mandar dos veces la misma fila no rompe nada. El primer archivo es la
  * cartera completa. Una `BAJA` de un cliente borrado (lápida) trae sólo código y nombre.
  *
+ * 🔑 28/10/2026 (plan 31): La Unión esperaba la cartera entera en cada archivo y le llegaban sólo
+ * los cambios (lote 2 = 279 de 2035). Con `clientes_base_completa` cada archivo trae TODOS los
+ * vigentes y el campo 12 suma `SIN CAMBIOS`; con `clientes_direccion_zona`, los campos 13 y 14.
+ *
  * 🔴 FORMATO PROPUESTO, NO ACORDADO hasta que el programador del ERP lo confirme. Mismas
  * convenciones que `Pedidos.txt`:
  *
@@ -57,8 +61,20 @@ export const CAMPOS = [
   // 11 — CUIT/CUIL, 11 dígitos sin guiones (la base ya verificó el dígito), o vacío.
   ['cuit', (c) => c.fiscal?.cuit || ''],
   // 12 — qué pasó (db/92): ALTA (primera vez que sale) · MODIFICACION · BAJA. Lo pone
-  //      `tomar_lote_clientes`, no se deduce acá.
+  //      `tomar_lote_clientes`, no se deduce acá. Con la base completa (plan 31) el resto de la
+  //      cartera sale como `SIN CAMBIOS`: lo pone `export-clientes`, tampoco se deduce acá.
   ['tipo', (c) => c.tipo || ''],
+]
+
+/**
+ * 13-14 — dirección y nombre de la zona (28/10/2026, plan 31, pedido de La Unión). Sólo con
+ * `clientes_direccion_zona: true` en `empresas.export_erp`: con la llave apagada el archivo es byte a
+ * byte el de 12 campos, igual que `CAMPO_26` en `asciiPedidos.js`. Cambiarlas sube `export_version`
+ * desde db/100.
+ */
+export const CAMPOS_DIRECCION_ZONA = [
+  ['direccion', (c) => c.direccion || ''],
+  ['zona', (c) => c.zona?.nombre || ''],
 ]
 
 /**
@@ -66,11 +82,12 @@ export const CAMPOS = [
  * el importador del ERP acepte sin tocar la base.
  *
  * @param {object[]} clientes  ya ordenados por quien llama
- * @param {{ zona_horaria?: string }} [cfg]  `empresas.export_erp`
+ * @param {{ zona_horaria?: string, clientes_direccion_zona?: boolean }} [cfg]  `empresas.export_erp`
  * @returns {{ texto: string, filas: number }}
  */
 export function armarClientes(clientes, cfg = null) {
   const zona = cfg?.zona_horaria || ZONA_POR_DEFECTO
-  const filas = clientes.map((c) => CAMPOS.map(([, val]) => celda(val(c, zona))).join(SEP))
+  const campos = cfg?.clientes_direccion_zona === true ? [...CAMPOS, ...CAMPOS_DIRECCION_ZONA] : CAMPOS
+  const filas = clientes.map((c) => campos.map(([, val]) => celda(val(c, zona))).join(SEP))
   return { texto: filas.length ? filas.join(EOL) + EOL : '', filas: filas.length }
 }

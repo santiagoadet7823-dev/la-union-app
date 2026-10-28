@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../services/supabase'
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
 import { itemsDePedidos } from '../pedidos/usePedidos'
+import { hoyStr } from '../../lib/format'
 
 /**
  * LA HOJA DE ENTREGAS DEL REPARTIDOR.
@@ -21,13 +22,28 @@ import { itemsDePedidos } from '../pedidos/usePedidos'
  * de gestión (`asignarRepartidor`), no ésta.
  */
 
-/** [desde, hasta) del día de HOY en hora LOCAL. Salta es UTC−3 (regla 23). */
-function rangoDeHoy() {
+/** Cuántos días para atrás se arrastra lo que quedó sin terminar. Más viejo que esto se da por
+ *  olvidado: sin piso, un pedido que nadie cerró aparecería en la hoja para siempre. */
+const DIAS_ARRASTRE = 7
+
+/**
+ * Las fechas de la hoja en hora LOCAL (Salta es UTC−3, regla 23): `hoy` y `piso` como
+ * `YYYY-MM-DD` para `fecha_entrega` (un `date`), y los mismos días como instantes para `created_at`.
+ */
+function fechasDeHoja() {
   const h = new Date()
-  const desde = new Date(h.getFullYear(), h.getMonth(), h.getDate())
-  const hasta = new Date(h.getFullYear(), h.getMonth(), h.getDate() + 1)
-  return { desde: desde.toISOString(), hasta: hasta.toISOString() }
+  const dia = (n) => new Date(h.getFullYear(), h.getMonth(), h.getDate() + n)
+  return {
+    hoy: hoyStr(dia(0)),
+    piso: hoyStr(dia(-DIAS_ARRASTRE)),
+    desdeHoy: dia(0).toISOString(),
+    hastaHoy: dia(1).toISOString(),
+    desdePiso: dia(-DIAS_ARRASTRE).toISOString(),
+  }
 }
+
+// Lo que sigue abierto y se arrastra de días anteriores. Entre comillas por el espacio de "En camino".
+const SIN_TERMINAR = '(Pendiente,"En camino","No entregado")'
 
 /**
  * 🔴 LOS ESTADOS SON LOS DE LA BASE, CON MAYÚSCULA Y ESPACIO.
@@ -41,24 +57,30 @@ const A_BASE = { pendiente: 'Pendiente', en_camino: 'En camino', entregado: 'Ent
 const DE_BASE = { Pendiente: 'pendiente', 'En camino': 'en_camino', Entregado: 'entregado', 'No entregado': 'no_entregado' }
 
 const SELECT = `
-  id, numero, estado, monto_total, peso_total, created_at, ts_en_camino, ts_entregado,
+  id, numero, estado, monto_total, peso_total, created_at, fecha_entrega, ts_en_camino, ts_entregado,
   cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, direccion, lat, lng )
 `
 
 const hhmm = (ts) => (ts ? new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : null)
+const fmtDiaHora = (ts) => (ts ? `${new Date(ts).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} ${hhmm(ts)}` : null)
 
 /**
  * Los pedidos que este repartidor lleva hoy.
  *
- * Se filtra por `created_at` del día y no por una fecha de reparto: **no existe tal columna**. Es
- * una simplificación consciente y hay que saberla — un pedido tomado ayer y asignado hoy no aparece.
- * Cuando eso moleste, la respuesta es una columna de fecha de reparto, no ampliar el rango acá.
+ * 🩸 POR FECHA DE ENTREGA, NO DE TOMA (28/10/2026, plan 31). Hasta hoy se filtraba por `created_at`
+ * del día, y en La Unión 469 de 470 pedidos con fecha de entrega se entregan al día SIGUIENTE o
+ * después: asignar a la mañana lo tomado ayer dejaba la hoja vacía. Ahora entra:
+ *   · lo que tiene `fecha_entrega` hoy;
+ *   · lo que no tiene fecha y se tomó hoy (el criterio de siempre);
+ *   · lo que quedó sin terminar (Pendiente / En camino / No entregado) de los últimos
+ *     `DIAS_ARRASTRE` días, por fecha de entrega o, sin ella, por fecha de toma.
+ * Lo que se entrega mañana o después no aparece.
  */
 export function useEntregas(idRepartidor) {
   const [estado, setEstado] = useState({ entregas: [], cargando: true, error: null })
   const [ciclo, setCiclo] = useState(0)
   const recargar = useCallback(() => setCiclo((n) => n + 1), [])
-  const { desde, hasta } = useMemo(() => rangoDeHoy(), [ciclo])
+  const fechas = useMemo(() => fechasDeHoja(), [ciclo])
 
   useEffect(() => {
     if (!idRepartidor) { setEstado({ entregas: [], cargando: false, error: null }); return }
@@ -66,13 +88,19 @@ export function useEntregas(idRepartidor) {
     ;(async () => {
       setEstado((e) => ({ ...e, cargando: true }))
       try {
+        const { hoy, piso, desdeHoy, hastaHoy, desdePiso } = fechas
+        // Los instantes van entre comillas: `.` y `:` son caracteres reservados dentro de `or`.
         const { data, error } = await supabase
           .from('pedidos')
           .select(SELECT)
           .eq('id_repartidor', idRepartidor)
           .neq('estado', 'Anulado')
-          .gte('created_at', desde)
-          .lt('created_at', hasta)
+          .or([
+            `fecha_entrega.eq.${hoy}`,
+            `and(fecha_entrega.is.null,created_at.gte."${desdeHoy}",created_at.lt."${hastaHoy}")`,
+            `and(estado.in.${SIN_TERMINAR},fecha_entrega.gte.${piso},fecha_entrega.lt.${hoy})`,
+            `and(estado.in.${SIN_TERMINAR},fecha_entrega.is.null,created_at.gte."${desdePiso}",created_at.lt."${desdeHoy}")`,
+          ].join(','))
           .order('created_at', { ascending: true })
         if (error) throw error
         const pedidos = data || []
@@ -86,7 +114,7 @@ export function useEntregas(idRepartidor) {
       }
     })()
     return () => { vivo = false }
-  }, [idRepartidor, desde, hasta, ciclo])
+  }, [idRepartidor, fechas, ciclo])
 
   return { ...estado, recargar }
 }
@@ -106,7 +134,11 @@ function mapEntrega(p, lineas) {
     kg: Number(p.peso_total) || 0,
     monto: Number(p.monto_total) || 0,
     status: DE_BASE[p.estado] || 'pendiente',
-    tomado: hhmm(p.created_at) || '—',
+    // Lo de otro día dice el día: "Tomado 14:05" de un pedido de anteayer confunde.
+    tomado: (hoyStr(new Date(p.created_at)) === hoyStr() ? hhmm(p.created_at) : fmtDiaHora(p.created_at)) || '—',
+    tomadoTs: p.created_at || '',
+    // Arrastrado de un día anterior (plan 31): la hoja lo marca "De otro día".
+    atrasado: hoyStr(p.fecha_entrega ? new Date(`${p.fecha_entrega}T12:00:00`) : new Date(p.created_at)) < hoyStr(),
     entregado: hhmm(p.ts_entregado),
     items: lineas.map((l) => ({
       idLinea: l.id,
@@ -203,4 +235,27 @@ export async function asignarRepartidor(pedido, idRepartidor) {
   })
   flushMutaciones()
   return { ...pedido, id_repartidor: idRepartidor || null }
+}
+
+/**
+ * La misma asignación para muchos pedidos de una vez (28/10/2026, plan 31: "seleccionar en masa").
+ *
+ * 🔑 UNA sola entrada `updateMany` en la cola, nunca N `update` (regla de `writeQueue.js`: una
+ * acción de lote no puede empujar fuera de la ventana mutaciones viejas sin subir).
+ *
+ * ⚠️ `verificar` sólo detecta CERO filas. Si RLS frenara algunas y otras no (un encargado con pedidos
+ * ajenos), las frenadas se verían asignadas hasta recargar. No debería pasar: la lista de gestión ya
+ * viene filtrada por `pedidos_sel` con la misma jerarquía (`ids_a_mi_cargo()`) que `pedidos_upd`.
+ */
+export async function asignarRepartidorMasivo(pedidos, idRepartidor) {
+  if (!pedidos.length) return []
+  const ts = new Date().toISOString()
+  await enqueueMutacion({
+    op_uid: `masivo:repartidor:${idRepartidor || 'ninguno'}:${pedidos.length}:${ts}`,
+    table: 'pedidos', op: 'updateMany', ids: pedidos.map((p) => p.id),
+    payload: { id_repartidor: idRepartidor || null },
+    verificar: true,
+  })
+  flushMutaciones()
+  return pedidos.map((p) => ({ ...p, id_repartidor: idRepartidor || null }))
 }

@@ -37,8 +37,13 @@ const json = (b: unknown, status = 200) =>
 // De a 100, como en `export-pedidos`: un `in` con mil uuid hace explotar la URL de PostgREST.
 const LOTE_IDS = 100
 
-const SELECT_CLIENTES = `id, codigo, nombre_comercio, localidad, telefono, contacto, lat, lng,
+// Base completa (plan 31): los vigentes se leen de a 1000, el `max-rows` de PostgREST. Una página
+// llena se vuelve a pedir; una más corta es la última (la lección de db/93 y db/96).
+const PAGINA_CLIENTES = 1000
+
+const SELECT_CLIENTES = `id, codigo, nombre_comercio, localidad, direccion, telefono, contacto, lat, lng,
   creado_ts, created_at,
+  zona:zonas!clientes_id_zona_fkey ( nombre ),
   vendedor:perfiles!clientes_id_vendedor_fkey ( codigo_erp, numero ),
   fiscal:clientes_fiscal ( condicion_iva, cuit )`
 // `fiscal` (db/88, plan 20): la PK de `clientes_fiscal` es `id_cliente`, así que PostgREST lo trae
@@ -110,6 +115,17 @@ Deno.serve(async (req) => {
       return json({ error: motivo, ...extra }, status)
     }
 
+    // Las llaves y la zona horaria, del mismo `export_erp` que usa el archivo de pedidos. Se lee
+    // antes del lote porque `clientes_base_completa` cambia qué se responde.
+    const { data: emp } = await admin
+      .from('empresas').select('export_erp').eq('id', tk.id_empresa).maybeSingle()
+    const reposicion = repetir || !!loteCliente
+    // 🔑 BASE COMPLETA (28/10/2026, plan 31). La Unión esperaba la cartera entera en cada archivo y
+    // le llegaban sólo los cambios. Con la llave, el lote se toma igual (marca y da ALTA /
+    // MODIFICACION / BAJA) y el archivo suma el resto de los vigentes como `SIN CAMBIOS`. Una
+    // reposición (`repetir` / `lote=N`) sigue devolviendo sólo ese lote.
+    const completa = emp?.export_erp?.clientes_base_completa === true && !reposicion
+
     // 2) Qué va en esta respuesta: una fila por cliente o lápida, ya en el orden del archivo.
     type Fila = { id_cliente: string | null; id_baja: number | null; tipo: string; lote: number }
     let filasLote: Fila[] = []
@@ -145,9 +161,10 @@ Deno.serve(async (req) => {
     const bajas = filasLote.filter((f) => f.id_baja != null).map((f) => f.id_baja as number)
 
     /* 3) Sin novedades: 204 y no un 200 vacío. El script del cliente no pisa el `Clientes.txt`
-     * anterior, que podría ser un lote que su ERP todavía no importó. */
-    if (!filasLote.length) {
-      if (!probar && !repetir && !loteCliente) await registrar({ lote: null, clientes: 0 })
+     * anterior, que podría ser un lote que su ERP todavía no importó. Con la base completa no hay
+     * 204: sale la cartera entera en `SIN CAMBIOS`, sin reservar número de lote. */
+    if (!filasLote.length && !probar && !reposicion) await registrar({ lote: null, clientes: 0 })
+    if (!filasLote.length && !completa) {
       return new Response(null, {
         status: 204,
         headers: { ...cors, 'X-Clientes': '0' },
@@ -171,16 +188,38 @@ Deno.serve(async (req) => {
       if (error) return await rechazar('leer-bajas', 500, { detalle: error.message })
       for (const b of data || []) lapidas.set(b.id as number, b as Record<string, unknown>)
     }
-    const clientes = filasLote
+    let clientes = filasLote
       .map((f) => {
         const base = f.id_cliente ? porId.get(f.id_cliente) : lapidas.get(f.id_baja as number)
         return base ? { ...base, tipo: f.tipo } : null
       })
       .filter((c): c is Record<string, unknown> => c !== null)
 
-    // 5) La zona horaria de la empresa, del mismo `export_erp` que usa el archivo de pedidos.
-    const { data: emp } = await admin
-      .from('empresas').select('export_erp').eq('id', tk.id_empresa).maybeSingle()
+    // 5) Base completa: las BAJA del lote primero (lápidas y archivados, que ya no están entre los
+    // vigentes) y después TODOS los vigentes por código, cada uno con su tipo del lote o `SIN CAMBIOS`.
+    if (completa) {
+      const tipoPorId = new Map(filasLote.filter((f) => f.id_cliente).map((f) => [f.id_cliente as string, f.tipo]))
+      const vigentes: Record<string, unknown>[] = []
+      for (let desde = 0; ; desde += PAGINA_CLIENTES) {
+        const { data, error } = await admin.from('clientes')
+          .select(SELECT_CLIENTES)
+          .eq('id_empresa', tk.id_empresa)
+          .is('archivado_ts', null)
+          .order('id', { ascending: true }) // desempate estable para `range`
+          .range(desde, desde + PAGINA_CLIENTES - 1)
+        if (error) return await rechazar('leer-cartera', 500, { detalle: error.message })
+        for (const c of data || []) {
+          const fila = c as Record<string, unknown>
+          vigentes.push({ ...fila, tipo: tipoPorId.get(fila.id as string) || 'SIN CAMBIOS' })
+        }
+        if ((data || []).length < PAGINA_CLIENTES) break
+      }
+      const codigo = (c: Record<string, unknown>) => String(c.codigo ?? '')
+      vigentes.sort((a, b) => codigo(a).localeCompare(codigo(b), 'es', { numeric: true }))
+      const idsVigentes = new Set(vigentes.map((c) => c.id as string))
+      const bajasDelLote = clientes.filter((c) => c.tipo === 'BAJA' && !idsVigentes.has(c.id as string))
+      clientes = [...bajasDelLote, ...vigentes]
+    }
 
     const { texto, filas } = armarClientes(clientes, emp?.export_erp || null)
 
@@ -188,8 +227,6 @@ Deno.serve(async (req) => {
     const cuerpo = latin1
       ? Uint8Array.from([...texto].map((c) => (c.charCodeAt(0) < 256 ? c.charCodeAt(0) : 63)))
       : new TextEncoder().encode(texto)
-
-    const reposicion = repetir || !!loteCliente
 
     if (!probar && !reposicion && lote != null) {
       await completar(lote, { clientes: filas, bytes: cuerpo.length })

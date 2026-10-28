@@ -15,6 +15,7 @@ import useLotesExport from './useLotesExport'
 import { motivoRetencion, TEXTO_RETENCION } from './exportado'
 import { useEnvioClientesErp } from '../../hooks/useCodigoClienteMin'
 import { normalizar } from '../../lib/texto'
+import { asignarRepartidorMasivo } from '../repartidor/useEntregas'
 
 /**
  * REVISAR LOS PEDIDOS. Pantalla de gestión (encargado / admin / superadmin).
@@ -65,6 +66,16 @@ const RANGOS = [
  * "Sin exportar" y bajar exactamente eso. */
 const ESTADOS_ENTREGA = ['Pendiente', 'En camino', 'Entregado', 'No entregado']
 
+/* 🩸 ASIGNAR EN MASA (28/10/2026, plan 31). El repartidor se asignaba abriendo pedido por pedido;
+ * con decenas por día nadie lo hacía (0 pedidos con repartidor en 30 días). Se elige sólo lo que
+ * todavía no salió: un `En camino` cambiado de mano a mitad de recorrido desaparece de la hoja de
+ * quien lo lleva encima, y un `Entregado` ya no se reparte. */
+const ELEGIBLES_REPARTO = ['Pendiente', 'No entregado']
+const elegibleReparto = (p) => ELEGIBLES_REPARTO.includes(p.estado) && !p.sinSubir
+
+/** El día de entrega de un pedido como `YYYY-MM-DD` (`fecha_entrega` es un `date`), o ''. */
+const diaEntrega = (p) => (p.fecha_entrega ? String(p.fecha_entrega).slice(0, 10) : '')
+
 /** Tono de la pill de estado. Mismos colores que la dona "Pedidos por estado" del dashboard. */
 export function tonoEstado(estado) {
   switch (estado) {
@@ -112,6 +123,16 @@ export default function PedidosView({ onToast }) {
   // '<n>' un lote concreto. Antes era un checkbox "sin exportar"; la administración pidió ver lo que
   // ya solicitó POR BAJADA, que es lo que ellos tienen enfrente en su sistema.
   const [filtroLote, setFiltroLote] = useState('')
+  // Filtro por día de ENTREGA (plan 31): '' cualquiera · 'hoy' · 'manana' · 'fecha' (el de abajo).
+  // El rango de arriba es por día de toma; para armar el reparto importa cuándo se entrega.
+  const [filtroEntrega, setFiltroEntrega] = useState('')
+  const [diaEntregaElegido, setDiaEntregaElegido] = useState(() => hoyStr())
+  // Selección para asignar repartidor en masa. Se guardan ids; lo que cuenta es lo que además
+  // sigue VISIBLE y elegible (`seleccionados`, más abajo): nunca se asigna algo que no se ve.
+  const [seleccionando, setSeleccionando] = useState(false)
+  const [seleccion, setSeleccion] = useState(() => new Set())
+  const [repartidorMasivo, setRepartidorMasivo] = useState('')
+  const [asignandoMasivo, setAsignandoMasivo] = useState(false)
   const lotes = useLotesExport()
   const equipo = usePerfilesEquipo()
   const repartidores = useMemo(() => (equipo || []).filter((u) => u.rol === 'repartidor'), [equipo])
@@ -145,7 +166,10 @@ export default function PedidosView({ onToast }) {
 
   // Lo que se ve: la pestaña, pasada por el buscador y los filtros. Los filtros de estado, de
   // repartidor y de exportación son de la lista viva; en la papelera sólo aplica el buscador.
-  const hayFiltro = !!(busqueda.trim() || (!enPapelera && (filtroEstado || filtroRepartidor || filtroLote)))
+  const hayFiltro = !!(busqueda.trim() || (!enPapelera && (filtroEstado || filtroRepartidor || filtroLote || filtroEntrega)))
+  const diaEntregaFiltro = filtroEntrega === 'hoy' ? hoyStr()
+    : filtroEntrega === 'manana' ? hoyStr(new Date(Date.now() + 86400000))
+    : filtroEntrega === 'fecha' ? diaEntregaElegido : ''
   const pedidos = useMemo(() => {
     const q = normalizar(busqueda.trim())
     return pedidosVista.filter((p) => {
@@ -159,9 +183,33 @@ export default function PedidosView({ onToast }) {
       if (filtroLote === 'sin' && p.exportado_ts) return false
       if (filtroLote === 'ret' && !retencion(p)) return false
       if (filtroLote && filtroLote !== 'sin' && filtroLote !== 'ret' && String(p.export_lote || '') !== filtroLote) return false
+      if (diaEntregaFiltro && diaEntrega(p) !== diaEntregaFiltro) return false
       return true
     })
-  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, filtroLote, retencion])
+  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, filtroLote, diaEntregaFiltro, retencion])
+
+  // Lo que se asigna: lo tildado que sigue en pantalla y se puede repartir. Cambiar un filtro no
+  // borra la tilde, pero lo que dejó de verse no entra.
+  const seleccionados = useMemo(
+    () => (seleccionando && !enPapelera ? pedidos.filter((p) => seleccion.has(p.id) && elegibleReparto(p)) : []),
+    [seleccionando, enPapelera, pedidos, seleccion],
+  )
+  const elegiblesVisibles = useMemo(() => pedidos.filter(elegibleReparto), [pedidos])
+  const puedeAsignar = ['superadmin', 'admin', 'encargado'].includes(rol)
+
+  function alternar(id) {
+    setSeleccion((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  function salirDeSeleccion() {
+    setSeleccionando(false)
+    setSeleccion(new Set())
+  }
   const cargandoAhora = enPapelera ? cargandoPapelera : cargando
 
   /* RETENIDOS (18/09/2026, db/74): pedidos vivos que el canal al ERP NO va a mandar hasta que alguien
@@ -247,6 +295,25 @@ export default function PedidosView({ onToast }) {
       onToast?.('No se pudo exportar: ' + (e?.message || 'sin conexión'))
     } finally {
       setExportando(false)
+    }
+  }
+
+  /** Asigna (o saca) el repartidor a todo lo seleccionado, en UNA mutación (`updateMany`). Como el
+   *  resto de las acciones, no relee: aplica las filas resultantes a la lista. */
+  async function asignarMasivo() {
+    if (!seleccionados.length) return
+    setAsignandoMasivo(true)
+    try {
+      const filas = await asignarRepartidorMasivo(seleccionados, repartidorMasivo || null)
+      for (const p of filas) alAplicado({ accion: 'asignar', pedido: p })
+      const quien = repartidores.find((r) => r.id === repartidorMasivo)?.nombre
+      const n = `${filas.length} pedido${filas.length === 1 ? '' : 's'}`
+      onToast?.(repartidorMasivo ? `${n} asignado${filas.length === 1 ? '' : 's'} a ${quien || 'el repartidor'}` : `${n} sin repartidor`)
+      salirDeSeleccion()
+    } catch (e) {
+      onToast?.('No se pudo asignar: ' + (e?.message || 'sin conexión'))
+    } finally {
+      setAsignandoMasivo(false)
     }
   }
 
@@ -421,9 +488,37 @@ export default function PedidosView({ onToast }) {
             {retenidos.length > 0 && <option value="ret">Retenidos · {retenidos.length}</option>}
             {lotes.map((l) => <option key={l.lote} value={String(l.lote)}>Lote #{l.lote} · {fmtFecha(l.ts)} · {l.pedidos}</option>)}
           </select>
+          {/* Día de entrega (plan 31): el reparto se arma por cuándo se entrega, no por cuándo se tomó. */}
+          <select
+            value={filtroEntrega}
+            onChange={(e) => setFiltroEntrega(e.target.value)}
+            title="Día de entrega del pedido"
+            style={sx('padding:5px 9px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(11.5px, var(--piso-entrada))')}
+          >
+            <option value="">Entrega: cualquier día</option>
+            <option value="hoy">Entrega: hoy</option>
+            <option value="manana">Entrega: mañana</option>
+            <option value="fecha">Entrega: elegir día</option>
+          </select>
+          {filtroEntrega === 'fecha' && (
+            <input type="date" value={diaEntregaElegido} onChange={(e) => setDiaEntregaElegido(e.target.value)} aria-label="Día de entrega" className="lu-input"
+              style={sx('padding:5px 8px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(11.5px, var(--piso-entrada))')} />
+          )}
+          {puedeAsignar && (
+            <button
+              onClick={() => (seleccionando ? salirDeSeleccion() : setSeleccionando(true))}
+              className="lu-press"
+              style={{
+                ...sx('padding:5px 11px;border-radius:99px;font-size:11.5px;font-weight:600;cursor:pointer'),
+                border: `1px solid ${seleccionando ? 'var(--primary)' : 'var(--line2)'}`,
+                background: seleccionando ? 'var(--primary-tint)' : 'transparent',
+                color: seleccionando ? 'var(--deep)' : 'var(--muted)',
+              }}
+            >{seleccionando ? 'Cancelar selección' : 'Seleccionar para reparto'}</button>
+          )}
           {hayFiltro && (
             <button
-              onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroRepartidor(''); setFiltroLote('') }}
+              onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroRepartidor(''); setFiltroLote(''); setFiltroEntrega('') }}
               className="lu-press"
               style={sx('margin-left:auto;padding:5px 10px;border:none;background:transparent;color:var(--deep);font-size:11.5px;font-weight:600;cursor:pointer')}
             >Limpiar filtros</button>
@@ -509,18 +604,31 @@ export default function PedidosView({ onToast }) {
 
       {!cargandoAhora && pedidos.map((p) => {
         const anulado = p.estado === 'Anulado'
+        // En modo selección tocar la fila marca o desmarca, no abre el detalle.
+        const conTilde = seleccionando && !enPapelera
+        const elegible = conTilde && elegibleReparto(p)
+        const marcado = elegible && seleccion.has(p.id)
         return (
           <div
             key={p.id}
-            onClick={() => abrir(p)}
+            onClick={() => (conTilde ? (elegible && alternar(p.id)) : abrir(p))}
             className="lu-press"
-            role="button"
+            role={conTilde ? 'checkbox' : 'button'}
+            aria-checked={conTilde ? marcado : undefined}
+            aria-disabled={conTilde && !elegible ? true : undefined}
+            title={conTilde && !elegible ? `No se reasigna: está ${p.estado}` : undefined}
             style={{
-              ...sx('display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:7px;background:var(--surface);border-radius:12px;cursor:pointer'),
-              border: `1px solid ${anulado ? 'var(--danger)' : 'var(--line)'}`,
-              opacity: anulado ? 0.68 : 1,
+              ...sx('display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:7px;background:var(--surface);border-radius:12px'),
+              border: `1px solid ${anulado ? 'var(--danger)' : marcado ? 'var(--primary)' : 'var(--line)'}`,
+              background: marcado ? 'var(--primary-tint)' : 'var(--surface)',
+              opacity: anulado || (conTilde && !elegible) ? 0.5 : 1,
+              cursor: conTilde && !elegible ? 'not-allowed' : 'pointer',
             }}
           >
+            {conTilde && (
+              <input type="checkbox" checked={marcado} disabled={!elegible} readOnly tabIndex={-1}
+                style={sx('flex:none;width:18px;height:18px;accent-color:var(--primary);pointer-events:none')} />
+            )}
             <div style={sx('flex:1;min-width:0')}>
               <div style={sx('display:flex;align-items:baseline;gap:7px')}>
                 <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>#{p.numero || '—'}</span>
@@ -559,6 +667,9 @@ export default function PedidosView({ onToast }) {
                 {/* La distancia informa; no acusa. Se muestra el número y nada más — el GPS de
                     estos equipos miente hasta 30 m y el comercio puede no tener ubicación. */}
                 {p.distancia_m != null ? ` · ${Math.round(p.distancia_m)} m` : ''}
+                {/* Para armar el reparto (plan 31): cuándo se entrega y quién lo lleva, sin abrirlo. */}
+                {diaEntrega(p) ? ` · entrega ${diaEntrega(p).slice(8, 10)}/${diaEntrega(p).slice(5, 7)}` : ''}
+                {p.id_repartidor ? ` · reparte ${repartidores.find((r) => r.id === p.id_repartidor)?.nombre || '—'}` : ''}
                 </span>
               </div>
               {anulado && (
@@ -585,6 +696,52 @@ export default function PedidosView({ onToast }) {
           </div>
         )
       })}
+
+      {/* ── Barra de asignación en masa ─────────────────────────────────────────────────
+          Pegada abajo mientras se elige: el número y el botón tienen que estar a la vista aunque
+          la lista sea larga. "Todos" toma los elegibles de lo que se ve, con los filtros puestos. */}
+      {seleccionando && !enPapelera && (
+        <div style={sx('position:sticky;bottom:0;z-index:5;margin-top:10px;padding:11px 13px;background:var(--surface);border:1px solid var(--primary);border-radius:var(--r-lg);box-shadow:var(--shadow-lg);display:flex;flex-wrap:wrap;gap:8px;align-items:center')}>
+          <b style={sx('font-size:13px;font-family:var(--font-mono)')}>{seleccionados.length} seleccionado{seleccionados.length === 1 ? '' : 's'}</b>
+          <button
+            onClick={() => setSeleccion(new Set(elegiblesVisibles.map((p) => p.id)))}
+            disabled={!elegiblesVisibles.length}
+            className="lu-press"
+            style={sx('padding:5px 10px;border:1px solid var(--line2);border-radius:99px;background:transparent;color:var(--deep);font-size:11.5px;font-weight:600;cursor:pointer')}
+          >Todos los de la lista · {elegiblesVisibles.length}</button>
+          <button
+            onClick={() => setSeleccion(new Set())}
+            disabled={!seleccionados.length}
+            className="lu-press"
+            style={sx('padding:5px 10px;border:1px solid var(--line2);border-radius:99px;background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer')}
+          >Ninguno</button>
+          <select
+            value={repartidorMasivo}
+            onChange={(e) => setRepartidorMasivo(e.target.value)}
+            aria-label="Repartidor a asignar"
+            style={sx('flex:1;min-width:150px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')}
+          >
+            <option value="">Sin repartidor (quitar)</option>
+            {repartidores.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+          </select>
+          <button
+            onClick={asignarMasivo}
+            disabled={!seleccionados.length || asignandoMasivo}
+            className="lu-press"
+            style={{
+              ...sx('padding:8px 14px;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer'),
+              background: 'var(--primary)',
+              color: 'var(--on-primary)',
+              opacity: !seleccionados.length || asignandoMasivo ? 0.5 : 1,
+            }}
+          >{asignandoMasivo ? 'Asignando…' : 'Asignar'}</button>
+          {repartidores.length === 0 && (
+            <div style={sx('flex-basis:100%;font-size:11.5px;color:var(--muted)')}>
+              No hay ningún repartidor activo en el equipo. Se dan de alta desde <b>Usuarios</b>.
+            </div>
+          )}
+        </div>
+      )}
 
       {cargandoDetalle && (
         <div style={sx('padding:10px;text-align:center;color:var(--faint);font-size:12px')}>Abriendo…</div>

@@ -228,7 +228,8 @@ export default function RepartidorView() {
       if (pa != null) return -1
       if (pb != null) return 1
     }
-    return (a.tomado || '').localeCompare(b.tomado || '')
+    // Por el instante de toma (ISO) y no por `tomado`, que desde el plan 31 puede traer el día.
+    return (a.tomadoTs || '').localeCompare(b.tomadoTs || '')
   })
   const abiertas = sorted.filter(abierta)
   const cerradas = sorted.filter((d) => !abierta(d))
@@ -404,6 +405,7 @@ export default function RepartidorView() {
             <div style={sx('font-size:14px;color:var(--muted);margin-top:4px;word-break:break-word')}>
               {dondeQueda(actual) || 'Sin dirección cargada'} · <span style={sx('font-family:var(--font-mono)')}>{actual.numero}</span>
             </div>
+            {actual.atrasado && <PildoraEstado tipo="aviso" style={{ marginTop: 6 }}>De otro día · tomado {actual.tomado}</PildoraEstado>}
             <div style={sx('display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:12px')}>
               <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:700')}>{arts(actual)}</span>
               <span style={sx('font-size:14px;color:var(--muted)')}>artículos · {actual.items.length} {actual.items.length === 1 ? 'línea' : 'líneas'}</span>
@@ -463,6 +465,8 @@ export default function RepartidorView() {
                   {/* Si eligió otra parada a mano, la que estaba EN CAMINO cae acá: no puede perder
                       el estado de vista (el pedido sigue "En camino" en la base). */}
                   {d.status === 'en_camino' && <PildoraEstado tipo="info" style={{ marginTop: 3 }}>En camino</PildoraEstado>}
+                  {/* Arrastrado de un día anterior (plan 31): que no se confunda con lo de hoy. */}
+                  {d.atrasado && <PildoraEstado tipo="aviso" style={{ marginTop: 3 }}>De otro día</PildoraEstado>}
                 </span>
                 <span style={sx('flex:none;font-family:var(--font-mono);font-size:12px;color:var(--muted)')}>{arts(d)} art.</span>
               </button>

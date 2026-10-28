@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.5'   // 27/10/2026: plan 30 — dirección del comercio en el alta, la ficha, el buscador, la planilla, el repartidor y el ticket
+export const APP_VERSION = '1.45.6'   // 28/10/2026: plan 31 — asignar repartidor en masa desde Pedidos y la hoja del repartidor por fecha de entrega
