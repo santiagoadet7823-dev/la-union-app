@@ -56,7 +56,9 @@ export const GESTION_ITEMS = [
   // `usuarios` para no tocar el despacho ni la pantalla (`UsuariosView`).
   { key: 'usuarios', label: 'Equipo', grupo: 'equipo', roles: ['encargado', 'admin', 'superadmin'] },
   { key: 'invitar', label: 'Invitar por QR', grupo: 'equipo', roles: ['encargado', 'admin', 'superadmin'] },
-  { key: 'duplicados', label: 'Revisar repetidos', grupo: 'sistema', roles: ['admin', 'superadmin'] },
+  // El encargado entra desde el 29/10/2026 (plan 32): sin la pantalla no se enteraba de los
+  // comercios repetidos o cargados por error. Archivar es un UPDATE y `clientes_upd` ya lo incluye.
+  { key: 'duplicados', label: 'Revisar repetidos', grupo: 'sistema', roles: ['encargado', 'admin', 'superadmin'] },
   // Respaldo mensual: los recorridos se purgan a los 45 días (db/42) y esto es la ÚNICA salida
   // del historial fuera de Supabase. Solo admin y superadmin — exporta la empresa entera.
   { key: 'respaldo', label: 'Respaldo', grupo: 'sistema', roles: ['admin', 'superadmin'] },
@@ -78,7 +80,7 @@ export function itemsDeGestion(rol, permisos = []) {
 
 /**
  * Los mismos ítems de `itemsDeGestion`, en grupos: `[{ k, titulo, items: [...] }]`, sin grupos
- * vacíos (un encargado no tiene "Sistema"; marketing solo ve Operación → Catálogo).
+ * vacíos (un encargado ve "Sistema" solo con Revisar repetidos; marketing solo ve Operación → Catálogo).
  */
 export function gruposDeGestion(rol, permisos = []) {
   const visibles = itemsDeGestion(rol, permisos)

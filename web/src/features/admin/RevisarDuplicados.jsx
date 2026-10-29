@@ -33,7 +33,7 @@ export default function RevisarDuplicados({ onToast }) {
   const grupos = useMemo(() => agruparDuplicados(vigentes), [vigentes])
   const pendientes = grupos.filter((g) => !resueltos.has(claveGrupo(g)))
 
-  if (rol !== 'superadmin' && rol !== 'admin') {
+  if (rol !== 'superadmin' && rol !== 'admin' && rol !== 'encargado') {
     return <div style={sx('padding:40px;text-align:center;color:var(--faint);font-size:13px')}>Solo gestión puede revisar duplicados.</div>
   }
 

@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.6'   // 28/10/2026: plan 31 — asignar repartidor en masa desde Pedidos y la hoja del repartidor por fecha de entrega
+export const APP_VERSION = '1.45.7'   // 29/10/2026: plan 32 — el encargado ve Gestión → Sistema → Revisar repetidos
