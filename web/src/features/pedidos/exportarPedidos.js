@@ -1,7 +1,7 @@
 import { descargarArchivo } from '../../services/download'
 import { supabase } from '../../services/supabase'
 import { itemsDePedidos } from './usePedidos'
-import { armarAscii, CFG_POR_DEFECTO } from '../../lib/asciiPedidos'
+import { armarAscii, CFG_POR_DEFECTO, codificarArchivo } from '../../lib/asciiPedidos'
 
 /**
  * EXPORTAR LOS PEDIDOS PARA FACTURAR EN EL SISTEMA DEL CLIENTE.
@@ -78,14 +78,14 @@ export async function exportarPedidosAscii(pedidos, { nombre = 'Pedidos' } = {})
     const suyos = idEmpresa ? pedidos.filter((p) => p.id_empresa === idEmpresa) : pedidos
     if (!suyos.length) continue
     const r = armarAscii(suyos, lineasPorPedido, cfg)
-    if (r.texto) partes.push(r.texto)
+    // Cada parte en la codificación de SU empresa (plan 35): La Unión lee Windows-1252.
+    if (r.texto) partes.push(codificarArchivo(r.texto, cfg.codificacion))
     filas += r.filas
     sinLineas += r.sinLineas
   }
 
-  const texto = partes.join('')
-  if (!texto) throw new Error('Ninguno de los pedidos del rango tiene renglones.')
-  const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' })
+  if (!partes.length) throw new Error('Ninguno de los pedidos del rango tiene renglones.')
+  const blob = new Blob(partes, { type: 'text/plain' })
   await descargarArchivo({ filename: `${nombre}.txt`, blob, mime: 'text/plain' })
   return { pedidos: pedidos.length, filas, sinLineas }
 }

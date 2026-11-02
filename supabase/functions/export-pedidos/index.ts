@@ -27,7 +27,7 @@
 // ⚠️ `lib/` es una COPIA de `web/src/lib/`. Correr `node scripts/sync-export-pedidos.mjs` antes de
 // desplegar. No editar la copia.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { armarAscii, CFG_POR_DEFECTO, codigoVendedorErp } from './lib/asciiPedidos.js'
+import { armarAscii, CFG_POR_DEFECTO, codificarArchivo, codigoVendedorErp } from './lib/asciiPedidos.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -233,14 +233,12 @@ Deno.serve(async (req) => {
 
     const { texto, filas, sinLineas } = armarAscii(pedidos, lineasPorPedido, cfg)
 
-    /* La codificación es una de las preguntas abiertas: hoy se manda UTF-8 sin BOM (el archivo del
-     * cliente no tiene BOM, y esos tres bytes quedarían pegados adelante del primer campo, que es un
-     * número). Si su importador resulta esperar Latin-1, el script del cliente agrega `?enc=latin1`
-     * y no hay que desplegar nada. Lo que no entra en Latin-1 se reemplaza por '?': un carácter
-     * perdido es mejor que un archivo que el importador rechaza entero. */
-    const cuerpo = latin1
-      ? Uint8Array.from([...texto].map((c) => (c.charCodeAt(0) < 256 ? c.charCodeAt(0) : 63)))
-      : new TextEncoder().encode(texto)
+    /* UTF-8 sin BOM por defecto (el archivo del cliente no tiene BOM, y esos tres bytes quedarían
+     * pegados adelante del primer campo, que es un número). La Unión lee Windows-1252 (plan 35: su
+     * propio archivo de precios trae la Ñ como 0xD1), y eso se elige por empresa con
+     * `export_erp.codificacion` — o el script con `?enc=latin1`. Ver `codificarArchivo`. */
+    const codificacion = latin1 || cfg.codificacion === 'cp1252' ? 'cp1252' : 'utf-8'
+    const cuerpo = codificarArchivo(texto, codificacion)
 
     /* `sinLineas` cuenta pedidos que NO se emitieron por no tener renglones. La RPC ya los deja
      * fuera del lote, así que debería ser siempre 0: si aparece, es una señal de que algo borró
@@ -278,7 +276,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         ...cors,
-        'Content-Type': `text/plain; charset=${latin1 ? 'iso-8859-1' : 'utf-8'}`,
+        'Content-Type': `text/plain; charset=${codificacion === 'cp1252' ? 'windows-1252' : 'utf-8'}`,
         'Content-Disposition': 'attachment; filename="Pedidos.txt"',
         // El script del cliente los deja en su registro diario: es el único lugar donde alguien del
         // lado de ellos puede notar que un día no llegó nada.

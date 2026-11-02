@@ -37,6 +37,47 @@ export const SEP = '\t'
 /** Fin de línea. `\r\n` como el archivo real — es un importador de Windows. */
 export const EOL = '\r\n'
 
+/** Windows-1252 en 128-159: lo único en que difiere de Latin-1 (ahí Latin-1 tiene códigos de control). */
+const CP1252_ALTOS = {
+  '€': 0x80, '‚': 0x82, 'ƒ': 0x83, '„': 0x84, '…': 0x85, '†': 0x86, '‡': 0x87, 'ˆ': 0x88,
+  '‰': 0x89, 'Š': 0x8a, '‹': 0x8b, 'Œ': 0x8c, 'Ž': 0x8e, '‘': 0x91, '’': 0x92, '“': 0x93,
+  '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '˜': 0x98, '™': 0x99, 'š': 0x9a, '›': 0x9b,
+  'œ': 0x9c, 'ž': 0x9e, 'Ÿ': 0x9f,
+}
+
+/**
+ * El texto del archivo → los bytes que se mandan.
+ *
+ * 🩸 POR QUÉ (plan 35, 02/11/2026). La Unión veía "NUÃ±EZ" donde decía "NUÑEZ": se mandaba UTF-8
+ * (la Ñ son dos bytes, `C3 B1`) y su sistema lee **Windows-1252**. La prueba está en lo que su
+ * sistema nos manda: el archivo de precios (copia exacta en el bucket `ingestas-precios`) trae
+ * "CAFE COÑAC" con la Ñ como el byte `0xD1`. Se elige por empresa con `export_erp.codificacion`.
+ *
+ * Con `'cp1252'`, lo que no existe en Windows-1252 pierde la marca (`Ł` no tiene, `ő` → `o`) y,
+ * si aun así no entra, sale `?`: un carácter perdido es mejor que un archivo que el importador
+ * rechaza entero. Los códigos de control 128-159 nunca salen crudos.
+ *
+ * @param {string} texto
+ * @param {'utf-8'|'cp1252'} [codificacion]
+ * @returns {Uint8Array}
+ */
+export function codificarArchivo(texto, codificacion = 'utf-8') {
+  if (codificacion !== 'cp1252') return new TextEncoder().encode(texto)
+  const bytes = []
+  for (const c of texto) {
+    const n = c.codePointAt(0)
+    if (n < 0x80 || (n >= 0xa0 && n <= 0xff)) { bytes.push(n); continue }
+    if (c in CP1252_ALTOS) { bytes.push(CP1252_ALTOS[c]); continue }
+    const sinMarca = c.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    if (sinMarca && [...sinMarca].every((x) => x.codePointAt(0) < 0x80)) {
+      for (const x of sinMarca) bytes.push(x.codePointAt(0))
+    } else {
+      bytes.push(0x3f)
+    }
+  }
+  return Uint8Array.from(bytes)
+}
+
 /**
  * Un número para un importador, no para una persona.
  *
@@ -160,6 +201,8 @@ export const CFG_POR_DEFECTO = {
   id_pedido: 'epoch',
   decimales_fijos: false,
   zona_horaria: ZONA_POR_DEFECTO,
+  // `'cp1252'` para un sistema de Windows que no lee UTF-8 (La Unión, plan 35). Ver `codificarArchivo`.
+  codificacion: 'utf-8',
 }
 
 /**

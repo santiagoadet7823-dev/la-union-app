@@ -25,6 +25,7 @@
 // desplegar. No editar la copia.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { armarClientes } from './lib/asciiClientes.js'
+import { codificarArchivo } from './lib/asciiPedidos.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -223,10 +224,10 @@ Deno.serve(async (req) => {
 
     const { texto, filas } = armarClientes(clientes, emp?.export_erp || null)
 
-    // Misma decisión que `export-pedidos`: UTF-8 sin BOM, y Latin-1 a pedido del script.
-    const cuerpo = latin1
-      ? Uint8Array.from([...texto].map((c) => (c.charCodeAt(0) < 256 ? c.charCodeAt(0) : 63)))
-      : new TextEncoder().encode(texto)
+    // Misma decisión que `export-pedidos`: UTF-8 sin BOM salvo que la empresa pida Windows-1252
+    // (`export_erp.codificacion`, plan 35) o el script lo pida con `?enc=latin1`.
+    const codificacion = latin1 ? 'cp1252' : (emp?.export_erp?.codificacion === 'cp1252' ? 'cp1252' : 'utf-8')
+    const cuerpo = codificarArchivo(texto, codificacion)
 
     if (!probar && !reposicion && lote != null) {
       await completar(lote, { clientes: filas, bytes: cuerpo.length })
@@ -249,7 +250,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         ...cors,
-        'Content-Type': `text/plain; charset=${latin1 ? 'iso-8859-1' : 'utf-8'}`,
+        'Content-Type': `text/plain; charset=${codificacion === 'cp1252' ? 'windows-1252' : 'utf-8'}`,
         'Content-Disposition': 'attachment; filename="Clientes.txt"',
         'X-Lote': String(lote ?? ''),
         'X-Clientes': String(filas),
