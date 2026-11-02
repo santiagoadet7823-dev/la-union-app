@@ -1,5 +1,5 @@
 import { sx } from '../lib/sx'
-import { fmtPesos } from '../lib/format'
+import { fmtCant, fmtPesos } from '../lib/format'
 import Overlay from './Overlay'
 
 /**
@@ -59,21 +59,21 @@ export default function ConfirmarDobleToque({ abierto, unidades = 0, toques = 2,
             onClick={onSolo}
             style={sx('flex:1;min-height:48px;display:grid;place-items:center;border:1px solid var(--line2);background:transparent;color:var(--text);border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer')}
           >
-            Solo {actual} u.
+            Solo {fmtCant(actual)} u.
           </button>
           <button
             className="lu-press"
             onClick={onTodas}
             style={sx('flex:1;min-height:48px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);border:none;border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer')}
           >
-            Sí, {propuesta} u.
+            Sí, {fmtCant(propuesta)} u.
           </button>
         </div>
       }
     >
       <div style={sx('font-size:13.5px;line-height:1.55;color:var(--text)')}>
         El botón carga tandas de <b>{unidades} u.</b> Con {toques} toques el pedido queda
-        en <b>{propuesta} u.</b>
+        en <b>{fmtCant(propuesta)} u.</b>
       </div>
 
       {/* Los dos totales, uno debajo del otro: es la comparación que el vendedor tiene que hacer,
@@ -81,11 +81,11 @@ export default function ConfirmarDobleToque({ abierto, unidades = 0, toques = 2,
       <div style={sx('margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px')}>
         <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;background:var(--surface2)')}>
           <span style={sx('color:var(--muted)')}>Ahora</span>
-          <span style={sx('font-weight:600;color:var(--text)')}>{actual} u.</span>
+          <span style={sx('font-weight:600;color:var(--text)')}>{fmtCant(actual)} u.</span>
         </div>
         <div style={sx('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border-top:1px solid var(--line)')}>
           <span style={sx('color:var(--muted)')}>Con {toques} toques</span>
-          <span style={sx('font-weight:700;color:var(--text)')}>{propuesta} u.</span>
+          <span style={sx('font-weight:700;color:var(--text)')}>{fmtCant(propuesta)} u.</span>
         </div>
       </div>
 
@@ -107,7 +107,7 @@ export default function ConfirmarDobleToque({ abierto, unidades = 0, toques = 2,
       )}
 
       <div style={sx('margin-top:10px;font-size:12px;color:var(--faint);line-height:1.5')}>
-        Si se te fue el dedo, tocá <b>Solo {actual} u.</b> — el pedido queda como está.
+        Si se te fue el dedo, tocá <b>Solo {fmtCant(actual)} u.</b> — el pedido queda como está.
       </div>
     </Overlay>
   )

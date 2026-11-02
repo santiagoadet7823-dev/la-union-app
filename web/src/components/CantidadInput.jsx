@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { sx } from '../lib/sx'
+import { parseCantidad } from '../lib/precios'
+import { fmtCant } from '../lib/format'
 
 /**
  * EL NÚMERO DEL STEPPER, ESCRIBIBLE.
@@ -34,6 +36,13 @@ import { sx } from '../lib/sx'
  * - Con `flex`, `minAncho` puede ser 0: en la tarjeta de 161 px de la grilla (360 px de pantalla)
  *   entre el − y el + de 44 quedan ~33 px para el número. Es la excepción documentada en la hoja:
  *   el campo mide 52 de alto pero menos de 44 de ancho, y alcanza para tres cifras.
+ *
+ * 🔢 DECIMALES (plan 34, 02/11/2026): La Unión carga 12,5 de aceite. Antes el campo tiraba todo lo
+ * que no fuera dígito, así que `12,5` se cargaba como **125** sin que nadie lo notara. Ahora acepta
+ * coma o punto (`parseCantidad`), abre el teclado con coma (`inputMode="decimal"`) y muestra `12,5`
+ * con coma. Como "12,5" ya son cuatro caracteres y la grilla tiene lugar para tres, con más de tres
+ * en reposo la letra baja a 13 (editando queda en 16 por el zoom de Safari) y, sin `flex`, el campo
+ * se ensancha.
  */
 export default function CantidadInput({ qty, onCambiar, alto = 44, fuente = 16, flex = false, minAncho = 26, caja = false }) {
   const [txt, setTxt] = useState(null)
@@ -41,25 +50,27 @@ export default function CantidadInput({ qty, onCambiar, alto = 44, fuente = 16, 
   // un borde inline le gana a `.lu-cant:focus` de index.css y la caja no se marcaría al tocarla.
   const editando = txt !== null
   const enCarrito = qty > 0
+  const mostrado = txt !== null ? txt : fmtCant(qty)
+  const largo = mostrado.length > 3
+  const fs = largo && !editando ? 13 : Math.max(16, fuente)
 
   const comprometer = () => {
     if (txt === null) return
-    // Sólo dígitos: en el celular el teclado numérico igual deja meter comas, signos y espacios.
-    const limpio = String(txt).replace(/[^\d]/g, '')
+    const n = parseCantidad(txt)
     setTxt(null)
     // 🩸 CAMPO VACÍO = CANCELAR, NO CERO (09/09/2026). Va de la mano con el onFocus de abajo: desde
     // que enfocar VACÍA el campo en vez de seleccionarlo, tocarlo sin querer y salir pasaba a
     // borrar la cantidad cargada. Es la falla silenciosa peor de todas — el renglón desaparece del
     // pedido y nadie lo ve hasta que el total no cierra, con el comerciante enfrente.
     // Para poner cero quedan el − y escribir un 0 explicito, que son gestos deliberados.
-    if (limpio === '') return
-    const n = Math.max(0, Math.floor(Number(limpio) || 0))
+    // Lo que no se entiende (`1,2,3`) cuenta igual que vacío: se queda la cantidad que había.
+    if (n === null) return
     if (n !== qty) onCambiar(n)
   }
 
   return (
     <input
-      value={txt !== null ? txt : String(qty)}
+      value={mostrado}
       onChange={(e) => setTxt(e.target.value)}
       // 🔴 ACÁ SE VACIA, NO SE SELECCIONA — y esa ÚNICA línea es el menú "Traducir / Copiar /
       // Cortar" que reportaron el 09/09/2026. Acá decía `setTxt(String(qty)); e.target.select()`:
@@ -82,8 +93,8 @@ export default function CantidadInput({ qty, onCambiar, alto = 44, fuente = 16, 
       // en el llamador a propósito: olvidarlo del otro lado es un bug que se ve recién con la
       // vidriera encendida y un cliente mirando.
       onClick={(e) => e.stopPropagation()}
-      placeholder={String(qty)}
-      inputMode="numeric"
+      placeholder={fmtCant(qty)}
+      inputMode="decimal"
       enterKeyHint="done"
       aria-label="Cantidad"
       style={{
@@ -92,9 +103,10 @@ export default function CantidadInput({ qty, onCambiar, alto = 44, fuente = 16, 
         // `min-height` y no `height`: con la letra del sistema al doble (informe 08: crece el texto,
         // no las cajas) el número no se recorta, la caja crece.
         minHeight: alto,
-        fontSize: Math.max(16, fuente),
+        fontSize: fs,
+        letterSpacing: largo ? '-0.04em' : undefined,
         flex: flex ? 1 : 'none',
-        width: flex ? undefined : minAncho + 12,
+        width: flex ? undefined : Math.max(minAncho + 12, Math.ceil(mostrado.length * fs * 0.62) + 8),
         minWidth: minAncho,
         color: caja ? (enCarrito ? 'var(--text)' : 'var(--faint)') : (enCarrito ? 'var(--deep)' : 'var(--faint)'),
         // Sin `caja`, el borde aparece sólo al enfocar: en reposo tiene que verse como el número que

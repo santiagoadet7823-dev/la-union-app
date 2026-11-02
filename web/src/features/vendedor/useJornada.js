@@ -3,7 +3,7 @@ import { useCatalog } from '../../context/CatalogContext'
 import { useGps } from '../../context/GpsContext'
 import { uid } from '../../lib/uid'
 import { hoyStr } from '../../lib/format'
-import { precioDe, totalesDeCarrito } from '../../lib/precios'
+import { precioDe, redondearCant, totalesDeCarrito } from '../../lib/precios'
 import { duenoDe, esMiComercio } from '../../lib/carteraDe'
 import { persistence } from '../../services/persistence'
 import { distanciaMetros } from '../../services/geolocation/geofence'
@@ -271,7 +271,7 @@ export function useJornada() {
   function addCart(id, d) {
     setCart((c) => {
       const previa = c[id] || 0
-      const q = Math.max(0, previa + d)
+      const q = redondearCant(previa + (Number(d) || 0))
       const next = { ...c }
       if (q === 0) delete next[id]; else next[id] = q
       // Si salió del carrito teniendo algo, queda anotado como intención de compra. Si vuelve a
@@ -325,7 +325,7 @@ export function useJornada() {
   function recuperarQuitado(id) {
     const q = quitados[id]
     if (!q) return
-    setCart((c) => ({ ...c, [id]: (c[id] || 0) + q.cantidad }))
+    setCart((c) => ({ ...c, [id]: redondearCant((c[id] || 0) + (Number(q.cantidad) || 0)) }))
     setQuitados((v) => { const n = { ...v }; delete n[id]; return n })
   }
 

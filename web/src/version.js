@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.7'   // 29/10/2026: plan 32 — el encargado ve Gestión → Sistema → Revisar repetidos
+export const APP_VERSION = '1.45.8'   // 02/11/2026: plan 34 — cantidades con decimales al tomar pedidos (12,5)

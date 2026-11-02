@@ -6,7 +6,7 @@ import usePerfilesEquipo from '../../../hooks/usePerfilesEquipo'
 import { panel, label10, faltGrid } from '../ui'
 import Dona from '../../../components/charts/Dona'
 import BarrasH from '../../../components/charts/BarrasH'
-import { fmtEntero } from '../../../components/charts/formato'
+import { fmtCant } from '../../../lib/format'
 import { MOTIVO_CHIPS } from '../../repartidor/useEntregas'
 
 /**
@@ -170,8 +170,8 @@ export default function FaltanteTab() {
           <div style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px')}>
             <div style={panel}>
               <div style={label10}>Unidades faltantes</div>
-              <div style={{ ...sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;margin-top:4px'), color: r.falt > 0 ? 'var(--danger)' : 'var(--success)' }}>{cargando ? '—' : fmtEntero(r.falt)}</div>
-              <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{cargando ? '' : `sobre ${fmtEntero(r.gen)} pedidas`}</div>
+              <div style={{ ...sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;margin-top:4px'), color: r.falt > 0 ? 'var(--danger)' : 'var(--success)' }}>{cargando ? '—' : fmtCant(r.falt)}</div>
+              <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{cargando ? '' : `sobre ${fmtCant(r.gen)} pedidas`}</div>
             </div>
             <div style={panel}>
               <div style={label10}>Cumplimiento</div>
@@ -182,14 +182,14 @@ export default function FaltanteTab() {
             </div>
             <div style={panel}>
               <div style={label10}>Pedidos entregados</div>
-              <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;margin-top:4px')}>{cargando ? '—' : fmtEntero(r.pedidos)}</div>
+              <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;margin-top:4px')}>{cargando ? '—' : fmtCant(r.pedidos)}</div>
               <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>{cargando ? '' : `${conFaltante.length} productos con faltante`}</div>
             </div>
             <div style={panel}>
               <div style={label10}>Motivo principal</div>
               <div style={sx('font-family:var(--font-display);font-size:19px;font-weight:600;margin-top:6px')}>{cargando ? '—' : (donaMotivos[0]?.label || 'Ninguno')}</div>
               <div style={sx('font-size:11px;color:var(--faint);margin-top:2px')}>
-                {!cargando && donaMotivos[0] ? `${fmtEntero(donaMotivos[0].valor)} de ${fmtEntero(r.falt)} unidades (${Math.round((donaMotivos[0].valor / r.falt) * 100)} %)` : ''}
+                {!cargando && donaMotivos[0] ? `${fmtCant(donaMotivos[0].valor)} de ${fmtCant(r.falt)} unidades (${Math.round((donaMotivos[0].valor / r.falt) * 100)} %)` : ''}
               </div>
             </div>
           </div>
@@ -197,11 +197,11 @@ export default function FaltanteTab() {
           <div style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;margin-bottom:14px')}>
             <div style={panel}>
               <div style={{ ...label10, marginBottom: 10 }}>Faltante por motivo</div>
-              {cargando ? null : <Dona datos={donaMotivos} formato={fmtEntero} centroLabel="unidades" sinDatosTexto="No faltó nada en este rango" />}
+              {cargando ? null : <Dona datos={donaMotivos} formato={fmtCant} centroLabel="unidades" sinDatosTexto="No faltó nada en este rango" />}
             </div>
             <div style={panel}>
               <div style={{ ...label10, marginBottom: 10 }}>Faltante por repartidor</div>
-              {cargando ? null : <BarrasH filas={barrasRepartidor} formato={(v) => `${fmtEntero(v)} u.`} sinDatosTexto="No faltó nada en este rango" />}
+              {cargando ? null : <BarrasH filas={barrasRepartidor} formato={(v) => `${fmtCant(v)} u.`} sinDatosTexto="No faltó nada en este rango" />}
             </div>
           </div>
 
@@ -214,9 +214,9 @@ export default function FaltanteTab() {
               {(conFaltante.length ? conFaltante : r.productos.slice(0, 12)).map((p) => (
                 <div key={p.nombre} style={{ ...faltGrid, ...sx('padding:9px 10px;align-items:center;border-bottom:1px solid var(--line);font-size:12.5px;min-width:560px') }}>
                   <span style={sx('font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')} title={p.nombre}>{p.nombre}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{fmtEntero(p.gen)}</span>
-                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--success)')}>{fmtEntero(p.ent)}</span>
-                  <span style={{ ...sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600'), color: p.falt > 0 ? 'var(--danger)' : 'var(--faint)' }}>{p.falt > 0 ? `−${fmtEntero(p.falt)}` : '0'}</span>
+                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>{fmtCant(p.gen)}</span>
+                  <span style={sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--success)')}>{fmtCant(p.ent)}</span>
+                  <span style={{ ...sx('text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600'), color: p.falt > 0 ? 'var(--danger)' : 'var(--faint)' }}>{p.falt > 0 ? `−${fmtCant(p.falt)}` : '0'}</span>
                   <span>
                     {p.motivo && (
                       <span style={{ ...sx('display:inline-flex;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600'), background: p.motivo === 'Sin stock' ? 'var(--danger-tint)' : p.motivo === 'Rechazado' ? 'var(--warning-tint)' : 'var(--surface2)', color: COLOR_MOTIVO[p.motivo] || 'var(--faint)' }}>{p.motivo}</span>
@@ -226,9 +226,9 @@ export default function FaltanteTab() {
               ))}
               <div style={{ ...faltGrid, ...sx('padding:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:600;min-width:560px') }}>
                 <span style={sx('font-family:var(--font-body)')}>Total del rango</span>
-                <span style={sx('text-align:right')}>{fmtEntero(r.gen)}</span>
-                <span style={sx('text-align:right;color:var(--success)')}>{fmtEntero(r.ent)}</span>
-                <span style={{ ...sx('text-align:right'), color: r.falt > 0 ? 'var(--danger)' : 'var(--faint)' }}>{r.falt > 0 ? `−${fmtEntero(r.falt)}` : '0'}</span>
+                <span style={sx('text-align:right')}>{fmtCant(r.gen)}</span>
+                <span style={sx('text-align:right;color:var(--success)')}>{fmtCant(r.ent)}</span>
+                <span style={{ ...sx('text-align:right'), color: r.falt > 0 ? 'var(--danger)' : 'var(--faint)' }}>{r.falt > 0 ? `−${fmtCant(r.falt)}` : '0'}</span>
                 <span />
               </div>
             </div>

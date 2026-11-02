@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtCant, fmtPesos } from '../../lib/format'
 import { escaleraDe, precioPara } from '../../lib/precios'
 import CantidadInput from '../../components/CantidadInput'
 import ConfirmarDobleToque from '../../components/ConfirmarDobleToque'
@@ -363,7 +363,7 @@ export default function FichaProducto({ producto, cart, addCart, puedeMostrar, o
 
         {qty > 0 && (
           <div style={sx('margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;display:flex;justify-content:space-between')}>
-            <span style={sx('color:var(--muted)')}>{qty} en el pedido</span>
+            <span style={sx('color:var(--muted)')}>{fmtCant(qty)} en el pedido</span>
             <span style={sx('font-weight:700;color:var(--text)')}>{fmtPesos(pr.precio * qty)}</span>
           </div>
         )}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtCant, fmtPesos } from '../../lib/format'
+import { redondearCant } from '../../lib/precios'
 import Overlay from '../../components/Overlay'
 import GrillaCatalogo from '../../components/GrillaCatalogo'
 import CantidadInput from '../../components/CantidadInput'
@@ -73,12 +74,12 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
     setCantidades({}); setNuevas([]); setSearch(''); setCatFilter('Todos'); setMotivo('')
   }, [pedido?.id])
 
-  const cantidadDe = (l) => Math.max(0, Math.round(Number(cantidades[l.id] ?? l.cantidad) || 0))
+  const cantidadDe = (l) => redondearCant(cantidades[l.id] ?? l.cantidad)
   const viejasVivas = lineas.map((l) => ({ ...l, cantidad: cantidadDe(l) })).filter((l) => l.cantidad > 0)
   const finales = [...viejasVivas, ...nuevas]
   const { total } = totalesDeLineas(finales)
   const hayCambios =
-    nuevas.length > 0 || lineas.some((l) => cantidadDe(l) !== Math.round(Number(l.cantidad) || 0))
+    nuevas.length > 0 || lineas.some((l) => cantidadDe(l) !== redondearCant(l.cantidad))
   // Quitar la última línea no deja un pedido en $0: se anula, con motivo. Un pedido vacío y uno
   // anulado dirían lo mismo, pero el vacío no dice quién ni por qué.
   const quedaVacio = finales.length === 0
@@ -99,7 +100,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
     setNuevas((arr) => {
       const i = arr.findIndex((n) => n.id_producto === idProducto)
       const previa = i === -1 ? 0 : arr[i].cantidad
-      const cantidad = Math.max(0, previa + delta)
+      const cantidad = redondearCant(previa + delta)
       if (cantidad === 0) return arr.filter((n) => n.id_producto !== idProducto)
       // 🔑 La línea se REARMA con `nuevaLinea`, así el precio se recalcula contra la cantidad: si
       // con la unidad de más entra en un escalón por volumen, le corresponde ese precio. Se conserva
@@ -136,7 +137,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   }
 
   const puedeGuardar = hayCambios && !trabajando && (!quedaVacio || motivo.trim().length > 0)
-  const unidadesNuevas = nuevas.reduce((a, n) => a + n.cantidad, 0)
+  const unidadesNuevas = redondearCant(nuevas.reduce((a, n) => a + n.cantidad, 0))
 
   return (
     <>
@@ -151,7 +152,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
           <div style={sx('display:flex;flex-direction:column;gap:9px;width:100%')}>
             <div style={sx('display:flex;align-items:baseline;justify-content:space-between')}>
               <span style={sx('font-size:12px;color:var(--muted)')}>
-                Total{unidadesNuevas > 0 ? ` · +${unidadesNuevas} u nuevas` : ''}
+                Total{unidadesNuevas > 0 ? ` · +${fmtCant(unidadesNuevas)} u nuevas` : ''}
               </span>
               <span style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:700')}>
                 {fmtPesos(total)}
@@ -205,7 +206,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
           {lineas.map((l) => {
             const c = cantidadDe(l)
             const quitada = c === 0
-            const tope = Math.round(Number(l.cantidad) || 0)
+            const tope = redondearCant(l.cantidad)
             return (
               <div
                 key={l.id}
@@ -228,7 +229,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
                     que es lo que lo mantiene en "sólo restar". */}
                 <div style={sx('display:flex;align-items:center;gap:2px;flex:none')}>
                   <button
-                    onClick={() => setCantidades((m) => ({ ...m, [l.id]: Math.max(0, c - 1) }))}
+                    onClick={() => setCantidades((m) => ({ ...m, [l.id]: redondearCant(c - 1) }))}
                     disabled={c === 0}
                     className="lu-press"
                     aria-label="Quitar una unidad"
@@ -268,7 +269,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
                 <div key={n.id} style={sx('display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11.5px;padding:2px 0')}>
                   <span style={sx('flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{n.descripcion}</span>
                   <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--deep);font-weight:600')}>
-                    {n.cantidad} × {fmtPesos(n.precio_unitario)}
+                    {fmtCant(n.cantidad)} × {fmtPesos(n.precio_unitario)}
                   </span>
                 </div>
               ))}

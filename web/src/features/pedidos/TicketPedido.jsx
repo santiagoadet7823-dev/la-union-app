@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos, hace } from '../../lib/format'
+import { fmtCant, fmtPesos, hace } from '../../lib/format'
 import Overlay from '../../components/Overlay'
 import { useTenant } from '../../context/TenantContext'
 import { compartirPdfNodo, imprimirNodo, montarImpresion } from '../../services/report/imprimir'
@@ -83,7 +83,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
   const anulado = pedido?.estado === 'Anulado'
   const total = lineas.reduce((a, l) => a + l.cantidad * l.precio_unitario, 0)
   const kg = lineas.reduce((a, l) => a + l.cantidad * (l.peso_kg || 0), 0)
-  const unidades = lineas.reduce((a, l) => a + l.cantidad, 0)
+  const unidades = lineas.reduce((a, l) => a + (Number(l.cantidad) || 0), 0)
 
   const fecha = pedido?.created_at ? new Date(pedido.created_at) : null
   // El título viaja a Android como asunto del envío y como nombre de archivo. Lleva el comercio
@@ -242,7 +242,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
             {lineas.map((l) => (
               <tr key={l.id} style={sx('border-top:1px solid var(--line)')}>
                 <td style={sx('padding:7px 8px 7px 0;font-family:var(--font-body);font-size:12px')}>{l.descripcion}</td>
-                <td style={sx('padding:7px 0;text-align:right')}>{l.cantidad}</td>
+                <td style={sx('padding:7px 0;text-align:right')}>{fmtCant(l.cantidad)}</td>
                 <td style={sx('padding:7px 0;text-align:right')}>{fmtPesos(l.precio_unitario)}</td>
                 <td style={sx('padding:7px 0;text-align:right;font-weight:600')}>{fmtPesos(l.cantidad * l.precio_unitario)}</td>
               </tr>
@@ -252,7 +252,7 @@ export default function TicketPedido({ pedido, comercio, vendedor, lineas = [], 
 
         <div style={sx('margin-top:10px;padding-top:9px;border-top:2px solid var(--line2);display:flex;justify-content:space-between;align-items:baseline;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
           <span style={sx('font-size:11.5px;color:var(--muted)')}>
-            {unidades} u{kg > 0 ? ` · ${kg.toFixed(1).replace('.', ',')} kg` : ''}
+            {fmtCant(unidades)} u{kg > 0 ? ` · ${kg.toFixed(1).replace('.', ',')} kg` : ''}
           </span>
           <span style={sx('font-size:19px;font-weight:700')}>{fmtPesos(total)}</span>
         </div>

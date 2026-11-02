@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cargarFotosLocales, fotoDe } from '../services/data/espejoFotos'
 import { sx } from '../lib/sx'
-import { fmtPesos } from '../lib/format'
+import { fmtCant, fmtPesos } from '../lib/format'
 import { escaleraDe, precioPara } from '../lib/precios'
 import { ImagenVacia, Search } from './icons'
 import { propsBusqueda } from './form'
@@ -261,10 +261,10 @@ export default function GrillaCatalogo({
                         "120" o con letra grande el contador crece en vez de cortar el número. */}
                     {qty > 0 && (
                       <span
-                        title={`${qty} en el pedido`}
+                        title={`${fmtCant(qty)} en el pedido`}
                         style={sx('position:absolute;top:6px;right:6px;min-height:24px;min-width:24px;box-sizing:border-box;padding:0 8px 0 6px;display:flex;align-items:center;gap:5px;background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;box-shadow:0 0 0 2px var(--surface)')}
                       >
-                        <span aria-hidden="true" style={sx('flex:none;width:7px;height:7px;border-radius:var(--r-pill);background:var(--primary)')} />{qty}
+                        <span aria-hidden="true" style={sx('flex:none;width:7px;height:7px;border-radius:var(--r-pill);background:var(--primary)')} />{fmtCant(qty)}
                       </span>
                     )}
                     {/* "MIRÁ ESTE": se lo abre grande en la tablet del cliente. Solo aparece con la

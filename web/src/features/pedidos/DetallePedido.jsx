@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtCant, fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
 import { Whatsapp } from '../../components/icons'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
@@ -338,7 +338,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
             <div key={l.id} style={sx('display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)')}>
               <div style={sx('flex:1;min-width:0;font-size:12.5px;line-height:1.35')}>{l.descripcion}</div>
               <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted)')}>
-                {l.cantidad} × {fmtPesos(l.precio_unitario)}
+                {fmtCant(l.cantidad)} × {fmtPesos(l.precio_unitario)}
               </div>
               <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;min-width:74px;text-align:right')}>
                 {fmtPesos(l.cantidad * l.precio_unitario)}
@@ -368,7 +368,7 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   </div>
                   {(e.cambios || []).map((c, i) => (
                     <div key={i} style={sx('color:var(--muted)')}>
-                      {c.descripcion || 'Producto'}: <span style={sx('font-family:var(--font-mono)')}>{c.de} → {c.a}</span>
+                      {c.descripcion || 'Producto'}: <span style={sx('font-family:var(--font-mono)')}>{fmtCant(c.de)} → {fmtCant(c.a)}</span>
                       {c.a === 0 ? ' (sacado)' : c.de === 0 ? ' (agregado)' : ''}
                     </div>
                   ))}

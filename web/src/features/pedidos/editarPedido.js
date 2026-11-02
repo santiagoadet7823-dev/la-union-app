@@ -1,6 +1,6 @@
 import { enqueueMutacion, flushMutaciones } from '../../services/sync/writeQueue'
 import { uid } from '../../lib/uid'
-import { precioDe } from '../../lib/precios'
+import { precioDe, redondearCant } from '../../lib/precios'
 import { frenarSiExportado } from './exportado'
 
 /**
@@ -34,7 +34,7 @@ import { frenarSiExportado } from './exportado'
 /** Las líneas que la edición deja vivas, en la forma que espera la base. */
 function lineasFinales(lineas, cantidades, nuevas) {
   const vivas = lineas
-    .map((l) => ({ ...l, cantidad: Math.max(0, Math.round(Number(cantidades[l.id] ?? l.cantidad) || 0)) }))
+    .map((l) => ({ ...l, cantidad: redondearCant(cantidades[l.id] ?? l.cantidad) }))
     .filter((l) => l.cantidad > 0)
   return [...vivas, ...nuevas]
 }
@@ -52,7 +52,7 @@ export function totalesDeLineas(lineas) {
   let kg = 0
   let unidades = 0
   for (const l of lineas) {
-    const c = Math.max(0, Math.round(Number(l.cantidad) || 0))
+    const c = redondearCant(l.cantidad)
     if (!c) continue
     unidades += c
     total += c * (Number(l.precio_unitario) || 0)
@@ -90,8 +90,8 @@ export function nuevaLinea(producto, cantidad, idPedido) {
 export function calcularCambios(lineas, cantidades, nuevas) {
   const cambios = []
   for (const l of lineas) {
-    const antes = Math.max(0, Math.round(Number(l.cantidad) || 0))
-    const despues = Math.max(0, Math.round(Number(cantidades[l.id] ?? l.cantidad) || 0))
+    const antes = redondearCant(l.cantidad)
+    const despues = redondearCant(cantidades[l.id] ?? l.cantidad)
     if (antes === despues) continue
     cambios.push({ id_producto: l.id_producto, descripcion: l.descripcion, de: antes, a: despues })
   }
@@ -144,8 +144,8 @@ export async function editarPedido({ pedido, lineas, cantidades, nuevas = [], us
 
   // ── 1. Las líneas ──────────────────────────────────────────────────────────────────────────
   for (const l of lineas) {
-    const antes = Math.max(0, Math.round(Number(l.cantidad) || 0))
-    const despues = Math.max(0, Math.round(Number(cantidades[l.id] ?? l.cantidad) || 0))
+    const antes = redondearCant(l.cantidad)
+    const despues = redondearCant(cantidades[l.id] ?? l.cantidad)
     if (antes === despues) continue
     if (despues === 0) {
       // Se quita la línea entera. NO se deja en `cantidad = 0`: un producto que el comerciante no se

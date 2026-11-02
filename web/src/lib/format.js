@@ -1,6 +1,16 @@
 /** '$ 102.000' — versión compacta usada en las vistas */
 export function fmtPesos(n) {
-  return '$ ' + (n || 0).toLocaleString('es-AR')
+  // Hasta 2 decimales: con cantidades fraccionadas (plan 34) 12,5 × $1.450,33 da tres.
+  return '$ ' + (n || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })
+}
+
+/**
+ * '12' | '12,5' | '0,25' — una cantidad de unidades, con coma y sin decimales de relleno.
+ * Desde el plan 34 (02/11/2026) la cantidad puede tener hasta 2 decimales: dibujarla cruda mostraba
+ * `12.5` con punto, que en Argentina se lee como doce mil quinientos.
+ */
+export function fmtCant(n) {
+  return (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })
 }
 
 /** '9,5' kg (solo el número, con un decimal) */

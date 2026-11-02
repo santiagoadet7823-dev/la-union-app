@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtCant, fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
 
 /**
@@ -45,7 +45,7 @@ export default function ElegirTicketSheet({ comercio, ultimoPedido, onNuevo, onE
   const cerrar = () => setAbierto(false)
 
   const editable = ultimoPedido?.estado === 'Pendiente'
-  const unidades = (ultimoPedido?.lineas || []).reduce((a, l) => a + (l.cantidad || 0), 0)
+  const unidades = (ultimoPedido?.lineas || []).reduce((a, l) => a + (Number(l.cantidad) || 0), 0)
 
   return (
     <Overlay
@@ -70,7 +70,7 @@ export default function ElegirTicketSheet({ comercio, ultimoPedido, onNuevo, onE
             </span>
           </div>
           <div style={sx('font-size:11px;color:var(--muted);margin-top:3px')}>
-            {unidades} u · {haceCuanto(ultimoPedido?.created_at)}
+            {fmtCant(unidades)} u · {haceCuanto(ultimoPedido?.created_at)}
             {ultimoPedido?.estado && ultimoPedido.estado !== 'Pendiente' ? ` · ${ultimoPedido.estado}` : ''}
           </div>
         </div>

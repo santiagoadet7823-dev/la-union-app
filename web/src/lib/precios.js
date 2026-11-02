@@ -112,6 +112,38 @@ export function num(v) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * LA CANTIDAD
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 🔑 UNA CANTIDAD BIEN FORMADA: nunca negativa y con 2 decimales como mucho.
+ *
+ * 🩸 POR QUÉ (plan 34, 02/11/2026). La Unión pidió cargar 12,5 (aceite). Hasta hoy cada pantalla
+ * hacía su propio `Math.round` / `Math.floor` y la cantidad era siempre entera. Con decimales hace
+ * falta UNA regla: la base guarda `numeric(10,2)` y sumar de a 1 sobre 0,1 en coma flotante da
+ * 1,1000000000000001, que no cuadra con lo que se guarda ni con lo que se ve.
+ */
+export function redondearCant(n) {
+  return Math.max(0, Math.round((Number(n) || 0) * 100) / 100)
+}
+
+/**
+ * Lo que el vendedor TIPEA en el campo de cantidad → número, o `null` si no se entiende (el campo
+ * lo trata como "cancelar": queda la cantidad anterior).
+ *
+ * ⚠️ NO USA `num()` A PROPÓSITO. Allá `1.450` es ambiguo (¿miles o decimal?) porque viene de una
+ * planilla de precios. En una cantidad nadie escribe miles de unidades con separador, así que la
+ * coma o el punto es SIEMPRE el decimal: `12,5` y `12.5` valen lo mismo, y `1.234` es 1,23.
+ */
+export function parseCantidad(txt) {
+  const s = String(txt ?? '').replace(/[^\d.,]/g, '')
+  if (!/\d/.test(s)) return null
+  const partes = s.split(/[.,]/)
+  if (partes.length > 2) return null
+  return redondearCant(Number(partes.join('.')))
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * LA ESCALA
  * ──────────────────────────────────────────────────────────────────────────── */
 
@@ -202,7 +234,7 @@ export function avisosDeEscala(escalas, base) {
  */
 export function precioPara(producto, cantidad = 1) {
   const base = Math.max(0, num(producto?.price) || 0)
-  const q = Math.max(0, Math.round(num(cantidad) || 0))
+  const q = redondearCant(num(cantidad))
 
   const escalas = escaleraDe(producto)
   // El escalón que aplica es el ÚLTIMO cuyo `desde` no supera la cantidad. Las escalas ya vienen
@@ -236,7 +268,7 @@ export function precioPara(producto, cantidad = 1) {
   let siguiente = null
   for (const e of escalas) {
     if (e.desde > q && e.precio < precio) {
-      siguiente = { desde: e.desde, faltan: e.desde - q, precio: e.precio, ahorroUnitario: precio - e.precio }
+      siguiente = { desde: e.desde, faltan: redondearCant(e.desde - q), precio: e.precio, ahorroUnitario: precio - e.precio }
       break
     }
   }
@@ -277,12 +309,12 @@ export function totalesDeCarrito(cart, buscarProducto) {
   let kg = 0
   let ahorro = 0
   for (const [id, n] of Object.entries(cart || {})) {
-    const cantidad = Math.max(0, Math.round(num(n) || 0))
+    const cantidad = redondearCant(num(n))
     if (!cantidad) continue
     const p = buscarProducto(id)
     if (!p) continue
     const r = precioPara(p, cantidad)
-    unidades += cantidad
+    unidades = redondearCant(unidades + cantidad)
     total += r.precio * cantidad
     kg += cantidad * (num(p.kg) || 0)
     ahorro += r.ahorroTotal

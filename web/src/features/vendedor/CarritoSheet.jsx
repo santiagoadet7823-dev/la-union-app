@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtCant, fmtPesos } from '../../lib/format'
 import CantidadInput from '../../components/CantidadInput'
 import { precioPara } from '../../lib/precios'
 import Overlay from '../../components/Overlay'
@@ -81,7 +81,7 @@ export default function CarritoSheet({
       variant="sheet"
       alto="medio"
       title="Pedido"
-      subtitle={`${cartCount} ${cartCount === 1 ? 'ítem' : 'ítems'} · ${cartKg.toFixed(1).replace('.', ',')} kg`}
+      subtitle={`${fmtCant(cartCount)} ${cartCount === 1 ? 'ítem' : 'ítems'} · ${cartKg.toFixed(1).replace('.', ',')} kg`}
       footer={
         <div style={sx('display:flex;flex-direction:column;gap:10px;width:100%')}>
           {/* La tira de deshacer ocupa el lugar del total mientras está: si el pedido se vació,
@@ -153,7 +153,7 @@ export default function CarritoSheet({
                 <div style={{ ...sx('font-size:13px;font-weight:500;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</div>
                 {/* El subtotal de la línea, que es lo que el cliente pregunta ("¿cuánto van los seis?"). */}
                 <div style={sx('font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--faint);margin-top:2px')}>
-                  {qty} × {fmtPesos(pr.precio)} = <span style={sx('color:var(--deep);font-weight:600')}>{fmtPesos(qty * pr.precio)}</span>
+                  {fmtCant(qty)} × {fmtPesos(pr.precio)} = <span style={sx('color:var(--deep);font-weight:600')}>{fmtPesos(qty * pr.precio)}</span>
                   {pr.ahorroTotal > 0 && (
                     <span style={sx('color:var(--success)')}> · ahorra {fmtPesos(pr.ahorroTotal)}</span>
                   )}
@@ -206,7 +206,7 @@ export default function CarritoSheet({
             {intencion.map(({ p, cantidad }) => (
               <div key={p.id} style={sx('display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
                 <div style={{ ...sx('flex:1;min-width:0;font-size:12.5px;line-height:1.3'), display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</div>
-                <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted)')}>{cantidad} u</div>
+                <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted)')}>{fmtCant(cantidad)} u</div>
                 <button
                   onClick={() => recuperar?.(p.id)}
                   className="lu-press"

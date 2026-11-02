@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos, kgFmt, horaActual } from '../../lib/format'
+import { fmtCant, fmtPesos, kgFmt, horaActual } from '../../lib/format'
+import { redondearCant } from '../../lib/precios'
 import { Truck, Check, Pin } from '../../components/icons'
 import Overlay from '../../components/Overlay'
 import { PildoraEstado } from '../../components/ui'
@@ -283,7 +284,7 @@ export default function RepartidorView() {
     showToast(`${d.numero} quedó como no entregado`)
   }
 
-  const arts = (d) => d.items.reduce((a, it) => a + it.gen, 0)
+  const arts = (d) => fmtCant(d.items.reduce((a, it) => a + it.gen, 0))
   const nav = actual ? urlNavegar(actual) : null
 
   return (
@@ -551,7 +552,7 @@ export default function RepartidorView() {
                 // de abajo lo dice, porque una conformidad que se cree guardada y no lo está es peor
                 // que no tenerla.
                 const firma = canvasRef.current ? canvasRef.current.toDataURL('image/png') : null
-                const faltantes = md.items.reduce((a, it, i) => { const k = it.idLinea ?? i; return a + (it.gen - (qty[k] ?? it.gen)) }, 0)
+                const faltantes = md.items.reduce((a, it, i) => { const k = it.idLinea ?? i; return redondearCant(a + (it.gen - (qty[k] ?? it.gen))) }, 0)
                 setStatus(md.id, 'entregado', { entregado: horaActual(), firma })
                 setModal(null)
                 // Red por si nunca marcó "en camino": desde acá arranca hacia la próxima entrega, y es
@@ -562,7 +563,7 @@ export default function RepartidorView() {
                 marcarEstado(md, 'entregado')
                   .then(() => guardarEntregado(md, qty, motivos))
                   .catch(() => showToast('Se guardó local: sube al volver la señal'))
-                showToast(`${md.numero} entregado${faltantes > 0 ? ` · ${faltantes} u. a reporte de faltante` : ' · completo'}`)
+                showToast(`${md.numero} entregado${faltantes > 0 ? ` · ${fmtCant(faltantes)} u. a reporte de faltante` : ' · completo'}`)
               }}
               style={{ ...sx('flex:1;min-height:56px;display:grid;place-items:center;border-radius:var(--r-md);font-weight:600;font-size:16px;border:none'), background: hasInk ? 'var(--primary)' : 'var(--surface2)', color: hasInk ? 'var(--on-primary)' : 'var(--faint)', cursor: hasInk ? 'pointer' : 'not-allowed' }}
             >Confirmar entrega</button>
@@ -585,18 +586,18 @@ export default function RepartidorView() {
                         <div style={sx('display:flex;align-items:center;gap:10px')}>
                           <div style={sx('flex:1;min-width:0')}>
                             <div style={sx('font-size:13px;font-weight:500')}>{it.name}</div>
-                            <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);font-variant-numeric:tabular-nums;margin-top:2px')}>Pedido: {it.gen} u.</div>
+                            <div style={sx('font-size:11px;color:var(--faint);font-family:var(--font-mono);font-variant-numeric:tabular-nums;margin-top:2px')}>Pedido: {fmtCant(it.gen)} u.</div>
                           </div>
                           {/* (01/10/2026, C10) − y + de 44 con 8 px entre controles (brief v2 §4.3). */}
                           <div style={sx('display:flex;align-items:center;gap:8px')}>
-                            <button type="button" aria-label="Entrega una unidad menos" onClick={() => setQty((v) => ({ ...v, [k]: Math.max(0, (v[k] ?? it.gen) - 1) }))} style={stepBtn}>−</button>
-                            <div style={{ ...sx('width:38px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600'), color: short ? 'var(--warning)' : 'var(--text)' }}>{del}</div>
-                            <button type="button" aria-label="Entrega una unidad más" onClick={() => setQty((v) => ({ ...v, [k]: Math.min(it.gen, (v[k] ?? it.gen) + 1) }))} style={stepBtn}>+</button>
+                            <button type="button" aria-label="Entrega una unidad menos" onClick={() => setQty((v) => ({ ...v, [k]: redondearCant((v[k] ?? it.gen) - 1) }))} style={stepBtn}>−</button>
+                            <div style={{ ...sx('width:38px;text-align:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600'), color: short ? 'var(--warning)' : 'var(--text)' }}>{fmtCant(del)}</div>
+                            <button type="button" aria-label="Entrega una unidad más" onClick={() => setQty((v) => ({ ...v, [k]: Math.min(it.gen, redondearCant((v[k] ?? it.gen) + 1)) }))} style={stepBtn}>+</button>
                           </div>
                         </div>
                         {short && (
                           <div style={sx('margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)')}>
-                            <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--warning);margin-bottom:7px')}>Faltan {it.gen - del} u. — motivo</div>
+                            <div style={sx('font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--warning);margin-bottom:7px')}>Faltan {fmtCant(it.gen - del)} u. — motivo</div>
                             <div style={sx('display:flex;gap:8px;flex-wrap:wrap')}>
                               {MOTIVO_CHIPS.map((label) => {
                                 const on = motivo === label
@@ -654,7 +655,7 @@ export default function RepartidorView() {
             {detView.items.map((it, i) => (
               <div key={it.idLinea ?? i} style={sx('display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:44px;padding:8px 0;border-bottom:1px solid var(--line)')}>
                 <span style={sx('flex:1;min-width:0;font-size:14px;word-break:break-word')}>{it.name}</span>
-                <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600')}>{it.gen} u.</span>
+                <span style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600')}>{fmtCant(it.gen)} u.</span>
               </div>
             ))}
             <div style={sx('margin-top:10px;display:flex;flex-wrap:wrap;gap:4px 12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)')}>

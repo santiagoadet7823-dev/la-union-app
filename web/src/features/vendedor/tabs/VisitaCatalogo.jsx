@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { sx } from '../../../lib/sx'
-import { fmtPesos, hace } from '../../../lib/format'
+import { fmtCant, fmtPesos, hace } from '../../../lib/format'
 import ConfirmarPedidoSheet from '../ConfirmarPedidoSheet'
 import { precioDe } from '../../../lib/precios'
 import CarritoSheet from '../CarritoSheet'
@@ -348,7 +348,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
                     <div style={{ ...sx('font-size:11.5px;font-weight:500;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), maxWidth: 168 }}>{p.name}</div>
                     <div style={sx('margin-top:2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11px;color:var(--deep);font-weight:600')}>
                       {fmtPesos(precioDe(p, Math.max(1, q)))}
-                      {q > 0 ? <span style={sx('color:var(--muted);font-weight:400')}> · {q} en el pedido</span> : ''}
+                      {q > 0 ? <span style={sx('color:var(--muted);font-weight:400')}> · {fmtCant(q)} en el pedido</span> : ''}
                     </div>
                   </button>
                 )
@@ -519,7 +519,7 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
             role="button"
             style={sx('display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:44px;margin:-8px 0 2px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;cursor:pointer')}
           >
-            <div style={sx('font-size:12px;color:var(--muted)')}>{cartCount} ítems · {cartKg.toFixed(1).replace('.', ',')} kg</div>
+            <div style={sx('font-size:12px;color:var(--muted)')}>{fmtCant(cartCount)} ítems · {cartKg.toFixed(1).replace('.', ',')} kg</div>
             <div style={sx('display:flex;align-items:center;gap:7px')}>
               <span style={sx('font-size:18px;font-weight:600;color:var(--text)')}>{fmtPesos(cartTotal)}</span>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>

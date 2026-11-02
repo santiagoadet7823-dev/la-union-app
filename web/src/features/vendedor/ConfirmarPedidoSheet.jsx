@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
-import { fmtPesos } from '../../lib/format'
+import { fmtCant, fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
 
 /**
@@ -99,7 +99,7 @@ export default function ConfirmarPedidoSheet({
       {/* ── Lo que se está por confirmar ───────────────────────────────────────────────────── */}
       <div style={sx('display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;margin-bottom:16px')}>
         <div style={sx('font-size:12px;color:var(--muted)')}>
-          {cartCount} ítems · {cartKg.toFixed(1).replace('.', ',')} kg
+          {fmtCant(cartCount)} ítems · {cartKg.toFixed(1).replace('.', ',')} kg
         </div>
         <div style={sx('font-size:18px;font-weight:600;color:var(--text)')}>{fmtPesos(cartTotal)}</div>
       </div>
