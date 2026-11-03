@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.9'   // 02/11/2026: plan 35 — el botón Exportar baja el archivo en la codificación de la empresa (Windows-1252 en La Unión)
+export const APP_VERSION = '1.45.10'   // 03/11/2026: plan 37 — flechitas para ordenar cada campo en Gestión → Clientes y Catálogo

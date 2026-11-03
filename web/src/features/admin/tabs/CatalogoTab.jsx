@@ -15,6 +15,18 @@ import { descargarArchivo } from '../../../services/download'
 import { Bajar, Basura, Editar, ImagenVacia, Mas, Subir } from '../../../components/icons'
 import AvisoScopeCatalogo from '../../../components/AvisoScopeCatalogo'
 import { Chip, PildoraEstado } from '../../../components/ui'
+import { BotonOrden, FilaOrden, useOrdenColumna } from '../../../components/OrdenColumnas'
+import { ordenarProductos } from '../../../lib/ordenListas'
+
+// Los campos que se pueden ordenar (plan 37). La foto no: para eso está el filtro "Sin foto".
+const CAMPOS_ORDEN = [
+  ['codigo', 'Código'],
+  ['nombre', 'Descripción'],
+  ['categoria', 'Categoría'],
+  ['precio', 'Precio'],
+  ['unidades', 'Unid.'],
+  ['nivel', 'Nivel'],
+]
 
 // Grilla del catálogo (escritorio): foto · código · descripción · categoría · precio · unid. · nivel · acciones.
 // El CÓDIGO va visible y temprano: es la llave con la que se parean las fotos (el archivo se
@@ -147,6 +159,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   const [catsOpen, setCatsOpen] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('todos') // todos | sin-foto | sin-precio | sin-marca | descontinuados
+  const [orden, alternarOrden] = useOrdenColumna()
   // Lista o grilla de 2 columnas (sólo celular). Se recuerda: es una preferencia de cómo trabaja
   // cada uno, y un `localStorage` bloqueado no puede tumbar la pantalla (arranca en lista).
   const [vista, setVista] = useState(() => {
@@ -176,7 +189,7 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
   // los que quedaron sin foto (o sin precio) son imposibles de encontrar a ojo.
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
-    return productos.filter((p) => {
+    const filtrados = productos.filter((p) => {
       if (filtro === 'sin-foto' && p.imagen) return false
       if (filtro === 'sin-precio' && p.price) return false
       if (filtro === 'sin-marca' && p.marca) return false
@@ -186,7 +199,8 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
         || (p.cat || '').toLowerCase().includes(q)
         || (p.marca || '').toLowerCase().includes(q)
     })
-  }, [productos, busqueda, filtro])
+    return orden ? ordenarProductos(filtrados, orden) : filtrados
+  }, [productos, busqueda, filtro, orden])
 
   // Los contadores salen SIEMPRE de los vigentes, aunque el filtro activo sea "descontinuados":
   // son el trabajo pendiente del catálogo vivo, no del listado que se está mirando.
@@ -448,6 +462,8 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
                 <Chip key={k} seleccionado={filtro === k} onClick={() => setFiltro(k)} contador={n}>{t}</Chip>
               ))}
             </div>
+            {/* En el celular no hay encabezados (ni en lista ni en grilla): los campos van acá. */}
+            {isMobile && <FilaOrden campos={CAMPOS_ORDEN} orden={orden} onAlternar={alternarOrden} />}
 
             {visibles.length === 0 ? (
               <div style={sx('padding:34px;text-align:center;color:var(--faint);font-size:13px')}>
@@ -459,8 +475,12 @@ export default function CatalogoTab({ onNuevoProducto, onEditarProducto, onToast
               </div>
             ) : (<>
             <CabeceraTabla grid={catGrid} isMobile={isMobile} columnas={[
-              'Foto', 'Código', 'Descripción', 'Categoría',
-              { label: 'Precio', align: 'right' }, { label: 'Unid.', align: 'right' }, 'Nivel', '',
+              'Foto',
+              ...CAMPOS_ORDEN.map(([campo, etiqueta]) => ({
+                label: <BotonOrden campo={campo} etiqueta={etiqueta} orden={orden} onAlternar={alternarOrden} />,
+                align: campo === 'precio' || campo === 'unidades' ? 'right' : undefined,
+              })),
+              '',
             ]} />
             {visibles.map((p) => (
               <FilaTabla key={p.id} grid={catGrid} isMobile={isMobile}

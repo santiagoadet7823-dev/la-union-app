@@ -13,6 +13,19 @@ import { panel, label10, cliGrid, miniLbl, EmptyState } from '../ui'
 import { Bajar, Check, Mas, Search } from '../../../components/icons'
 import AvisoScopeCatalogo from '../../../components/AvisoScopeCatalogo'
 import AvisoCuarentena from '../../../components/AvisoCuarentena'
+import { BotonOrden, FilaOrden, useOrdenColumna } from '../../../components/OrdenColumnas'
+import { ordenarClientes } from '../../../lib/ordenListas'
+
+// Los campos que se pueden ordenar, en el mismo orden que las columnas de `cliGrid` (plan 37).
+const CAMPOS_ORDEN = [
+  ['codigo', 'Código'],
+  ['nombre', 'Razón social'],
+  ['localidad', 'Localidad'],
+  ['zona', 'Zona'],
+  ['dias', 'Días de visita'],
+  ['frecuencia', 'Frecuencia'],
+  ['estado', 'Estado'],
+]
 
 /**
  * Pestaña "Clientes": cartera real (tabla en PC / tarjetas en teléfono). La ficha
@@ -51,6 +64,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
   const [sel, setSel] = useState(() => new Set())
   const [confirmarArchivo, setConfirmarArchivo] = useState(false)
   const [ultimoArchivado, setUltimoArchivado] = useState(null) // ids, para el "Deshacer"
+  const [orden, alternarOrden] = useOrdenColumna()
 
   // Tocar la fila abierta la cierra: es lo que se espera de un acordeón.
   const alternar = (id) => setSelCli((actual) => (actual === id ? null : id))
@@ -66,7 +80,7 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
     const base = [...cartera].sort((a, b) => (a.activo === b.activo ? a.name.localeCompare(b.name) : a.activo ? 1 : -1))
     // Por zona también (18/09/2026): escribir "burela" o "LJ1" lista los comercios de esa zona.
     const zonaTxt = new Map(zonas.map((z) => [z.id, `${z.nombre} ${z.abrev || ''}`.toLowerCase()]))
-    return base.filter((c) => {
+    const filtrada = base.filter((c) => {
       if (soloSinUbicar && c.lat != null) return false
       if (!q) return true
       return (c.name || '').toLowerCase().includes(q)
@@ -75,7 +89,8 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         || (c.direccion || '').toLowerCase().includes(q)
         || (c.idZona && (zonaTxt.get(c.idZona) || '').includes(q))
     })
-  }, [cartera, zonas, busqueda, soloSinUbicar])
+    return orden ? ordenarClientes(filtrada, orden, zonas) : filtrada
+  }, [cartera, zonas, busqueda, soloSinUbicar, orden])
 
   const sinUbicar = cartera.filter((c) => c.lat == null).length
   const porConfirmar = cartera.filter((c) => !c.activo).length
@@ -292,6 +307,8 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
         ) : isMobile ? (
           /* ===== TELÉFONO: tarjetas ===== */
           <div style={sx('display:flex;flex-direction:column')}>
+            {/* En las tarjetas no hay encabezados: los mismos campos van como botoncitos. */}
+            <FilaOrden campos={CAMPOS_ORDEN} orden={orden} onAlternar={alternarOrden} />
             {listaMostrada.map((c) => {
               const z = zonas.find((x) => x.id === c.idZona)
               const abierto = c.id === selCli
@@ -328,7 +345,9 @@ export default function ClientesTab({ onToast, onNuevoCliente }) {
                   de las filas cuando el modo selección está activo. */}
               {seleccionando && <span style={{ width: 20, flex: 'none' }} />}
               <div style={{ ...cliGrid, ...sx('flex:1;min-width:0') }}>
-                <span>Código</span><span>Razón social</span><span>Localidad</span><span>Zona</span><span>Días de visita</span><span>Frecuencia</span><span>Estado</span>
+                {CAMPOS_ORDEN.map(([campo, etiqueta]) => (
+                  <BotonOrden key={campo} campo={campo} etiqueta={etiqueta} orden={orden} onAlternar={alternarOrden} />
+                ))}
               </div>
             </div>
             {listaMostrada.map((c) => {
