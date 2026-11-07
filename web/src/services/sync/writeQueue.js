@@ -390,6 +390,22 @@ export async function cuarentenaMutaciones() { return await leerCuarentena() }
 export function limpiarCuarentena() { return enSerie(() => persistence.set(QKEY, [])) }
 
 /**
+ * Saca de la cuarentena SÓLO lo que `descartar(m)` elija. Mismo criterio que `limpiarCuarentena`
+ * (regla 20): lo llama una persona que ya leyó el aviso. Existe por el plan 39 (07/11/2026): una
+ * corrección rechazada porque el pedido ya se había descargado al ERP no va a entrar nunca, y el
+ * vendedor, una vez avisado, tiene que poder sacarse el cartel sin borrar lo demás. Devuelve cuántas.
+ */
+export function descartarDeCuarentena(descartar) {
+  return enSerie(async () => {
+    const cuar = (await persistence.getEstricto(QKEY, [])) || []
+    const quedan = cuar.filter((m) => !descartar(m))
+    if (quedan.length === cuar.length) return 0
+    await persistence.set(QKEY, quedan)
+    return cuar.length - quedan.length
+  })
+}
+
+/**
  * 🩸 RESCATE: VUELVE A ENCOLAR, UNA SOLA VEZ, LO QUE LA CUARENTENA TIENE Y YA PUEDE ENTRAR (22/10/2026).
  *
  * Los 27 pedidos de la calle quedaron aislados por un 23503 (su visita se había perdido). Desde

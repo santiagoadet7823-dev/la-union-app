@@ -19,6 +19,8 @@ import ElegirTicketSheet from './ElegirTicketSheet'
 import EditarPedidoSheet from '../pedidos/EditarPedidoSheet'
 import { useUltimoPedido } from './useSugeridos'
 import { itemsDePedido } from '../pedidos/usePedidos'
+import { descargaEnServidor } from '../pedidos/exportado'
+import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useChrome } from '../../components/AppShell'
 import { apilarAtras } from '../../services/atras'
@@ -92,6 +94,8 @@ export default function VendedorView() {
   const [elegir, setElegir] = useState(null)      // el cliente sobre el que hay que decidir
   const [ubicar, setUbicar] = useState(null)      // el cliente SIN ubicación al que se le hace check-in
   const [editando, setEditando] = useState(null)  // { pedido, lineas } — el que se está corrigiendo
+  // { comercio, pedido } — se iba a corregir y el servidor dice que ya se descargó (plan 39).
+  const [descargadoAlAbrir, setDescargadoAlAbrir] = useState(null)
   // El hook devuelve null mientras no haya id, así que se puede llamar siempre (los hooks no van
   // adentro de un `if`).
   const ultimoDelElegido = useUltimoPedido(elegir?.id || null)
@@ -141,19 +145,45 @@ export default function VendedorView() {
   async function abrirCorreccion() {
     const p = ultimoDelElegido
     if (!p) return
+    const comercio = elegir
     try {
+      // 🔴 SE VUELVE A PREGUNTAR (07/11/2026, plan 39). La hoja pudo quedar abierta un rato y el
+      // agente de La Unión baja pedidos cada 30 min. Si ya se descargó, en vez de la corrección
+      // vuelve la hoja de elegir, que ahora sólo ofrece el ticket nuevo. Sin señal (`null`) se
+      // sigue: lo ataja `editarPedido` al guardar o, en última instancia, la cuarentena.
+      const srv = await descargaEnServidor(supabase, p.id)
+      if (srv?.exportado_ts) {
+        setDescargadoAlAbrir({ comercio, pedido: { ...p, ...srv } })
+        return
+      }
       const lineas = await itemsDePedido(p.id)
       setEditando({
         // `usePedidos` no participa acá, así que la cabecera se arma con lo que la pantalla necesita.
         // `id_empresa` es obligatorio: lo usa el insert de la auditoría (`pedido_ediciones`).
         // El cliente derivado de `useJornada` ya trae name/loc/codigo con los mismos nombres que
         // usa el ticket, así que no hace falta `mapComercio` (que traduce una fila cruda de la base).
-        pedido: { ...p, id_empresa: idEmpresa, comercio: { id: elegir?.id, name: elegir?.name, codigo: elegir?.codigo, loc: elegir?.loc } },
+        pedido: { ...p, id_empresa: idEmpresa, comercio: { id: comercio?.id, name: comercio?.name, codigo: comercio?.codigo, loc: comercio?.loc } },
         lineas,
       })
     } catch (e) {
       j.showToast('No se pudo abrir el pedido: ' + (e?.message || 'sin conexión'))
     }
+  }
+
+  /**
+   * LO QUE SE CARGÓ EN LA CORRECCIÓN PASA A UN TICKET NUEVO (07/11/2026, plan 39).
+   *
+   * Si al guardar resulta que el pedido se descargó al ERP mientras el vendedor cargaba, la
+   * corrección ya no puede ir. Decisión del usuario: no hacerlo cargar todo de nuevo. Se abre la
+   * visita de ese comercio (si ya estaba abierta, `startVisit` la retoma sin vaciar el carrito) y
+   * las líneas nuevas entran al carrito. Va sólo la CANTIDAD: el precio lo pone el carrito al
+   * confirmar, al precio de hoy, igual que "Repetir el último pedido".
+   */
+  function pasarANuevoTicket(idComercio, nuevas) {
+    j.startVisit(idComercio)
+    for (const n of nuevas) j.addCart(n.id_producto, n.cantidad)
+    setEditando(null)
+    j.showToast(`${nuevas.length} ${nuevas.length === 1 ? 'producto pasó' : 'productos pasaron'} a un ticket nuevo`)
   }
 
   // 🩸 EL ALTO DE LA BOTONERA SE MIDE, NO SE ADIVINA (20/08/2026). Los flotantes de las pestañas
@@ -208,6 +238,18 @@ export default function VendedorView() {
         />
       )}
 
+      {/* La misma hoja, con el pedido releído del servidor: ya descargado, sólo ofrece el ticket
+          nuevo. `startVisit` retoma la visita si ya estaba abierta y si no, hace el check-in. */}
+      {descargadoAlAbrir && (
+        <ElegirTicketSheet
+          comercio={descargadoAlAbrir.comercio}
+          ultimoPedido={descargadoAlAbrir.pedido}
+          onCerrar={() => setDescargadoAlAbrir(null)}
+          onNuevo={() => { j.startVisit(descargadoAlAbrir.comercio.id); setDescargadoAlAbrir(null) }}
+          onEditar={() => setDescargadoAlAbrir(null)}
+        />
+      )}
+
       {/* Hermano del ticket y por el mismo motivo: las pestañas se desmontan al cambiar, así que un
           sheet colgado de una de ellas desaparecería en el mismo frame en que se abre. */}
       {editando && (
@@ -218,6 +260,7 @@ export default function VendedorView() {
           onCerrar={() => setEditando(null)}
           onGuardado={() => setEditando(null)}
           onToast={j.showToast}
+          onPasarANuevo={(nuevas) => pasarANuevoTicket(editando.pedido.comercio.id, nuevas)}
         />
       )}
 

@@ -10,6 +10,8 @@ import { useGps } from '../../context/GpsContext'
 import { anularPedido } from './anularPedido'
 import { fmtFecha } from './DetallePedido'
 import { editarPedido, nuevaLinea, totalesDeLineas } from './editarPedido'
+import { descargaEnServidor, textoDescargado } from './exportado'
+import { supabase } from '../../services/supabase'
 
 /**
  * CORREGIR UN PEDIDO PENDIENTE.
@@ -41,9 +43,15 @@ import { editarPedido, nuevaLinea, totalesDeLineas } from './editarPedido'
  * ya estaba genera un **renglón aparte a precio de hoy** (decisión del dueño, 04/09), y el ticket lo
  * muestra en dos líneas: es la verdad de lo que pasó y el comerciante ve por qué paga dos precios.
  *
- * props: { pedido, lineas, onCerrar, onGuardado(pedidoResultante), onToast, userId }
+ * 🔴 SI SE DESCARGÓ AL ERP MIENTRAS SE CORREGÍA, NO SE GUARDA NADA (07/11/2026, plan 39). Justo antes
+ * de encolar se pregunta al servidor (`descargaEnServidor`). Si ya se descargó, la pantalla lo dice
+ * y, si quien la abrió sabe armar un ticket (`onPasarANuevo`, la jornada del vendedor), ofrece pasar
+ * lo agregado a un ticket nuevo. Lo restado no se puede llevar a ningún lado: eso se corrige en el
+ * sistema de gestión.
+ *
+ * props: { pedido, lineas, onCerrar, onGuardado(pedidoResultante), onToast, userId, onPasarANuevo?(nuevas) }
  */
-export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGuardado, onToast, userId }) {
+export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGuardado, onToast, userId, onPasarANuevo }) {
   const { productos } = useCatalog()
   const { pos } = useGps()
   const [abierto, setAbierto] = useState(true)
@@ -55,6 +63,8 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   const [catFilter, setCatFilter] = useState('Todos')
   const [motivo, setMotivo] = useState('')
   const [trabajando, setTrabajando] = useState(false)
+  // `{ exportado_ts, export_lote }` cuando al guardar el servidor dijo que ya se descargó.
+  const [descargado, setDescargado] = useState(null)
 
   // Al cambiar de pedido se limpia todo. Sin esto, lo tipeado para uno quedaría cargado al abrir el
   // siguiente — el mismo cuidado que ya tiene `DetallePedido` con el motivo de anulación.
@@ -71,7 +81,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   //     "perdimos permisos" y como "dice que no hay internet". Tres síntomas, un identificador.
   // La lección para el próximo: al sacar un estado, buscar el SETTER además del nombre.
   useEffect(() => {
-    setCantidades({}); setNuevas([]); setSearch(''); setCatFilter('Todos'); setMotivo('')
+    setCantidades({}); setNuevas([]); setSearch(''); setCatFilter('Todos'); setMotivo(''); setDescargado(null)
   }, [pedido?.id])
 
   const cantidadDe = (l) => redondearCant(cantidades[l.id] ?? l.cantidad)
@@ -117,6 +127,9 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
   async function guardar() {
     setTrabajando(true)
     try {
+      // Última pregunta antes de encolar (plan 39). `null` = sin señal: se sigue como siempre.
+      const srv = await descargaEnServidor(supabase, pedido.id)
+      if (srv?.exportado_ts) { setDescargado(srv); return }
       let resultado
       if (quedaVacio) {
         resultado = await anularPedido(pedido, motivo, userId)
@@ -148,7 +161,36 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
         alto="medio"
         title={`Corregir ${pedido?.numero ? '#' + pedido.numero : 'el pedido'}`}
         subtitle={pedido?.comercio?.name || 'Comercio'}
-        footer={
+        footer={descargado ? (
+          /* Se descargó mientras se corregía: no hay "Guardar" posible. Lo único que se puede rescatar
+             es lo AGREGADO, y sólo si quien abrió esto sabe armar un ticket (la jornada del vendedor). */
+          <div style={sx('display:flex;flex-direction:column;gap:9px;width:100%')}>
+            <div style={sx('padding:10px 12px;border:1px solid var(--warning);border-radius:11px;font-size:11.5px;line-height:1.55;color:var(--text)')}>
+              {textoDescargado(descargado)} La corrección no se guardó.
+              {nuevas.length > 0 && onPasarANuevo ? ' Lo que agregaste puede ir en un ticket nuevo.' : ' Lo que haga falta va en un ticket nuevo.'}
+              {lineas.some((l) => cantidadDe(l) !== redondearCant(l.cantidad)) && (
+                <> Lo que <b>restaste</b> se corrige en el sistema de gestión: avisale a administración.</>
+              )}
+            </div>
+            {nuevas.length > 0 && onPasarANuevo ? (
+              <button
+                onClick={() => { cerrar(); onPasarANuevo(nuevas) }}
+                className="lu-press"
+                style={sx('width:100%;min-height:48px;display:grid;place-items:center;border:none;border-radius:12px;font-size:14px;font-weight:700;background:var(--primary);color:var(--on-primary);cursor:pointer')}
+              >
+                Pasar lo agregado a un ticket nuevo
+              </button>
+            ) : (
+              <button
+                onClick={cerrar}
+                className="lu-press"
+                style={sx('width:100%;min-height:48px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:12px;font-size:14px;font-weight:700;background:transparent;color:var(--text);cursor:pointer')}
+              >
+                Cerrar
+              </button>
+            )}
+          </div>
+        ) : (
           <div style={sx('display:flex;flex-direction:column;gap:9px;width:100%')}>
             <div style={sx('display:flex;align-items:baseline;justify-content:space-between')}>
               <span style={sx('font-size:12px;color:var(--muted)')}>
@@ -188,7 +230,7 @@ export default function EditarPedidoSheet({ pedido, lineas = [], onCerrar, onGua
               {quedaVacio ? 'Anular el pedido' : trabajando ? 'Guardando…' : 'Guardar los cambios'}
             </button>
           </div>
-        }
+        )}
       >
         {/* ── Lo que ya estaba ───────────────────────────────────────────────────────────────
             Va arriba y separado del catálogo: son unidades con precio ya pactado, y la única

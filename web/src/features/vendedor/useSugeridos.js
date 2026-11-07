@@ -111,7 +111,11 @@ export function useUltimoPedido(idCliente) {
           // 🔴 `estado` NO es decorativo: es lo que decide si el pedido se puede EDITAR. La ventana
           // de edición es `Pendiente` (db/55); ofrecerla sobre uno "En camino" sería un botón que
           // RLS rechaza en silencio —cero filas, sin error—, o sea la peor forma de fallar.
-          .select('id, numero, estado, created_at, monto_total, pedido_items ( id_producto, cantidad )')
+          // 🔴 `exportado_ts` TAMPOCO (07/11/2026, plan 39). Sin él, la hoja del check-in ofrecía
+          // "Corregir" sobre un pedido que La Unión ya había bajado al ERP —sigue `Pendiente` hasta el
+          // reparto— y `frenarSiExportado` lo dejaba pasar porque el campo venía vacío. La base lo
+          // rechazaba (db/62), la cola lo mandaba a cuarentena y lo agregado no le llegaba a nadie.
+          .select('id, numero, estado, created_at, monto_total, exportado_ts, export_lote, pedido_items ( id_producto, cantidad )')
           .eq('id_cliente', idCliente)
           // Un pedido anulado no es "lo que suele llevar": es un error que alguien corrigió.
           // Repetirlo sería resucitar exactamente lo que se decidió que no iba.

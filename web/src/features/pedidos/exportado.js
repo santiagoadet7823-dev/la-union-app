@@ -30,6 +30,39 @@ export function frenarSiExportado(pedido) {
   if (yaExportado(pedido)) throw new Error(MSG_EXPORTADO)
 }
 
+/** "Este pedido ya se descargó al sistema de gestión (lote 12)." — para los avisos de la pantalla. */
+export function textoDescargado(pedido) {
+  return `Este pedido ya se descargó al sistema de gestión${pedido?.export_lote ? ` (lote ${pedido.export_lote})` : ''}.`
+}
+
+/**
+ * ¿YA SE DESCARGÓ, SEGÚN EL SERVIDOR, AHORA MISMO? (07/11/2026, plan 39)
+ *
+ * 🩸 La fila que tiene la pantalla puede tener minutos: el agente de La Unión baja pedidos cada
+ * 30 min, y un vendedor puede abrir la corrección, cargar diez productos y recién ahí tocar Guardar.
+ * Si en el medio se descargó, encolar la corrección termina en cuarentena (db/62 la rechaza) y lo
+ * agregado no le llega al comerciante. Por eso se pregunta justo antes de abrir y de guardar.
+ *
+ * Devuelve `{ exportado_ts, export_lote }` leído de la base, o `null` si no se pudo preguntar (sin
+ * señal). Con `null` se sigue como antes: la cola y el aviso de cuarentena son la red de abajo.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} idPedido
+ */
+export async function descargaEnServidor(supabase, idPedido) {
+  try {
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('exportado_ts, export_lote')
+      .eq('id', idPedido)
+      .maybeSingle()
+    if (error || !data) return null
+    return data
+  } catch (_) {
+    return null
+  }
+}
+
 /**
  * POR QUÉ UN PEDIDO VIVO TODAVÍA NO SALIÓ AL ERP: `'cliente'` (el comercio no tiene código),
  * `'vendedor'` (quien lo tomó no tiene código de vendedor) o `null` (va a salir en el próximo lote,

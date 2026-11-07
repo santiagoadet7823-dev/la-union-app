@@ -26,6 +26,7 @@ import ReintentarEnvio from './ReintentarEnvio'
 const EN_PALABRAS = [
   ['zona-ajena', 'Esa zona es de otro vendedor: el cliente no se cambió de zona.'],
   ['rastreo-de-alta-no-editable', 'Quién creó el cliente y cuándo no se pueden cambiar.'],
+  ['pedido-ya-exportado', 'El pedido ya se había descargado al sistema de gestión: esta corrección no se aplicó. Lo que faltaba va en un ticket nuevo; lo demás se corrige en el sistema de gestión.'],
 ]
 
 export default function AvisoCuarentena({ tabla = null }) {

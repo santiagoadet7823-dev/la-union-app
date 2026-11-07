@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtCant, fmtPesos } from '../../lib/format'
 import Overlay from '../../components/Overlay'
+import { yaExportado, textoDescargado } from '../pedidos/exportado'
 
 /**
  * ¿TICKET NUEVO O CORRIJO EL QUE YA HICE?
@@ -22,6 +23,11 @@ import Overlay from '../../components/Overlay'
  * 🔴 LA VENTANA LA DECIDE `estado === 'Pendiente'`, y acá se repite SOLO para no ofrecer un botón
  * que la base va a rechazar. El cerrojo de verdad son `items_upd` / `items_del` (db/55): una guarda
  * que sólo vive en el cliente es un cartel, no una guarda.
+ *
+ * 🔴 Y TAMPOCO SE CORRIGE LO YA DESCARGADO AL ERP (07/11/2026, plan 39). Un pedido que La Unión ya
+ * bajó a su sistema sigue `Pendiente` hasta el reparto, así que mirar sólo el estado ofrecía
+ * "Corregir" sobre algo que db/62 congela: el vendedor cargaba, veía "guardado" y la corrección se
+ * iba a cuarentena. Descargado → el único camino es un ticket nuevo.
  *
  * props: { comercio, ultimoPedido, onNuevo, onEditar, onCerrar }
  */
@@ -44,7 +50,8 @@ export default function ElegirTicketSheet({ comercio, ultimoPedido, onNuevo, onE
   const [abierto, setAbierto] = useState(true)
   const cerrar = () => setAbierto(false)
 
-  const editable = ultimoPedido?.estado === 'Pendiente'
+  const descargado = yaExportado(ultimoPedido)
+  const editable = ultimoPedido?.estado === 'Pendiente' && !descargado
   const unidades = (ultimoPedido?.lineas || []).reduce((a, l) => a + (Number(l.cantidad) || 0), 0)
 
   return (
@@ -83,6 +90,11 @@ export default function ElegirTicketSheet({ comercio, ultimoPedido, onNuevo, onE
           >
             Corregir ese pedido
           </button>
+        ) : descargado && ultimoPedido?.estado === 'Pendiente' ? (
+          <div style={sx('padding:10px 12px;border:1px solid var(--line2);border-radius:11px;font-size:11.5px;color:var(--muted);line-height:1.55')}>
+            {textoDescargado(ultimoPedido)} Ya no se puede corregir:{' '}
+            <b style={sx('color:var(--text)')}>lo que le agregue el comerciante va en un ticket nuevo.</b>
+          </div>
         ) : (
           /* Ya salió a la calle: se dice por qué no se puede tocar, en vez de esconder la opción y
              que parezca que la app se olvidó del pedido. */
