@@ -71,6 +71,7 @@ export const TEXTOS = {
   audioVacio: 'No pude entender el audio. ¿Me lo mandás de nuevo o por escrito?',
   iaCaida: 'No puedo procesar consultas en este momento. Probá de nuevo en unos minutos.',
   errorConsulta: 'No pude leer ese dato en este momento. Probá de nuevo en unos minutos.',
+  sinCupo: 'Se terminaron los mensajes gratis de este mes. Vuelvo a responder el 1.º del mes que viene.',
 }
 
 // ── Consultas ────────────────────────────────────────────────────────────────────────────────────

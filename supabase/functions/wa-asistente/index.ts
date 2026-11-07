@@ -24,6 +24,11 @@ const VOZ_URL = () => Deno.env.get('VOZ_URL') || 'http://voz:8080'
 // Meta da 1000 mensajes de servicio por mes y por número. La voz manda dos por respuesta: desde acá
 // se contesta solo con texto, para que el cupo alcance hasta fin de mes.
 const TOPE_MENSUAL_CON_VOZ = 800
+// Tope duro para todos los usuarios juntos (pedido del 07/11/2026: no pasar de los 1000 gratis). Con
+// 995 enviados se deja de contestar; los 5 restantes cubren el aviso de "sin cupo" (uno por persona y
+// por mes) y dos mensajes que se procesen al mismo tiempo justo en el límite.
+const TOPE_MENSUAL = 1000
+const TOPE_RESPUESTAS = TOPE_MENSUAL - 5
 const VENTANA_CHARLA_MS = 30 * 60 * 1000
 
 const db = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
@@ -81,11 +86,26 @@ async function historial(cliente: any, waId: string, wamid: string): Promise<Int
     .map((m: any) => ({ pregunta: m.texto, consulta: m.consulta, argumentos: m.argumentos }))
 }
 
-async function enviadosDelMes(cliente: any) {
+// Meta cuenta por mes calendario en UTC.
+const inicioDelMes = () => {
   const ahora = new Date()
-  const desde = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1)).toISOString()
-  const { data } = await cliente.from('wa_mensajes').select('enviados').gt('enviados', 0).gte('recibido_ts', desde)
+  return new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1)).toISOString()
+}
+
+async function enviadosDelMes(cliente: any) {
+  const { data } = await cliente.from('wa_mensajes').select('enviados').gt('enviados', 0).gte('recibido_ts', inicioDelMes())
   return (data ?? []).reduce((s: number, m: any) => s + m.enviados, 0)
+}
+
+// Cupo agotado: se avisa una vez por persona y por mes, y después silencio hasta el mes que viene.
+async function sinCupo(cliente: any, msg: any, usados: number) {
+  const { count } = await cliente.from('wa_mensajes').select('id', { count: 'exact', head: true })
+    .eq('wa_id', msg.from).eq('error', 'sin-cupo').gt('enviados', 0).gte('recibido_ts', inicioDelMes())
+  let enviados = 0
+  if (!count && usados < TOPE_MENSUAL) {
+    try { await enviarTexto(msg.from, TEXTOS.sinCupo); enviados = 1 } catch (e) { console.error('wa-asistente: aviso cupo', String(e)) }
+  }
+  await cliente.from('wa_mensajes').update({ estado: 'ignorado', error: 'sin-cupo', enviados }).eq('wamid', msg.id)
 }
 
 async function procesar(cliente: any, msg: any, empresa: string) {
@@ -188,6 +208,8 @@ async function recibir(cliente: any, msg: any) {
 
   if (!nuevo?.length) return // reintento de Meta: ya se procesó
   if (!usuario) { console.warn('wa-asistente: número no autorizado'); return }
+  const usados = await enviadosDelMes(cliente)
+  if (usados >= TOPE_RESPUESTAS) return sinCupo(cliente, msg, usados)
   await procesar(cliente, msg, usuario.id_empresa)
 }
 
