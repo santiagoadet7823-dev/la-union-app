@@ -13,7 +13,7 @@
 //   Por los reintentos, `wamid` es único: un mensaje repetido no se procesa dos veces.
 // · Un número no autorizado no recibe respuesta ni le gasta el cupo de mensajes a la empresa.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { atajo, elegirConsulta, pideCambio, type Intercambio } from './lib/aiService.ts'
+import { atajo, elegirConsultas, juntar, pideAudio, pideCambio, type Eleccion, type Intercambio } from './lib/aiService.ts'
 import { ejecutar, hoyEn } from './lib/consultas.ts'
 import { bienvenida, TEXTOS } from './lib/respuestas.ts'
 import { avisarEscribiendo, bajarAudio, enviarNotaDeVoz, enviarTexto } from './lib/whatsapp.ts'
@@ -157,11 +157,14 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
       } else {
         let respuesta: { texto: string; voz: string }
         try {
-          const eleccion = pideCambio(texto) ? null : atajo(texto) ?? await elegirConsulta(texto, await historial(cliente, waId, msg.id))
-          consulta = eleccion?.consulta ?? null
-          argumentos = eleccion?.argumentos ?? null
-          respuesta = eleccion
-            ? await ejecutar(cliente, empresa, perfil, eleccion.consulta, eleccion.argumentos)
+          const a = pideCambio(texto) ? null : atajo(texto)
+          const elecciones: Eleccion[] = pideCambio(texto) ? [] : a ? [a] : await elegirConsultas(texto, await historial(cliente, waId, msg.id))
+          ;({ consulta, argumentos } = juntar(elecciones))
+          // Varias consultas: una respuesta debajo de la otra, en el orden en que se pidieron.
+          const nombres = elecciones.map((e) => e.consulta)
+          const partes = await Promise.all(elecciones.map((e) => ejecutar(cliente, empresa, perfil, e.consulta, e.argumentos, nombres)))
+          respuesta = partes.length
+            ? { texto: partes.map((p) => p.texto).join('\n\n'), voz: partes.map((p) => p.voz).join(' ') }
             : { texto: TEXTOS.fueraDeTema, voz: TEXTOS.fueraDeTema }
         } catch (e) {
           console.error('wa-asistente: consulta', String(e))
@@ -174,7 +177,9 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
         // Lo transcripto va a la vista: así se nota enseguida si el audio se entendió mal.
         if (!yaContestado) await contestar(esAudio ? `Entendí: "${texto}"\n\n${respuesta.texto}` : respuesta.texto)
 
-        if (!yaContestado && esAudio && (await enviadosDelMes(cliente)) + enviados < TOPE_MENSUAL_CON_VOZ) {
+        // Nota de voz: si la pregunta vino en audio, o si escrita pide "respondeme en audio".
+        const quiereVoz = esAudio || pideAudio(texto)
+        if (!yaContestado && quiereVoz && (await enviadosDelMes(cliente)) + enviados < TOPE_MENSUAL_CON_VOZ) {
           try {
             await enviarNotaDeVoz(waId, await hablar(respuesta.voz))
             enviados++

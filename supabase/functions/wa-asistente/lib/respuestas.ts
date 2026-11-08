@@ -116,14 +116,17 @@ export function ventasPorCategoria(filas: any[], periodo: string): Respuesta {
   }
 }
 
-export function productosVendidos(d: any, periodo: string): Respuesta {
+/** `conCaida`: solo con el período cerrado. Un período en curso (hoy, esta semana) contra el anterior
+ * completo marca como "en caída" al más vendido (08/11: el vino Toro salía primero y en caída a la vez). */
+export function productosVendidos(d: any, periodo: string, conCaida = true): Respuesta {
   const top = lineas(d.mas_vendidos).slice(0, 5)
-  const caida = lineas(d.en_caida).slice(0, 3)
+  const caida = conCaida ? lineas(d.en_caida).slice(0, 3) : []
   if (!top.length && !caida.length) return ambos(`Sin ventas de productos ${periodo}.`)
   const a = top.map((p, i) => `${i + 1}. ${p.descripcion}: ${plata(p.monto)} (${Number(p.cant)} u.)`).join('\n')
   const b = caida.map((p) => `• ${p.descripcion}: ${plata(p.monto)} (antes ${plata(p.monto_prev)})`).join('\n')
+  const nota = !conCaida && lineas(d.en_caida).length ? '\n\n_Para ver qué productos bajaron, preguntame por la semana pasada o el mes pasado._' : ''
   return {
-    texto: `Más vendidos ${periodo}:\n${a || '-'}${b ? `\n\nEn caída:\n${b}` : ''}`,
+    texto: `Más vendidos ${periodo}:\n${a || '-'}${b ? `\n\nEn caída:\n${b}` : ''}${nota}`,
     voz: top.length ? `Más vendido ${periodo}: ${top[0].descripcion}. El detalle está en el mensaje.` : `Sin ventas ${periodo}, pero hay productos en caída. El detalle está en el mensaje.`,
   }
 }

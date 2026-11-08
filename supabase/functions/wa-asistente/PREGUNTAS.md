@@ -51,6 +51,12 @@ Reglas del indicio (`control_visitas`), que están en `wa_parametros` y en `indi
 - **"¿Toma los pedidos desde la casa?"** → `control_visitas`.
 - **"¿Conviene pasar la zona de Juan a WhatsApp?"** → `analisis_zonas` con zona "juan": busca por vendedor.
 - **Seguimiento de la charla** ("¿y la semana pasada?", "¿y Pedro?"): la misma consulta, cambiando solo lo que piden.
+- **Varias cosas en un mensaje**: "¿cuánto se vendió hoy, quién vendió y qué productos?" pasa por `ventas_resumen` + `ventas_por_vendedor` + `productos_mas_vendidos`.
+  - El modelo devuelve una llamada por cada cosa, hasta 3, y las respuestas salen una debajo de la otra en el mismo mensaje.
+  - En `wa_mensajes.consulta` quedan separadas por coma y los argumentos van en una lista.
+  - Antes se usaba solo la primera: el 08/11, esa pregunta contestó únicamente el total.
+- **"Respondeme en audio"** en un mensaje escrito: además del texto, se manda la nota de voz (`pideAudio`).
+- **"En caída"** de productos se muestra solo con el período cerrado (ayer, la semana o el mes pasado). Un período en curso comparado con el anterior completo marcaba como en caída al producto más vendido.
 
 ## Frases de prueba
 

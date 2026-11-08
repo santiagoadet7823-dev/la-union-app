@@ -64,7 +64,8 @@ async function persona(db: any, empresa: string, perfil: string, v: unknown): Pr
 
 // `perfil` define el alcance (db/102): admin ve la empresa, el encargado solo a su gente. Buscar
 // clientes y precios no lo usa: los clientes son de la distribuidora (db/40).
-export async function ejecutar(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>): Promise<R.Respuesta> {
+/** `junto`: las otras consultas pedidas en el mismo mensaje. */
+export async function ejecutar(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>, junto: string[] = []): Promise<R.Respuesta> {
   const periodo = periodoDe(a)
   const rango = rangoDe(periodo)
   const conRango = { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }
@@ -78,7 +79,7 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
     case 'ventas_por_categoria':
       return R.ventasPorCategoria(await rpc(db, 'wa_ventas_categoria', conRango), nombre)
     case 'productos_mas_vendidos':
-      return R.productosVendidos(await rpc(db, 'wa_productos_ventas', conRango), nombre)
+      return R.productosVendidos(await rpc(db, 'wa_productos_ventas', conRango), nombre, rango.hasta < hoyEn())
     case 'buscar_pedido': {
       const numero = textoDe(a.numero)
       if (!/\d/.test(numero)) return { texto: '¿Qué número de pedido querés ver?', voz: '¿Qué número de pedido querés ver?' }
@@ -114,7 +115,8 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
       const quien = await persona(db, empresa, perfil, a.persona)
       if ('respuesta' in quien) return quien.respuesta
       const args = { p_empresa: empresa, p_desde: r.desde, p_hasta: r.hasta, p_perfil: perfil, p_persona: quien.id }
-      const control = await rpc(db, 'wa_control_visitas', args)
+      // Si en el mismo mensaje también pidieron control_visitas, el rendimiento no repite "dónde tomó los pedidos".
+      const control = consulta === 'control_visitas' || !junto.includes('control_visitas') ? await rpc(db, 'wa_control_visitas', args) : null
       if (consulta === 'control_visitas') return R.controlVisitas(control, NOMBRE_PERIODO[p], !!quien.id)
       return R.rendimiento(await rpc(db, 'wa_rendimiento', args), control, NOMBRE_PERIODO[p], p, !!quien.id)
     }
