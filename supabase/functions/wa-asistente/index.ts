@@ -14,8 +14,8 @@
 // · Un número no autorizado no recibe respuesta ni le gasta el cupo de mensajes a la empresa.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { elegirConsulta, pideCambio, type Intercambio } from './lib/aiService.ts'
-import { ejecutar } from './lib/consultas.ts'
-import { TEXTOS } from './lib/respuestas.ts'
+import { ejecutar, hoyEn } from './lib/consultas.ts'
+import { bienvenida, TEXTOS } from './lib/respuestas.ts'
 import { avisarEscribiendo, bajarAudio, enviarNotaDeVoz, enviarTexto } from './lib/whatsapp.ts'
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void }
@@ -108,7 +108,14 @@ async function sinCupo(cliente: any, msg: any, usados: number) {
   await cliente.from('wa_mensajes').update({ estado: 'ignorado', error: 'sin-cupo', enviados }).eq('wamid', msg.id)
 }
 
-async function procesar(cliente: any, msg: any, empresa: string) {
+// ¿Ya le contestamos alguna vez a este número? Si no, lo primero que recibe es la bienvenida.
+async function esPrimeraVez(cliente: any, waId: string, wamid: string) {
+  const { count } = await cliente.from('wa_mensajes').select('id', { count: 'exact', head: true })
+    .eq('wa_id', waId).gt('enviados', 0).neq('wamid', wamid)
+  return !count
+}
+
+async function procesar(cliente: any, msg: any, empresa: string, perfil: string, nombre: string) {
   const inicio = Date.now()
   const waId: string = msg.from
   let enviados = 0
@@ -127,6 +134,8 @@ async function procesar(cliente: any, msg: any, empresa: string) {
   try {
     await avisarEscribiendo(msg.id)
     const esAudio = msg.type === 'audio' || msg.type === 'voice'
+    const primeraVez = await esPrimeraVez(cliente, waId, msg.id)
+    if (primeraVez) await contestar(bienvenida(nombre, hoyEn()))
 
     let audioRechazado = false
     if (esAudio) {
@@ -152,7 +161,7 @@ async function procesar(cliente: any, msg: any, empresa: string) {
           consulta = eleccion?.consulta ?? null
           argumentos = eleccion?.argumentos ?? null
           respuesta = eleccion
-            ? await ejecutar(cliente, empresa, eleccion.consulta, eleccion.argumentos)
+            ? await ejecutar(cliente, empresa, perfil, eleccion.consulta, eleccion.argumentos)
             : { texto: TEXTOS.fueraDeTema, voz: TEXTOS.fueraDeTema }
         } catch (e) {
           console.error('wa-asistente: consulta', String(e))
@@ -160,10 +169,12 @@ async function procesar(cliente: any, msg: any, empresa: string) {
           respuesta = { texto: t, voz: t }
         }
 
+        // Un "hola" de alguien nuevo ya quedó contestado con la bienvenida: no se manda la ayuda repetida.
+        const yaContestado = primeraVez && consulta === 'ayuda'
         // Lo transcripto va a la vista: así se nota enseguida si el audio se entendió mal.
-        await contestar(esAudio ? `Entendí: "${texto}"\n\n${respuesta.texto}` : respuesta.texto)
+        if (!yaContestado) await contestar(esAudio ? `Entendí: "${texto}"\n\n${respuesta.texto}` : respuesta.texto)
 
-        if (esAudio && (await enviadosDelMes(cliente)) + enviados < TOPE_MENSUAL_CON_VOZ) {
+        if (!yaContestado && esAudio && (await enviadosDelMes(cliente)) + enviados < TOPE_MENSUAL_CON_VOZ) {
           try {
             await enviarNotaDeVoz(waId, await hablar(respuesta.voz))
             enviados++
@@ -194,7 +205,7 @@ async function procesar(cliente: any, msg: any, empresa: string) {
 
 async function recibir(cliente: any, msg: any) {
   const { data: usuario } = await cliente.from('wa_asistente_usuarios')
-    .select('id_empresa').eq('wa_id', msg.from).eq('activo', true).maybeSingle()
+    .select('id_empresa, id_perfil, perfiles(nombre)').eq('wa_id', msg.from).eq('activo', true).maybeSingle()
 
   const { data: nuevo, error } = await cliente.from('wa_mensajes').upsert({
     wamid: msg.id,
@@ -210,7 +221,9 @@ async function recibir(cliente: any, msg: any) {
   if (!usuario) { console.warn('wa-asistente: número no autorizado'); return }
   const usados = await enviadosDelMes(cliente)
   if (usados >= TOPE_RESPUESTAS) return sinCupo(cliente, msg, usados)
-  await procesar(cliente, msg, usuario.id_empresa)
+  // Solo el primer nombre: "Darsh Lajitas" → "Darsh".
+  const nombre = String(usuario.perfiles?.nombre ?? '').trim().split(/\s+/)[0] || ''
+  await procesar(cliente, msg, usuario.id_empresa, usuario.id_perfil, nombre)
 }
 
 function mensajesDe(payload: any): any[] {

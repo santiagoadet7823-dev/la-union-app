@@ -71,7 +71,18 @@ export const TEXTOS = {
   audioVacio: 'No pude entender el audio. ¿Me lo mandás de nuevo o por escrito?',
   iaCaida: 'No puedo procesar consultas en este momento. Probá de nuevo en unos minutos.',
   errorConsulta: 'No pude leer ese dato en este momento. Probá de nuevo en unos minutos.',
+  ejemplos: '• ¿Cuánto vendimos hoy?\n• ¿Quién vendió más esta semana?\n• ¿En qué anda el pedido 687?\n• ¿Qué le vendimos a Supermercado Olé?\n• ¿A cuánto está el aceite Prado?\n• ¿Quién está en la calle?\n• ¿Qué clientes hace un mes que no compran?',
   sinCupo: 'Se terminaron los mensajes gratis de este mes. Vuelvo a responder el 1.º del mes que viene.',
+}
+
+// Prueba gratuita de noviembre de 2026 (pedido del 07/11). Después de esa fecha la bienvenida no la menciona.
+const PRUEBA_GRATIS_HASTA = '2026-11-30'
+
+/** Primer mensaje de cada persona. Meta no deja escribir primero sin plantilla paga: la bienvenida va
+ * como respuesta a lo primero que mande. */
+export function bienvenida(nombre: string, hoy: string): string {
+  const prueba = hoy <= PRUEBA_GRATIS_HASTA ? ' Este mes lo podés usar gratis, como prueba.' : ''
+  return `Hola ${nombre}. Soy el asistente de WhatsApp de DisT-At: te ayudo a seguir a los vendedores y repartidores de una forma más práctica, por escrito o por audio.${prueba}\n\nPodés preguntarme, por ejemplo:\n${TEXTOS.ejemplos}`
 }
 
 // ── Consultas ────────────────────────────────────────────────────────────────────────────────────

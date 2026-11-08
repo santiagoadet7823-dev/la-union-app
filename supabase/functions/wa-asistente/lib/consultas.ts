@@ -51,10 +51,12 @@ async function rpc(db: any, nombre: string, args: Record<string, unknown>) {
   return data
 }
 
-export async function ejecutar(db: any, empresa: string, consulta: string, a: Record<string, unknown>): Promise<R.Respuesta> {
+// `perfil` define el alcance (db/102): admin ve la empresa, el encargado solo a su gente. Buscar
+// clientes y precios no lo usa: los clientes son de la distribuidora (db/40).
+export async function ejecutar(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>): Promise<R.Respuesta> {
   const periodo = periodoDe(a)
   const rango = rangoDe(periodo)
-  const conRango = { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta }
+  const conRango = { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }
   const nombre = NOMBRE_PERIODO[periodo]
 
   switch (consulta) {
@@ -65,11 +67,11 @@ export async function ejecutar(db: any, empresa: string, consulta: string, a: Re
     case 'ventas_por_categoria':
       return R.ventasPorCategoria(await rpc(db, 'wa_ventas_categoria', conRango), nombre)
     case 'productos_mas_vendidos':
-      return R.productosVendidos(await rpc(db, 'ia_productos_ventas', conRango), nombre)
+      return R.productosVendidos(await rpc(db, 'wa_productos_ventas', conRango), nombre)
     case 'buscar_pedido': {
       const numero = textoDe(a.numero)
       if (!/\d/.test(numero)) return { texto: '¿Qué número de pedido querés ver?', voz: '¿Qué número de pedido querés ver?' }
-      return R.pedido(await rpc(db, 'wa_pedido', { p_empresa: empresa, p_numero: numero }), numero)
+      return R.pedido(await rpc(db, 'wa_pedido', { p_empresa: empresa, p_numero: numero, p_perfil: perfil }), numero)
     }
     case 'pedidos_de_cliente': {
       const texto = textoDe(a.cliente)
@@ -80,17 +82,17 @@ export async function ejecutar(db: any, empresa: string, consulta: string, a: Re
       const exacto = clientes[0].por_codigo ? clientes[0] : null
       if (!exacto && clientes.length > 1) return R.clienteAmbiguo(b, texto)
       const elegido = exacto ?? clientes[0]
-      return R.pedidosCliente(elegido, await rpc(db, 'wa_pedidos_cliente', { p_empresa: empresa, p_cliente: elegido.id }))
+      return R.pedidosCliente(elegido, await rpc(db, 'wa_pedidos_cliente', { p_empresa: empresa, p_cliente: elegido.id, p_perfil: perfil }))
     }
     case 'precio_producto': {
       const texto = textoDe(a.producto)
       return R.productos(await rpc(db, 'wa_buscar_productos', { p_empresa: empresa, p_texto: texto }), texto)
     }
     case 'equipo_en_calle':
-      return R.equipo(await rpc(db, 'wa_equipo', { p_empresa: empresa }))
+      return R.equipo(await rpc(db, 'wa_equipo', { p_empresa: empresa, p_perfil: perfil }))
     case 'clientes_sin_comprar': {
       const dias = Math.min(Math.max(Math.round(Number(a.dias)) || 30, 1), 365)
-      return R.clientesSinComprar(await rpc(db, 'wa_clientes_sin_comprar', { p_empresa: empresa, p_dias: dias }))
+      return R.clientesSinComprar(await rpc(db, 'wa_clientes_sin_comprar', { p_empresa: empresa, p_dias: dias, p_perfil: perfil }))
     }
     case 'consulta_stock':
       return { texto: R.TEXTOS.stock, voz: R.TEXTOS.stock }
