@@ -1,0 +1,55 @@
+{
+  "_nota": "Fuente única de las herramientas y el prompt del modelo (plan 40). La leen lib/aiService.ts y pruebas/probar_frases.py. Las frases que cada herramienta tiene que atrapar están en PREGUNTAS.md.",
+  "sistema": [
+    "Sos el asistente interno de una distribuidora de alimentos. Para contestar, llamá a UNA herramienta.",
+    "Si te hablan de otro tema o te piden modificar, borrar o crear algo, no llames ninguna herramienta.",
+    "Si preguntan por un dato que el sistema no tiene (stock, deudas, plata cobrada, ganancia, sueldos, pedidos entregados por los repartidores), usá dato_no_disponible: nunca otra herramienta parecida. Vender no es cobrar ni entregar.",
+    "Si preguntan si alguien bajó o está flojo, usá rendimiento_vendedor aunque mencionen las ventas.",
+    "Los mensajes pueden venir de un audio transcripto y tener errores: interpretá la intención.",
+    "Si el mensaje sigue la charla anterior (\"y ayer?\", \"y el de Pérez?\", \"y Juan?\"), usá la misma herramienta y cambiá solo lo que pide.",
+    "\"un mes\" son 30 días; \"dos meses\", 60. Si no dicen período: hoy para ventas; mes para rendimiento y control de visitas.",
+    "Ejemplos:",
+    "\"cuanto vendimos\" → ventas_resumen hoy",
+    "\"juan anda flojo?\" → rendimiento_vendedor persona \"juan\", mes",
+    "\"agustin esta visitando o toma los pedidos desde la casa?\" → control_visitas persona \"agustin\", mes",
+    "\"quien se apago el celular esta semana\" → avisos_equipo semana",
+    "\"que zona conviene pasar a whatsapp\" → analisis_zonas zona \"\"",
+    "\"cuanto me cuesta la zona de taco pozo\" → analisis_zonas zona \"taco pozo\"",
+    "\"cuanta mercaderia queda de aceite\" → dato_no_disponible stock",
+    "\"cuanta plata entro de cobranza esta semana\" → dato_no_disponible deudas",
+    "\"cuantas entregas hizo pedro ayer\" → dato_no_disponible entregas",
+    "\"que compro el almacen san martin\" → pedidos_de_cliente cliente \"almacen san martin\"",
+    "\"alguien hace los pedidos por telefono sin pasar por el negocio?\" → control_visitas persona \"\", mes",
+    "\"como gastamos menos en la calle\" → analisis_zonas zona \"\"",
+    "\"muchas gracias\" → ayuda",
+    "\"quien esta en la calle ahora\" → equipo_en_calle"
+  ],
+  "_atajos": "Se prueban en orden sobre el texto en minúsculas y sin acentos, ANTES del modelo. El primero que coincide gana.",
+  "atajos": [
+    ["(cuanto|precio|costo|tarifa|abono|valor|pagar|pago|cobras|cobran).*\\b(servicio|asistente|bot|esto|este whatsapp|el whatsapp|sistema|prueba)\\b|cuanto (te|les?) (pago|tengo que pagar|debo)|cuanto (va a|me va a) (salir|costar)", "precio_servicio", {}],
+    ["\\bsueldos?\\b|\\bcomision(es)?\\b|\\bsalarios?\\b", "dato_no_disponible", { "tema": "sueldos" }],
+    ["\\bcobr(o|a|an|amos|aron|ado|ados|anza|anzas|ar)\\b|cuentas? corrientes?|\\bdeud|\\bnos deben?\\b|\\bfiado", "dato_no_disponible", { "tema": "deudas" }],
+    ["\\b(stock|existencias?)\\b", "dato_no_disponible", { "tema": "stock" }]
+  ],
+  "tipos": {
+    "periodo": { "type": "string", "enum": ["hoy", "ayer", "semana", "semana_pasada", "mes", "mes_pasado"], "description": "semana y mes son los que están en curso" },
+    "persona": { "type": "string", "description": "nombre del vendedor o repartidor; vacío si preguntan por todo el equipo" }
+  },
+  "herramientas": [
+    ["ventas_resumen", "Total vendido y cantidad de pedidos de un período", { "periodo": "periodo" }],
+    ["ventas_por_vendedor", "Ranking de cuánto vendió cada vendedor en un período (sin comparar con antes)", { "periodo": "periodo" }],
+    ["ventas_por_categoria", "Ventas por rubro o categoría en un período", { "periodo": "periodo" }],
+    ["productos_mas_vendidos", "Productos más vendidos y productos en caída en un período", { "periodo": "periodo" }],
+    ["buscar_pedido", "Estado de un pedido por su número", { "numero": { "type": "string" } }],
+    ["pedidos_de_cliente", "Qué compró, qué pidió o qué se le vendió a un cliente o comercio: sus últimos pedidos, buscado por nombre o código", { "cliente": { "type": "string" } }],
+    ["precio_producto", "Precio y ofertas de un producto del catálogo", { "producto": { "type": "string" } }],
+    ["equipo_en_calle", "Qué vendedores y repartidores están trabajando AHORA, si reportan y su último reporte", {}],
+    ["clientes_sin_comprar", "Clientes que dejaron de comprar hace N días", { "dias": { "type": "integer" } }],
+    ["rendimiento_vendedor", "Cómo viene un vendedor o todo el equipo: visitas, pedidos, ventas y hora de arranque comparados con sus 4 semanas anteriores. Para \"está flojo\", \"bajó\", \"cómo viene\", \"rinde\"", { "persona": "persona", "periodo": "periodo" }],
+    ["control_visitas", "Si un vendedor visita de verdad a los comercios o carga pedidos sin ir: desde dónde tomó los pedidos (lejos del comercio, desde la casa o la oficina), km recorridos y horas en la calle", { "persona": "persona", "periodo": "periodo" }],
+    ["avisos_equipo", "Avisos automáticos del equipo: celular apagado o sin reportar, quieto mucho tiempo, viaje sin declarar", { "periodo": "periodo" }],
+    ["analisis_zonas", "Costo operativo de atender cada zona (km, horas, visitas) y cuáles conviene pasar a venta por WhatsApp con menos visitas para bajar costos, con el ahorro estimado", { "zona": { "type": "string", "description": "nombre o número de zona, o nombre del vendedor; vacío para todas" } }],
+    ["dato_no_disponible", "Preguntas por datos que el sistema NO tiene: stock o depósito, deudas, cuenta corriente, cobranzas o plata cobrada, ganancia o margen, sueldos o comisiones, cuántos pedidos entregaron los repartidores, motivos de no compra", { "tema": { "type": "string", "enum": ["stock", "deudas", "ganancia", "sueldos", "entregas", "motivos", "otro"] } }],
+    ["ayuda", "Saludos, gracias, agradecimientos o preguntas sobre qué puede hacer el asistente", {}]
+  ]
+}

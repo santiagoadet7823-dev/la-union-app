@@ -8,45 +8,36 @@
 export type Intercambio = { pregunta: string; consulta: string | null; argumentos: unknown }
 export type Eleccion = { consulta: string; argumentos: Record<string, unknown> }
 
-const PERIODO = {
-  type: 'string',
-  enum: ['hoy', 'ayer', 'semana', 'semana_pasada', 'mes', 'mes_pasado'],
-  description: 'semana y mes son los que están en curso',
+// Herramientas y prompt viven en herramientas.json (plan 40): la prueba automática
+// (pruebas/probar_frases.py) lee el mismo archivo, así lo que se prueba es lo que corre.
+import DEF from './herramientas.json' with { type: 'json' }
+
+/** Formato de Ollama. Un argumento escrito como texto ("periodo") es un tipo de `DEF.tipos`. */
+export function armarHerramientas(def: any) {
+  return def.herramientas.map(([name, description, args]: [string, string, Record<string, unknown>]) => {
+    const properties = Object.fromEntries(Object.entries(args).map(([k, v]) => [k, typeof v === 'string' ? def.tipos[v] : v]))
+    return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required: Object.keys(properties) } } }
+  })
 }
-const herramienta = (name: string, description: string, properties: Record<string, unknown> = {}) => ({
-  type: 'function',
-  function: {
-    name,
-    description,
-    parameters: { type: 'object', properties, required: Object.keys(properties) },
-  },
-})
 
-export const HERRAMIENTAS = [
-  herramienta('ventas_resumen', 'Total vendido y cantidad de pedidos de un período', { periodo: PERIODO }),
-  herramienta('ventas_por_vendedor', 'Ranking de ventas por vendedor en un período', { periodo: PERIODO }),
-  herramienta('ventas_por_categoria', 'Ventas por rubro o categoría en un período', { periodo: PERIODO }),
-  herramienta('productos_mas_vendidos', 'Productos más vendidos y productos en caída en un período', { periodo: PERIODO }),
-  herramienta('buscar_pedido', 'Estado de un pedido por su número', { numero: { type: 'string' } }),
-  herramienta('pedidos_de_cliente', 'Últimos pedidos de un cliente, buscado por nombre o código', { cliente: { type: 'string' } }),
-  herramienta('precio_producto', 'Precio y ofertas de un producto del catálogo', { producto: { type: 'string' } }),
-  herramienta('equipo_en_calle', 'Qué vendedores y repartidores están trabajando ahora y su último reporte'),
-  herramienta('clientes_sin_comprar', 'Clientes que dejaron de comprar hace N días', { dias: { type: 'integer' } }),
-  herramienta('consulta_stock', 'Cualquier pregunta sobre stock, existencias o depósito'),
-  herramienta('ayuda', 'Saludos, agradecimientos o preguntas sobre qué puede hacer el asistente'),
-]
-const NOMBRES = new Set(HERRAMIENTAS.map((h) => h.function.name))
-
-const SISTEMA = `Sos el asistente interno de una distribuidora de alimentos. Para contestar, llamá a UNA herramienta.
-Si te hablan de otro tema o te piden modificar, borrar o crear algo, no llames ninguna herramienta.
-Los mensajes pueden venir de un audio transcripto y tener errores: interpretá la intención.
-Si el mensaje sigue la charla anterior ("y ayer?", "y el de Pérez?"), usá la misma herramienta y cambiá solo lo que pide.
-"un mes" son 30 días; "dos meses", 60.`
+export const HERRAMIENTAS = armarHerramientas(DEF)
+const NOMBRES = new Set(HERRAMIENTAS.map((h: any) => h.function.name))
+const SISTEMA = (DEF.sistema as string[]).join('\n')
 
 // El modelo no alcanza para esto: en la prueba del 07/11, "anula el pedido 687" eligió buscar_pedido y
 // mostró el pedido sin aclarar nada, y quien lo pidió podía creer que se había anulado. Solo mira el
 // comienzo del mensaje, para no confundir preguntas como "cuántos pedidos se anularon".
 const PIDE_CAMBIO = /^(?:(?:che|dale|hola|por favor|porfa|podes|podrias|quiero|quisiera|necesito|hay que|me)[\s,]+)*(?:anul|borr|elimin|cancel|modific|cambi|agreg|asign|carg|cre)(?:a|ar|ame|alo|ala|alos|alas|arlo|arla)\b/
+
+/** Preguntas que el modelo confunde con ventas aunque el sistema no tenga el dato (plan 40: "¿cuánto
+ * cobramos hoy?" daba el total vendido en 2 de 2 pruebas). Se resuelven antes del modelo, con las
+ * reglas de `atajos` en herramientas.json, que la prueba automática también usa. */
+const ATAJOS = (DEF.atajos as [string, string, Record<string, unknown>][]).map(([re, consulta, argumentos]) => ({ re: new RegExp(re), consulta, argumentos }))
+export function atajo(texto: string): Eleccion | null {
+  const t = texto.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const a = ATAJOS.find((x) => x.re.test(t))
+  return a ? { consulta: a.consulta, argumentos: { ...a.argumentos } } : null
+}
 
 export function pideCambio(texto: string) {
   const t = texto.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')

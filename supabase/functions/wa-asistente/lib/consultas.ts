@@ -51,6 +51,17 @@ async function rpc(db: any, nombre: string, args: Record<string, unknown>) {
   return data
 }
 
+/** Persona por nombre, solo entre la gente que el perfil ve (db/103). Vacío = todo el equipo. */
+async function persona(db: any, empresa: string, perfil: string, v: unknown): Promise<{ id: string | null } | { respuesta: R.Respuesta }> {
+  const texto = textoDe(v)
+  if (!texto || /^(todos|todo el equipo|equipo|el equipo|vendedores|los vendedores)$/i.test(texto)) return { id: null }
+  const b = await rpc(db, 'wa_buscar_personas', { p_empresa: empresa, p_texto: texto, p_perfil: perfil })
+  const lista = b?.personas ?? []
+  if (!lista.length) return { respuesta: { texto: `No encontré a nadie de tu equipo con "${texto}".`, voz: 'No encontré a nadie de tu equipo con ese nombre.' } }
+  if (lista.length > 1) return { respuesta: R.personaAmbigua(lista, texto) }
+  return { id: lista[0].id }
+}
+
 // `perfil` define el alcance (db/102): admin ve la empresa, el encargado solo a su gente. Buscar
 // clientes y precios no lo usa: los clientes son de la distribuidora (db/40).
 export async function ejecutar(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>): Promise<R.Respuesta> {
@@ -94,8 +105,31 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
       const dias = Math.min(Math.max(Math.round(Number(a.dias)) || 30, 1), 365)
       return R.clientesSinComprar(await rpc(db, 'wa_clientes_sin_comprar', { p_empresa: empresa, p_dias: dias, p_perfil: perfil }))
     }
-    case 'consulta_stock':
-      return { texto: R.TEXTOS.stock, voz: R.TEXTOS.stock }
+    // ── Plan 40: rendimiento, control de visitas, avisos y zonas ──
+    case 'rendimiento_vendedor':
+    case 'control_visitas': {
+      // Sin período explícito, un mes: con un día no se puede comparar ni sacar conclusiones.
+      const p = PERIODOS.includes(a.periodo as Periodo) ? (a.periodo as Periodo) : 'mes'
+      const r = rangoDe(p)
+      const quien = await persona(db, empresa, perfil, a.persona)
+      if ('respuesta' in quien) return quien.respuesta
+      const args = { p_empresa: empresa, p_desde: r.desde, p_hasta: r.hasta, p_perfil: perfil, p_persona: quien.id }
+      const control = await rpc(db, 'wa_control_visitas', args)
+      if (consulta === 'control_visitas') return R.controlVisitas(control, NOMBRE_PERIODO[p], !!quien.id)
+      return R.rendimiento(await rpc(db, 'wa_rendimiento', args), control, NOMBRE_PERIODO[p], p, !!quien.id)
+    }
+    case 'avisos_equipo':
+      return R.avisos(await rpc(db, 'wa_avisos', { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }), nombre)
+    case 'analisis_zonas': {
+      const texto = textoDe(a.zona)
+      return R.zonas(await rpc(db, 'wa_zonas', { p_empresa: empresa, p_perfil: perfil, p_texto: texto }), texto)
+    }
+    // Pedido del 07/11: el precio del servicio lo cotiza Santiago al terminar el mes de prueba.
+    case 'precio_servicio':
+      return { texto: R.TEXTOS.precioServicio, voz: R.TEXTOS.precioServicio }
+    case 'dato_no_disponible':
+    case 'consulta_stock': // nombre viejo, por si queda en el historial de una charla
+      return R.datoNoDisponible(String(a.tema ?? 'stock'))
     case 'ayuda':
       return { texto: R.TEXTOS.ayuda, voz: 'Hola. Preguntame por ventas, pedidos, clientes, precios o el equipo, por escrito o por audio.' }
     default:

@@ -13,7 +13,7 @@
 //   Por los reintentos, `wamid` es único: un mensaje repetido no se procesa dos veces.
 // · Un número no autorizado no recibe respuesta ni le gasta el cupo de mensajes a la empresa.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { elegirConsulta, pideCambio, type Intercambio } from './lib/aiService.ts'
+import { atajo, elegirConsulta, pideCambio, type Intercambio } from './lib/aiService.ts'
 import { ejecutar, hoyEn } from './lib/consultas.ts'
 import { bienvenida, TEXTOS } from './lib/respuestas.ts'
 import { avisarEscribiendo, bajarAudio, enviarNotaDeVoz, enviarTexto } from './lib/whatsapp.ts'
@@ -157,7 +157,7 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
       } else {
         let respuesta: { texto: string; voz: string }
         try {
-          const eleccion = pideCambio(texto) ? null : await elegirConsulta(texto, await historial(cliente, waId, msg.id))
+          const eleccion = pideCambio(texto) ? null : atajo(texto) ?? await elegirConsulta(texto, await historial(cliente, waId, msg.id))
           consulta = eleccion?.consulta ?? null
           argumentos = eleccion?.argumentos ?? null
           respuesta = eleccion
