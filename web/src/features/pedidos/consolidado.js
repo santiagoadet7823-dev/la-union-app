@@ -89,7 +89,10 @@ function sumar(acc, l, p) {
 }
 
 function cerrar(acc) {
-  const { _pedidos, _comercios, _ts, ...resto } = acc
+  const { _pedidos: _pedidosAcc, _comercios, _ts, ...resto } = acc
+  // `consolidar` junta los pedidos en un Set; `fusionar` los recibe ya contados por día (un pedido es
+  // de un solo día, así que se suman sin contar dos veces).
+  const _pedidos = typeof _pedidosAcc === 'number' ? { size: _pedidosAcc } : _pedidosAcc
   void _ts
   const pedido = r2(resto.pedido)
   const rendido = r2(resto.rendido)
@@ -139,20 +142,30 @@ export function consolidar(pedidos, renglones) {
     }
   }
 
+  return armarResultado(arts, porVend, pedidos, sinRenglones, montoCabeceras)
+}
+
+/** Lo común a `consolidar` y `fusionar`: cerrar, ordenar, totales y avisos. */
+function armarResultado(arts, porVend, pedidos, sinRenglones, montoCabeceras) {
+  // Los totales salen de las sumas SIN redondear y se redondean una sola vez. Sumar los importes ya
+  // redondeados por artículo corría el total unos centavos (30 días: $ 405.869.226,87 contra el exacto
+  // ,84 — medido el 09/11 con enteros).
+  const crudo = (campo) => [...arts.values()].reduce((t, a) => t + num(a[campo]), 0)
+  const pedido = crudo('pedido'), rendido = crudo('rendido'), entregado = crudo('entregado')
+
   const articulos = [...arts.values()].map(cerrar)
     .sort((a, b) => COLL.compare(a.descripcion, b.descripcion))
   const porVendedor = [...porVend.values()].map(cerrar)
     .sort((a, b) => COLL.compare(a.vendedor, b.vendedor) || COLL.compare(a.descripcion, b.descripcion))
 
-  const sum = (campo) => r2(articulos.reduce((t, a) => t + (num(a[campo])), 0))
   const totales = {
     articulos: articulos.length,
-    pedido: sum('pedido'),
-    entregado: sum('entregado'),
-    faltante: sum('faltante'),
-    sinRendir: sum('sinRendir'),
-    importe: sum('importe'),
-    kg: sum('kg'),
+    pedido: r2(pedido),
+    entregado: r2(entregado),
+    faltante: r2(rendido - entregado),
+    sinRendir: r2(pedido - rendido),
+    importe: r2(crudo('importe')),
+    kg: r2(crudo('kg')),
     pedidos: pedidos.filter((p) => p.estado !== 'Anulado').length,
   }
   const diferencia = r2(totales.importe - montoCabeceras)
@@ -164,4 +177,134 @@ export function consolidar(pedidos, renglones) {
     sinUnidadesPorBulto: articulos.filter((a) => !a.bultos).length,
   }
   return { articulos, porVendedor, totales, avisos }
+}
+
+/* ── CARGA POR DÍA (plan 43) ─────────────────────────────────────────────────────────────────────
+ * La suma la hace la base (`consolidado_articulos`, db/105) y el teléfono la pide un día por vez, varios
+ * en paralelo, con barra de progreso. Acá se arman los tramos y se juntan las respuestas en la MISMA
+ * forma que devuelve `consolidar`, así la pantalla y las descargas no cambian lo que leen.
+ */
+
+/** 'YYYY-MM-DD' en hora del dispositivo (la misma con la que la pantalla arma el rango). */
+function diaLocal(ts) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Los pedidos de la lista agrupados por día de toma, del más viejo al más nuevo: [{ dia, ids }]. */
+export function tramosPorDia(pedidos) {
+  const m = new Map()
+  for (const p of pedidos) {
+    if (p.estado === 'Anulado') continue
+    const dia = diaLocal(p.created_at)
+    if (!m.has(dia)) m.set(dia, [])
+    m.get(dia).push(p.id)
+  }
+  return [...m.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([dia, ids]) => ({ dia, ids }))
+}
+
+/**
+ * Junta las respuestas de `consolidado_articulos` (una por día, en cualquier orden y aunque falten
+ * días: sirve también para el resultado parcial mientras carga).
+ *
+ * Formato de cada respuesta (ver db/105):
+ *   vendedores: [uuid|null] · clientes: [uuid] · con_renglones: n
+ *   articulos:  [[clave, descripcion, codigo, ts, unidades, categoria, marca, unidad_venta]]
+ *   filas:      [[vendedor, articulo, pedido, rendido, entregado, importe, kg, pedidos, [comercio]]]
+ *
+ * - Los comercios se juntan por uuid: el mismo comercio en dos días cuenta una vez.
+ * - La descripción y el código son los del renglón más nuevo de todos los días (`ts`), también en la
+ *   vista por vendedor (antes era el más nuevo de ese vendedor: sólo difiere si se renombró).
+ *
+ * @param {object[]} parciales  respuestas de la RPC
+ * @param {object[]} pedidos    los pedidos pedidos (los de los días que ya llegaron, para los avisos)
+ */
+export function fusionar(parciales, pedidos) {
+  const arts = new Map()
+  const porVend = new Map()
+  const nombre = new Map(pedidos.map((p) => [p.id_vendedor || 'sin', p.nombreVendedor || '—']))
+  const info = (clave) => ({ clave, codigo: '', descripcion: '', categoria: '', marca: '', unidadVenta: '', unidadesPorBulto: null })
+  const nuevo = (base) => ({ ...base, pedido: 0, rendido: 0, entregado: 0, importe: 0, kg: 0, _pedidos: 0, _comercios: new Set(), _ts: '' })
+  let conRenglones = 0
+
+  for (const r of parciales) {
+    if (!r) continue
+    conRenglones += num(r.con_renglones)
+    const vendedores = r.vendedores || []
+    const clientes = r.clientes || []
+    const artDia = r.articulos || []
+    // Datos del artículo: el más nuevo gana la descripción y el código; el catálogo es el de hoy.
+    for (const [clave, desc, cod, ts, unidades, categoria, marca, unidadVenta] of artDia) {
+      if (!arts.has(clave)) arts.set(clave, nuevo(info(clave)))
+      const a = arts.get(clave)
+      const t = String(ts || '')
+      if (t >= a._ts) {
+        a._ts = t
+        if (desc) a.descripcion = desc
+        if (cod) a.codigo = String(cod)
+      }
+      if (unidades != null && a.unidadesPorBulto == null) a.unidadesPorBulto = Number(unidades) || null
+      if (categoria && !a.categoria) a.categoria = categoria
+      if (marca && !a.marca) a.marca = marca
+      if (unidadVenta && !a.unidadVenta) a.unidadVenta = unidadVenta
+    }
+    for (const [vi, ai, pedido, rendido, entregado, importe, kg, nPedidos, cls] of r.filas || []) {
+      const clave = artDia[ai]?.[0]
+      if (clave == null) continue
+      const idV = vendedores[vi] ?? null
+      const kv = `${idV || 'sin'}|${clave}`
+      if (!porVend.has(kv)) porVend.set(kv, nuevo({ ...info(clave), idVendedor: idV, vendedor: nombre.get(idV || 'sin') || '—' }))
+      for (const acc of [arts.get(clave), porVend.get(kv)]) {
+        acc.pedido += num(pedido)
+        acc.rendido += num(rendido)
+        acc.entregado += num(entregado)
+        acc.importe += num(importe)
+        acc.kg += num(kg)
+        acc._pedidos += num(nPedidos)
+        for (const c of cls || []) if (clientes[c]) acc._comercios.add(clientes[c])
+      }
+    }
+  }
+  // La vista por vendedor muestra los datos del artículo (descripción, código, catálogo).
+  for (const v of porVend.values()) {
+    const a = arts.get(v.clave)
+    Object.assign(v, { codigo: a.codigo, descripcion: a.descripcion, categoria: a.categoria, marca: a.marca, unidadVenta: a.unidadVenta, unidadesPorBulto: a.unidadesPorBulto })
+  }
+
+  const vivos = pedidos.filter((p) => p.estado !== 'Anulado')
+  const montoCabeceras = vivos.reduce((t, p) => t + num(p.monto_total), 0)
+  return armarResultado(arts, porVend, vivos, Math.max(0, vivos.length - conRenglones), montoCabeceras)
+}
+
+/**
+ * Pide los tramos de a `paralelo` (4 por defecto) y avisa cada día que llega. Cada día se reintenta
+ * `reintentos` veces con espera creciente; el que sigue fallando queda en `fallidos` (la pantalla
+ * ofrece "Reintentar" sólo con esos). Si `signal` se aborta (se cerró la hoja), se deja de pedir.
+ *
+ * @param {{ tramos: {dia, ids}[], pedir: (ids, signal) => Promise<object>, onDia: (dia, resp) => void,
+ *           paralelo?: number, reintentos?: number, signal?: AbortSignal }} o
+ * @returns {Promise<string[]>} los días que no se pudieron cargar
+ */
+export async function cargarPorDia({ tramos, pedir, onDia, paralelo = 4, reintentos = 2, signal }) {
+  const cola = [...tramos]
+  const fallidos = []
+  const espera = (ms) => new Promise((r) => setTimeout(r, ms))
+  async function trabajador() {
+    while (cola.length && !signal?.aborted) {
+      const t = cola.shift()
+      for (let intento = 0; ; intento++) {
+        try {
+          const resp = await pedir(t.ids, signal)
+          if (!signal?.aborted) onDia(t.dia, resp)
+          break
+        } catch (e) {
+          if (signal?.aborted) return
+          if (intento >= reintentos) { fallidos.push(t.dia); console.warn('[consolidado] no cargó', t.dia, e); break }
+          await espera(400 * 3 ** intento)
+        }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(paralelo, tramos.length) }, trabajador))
+  return fallidos.sort()
 }

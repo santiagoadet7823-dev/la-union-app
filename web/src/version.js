@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.45.12'   // 09/11/2026: plan 42 — consolidado de artículos en Pedidos y varias personas a la vez
+export const APP_VERSION = '1.45.13'   // 09/11/2026: plan 43 — consolidado sumado en la base, día por día con barra de progreso

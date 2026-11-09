@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtCant } from '../../lib/format'
 import { normalizar } from '../../lib/texto'
@@ -6,8 +6,8 @@ import Overlay from '../../components/Overlay'
 import { BotonOrden, FilaOrden, useOrdenColumna } from '../../components/OrdenColumnas'
 import { useDevice } from '../../context/DeviceContext'
 import { compartirPdfNodo, montarImpresion } from '../../services/report/imprimir'
-import { itemsDePedidos } from './usePedidos'
-import { consolidar, textoBultos } from './consolidado'
+import { supabase } from '../../services/supabase'
+import { cargarPorDia, fusionar, textoBultos, tramosPorDia } from './consolidado'
 import { exportarConsolidadoCsv, exportarConsolidadoXlsx, lineasFiltro, nombreArchivo } from './exportarConsolidado'
 
 /**
@@ -16,8 +16,11 @@ import { exportarConsolidadoCsv, exportarConsolidadoXlsx, lineasFiltro, nombreAr
  * criterio de "Exportar para facturar" — si el consolidado sumara otra cosa que la lista, no habría
  * con qué revisarlo.
  *
- * Los renglones se leen al abrir (`itemsDePedidos`, paginado: PostgREST corta en 1.000 filas y
- * devuelve 200 igual) y la RLS los acota como a la lista: el encargado ve a su gente.
+ * 🩸 CARGA POR DÍA (plan 43). La 1.45.12 bajaba los renglones crudos (30 días ≈ 7,5 MB en ≈ 50 viajes
+ * seguidos) y la hoja quedaba en "Sumando…" como tildada. Ahora suma la base (`consolidado_articulos`,
+ * db/105, con la RLS de siempre: el encargado ve a su gente) y acá se pide UN DÍA POR VEZ, 4 en
+ * paralelo, con barra "Día N de M". Lo que llega se ve enseguida (parcial); las descargas esperan a
+ * que estén todos los días: nunca se baja un archivo a medias.
  *
  * props:
  *   pedidos   los pedidos visibles (sin anulados)
@@ -55,11 +58,30 @@ const Uv = ({ a }) => (a.unidadVenta ? <span style={sx('font-size:10px;font-weig
 /** Importe con 2 decimales SIEMPRE: en una columna de plata "$ 51.658,4" al lado de "$ 18.225" no se lee. */
 const pesos = (n) => '$ ' + (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const kgTxt = (n) => (n ? `${fmtCant(n)} kg` : '—')
+const ddmm = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`
+
+/** Un día a la base. `p_ids` va en el cuerpo del POST: cien uuid no rompen ninguna URL. */
+async function pedirDia(ids, signal) {
+  let q = supabase.rpc('consolidado_articulos', { p_ids: ids })
+  if (signal) q = q.abortSignal(signal)
+  const { data, error } = await q
+  if (error) throw error
+  return data
+}
+
+/** Días corridos del rango elegido (inclusive), para decir "30 días" aunque algunos no tengan pedidos. */
+function diasDelRango(desde, hasta) {
+  const a = Date.UTC(+desde.slice(0, 4), +desde.slice(5, 7) - 1, +desde.slice(8, 10))
+  const b = Date.UTC(+hasta.slice(0, 4), +hasta.slice(5, 7) - 1, +hasta.slice(8, 10))
+  return Math.round((b - a) / 86400000) + 1
+}
 
 export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
   const { isMobile } = useDevice()
-  const [estado, setEstado] = useState({ cargando: true, error: null, renglones: null })
-  const [ciclo, setCiclo] = useState(0)
+  const tramos = useMemo(() => tramosPorDia(pedidos), [pedidos])
+  const [hechos, setHechos] = useState(() => new Map()) // día → respuesta de la base
+  const [fallidos, setFallidos] = useState([])
+  const [ronda, setRonda] = useState(0)                  // "Reintentar" arranca otra ronda
   const [vista, setVista] = useState('art') // 'art' | 'vend'
   const [busqueda, setBusqueda] = useState('')
   const [orden, alternarOrden] = useOrdenColumna()
@@ -67,19 +89,38 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
 
   useEffect(() => montarImpresion(ID_PDF), [])
 
+  // Cada ronda pide sólo los días que todavía no llegaron. Cerrar la hoja corta lo que esté en curso.
+  // `hechosRef` es el espejo de `hechos` para saber qué falta sin depender de cuándo React aplique
+  // el estado (un actualizador de `setState` no corre necesariamente en el acto).
+  const hechosRef = useRef(hechos)
   useEffect(() => {
-    let vivo = true
-    setEstado((e) => ({ ...e, cargando: true, error: null }))
-    itemsDePedidos(pedidos.map((p) => p.id), { conProducto: true })
-      .then((renglones) => { if (vivo) setEstado({ cargando: false, error: null, renglones }) })
-      .catch((e) => { if (vivo) setEstado({ cargando: false, error: e?.message || 'sin conexión', renglones: null }) })
-    return () => { vivo = false }
-  }, [pedidos, ciclo])
+    const ctrl = new AbortController()
+    setFallidos([])
+    cargarPorDia({
+      tramos: tramos.filter((t) => !hechosRef.current.has(t.dia)),
+      pedir: pedirDia,
+      signal: ctrl.signal,
+      onDia: (dia, resp) => {
+        hechosRef.current = new Map(hechosRef.current).set(dia, resp)
+        setHechos(hechosRef.current)
+      },
+    }).then((f) => { if (!ctrl.signal.aborted) setFallidos(f) })
+    return () => ctrl.abort()
+  }, [tramos, ronda])
 
-  const resultado = useMemo(
-    () => (estado.renglones ? consolidar(pedidos, estado.renglones) : null),
-    [pedidos, estado.renglones],
-  )
+  const completo = hechos.size === tramos.length
+  const cargando = !completo && !fallidos.length
+  // Mientras carga, el resultado es PARCIAL: sólo con los pedidos de los días que ya llegaron, así
+  // los avisos (pedidos sin renglones, diferencia con "Vendido") no comparan contra lo que falta.
+  const resultado = useMemo(() => {
+    if (!hechos.size) return null
+    const dias = new Set(hechos.keys())
+    const idsListos = new Set(tramos.filter((t) => dias.has(t.dia)).flatMap((t) => t.ids))
+    return fusionar([...hechos.values()], pedidos.filter((p) => idsListos.has(p.id)))
+  }, [hechos, tramos, pedidos])
+  const pct = tramos.length ? Math.round((hechos.size / tramos.length) * 100) : 100
+  const ultimoDia = [...hechos.keys()].sort().pop()
+  const diasRango = diasDelRango(meta.desdeDia, meta.hastaDia)
 
   const filas = useMemo(() => {
     if (!resultado) return []
@@ -99,7 +140,7 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
   const titulo = `Consolidado de artículos · ${meta.rangoTexto}`
 
   async function bajar(tipo) {
-    if (!resultado) return
+    if (!resultado || !completo) return
     setBajando(tipo)
     try {
       const m = metaCompleta()
@@ -122,12 +163,14 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
   const hayKg = !!t && t.kg > 0
   const columnas = COLUMNAS_ART.filter(([c]) => (hayRendido || !['entregado', 'faltante', 'sinRendir'].includes(c)) && (hayKg || c !== 'kg'))
   const ver = (c) => columnas.some(([k]) => k === c)
+  // Las descargas, sólo con todos los días: un Excel a medias se confunde con uno completo.
+  const listo = !!resultado && completo
   const btn = (activo) => ({
     ...sx('flex:1;min-height:44px;padding:0 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer'),
     border: activo ? 'none' : '1px solid var(--line2)',
     background: activo ? 'var(--primary)' : 'var(--surface)',
     color: activo ? 'var(--on-primary)' : 'var(--text)',
-    opacity: !resultado || bajando ? 0.55 : 1,
+    opacity: !listo || bajando ? 0.55 : 1,
   })
 
   return (
@@ -141,13 +184,13 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
       subtitle={`${meta.rangoTexto} · ${meta.personasTexto}`}
       footer={(
         <div className="lu-no-print" style={sx('display:flex;gap:8px;width:100%')}>
-          <button type="button" className="lu-press" disabled={!resultado || !!bajando} onClick={() => bajar('xlsx')} style={btn(true)}>
+          <button type="button" className="lu-press" disabled={!listo || !!bajando} onClick={() => bajar('xlsx')} style={btn(true)}>
             {bajando === 'xlsx' ? 'Armando…' : 'Excel'}
           </button>
-          <button type="button" className="lu-press" disabled={!resultado || !!bajando} onClick={() => bajar('pdf')} style={btn(false)}>
+          <button type="button" className="lu-press" disabled={!listo || !!bajando} onClick={() => bajar('pdf')} style={btn(false)}>
             PDF
           </button>
-          <button type="button" className="lu-press" disabled={!resultado || !!bajando} onClick={() => bajar('csv')} style={btn(false)}>
+          <button type="button" className="lu-press" disabled={!listo || !!bajando} onClick={() => bajar('csv')} style={btn(false)}>
             {bajando === 'csv' ? 'Armando…' : 'CSV'}
           </button>
         </div>
@@ -159,19 +202,49 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
         </div>
       )}
 
-      {estado.cargando && (
-        <div style={sx('padding:30px;text-align:center;color:var(--faint);font-size:13px')}>Sumando los renglones de {pedidos.length} pedidos…</div>
-      )}
-      {estado.error && (
-        <div style={sx('padding:13px;border:1px solid var(--danger);border-radius:var(--r-lg);color:var(--danger);font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap')}>
-          <span style={sx('flex:1;min-width:0')}>No se pudieron leer los renglones: {estado.error}</span>
-          <button type="button" className="lu-press" onClick={() => setCiclo((c) => c + 1)} style={sx('padding:6px 10px;border:1px solid var(--danger);border-radius:var(--r-md);background:transparent;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer')}>Reintentar</button>
+      {/* Progreso: cuántos días se eligieron, cuántos tienen pedidos y cuántos ya llegaron. Se queda a
+          la vista al terminar (en verde) para que se sepa que lo de abajo está completo. */}
+      <div role="status" aria-live="polite" style={sx('padding:10px 12px;margin-bottom:10px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface2)')}>
+        <div style={sx('display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12.5px;margin-bottom:7px')}>
+          <span>
+            <b>{diasRango} {diasRango === 1 ? 'día' : 'días'}</b>
+            {tramos.length !== diasRango && <span style={sx('color:var(--muted)')}> · {tramos.length} con pedidos</span>}
+            <span style={sx('color:var(--muted)')}> · {pedidos.length} pedidos</span>
+          </span>
+          <span style={{ ...sx('font-family:var(--font-mono);font-weight:700'), color: completo ? 'var(--success)' : 'var(--deep)' }}>
+            {completo ? 'Completo' : `Día ${hechos.size} de ${tramos.length}${ultimoDia ? ` · ${ddmm(ultimoDia)}` : ''} · ${pct}%`}
+          </span>
         </div>
+        <div style={sx('height:8px;border-radius:99px;background:var(--line);overflow:hidden')}>
+          <div style={{
+            ...sx('height:100%;border-radius:99px;transition:width .25s ease'),
+            width: `${pct}%`,
+            background: completo ? 'var(--success)' : fallidos.length ? 'var(--warning)' : 'var(--primary)',
+          }} />
+        </div>
+        {fallidos.length > 0 && (
+          <div style={sx('display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:9px;font-size:12px;color:var(--danger)')}>
+            <span style={sx('flex:1;min-width:0')}>
+              No se pudo cargar {fallidos.length === 1 ? 'el' : 'los días'} {fallidos.map(ddmm).join(', ')}. Lo de abajo está incompleto.
+            </span>
+            <button type="button" className="lu-press" onClick={() => setRonda((r) => r + 1)}
+              style={sx('padding:6px 10px;border:1px solid var(--danger);border-radius:var(--r-md);background:transparent;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer')}>
+              Reintentar {fallidos.length === 1 ? 'ese día' : `esos ${fallidos.length}`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {!resultado && cargando && (
+        <div style={sx('padding:20px;text-align:center;color:var(--faint);font-size:13px')}>Sumando el primer día…</div>
       )}
 
-      {resultado && !estado.cargando && (
+      {resultado && (
         <>
-          {/* Totales */}
+          {/* Totales: mientras cargan los días, crecen en vivo y dicen "parcial". */}
+          {!completo && (
+            <div style={sx('font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--warning);margin-bottom:4px')}>PARCIAL · faltan {tramos.length - hechos.size} {tramos.length - hechos.size === 1 ? 'día' : 'días'}</div>
+          )}
           <div style={sx('display:flex;gap:16px;flex-wrap:wrap;padding:11px 13px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:10px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
             {[
               ['Artículos', t.articulos],
@@ -188,7 +261,7 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
           </div>
 
           {/* Avisos: lo que no cierra se dice, no se esconde. */}
-          {(av.pedidosSinRenglones > 0 || av.diferenciaImporte !== 0 || t.sinRendir > 0) && (
+          {completo && (av.pedidosSinRenglones > 0 || av.diferenciaImporte !== 0 || t.sinRendir > 0) && (
             <div style={sx('padding:9px 12px;background:var(--warning-tint);border:1px solid var(--warning);border-radius:var(--r-lg);margin-bottom:10px;font-size:12px;line-height:1.55;color:var(--text)')}>
               {t.sinRendir > 0 && (hayRendido
                 ? <div>• {fmtCant(t.sinRendir)} todavía <b>sin rendir</b> por el repartidor: no cuentan como entregadas ni como faltante.</div>
