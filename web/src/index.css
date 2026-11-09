@@ -590,6 +590,10 @@ body {
    `<body>` mientras dura la impresión y lo devuelve a su lugar al terminar. El porqué de elegir eso
    antes que un selector más listo (`:has()`, o neutralizar los ancestros uno por uno) está en ese
    archivo — resumen: `:has()` no existe en los WebView viejos que este parque todavía tiene. */
+/* Un imprimible que en pantalla no se muestra: la versión para papel del consolidado de artículos
+   (plan 42) es una tabla simple, distinta de la vista con pestañas y tarjetas del teléfono. */
+.lu-solo-print { display: none; }
+
 @media print {
   @page { margin: 14mm; }
 
@@ -615,6 +619,9 @@ body {
 
   /* Controles, solapas y botones de acción: no son parte del documento. */
   .lu-no-print { display: none !important; }
+
+  /* Imprimibles que no se ven en pantalla (consolidado de artículos, plan 42). */
+  .lu-imprimible.lu-solo-print { display: block !important; }
 
   /* Los navegadores descartan fondos e imágenes de fondo al imprimir salvo que se pida lo
      contrario, y acá el color ES el dato: la barra de la jornada, el rayado de "sin reportar" y

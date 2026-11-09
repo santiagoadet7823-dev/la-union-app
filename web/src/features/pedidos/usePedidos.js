@@ -231,19 +231,23 @@ export async function itemsDePedido(idPedido) {
  * y que su importador rechaza. La relación se conserva sólo como respaldo para los pedidos
  * anteriores a la migración, y por eso el orden del `||` no es intercambiable.
  *
+ * `conProducto` (plan 42, consolidado): trae además del catálogo de HOY las unidades por bulto,
+ * categoría, marca y unidad de venta — no hay copia de eso en el renglón.
+ *
  * @returns {Promise<Map<string, object[]>>} id de pedido → sus líneas
  */
-export async function itemsDePedidos(ids) {
+export async function itemsDePedidos(ids, { conProducto = false } = {}) {
   const porPedido = new Map()
   if (!ids?.length) return porPedido
   const LOTE = 100
   const PAGINA = 500
+  const producto = conProducto ? 'codigo, unidades, categoria, marca, unidad_venta' : 'codigo'
   for (let i = 0; i < ids.length; i += LOTE) {
     const trozo = ids.slice(i, i + LOTE)
     for (let desde = 0; ; desde += PAGINA) {
       const { data, error } = await supabase
         .from('pedido_items')
-        .select('id, id_pedido, id_producto, codigo_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( codigo )')
+        .select(`id, id_pedido, id_producto, codigo_producto, descripcion, cantidad, cantidad_entregada, motivo_faltante, precio_unitario, peso_kg, pedidos!inner(id_empresa), producto:productos ( ${producto} )`)
         .in('id_pedido', trozo)
         .order('descripcion', { ascending: true })
         .order('id', { ascending: true }) // desempate estable: sin él, `range` puede repetir o saltear

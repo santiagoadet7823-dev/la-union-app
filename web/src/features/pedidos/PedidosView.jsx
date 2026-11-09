@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, hoyStr } from '../../lib/format'
 import { useAuth } from '../../context/AuthContext'
+import { useTenant } from '../../context/TenantContext'
 import TicketPedido from './TicketPedido'
 import DetallePedido, { fmtFecha } from './DetallePedido'
 import EditarPedidoSheet from './EditarPedidoSheet'
@@ -10,6 +11,8 @@ import { textoPapelera, porVencer, DIAS_PAPELERA } from './papelera'
 import { exportarPedidosAscii } from './exportarPedidos'
 import { Bajar, Whatsapp } from '../../components/icons'
 import AvisoCuarentena from '../../components/AvisoCuarentena'
+import SelectorPersonas from './SelectorPersonas'
+import ConsolidadoSheet from './ConsolidadoSheet'
 import usePerfilesEquipo from '../../hooks/usePerfilesEquipo'
 import useLotesExport from './useLotesExport'
 import { motivoRetencion, TEXTO_RETENCION } from './exportado'
@@ -106,7 +109,8 @@ function rangoDeFechas(a, b) {
 }
 
 export default function PedidosView({ onToast }) {
-  const { user, rol, idEmpresa } = useAuth()
+  const { user, rol, idEmpresa, perfil } = useAuth()
+  const { esTodas } = useTenant()
   // La llave del envío de clientes (db/92): con ella prendida, un pedido espera a que su cliente
   // nuevo llegue al ERP. Va como argumento para que la lista diga lo mismo que `pedido_exportable`.
   const { activo: clientesActivo } = useEnvioClientesErp(idEmpresa)
@@ -115,7 +119,10 @@ export default function PedidosView({ onToast }) {
   // "Elegir fechas": arranca en la última semana, así al tocarlo no cambia lo que se está viendo.
   const [fechaDesde, setFechaDesde] = useState(() => hoyStr(new Date(Date.now() - 6 * 86400000)))
   const [fechaHasta, setFechaHasta] = useState(() => hoyStr())
-  const [filtroVendedor, setFiltroVendedor] = useState('')
+  // Personas elegidas (plan 42): un Set de ids, vacío = todas. Se filtra EN MEMORIA, no en la
+  // consulta: con varias personas, filtrar en el servidor sacaría del selector a las no tildadas
+  // (el selector sale de lo cargado) y ya no habría cómo sumarlas sin volver a "todas".
+  const [vendedoresSel, setVendedoresSel] = useState(() => new Set())
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')         // '' | uno de ESTADOS_ENTREGA
   const [filtroRepartidor, setFiltroRepartidor] = useState('') // '' | id | 'sin'
@@ -142,6 +149,7 @@ export default function PedidosView({ onToast }) {
   const [editando, setEditando] = useState(null)  // { pedido, lineas } — el que se está corrigiendo
   const [cargandoDetalle, setCargandoDetalle] = useState(false)
   const [exportando, setExportando] = useState(false)
+  const [consolidado, setConsolidado] = useState(null) // { pedidos, meta } — foto de la lista al abrir
 
   const dias = RANGOS.find((r) => r.key === rango)?.dias ?? 6
   // `useMemo` sobre el rango: sin él, cada render arma dos Date nuevas, cambian las dependencias
@@ -155,11 +163,20 @@ export default function PedidosView({ onToast }) {
      sin ella no habría con qué numerar la pestaña, y una papelera que no dice cuánto tiene adentro
      es una que nadie abre. Entre las dos traen las mismas filas que traía la consulta única de
      antes — el costo no cambió, se repartió. */
-  const { pedidos: activos, cargando, error, recargar, aplicar: aplicarActivo, quitar: quitarActivo } = usePedidos({
-    desde, hasta, idVendedor: filtroVendedor || null,
+  const { pedidos: activosRango, cargando, error, recargar, aplicar: aplicarActivo, quitar: quitarActivo } = usePedidos({
+    desde, hasta, idVendedor: null,
   })
-  const { pedidos: anulados, cargando: cargandoPapelera, error: errorPapelera, recargar: recargarPapelera, aplicar: aplicarAnulado, quitar: quitarAnulado } =
-    usePedidos({ desde, hasta, idVendedor: filtroVendedor || null, papelera: true })
+  const { pedidos: anuladosRango, cargando: cargandoPapelera, error: errorPapelera, recargar: recargarPapelera, aplicar: aplicarAnulado, quitar: quitarAnulado } =
+    usePedidos({ desde, hasta, idVendedor: null, papelera: true })
+  // Las personas salen de las dos listas COMPLETAS del rango: si alguien sólo tiene pedidos
+  // anulados, tiene que seguir estando en el selector — si no, filtrar por esa persona sería
+  // imposible justo cuando se la quiere revisar.
+  const personas = useMemo(() => vendedoresDe([...activosRango, ...anuladosRango]), [activosRango, anuladosRango])
+  // Lo mismo que antes hacía la consulta con `id_vendedor`: el resto de la pantalla (pestañas,
+  // retenidos, "de N", Vendido, Exportar) sigue viendo sólo a las personas elegidas.
+  const dePersonas = useCallback((lista) => (vendedoresSel.size ? lista.filter((p) => vendedoresSel.has(p.id_vendedor)) : lista), [vendedoresSel])
+  const activos = useMemo(() => dePersonas(activosRango), [dePersonas, activosRango])
+  const anulados = useMemo(() => dePersonas(anuladosRango), [dePersonas, anuladosRango])
 
   const enPapelera = vista === 'papelera'
   const pedidosVista = enPapelera ? anulados : activos
@@ -259,10 +276,6 @@ export default function PedidosView({ onToast }) {
     setDetalle((d) => (d && d.pedido?.id === pedido.id ? { ...d, pedido: { ...d.pedido, ...pedido } } : d))
   }, [aplicarActivo, aplicarAnulado, quitarActivo, quitarAnulado])
 
-  // Las personas salen de las dos listas: si alguien sólo tiene pedidos anulados en el rango, tiene
-  // que seguir estando en el selector — si no, filtrar por esa persona sería imposible justo cuando
-  // se la quiere revisar.
-  const personas = useMemo(() => vendedoresDe([...activos, ...anulados]), [activos, anulados])
   // Sobre lo que se ve: con un filtro puesto, "Vendido" es lo vendido de esa selección.
   const totalVendido = (enPapelera ? activos : pedidos).reduce((a, p) => a + Number(p.monto_total || 0), 0)
 
@@ -296,6 +309,38 @@ export default function PedidosView({ onToast }) {
     } finally {
       setExportando(false)
     }
+  }
+
+  /**
+   * CONSOLIDADO DE ARTÍCULOS (plan 42). Mismo criterio que `exportar()`: lo que la lista muestra
+   * (rango, personas y filtros), sin anulados. Se abre con una FOTO de la lista: si un pedido cambia
+   * mientras está abierto, el consolidado no se recalcula por debajo de quien lo está leyendo.
+   */
+  function abrirConsolidado() {
+    const lista = pedidos.filter((p) => p.estado !== 'Anulado')
+    if (!lista.length) { onToast?.('No hay pedidos en la lista para consolidar.'); return }
+    const dd = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}`
+    // Los días del rango, en hora local (el `hasta` es exclusivo: se le resta un instante).
+    const desdeDia = hoyStr(new Date(desde))
+    const hastaDia = hoyStr(new Date(new Date(hasta).getTime() - 1))
+    const elegidas = personas.filter((p) => vendedoresSel.has(p.id)).map((p) => p.nombre)
+    const nombreRep = (id) => repartidores.find((r) => r.id === id)?.nombre || 'repartidor'
+    const otros = []
+    if (filtroEstado) otros.push(`Estado: ${filtroEstado}`)
+    if (filtroRepartidor) otros.push(filtroRepartidor === 'sin' ? 'Sin repartidor' : `Repartidor: ${nombreRep(filtroRepartidor)}`)
+    if (filtroLote) otros.push(filtroLote === 'sin' ? 'ERP: sin exportar' : filtroLote === 'ret' ? 'ERP: retenidos' : `ERP: lote #${filtroLote}`)
+    if (diaEntregaFiltro) otros.push(`Entrega: ${dd(diaEntregaFiltro)}`)
+    if (busqueda.trim()) otros.push(`Búsqueda: "${busqueda.trim()}"`)
+    setConsolidado({
+      pedidos: lista,
+      meta: {
+        desdeDia, hastaDia,
+        rangoTexto: desdeDia === hastaDia ? dd(desdeDia) : `${dd(desdeDia)} al ${dd(hastaDia)}`,
+        personasTexto: !vendedoresSel.size ? 'Todas las personas' : elegidas.join(', ') || `${vendedoresSel.size} personas`,
+        otrosFiltros: otros,
+        quien: perfil?.nombre || '',
+      },
+    })
   }
 
   /** Asigna (o saca) el repartidor a todo lo seleccionado, en UNA mutación (`updateMany`). Como el
@@ -368,14 +413,7 @@ export default function PedidosView({ onToast }) {
           </div>
         )}
 
-        <select
-          value={filtroVendedor}
-          onChange={(e) => setFiltroVendedor(e.target.value)}
-          style={sx('padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')}
-        >
-          <option value="">Todas las personas</option>
-          {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <SelectorPersonas personas={personas} valor={vendedoresSel} onCambio={setVendedoresSel} />
 
         <input
           type="search"
@@ -389,13 +427,32 @@ export default function PedidosView({ onToast }) {
         {/* Para facturar en el sistema del cliente. Va con los filtros y no arriba del todo porque
             lo que baja es EXACTAMENTE lo que la lista muestra. No aparece en la papelera: ahí no hay
             nada que facturar, y un botón de exportar sobre pedidos anulados sólo puede terminar mal. */}
+        {/* Consolidado de artículos (plan 42): lo mismo que la lista, sumado por artículo. Con
+            "todas las empresas" (superadmin) mezclaría distribuidoras: se pide elegir una. */}
+        {!enPapelera && (
+        <button
+          onClick={abrirConsolidado}
+          disabled={cargando || esTodas || !pedidos.length}
+          title={esTodas ? 'Elegí una empresa para sacar el consolidado' : 'Total por artículo de los pedidos de la lista'}
+          className="lu-press"
+          style={{
+            ...sx('margin-left:auto;display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
+            border: '1px solid var(--primary)',
+            background: 'var(--primary-tint)',
+            color: 'var(--deep)',
+            opacity: cargando || esTodas || !pedidos.length ? 0.5 : 1,
+          }}
+        >
+          Consolidado
+        </button>
+        )}
         {!enPapelera && (
         <button
           onClick={exportar}
           disabled={exportando || cargando}
           className="lu-press"
           style={{
-            ...sx('margin-left:auto;display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
+            ...sx('display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
             border: '1px solid var(--line2)',
             background: 'var(--surface)',
             color: 'var(--muted)',
@@ -769,6 +826,15 @@ export default function PedidosView({ onToast }) {
           userId={user?.id || null}
           onCerrar={() => setEditando(null)}
           onGuardado={(p) => alAplicado({ accion: 'editar', pedido: p })}
+          onToast={onToast}
+        />
+      )}
+
+      {consolidado && (
+        <ConsolidadoSheet
+          pedidos={consolidado.pedidos}
+          meta={consolidado.meta}
+          onCerrar={() => setConsolidado(null)}
           onToast={onToast}
         />
       )}
