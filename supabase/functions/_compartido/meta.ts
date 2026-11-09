@@ -153,17 +153,33 @@ export function clienteMeta(n: Numero) {
     },
 
     async enviarNotaDeVoz(a: string, ogg: Uint8Array) {
-      const form = new FormData()
-      form.append('messaging_product', 'whatsapp')
-      form.append('type', 'audio/ogg')
-      form.append('file', new Blob([ogg], { type: 'audio/ogg' }), 'respuesta.ogg')
-      const r = await fetch(`${base()}/${n.phoneNumberId}/media`, {
-        method: 'POST', headers: autorizacion(), body: form, signal: AbortSignal.timeout(30_000),
-      })
-      if (!r.ok) throw new Error(`meta-subir-${r.status}: ${(await r.text()).slice(0, 300)}`)
-      const { id } = await r.json()
+      const id = await subirMedia(ogg, 'audio/ogg', 'respuesta.ogg')
       return wamidDe(await enviar({ to: a, type: 'audio', audio: { id, voice: true } }))
     },
+
+    /** Audio grabado en el CRM (ogg/opus, mp4, mpeg, aac o amr: los que acepta Meta). */
+    async enviarAudio(a: string, datos: Uint8Array, mime: string) {
+      const id = await subirMedia(datos, mime, `audio.${mime.split('/')[1] ?? 'bin'}`)
+      return wamidDe(await enviar({ to: a, type: 'audio', audio: { id, voice: mime === 'audio/ogg' } }))
+    },
+
+    async enviarImagen(a: string, datos: Uint8Array, mime: string, epigrafe?: string | null) {
+      const id = await subirMedia(datos, mime, `imagen.${mime.split('/')[1] ?? 'bin'}`)
+      return wamidDe(await enviar({ to: a, type: 'image', image: { id, ...(epigrafe ? { caption: epigrafe.slice(0, 1024) } : {}) } }))
+    },
+  }
+
+  /** Sube un archivo a Meta y devuelve su id de media (vale 30 días para mandarlo). */
+  async function subirMedia(datos: Uint8Array, mime: string, nombre: string): Promise<string> {
+    const form = new FormData()
+    form.append('messaging_product', 'whatsapp')
+    form.append('type', mime)
+    form.append('file', new Blob([datos], { type: mime }), nombre)
+    const r = await fetch(`${base()}/${n.phoneNumberId}/media`, {
+      method: 'POST', headers: autorizacion(), body: form, signal: AbortSignal.timeout(30_000),
+    })
+    if (!r.ok) throw new Error(`meta-subir-${r.status}: ${(await r.text()).slice(0, 300)}`)
+    return (await r.json()).id
   }
 }
 
