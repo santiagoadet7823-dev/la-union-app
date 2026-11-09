@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#F6F4EE" />
+    <meta name="robots" content="noindex" />
+    <title>CRM · DisT-At</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/space-grotesk-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Mismo bootstrap de tema que index.html (clave `launion-theme`, ver el comentario allá):
+         sin esto el primer cuadro sale en claro aunque la persona haya elegido oscuro. -->
+    <script>
+      (function () {
+        var d = document.documentElement, modo = 'light', g = null, oscuro = false, tema, m;
+        try { g = window.localStorage.getItem('launion-theme'); } catch (e) {}
+        if (g === 'light' || g === 'dark' || g === 'auto') modo = g;
+        try { oscuro = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) {}
+        tema = modo === 'auto' ? (oscuro ? 'dark' : 'light') : modo;
+        d.setAttribute('data-theme', tema);
+        d.setAttribute('data-theme-mode', modo);
+        m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', tema === 'dark' ? '#0E0E10' : '#F6F4EE');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/crm/main.jsx"></script>
+  </body>
+</html>

@@ -1,6 +1,8 @@
 node_modules
 dist
 dist-ssr
+dist-crm
+dist-selfhost
 *.local
 .DS_Store
 

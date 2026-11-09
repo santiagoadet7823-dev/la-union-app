@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "dev:crm": "vite --config vite.crm.config.js",
+    "build:crm": "vite build --config vite.crm.config.js && node -e \"require('fs').renameSync('dist-crm/crm.html','dist-crm/index.html')\"",
     "lint": "eslint src",
     "cap:sync": "cap sync",
     "cap:android": "cap sync android && cap open android",
