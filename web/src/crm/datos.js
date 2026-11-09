@@ -201,7 +201,7 @@ export function textoError(r) {
   const c = r?.error
   const tabla = {
     'solo-lectura': 'Modo demostración: solo lectura.',
-    'sin-permiso': 'Tu usuario no tiene permiso para operar el CRM.',
+    'sin-permiso': 'Tu usuario no tiene permiso para operar el ARM.',
     'sin-control': `Lo está atendiendo ${r?.asignada_nombre || 'otra persona'}.`,
     'fuera-de-ventana': 'Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo deja escribirle con una plantilla aprobada.',
     'sin-cupo': 'Se llegó al tope de mensajes del mes.',

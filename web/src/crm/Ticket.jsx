@@ -110,7 +110,7 @@ export default function Ticket({ conv, yo, soloVer }) {
         <div className="crm-h2">{borrador ? 'Ticket en armado' : 'Ticket'}</div>
         {borrador && (
           <div className="crm-muted crm-chico">
-            {borrador.creado_por_bot ? 'Lo armó el bot' : 'Armado en el CRM'}
+            {borrador.creado_por_bot ? 'Lo armó el bot' : 'Armado en el ARM'}
             {borrador.editado_nombre ? ` · última edición: ${borrador.editado_nombre}` : ''}
             {borrador.enviado_ts ? ` · enviado al cliente ${horaLarga(borrador.enviado_ts)}` : ''}
           </div>

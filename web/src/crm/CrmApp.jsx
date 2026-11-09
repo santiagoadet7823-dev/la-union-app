@@ -13,7 +13,9 @@ import { supabase } from '../services/supabase'
 import Escritorio from './Escritorio'
 
 /**
- * CRM de WhatsApp (crm.dist-at.com, plan 41 paso 4).
+ * ARM de WhatsApp (arm.dist-at.com, plan 41 paso 4). Hasta el 09/11/2026 se llamaba "CRM": la marca
+ * visible pasó a ARM, pero los nombres internos (tablas `crm_*`, permisos `crm`/`crm_ver`, funciones
+ * `crm-enviar`/`crm-ticket`, esta carpeta) quedan como están para no tocar lo ya desplegado.
  *
  * El ingreso es EL MISMO de la app (AuthContext: Google o usuario y contraseña, 2FA, política,
  * cambio de contraseña obligatorio): se reusan las pantallas tal cual, en el mismo orden que el
@@ -29,10 +31,10 @@ function SinAcceso() {
   return (
     <Centro>
       <div className="crm-tarjeta" style={{ maxWidth: 420 }}>
-        <div className="crm-marca">DisT-At <span>CRM</span></div>
-        <h1 className="crm-h1">No tenés acceso al CRM</h1>
+        <div className="crm-marca">DisT-At <span>ARM</span></div>
+        <h1 className="crm-h1">No tenés acceso al ARM</h1>
         <p className="crm-muted">
-          Tu usuario{perfil?.nombre ? ` (${perfil.nombre})` : ''} entra a DisT-At, pero no tiene el permiso del CRM de
+          Tu usuario{perfil?.nombre ? ` (${perfil.nombre})` : ''} entra a DisT-At, pero no tiene el permiso del ARM de
           WhatsApp. Pedíselo al administrador de tu empresa.
         </p>
         <button className="crm-btn" onClick={signOut}>Cerrar sesión</button>
@@ -65,7 +67,7 @@ function PuertaCrm() {
 
   useEffect(() => { if (user?.id) consultar() }, [user?.id, consultar])
 
-  if (acceso === undefined) return <Esperando texto="tu acceso al CRM" error={error} onRetry={consultar} />
+  if (acceso === undefined) return <Esperando texto="tu acceso al ARM" error={error} onRetry={consultar} />
   if (!acceso) return <SinAcceso />
   return (
     <TenantProvider>

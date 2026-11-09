@@ -51,7 +51,7 @@ export default function Escritorio({ acceso }) {
   // Título de la pestaña con lo que espera a una persona: se ve aunque el CRM esté de fondo.
   const esperando = lista.filter((c) => c.estado === 'esperando_persona').length
   useEffect(() => {
-    document.title = esperando ? `(${esperando}) CRM · DisT-At` : 'CRM · DisT-At'
+    document.title = esperando ? `(${esperando}) ARM · DisT-At` : 'ARM · DisT-At'
   }, [esperando])
 
   const abrir = (id) => { setAbierta(id); setMovil('chat') }
@@ -60,7 +60,7 @@ export default function Escritorio({ acceso }) {
   return (
     <div className="crm-app" data-movil={movil}>
       <header className="crm-barra">
-        <div className="crm-marca">DisT-At <span>CRM</span></div>
+        <div className="crm-marca">DisT-At <span>ARM</span></div>
         {puedeCambiarScope ? (
           <select className="crm-select" value={idEmpresaActiva || ''} onChange={(e) => { setEmpresaActiva(e.target.value); setAbierta(null) }}
             aria-label="Empresa">
