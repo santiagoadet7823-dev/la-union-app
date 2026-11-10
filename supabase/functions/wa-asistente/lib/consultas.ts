@@ -51,14 +51,30 @@ async function rpc(db: any, nombre: string, args: Record<string, unknown>) {
   return data
 }
 
+// ── Alias aprendidos (plan 44): "Gabi" → "Gabriel". Se compara el texto entero, sin acentos. ──
+const sinAcentos = (t: string) => t.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+type TipoAlias = 'persona' | 'cliente' | 'producto' | 'zona'
+let cacheAlias: { empresa: string; hasta: number; lista: { tipo: string; dice: string; es: string }[] } | null = null
+export function olvidarAlias() { cacheAlias = null }
+async function alias(db: any, empresa: string, tipo: TipoAlias, texto: string) {
+  if (!texto) return texto
+  if (!cacheAlias || cacheAlias.empresa !== empresa || cacheAlias.hasta < Date.now()) {
+    // Si la tabla falla, se sigue sin alias: nunca deja al asistente sin contestar.
+    const { data } = await db.from('wa_alias').select('tipo, dice, es').eq('id_empresa', empresa).eq('activo', true)
+    cacheAlias = { empresa, hasta: Date.now() + 5 * 60_000, lista: data ?? [] }
+  }
+  const t = sinAcentos(texto)
+  return cacheAlias.lista.find((a) => a.tipo === tipo && sinAcentos(a.dice) === t)?.es ?? texto
+}
+
 /** Persona por nombre, solo entre la gente que el perfil ve (db/103). Vacío = todo el equipo. */
 async function persona(db: any, empresa: string, perfil: string, v: unknown): Promise<{ id: string | null } | { respuesta: R.Respuesta }> {
-  const texto = textoDe(v)
+  const texto = await alias(db, empresa, 'persona', textoDe(v))
   if (!texto || /^(todos|todo el equipo|equipo|el equipo|vendedores|los vendedores)$/i.test(texto)) return { id: null }
   const b = await rpc(db, 'wa_buscar_personas', { p_empresa: empresa, p_texto: texto, p_perfil: perfil })
   const lista = b?.personas ?? []
-  if (!lista.length) return { respuesta: { texto: `No encontré a nadie de tu equipo con "${texto}".`, voz: 'No encontré a nadie de tu equipo con ese nombre.' } }
-  if (lista.length > 1) return { respuesta: R.personaAmbigua(lista, texto) }
+  if (!lista.length) return { respuesta: { texto: `No encontré a nadie de tu equipo con "${texto}".`, voz: 'No encontré a nadie de tu equipo con ese nombre.', tipo: 'no_encontrado' } }
+  if (lista.length > 1) return { respuesta: { ...R.personaAmbigua(lista, texto), tipo: 'repregunta' } }
   return { id: lista[0].id }
 }
 
@@ -82,23 +98,26 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
       return R.productosVendidos(await rpc(db, 'wa_productos_ventas', conRango), nombre, rango.hasta < hoyEn())
     case 'buscar_pedido': {
       const numero = textoDe(a.numero)
-      if (!/\d/.test(numero)) return { texto: '¿Qué número de pedido querés ver?', voz: '¿Qué número de pedido querés ver?' }
-      return R.pedido(await rpc(db, 'wa_pedido', { p_empresa: empresa, p_numero: numero, p_perfil: perfil }), numero)
+      if (!/\d/.test(numero)) return { texto: '¿Qué número de pedido querés ver?', voz: '¿Qué número de pedido querés ver?', tipo: 'repregunta' }
+      const d = await rpc(db, 'wa_pedido', { p_empresa: empresa, p_numero: numero, p_perfil: perfil })
+      return d ? R.pedido(d, numero) : { ...R.pedido(d, numero), tipo: 'no_encontrado' }
     }
     case 'pedidos_de_cliente': {
-      const texto = textoDe(a.cliente)
+      const texto = await alias(db, empresa, 'cliente', textoDe(a.cliente))
       const b = await rpc(db, 'wa_buscar_clientes', { p_empresa: empresa, p_texto: texto })
       const clientes = b?.clientes ?? []
-      if (!clientes.length) return { texto: `No encontré clientes con "${texto}".`, voz: 'No encontré clientes con ese nombre.' }
+      if (!clientes.length) return { texto: `No encontré clientes con "${texto}".`, voz: 'No encontré clientes con ese nombre.', tipo: 'no_encontrado' }
       // Un código exacto es uno solo aunque otros nombres también contengan esos dígitos.
       const exacto = clientes[0].por_codigo ? clientes[0] : null
-      if (!exacto && clientes.length > 1) return R.clienteAmbiguo(b, texto)
+      if (!exacto && clientes.length > 1) return { ...R.clienteAmbiguo(b, texto), tipo: 'repregunta' }
       const elegido = exacto ?? clientes[0]
       return R.pedidosCliente(elegido, await rpc(db, 'wa_pedidos_cliente', { p_empresa: empresa, p_cliente: elegido.id, p_perfil: perfil }))
     }
     case 'precio_producto': {
-      const texto = textoDe(a.producto)
-      return R.productos(await rpc(db, 'wa_buscar_productos', { p_empresa: empresa, p_texto: texto }), texto)
+      const texto = await alias(db, empresa, 'producto', textoDe(a.producto))
+      const b = await rpc(db, 'wa_buscar_productos', { p_empresa: empresa, p_texto: texto })
+      const nada = !(b?.productos ?? []).length && !(b?.de_baja ?? []).length
+      return nada ? { ...R.productos(b, texto), tipo: 'no_encontrado' } : R.productos(b, texto)
     }
     case 'equipo_en_calle':
       return R.equipo(await rpc(db, 'wa_equipo', { p_empresa: empresa, p_perfil: perfil }))
@@ -123,7 +142,7 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
     case 'avisos_equipo':
       return R.avisos(await rpc(db, 'wa_avisos', { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }), nombre)
     case 'analisis_zonas': {
-      const texto = textoDe(a.zona)
+      const texto = await alias(db, empresa, 'zona', textoDe(a.zona))
       return R.zonas(await rpc(db, 'wa_zonas', { p_empresa: empresa, p_perfil: perfil, p_texto: texto }), texto)
     }
     // Pedido del 07/11: el precio del servicio lo cotiza Santiago al terminar el mes de prueba.
@@ -131,7 +150,7 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
       return { texto: R.TEXTOS.precioServicio, voz: R.TEXTOS.precioServicio }
     case 'dato_no_disponible':
     case 'consulta_stock': // nombre viejo, por si queda en el historial de una charla
-      return R.datoNoDisponible(String(a.tema ?? 'stock'))
+      return { ...R.datoNoDisponible(String(a.tema ?? 'stock')), tipo: 'dato_no_disponible' }
     case 'ayuda':
       return { texto: R.TEXTOS.ayuda, voz: 'Hola. Preguntame por ventas, pedidos, clientes, precios o el equipo, por escrito o por audio.' }
     default:

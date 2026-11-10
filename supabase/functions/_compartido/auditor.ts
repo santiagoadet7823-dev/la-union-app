@@ -1,0 +1,297 @@
+// _compartido/auditor.ts — auditor del asistente de CONSULTAS (09/11/2026, db/106, plan 44).
+//
+// Lo usan `wa-asistente` (comandos de Santiago y resumen pendiente) y `wa-auditor` (análisis nocturno y
+// resumen de las 08:00). Solo toca el número de consultas: nada de ventas ni del CRM.
+//
+// 🔒 Lo "liviano" que se aplica solo (atajo, alias, frase de prueba) se valida acá con reglas fijas, no
+// con la IA: el patrón de un atajo lo arma el código a partir de una frase, y no puede pisar ninguna
+// frase de la prueba automática que espere otra consulta. Todo se aplica en tablas y se deshace igual.
+import DEF from '../wa-asistente/lib/herramientas.json' with { type: 'json' }
+import FRASES from '../wa-asistente/lib/frases_prueba.json' with { type: 'json' }
+import { normalizar, olvidarAtajos } from '../wa-asistente/lib/aiService.ts'
+import { olvidarAlias } from '../wa-asistente/lib/consultas.ts'
+import { enviarTexto } from '../wa-asistente/lib/whatsapp.ts'
+
+const TZ = 'America/Argentina/Salta'
+export const CONSULTAS = new Set<string>([...(DEF.herramientas as any[]).map((h) => h[0] as string), 'precio_servicio'])
+// Consultas cuyos argumentos no salen del texto: un atajo puede atraparlas aunque la frase esté dentro de
+// otra más larga. Las demás (con período, persona, cliente…) solo con el mensaje entero, así "cuánto
+// facturamos" no le gana a "cuánto facturamos ayer".
+const SIN_ARGUMENTOS_LIBRES = new Set(['dato_no_disponible', 'ayuda', 'equipo_en_calle', 'precio_servicio'])
+
+export const fechaSalta = (d = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+export const inicioDia = (fecha: string) => new Date(`${fecha}T00:00:00-03:00`)
+const ddmm = (fecha: string) => `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`
+
+// ── Validación de lo liviano ─────────────────────────────────────────────────────────────────────
+const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+const palabras = (t: string) => normalizar(t).replace(/[^a-z0-9ñ]+/g, ' ').trim()
+
+/** Arma el patrón de un atajo a partir de una frase. Devuelve null si la frase no sirve. */
+export function patronAtajo(frase: string, consulta: string): string | null {
+  const p = palabras(frase).split(' ').filter(Boolean)
+  if (!p.length || p.join(' ').length < 4 || p.length > 8) return null
+  const cuerpo = p.map(escapar).join('[^a-z0-9]+')
+  return SIN_ARGUMENTOS_LIBRES.has(consulta) ? `(^|[^a-z0-9])${cuerpo}([^a-z0-9]|$)` : `^[^a-z0-9]*${cuerpo}[^a-z0-9]*$`
+}
+
+type FraseEsperada = { frase: string; consulta: string | null }
+async function frasesReales(db: any, empresa: string): Promise<FraseEsperada[]> {
+  const { data } = await db.from('wa_frases_reales').select('frase, consulta').eq('id_empresa', empresa).eq('activo', true)
+  return data ?? []
+}
+
+/** Un atajo no puede pisar una frase de prueba (PREGUNTAS.md o frases reales) que espera otra consulta. */
+export async function validarAtajo(db: any, empresa: string, patron: string, consulta: string): Promise<string | null> {
+  if (!CONSULTAS.has(consulta)) return `la consulta ${consulta} no existe`
+  if (patron.length > 300) return 'el patrón es demasiado largo'
+  let re: RegExp
+  try { re = new RegExp(patron) } catch { return 'el patrón no es válido' }
+  const todas: FraseEsperada[] = [...(FRASES as FraseEsperada[]), ...(await frasesReales(db, empresa))]
+  const pisa = todas.find((f) => (f.consulta ?? null) !== consulta && re.test(normalizar(f.frase)))
+  return pisa ? `pisaría la frase de prueba "${pisa.frase}", que espera ${pisa.consulta ?? 'ninguna consulta'}` : null
+}
+
+export type TipoAlias = 'persona' | 'cliente' | 'producto' | 'zona'
+/** El alias tiene que llevar a un resultado concreto: una sola persona o cliente, algún producto. */
+export async function validarAlias(db: any, empresa: string, perfil: string, tipo: TipoAlias, dice: string, es: string): Promise<string | null> {
+  const d = palabras(dice), e = palabras(es)
+  if (d.length < 2 || e.length < 2 || d.length > 80 || e.length > 80) return 'el alias es muy corto o muy largo'
+  if (d === e) return 'el alias es igual al nombre'
+  if (tipo === 'persona') {
+    const { data } = await db.rpc('wa_buscar_personas', { p_empresa: empresa, p_texto: es, p_perfil: perfil })
+    const n = (data?.personas ?? []).length
+    return n === 1 ? null : `"${es}" da ${n} personas, tiene que dar una`
+  }
+  if (tipo === 'cliente') {
+    const { data } = await db.rpc('wa_buscar_clientes', { p_empresa: empresa, p_texto: es })
+    const n = Number(data?.total) || 0
+    return n === 1 ? null : `"${es}" da ${n} clientes, tiene que dar uno`
+  }
+  if (tipo === 'producto') {
+    const { data } = await db.rpc('wa_buscar_productos', { p_empresa: empresa, p_texto: es })
+    return Number(data?.total) > 0 ? null : `"${es}" no encuentra productos`
+  }
+  return null
+}
+
+// ── Propuestas ───────────────────────────────────────────────────────────────────────────────────
+const etiqueta = (p: any) => (p.peso === 'liviano' ? '🟢 liviano' : '🔵 Claude Code')
+const linea = (p: any) => `*#${p.id}* ${etiqueta(p)} · ${p.titulo}${p.veces > 1 ? ` (×${p.veces})` : ''}`
+
+async function propuesta(db: any, empresa: string, id: number) {
+  const { data } = await db.from('wa_auditor_propuestas').select('*').eq('id_empresa', empresa).eq('id', id).maybeSingle()
+  return data
+}
+
+async function marcar(db: any, id: number, estado: string, perfil: string | null) {
+  await db.from('wa_auditor_propuestas').update({
+    estado, decidido_por: perfil, decidido_ts: new Date().toISOString(), actualizado_ts: new Date().toISOString(),
+  }).eq('id', id)
+}
+
+async function guardarFrases(db: any, empresa: string, idPropuesta: number, frases: any[]) {
+  const filas = (frases ?? []).filter((f) => f?.frase).slice(0, 5).map((f) => ({
+    id_empresa: empresa, frase: String(f.frase).slice(0, 300), consulta: f.consulta ?? null,
+    argumentos: f.argumentos ?? {}, id_propuesta: idPropuesta,
+  }))
+  if (filas.length) {
+    const { error } = await db.from('wa_frases_reales').insert(filas)
+    if (error) throw new Error(`wa_frases_reales: ${error.message}`)
+  }
+}
+
+/** Aplica una propuesta aprobada. Devuelve el texto para Santiago. */
+async function aplicar(db: any, empresa: string, perfil: string, p: any): Promise<string> {
+  const d = p.detalle ?? {}
+  if (p.tipo === 'atajo') {
+    const error = await validarAtajo(db, empresa, d.patron, d.consulta)
+    if (error) return `No apliqué la #${p.id}: ${error}. Queda abierta; si querés, respondé «descartar ${p.id}».`
+    const r = await db.from('wa_atajos_aprendidos').insert({
+      id_empresa: empresa, patron: d.patron, consulta: d.consulta, argumentos: d.argumentos ?? {}, id_propuesta: p.id,
+    })
+    if (r.error) throw new Error(`wa_atajos_aprendidos: ${r.error.message}`)
+    olvidarAtajos()
+    await guardarFrases(db, empresa, p.id, d.frases)
+  } else if (p.tipo === 'alias') {
+    const error = await validarAlias(db, empresa, perfil, d.alias_tipo, d.dice, d.es)
+    if (error) return `No apliqué la #${p.id}: ${error}. Queda abierta; si querés, respondé «descartar ${p.id}».`
+    const r = await db.from('wa_alias').insert({ id_empresa: empresa, tipo: d.alias_tipo, dice: d.dice, es: d.es, id_propuesta: p.id })
+    if (r.error) return `No apliqué la #${p.id}: ya hay un alias activo para "${d.dice}".`
+    olvidarAlias()
+  } else if (p.tipo === 'frase_prueba') {
+    await guardarFrases(db, empresa, p.id, d.frases)
+  } else {
+    // Lo complejo no lo toca la IA local: queda anotado para Claude Code. Las frases reales se suman ya a
+    // la prueba automática, así Claude Code tiene con qué medir el arreglo.
+    await guardarFrases(db, empresa, p.id, d.frases)
+    await marcar(db, p.id, 'para_claude', perfil)
+    return `Listo, la #${p.id} queda para Claude Code. Cuando abras una sesión, pedile: «Ejecutá auditor\\PROMPT.md».`
+  }
+  await marcar(db, p.id, 'aplicada', perfil)
+  return `Aplicada la #${p.id}: ${p.titulo}. Si algo sale mal, respondé «deshacer ${p.id}».`
+}
+
+async function deshacer(db: any, empresa: string, perfil: string, p: any): Promise<string> {
+  if (!['aplicada', 'para_claude'].includes(p.estado)) return `La #${p.id} no está aplicada (estado: ${p.estado}).`
+  const ahora = new Date().toISOString()
+  for (const t of ['wa_atajos_aprendidos', 'wa_alias', 'wa_frases_reales']) {
+    await db.from(t).update({ activo: false, desactivado_ts: ahora }).eq('id_empresa', empresa).eq('id_propuesta', p.id).eq('activo', true)
+  }
+  olvidarAlias(); olvidarAtajos()
+  await marcar(db, p.id, p.estado === 'para_claude' ? 'descartada' : 'deshecha', perfil)
+  return `Deshecha la #${p.id}. El asistente vuelve a responder como antes (puede tardar hasta 5 minutos).`
+}
+
+async function ver(db: any, p: any): Promise<string> {
+  const d = p.detalle ?? {}
+  const { data: msgs } = await db.from('wa_mensajes').select('texto, consulta').in('id', (p.ejemplos ?? []).slice(0, 3))
+  const ejemplos = (msgs ?? []).filter((m: any) => m.texto)
+    .map((m: any) => `• «${String(m.texto).slice(0, 120)}» → ${m.consulta ?? 'ninguna'}`).join('\n')
+  const partes = [
+    linea(p),
+    d.explicacion ? `Por qué: ${d.explicacion}` : '',
+    ejemplos ? `Mensajes:\n${ejemplos}` : '',
+    `Estado: ${p.estado}.`,
+    ['nueva', 'enviada'].includes(p.estado) ? `Respondé «aplicar ${p.id}» o «descartar ${p.id}».` : '',
+  ]
+  return partes.filter(Boolean).join('\n')
+}
+
+async function lista(db: any, empresa: string): Promise<string> {
+  const { data } = await db.from('wa_auditor_propuestas').select('id, titulo, peso, veces')
+    .eq('id_empresa', empresa).in('estado', ['nueva', 'enviada'])
+    .order('veces', { ascending: false }).order('id').limit(8)
+  if (!data?.length) return 'No hay propuestas abiertas del auditor.'
+  return `Propuestas abiertas del auditor:\n${data.map(linea).join('\n')}\n\nRespondé «ver N», «aplicar N» o «descartar N».`
+}
+
+// ── Comandos de Santiago ─────────────────────────────────────────────────────────────────────────
+export type Comando = { accion: 'lista' | 'ver' | 'aplicar' | 'descartar' | 'deshacer'; id?: number }
+export function comandoAuditor(texto: string): Comando | null {
+  const t = normalizar(texto).replace(/[.!¡¿?]+/g, '').replace(/\s+/g, ' ').trim()
+  if (/^(auditoria|auditor|propuestas)$/.test(t)) return { accion: 'lista' }
+  const m = t.match(/^(ver|aplicar|aplica|aplicala|descartar|descarta|deshacer|deshace)\s*(?:la\s*)?#?\s*(\d{1,7})$/)
+  if (!m) return null
+  const accion = m[1].startsWith('apli') ? 'aplicar' : m[1].startsWith('descart') ? 'descartar' : m[1].startsWith('deshac') ? 'deshacer' : 'ver'
+  return { accion, id: Number(m[2]) }
+}
+
+export async function atenderComando(db: any, empresa: string, perfil: string, c: Comando): Promise<string> {
+  if (c.accion === 'lista') return lista(db, empresa)
+  const p = await propuesta(db, empresa, c.id!)
+  if (!p) return `No encontré la propuesta #${c.id}.`
+  if (c.accion === 'ver') return ver(db, p)
+  if (c.accion === 'deshacer') return deshacer(db, empresa, perfil, p)
+  if (!['nueva', 'enviada'].includes(p.estado)) return `La #${p.id} ya está ${p.estado}.`
+  if (c.accion === 'descartar') {
+    await marcar(db, p.id, 'descartada', perfil)
+    return `Descartada la #${p.id}.`
+  }
+  return aplicar(db, empresa, perfil, p)
+}
+
+// ── Resumen diario ───────────────────────────────────────────────────────────────────────────────
+const NOMBRE_MOTIVO: Record<string, string> = {
+  error: 'con error', fuera_de_tema: 'fuera de tema', pide_cambio: 'pidieron cambiar algo', repregunta: 'repreguntas',
+  no_encontrado: 'sin encontrar el nombre', dato_no_disponible: 'datos que no tenemos', audio: 'audios no entendidos',
+  lento: 'lentos (+30 s)', queja: 'quejas', reformula: 'preguntadas de nuevo',
+}
+
+/** Arma el resumen del día `fecha` (Salta) y marca como enviadas las propuestas que incluye. */
+export async function armarResumen(db: any, empresa: string, fecha: string): Promise<string | null> {
+  const desde = inicioDia(fecha), hasta = new Date(desde.getTime() + 86_400_000)
+  const [{ data: msgs }, { data: usuarios }, { data: hall }, { data: props }] = await Promise.all([
+    db.from('wa_mensajes').select('wa_id, origen').eq('id_empresa', empresa).eq('autorizado', true)
+      .in('estado', ['respondido', 'error']).gte('recibido_ts', desde.toISOString()).lt('recibido_ts', hasta.toISOString()),
+    db.from('wa_asistente_usuarios').select('wa_id, perfiles(nombre)').eq('id_empresa', empresa),
+    db.from('wa_auditor_hallazgos').select('motivos, causa, wa_mensajes!inner(recibido_ts)').eq('id_empresa', empresa)
+      .gte('wa_mensajes.recibido_ts', desde.toISOString()).lt('wa_mensajes.recibido_ts', hasta.toISOString()),
+    db.from('wa_auditor_propuestas').select('id, titulo, peso, veces').eq('id_empresa', empresa).eq('estado', 'nueva')
+      .order('veces', { ascending: false }).order('id').limit(5),
+  ])
+  const consultas = (msgs ?? []).filter((m: any) => !['comando', 'auditor'].includes(m.origen ?? ''))
+  if (!consultas.length && !props?.length) return null
+
+  const nombre = new Map((usuarios ?? []).map((u: any) => [u.wa_id, String(u.perfiles?.nombre ?? 'otro').split(/\s+/)[0]]))
+  const porPersona = new Map<string, number>()
+  for (const m of consultas) porPersona.set(nombre.get(m.wa_id) ?? 'otro', (porPersona.get(nombre.get(m.wa_id) ?? 'otro') ?? 0) + 1)
+  const motivos = new Map<string, number>()
+  for (const h of hall ?? []) for (const mo of h.motivos ?? []) if (mo !== 'muestra') motivos.set(mo, (motivos.get(mo) ?? 0) + 1)
+  const malMuestra = (hall ?? []).filter((h: any) => (h.motivos ?? []).includes('muestra') && h.causa && !['bien', 'operativo'].includes(h.causa)).length
+
+  const lineas = [`🧾 *Auditor del asistente* · ${ddmm(fecha)}`]
+  lineas.push(consultas.length
+    ? `${consultas.length} consultas (${[...porPersona].map(([n, c]) => `${n} ${c}`).join(', ')}).`
+    : 'Sin consultas ese día.')
+  const fallas = [...motivos].sort((a, b) => b[1] - a[1]).map(([m, c]) => `${c} ${NOMBRE_MOTIVO[m] ?? m}`)
+  if (malMuestra) fallas.push(`${malMuestra} de la muestra al azar mal respondidas`)
+  if (consultas.length) lineas.push(fallas.length ? `Señales: ${fallas.join(', ')}.` : 'Sin señales de falla.')
+  if (props?.length) {
+    lineas.push('', 'Propuestas:', ...props.map(linea), '', 'Respondé «ver N», «aplicar N» o «descartar N». «auditoría» muestra todas.')
+    await db.from('wa_auditor_propuestas').update({ estado: 'enviada', actualizado_ts: new Date().toISOString() })
+      .in('id', props.map((p: any) => p.id)).eq('estado', 'nueva')
+  }
+  return lineas.join('\n')
+}
+
+/** Superadmins activos de la empresa: los únicos que reciben el resumen y pueden usar los comandos. */
+export async function destinatarios(db: any, empresa: string): Promise<{ wa_id: string; id_perfil: string }[]> {
+  const { data } = await db.from('wa_asistente_usuarios').select('wa_id, id_perfil, perfiles!inner(rol)')
+    .eq('id_empresa', empresa).eq('activo', true).eq('perfiles.rol', 'superadmin')
+  return data ?? []
+}
+
+/** ¿La ventana de 24 h de Meta está abierta? (con 15 min de margen) */
+async function ventanaAbierta(db: any, waId: string) {
+  const desde = new Date(Date.now() - (24 * 60 - 15) * 60_000).toISOString()
+  const { count } = await db.from('wa_mensajes').select('id', { count: 'exact', head: true })
+    .eq('wa_id', waId).eq('autorizado', true).neq('tipo', 'auditor').gte('recibido_ts', desde)
+  return !!count
+}
+
+/** Manda el texto y lo registra en `wa_mensajes`, así cuenta para el tope mensual del asistente. */
+async function mandarYRegistrar(db: any, empresa: string, waId: string, texto: string, clave: string) {
+  await enviarTexto(waId, texto)
+  await db.from('wa_mensajes').insert({
+    wamid: `auditor:${clave}:${waId}:${Date.now()}`, wa_id: waId, id_empresa: empresa, autorizado: true, tipo: 'auditor',
+    respuesta: texto, estado: 'respondido', origen: 'auditor', resultado: 'auditor', enviados: 1,
+    respondido_ts: new Date().toISOString(),
+  })
+}
+
+/** Resumen de las 08:00. Uno por día: si ya existe, no hace nada. */
+export async function resumenDiario(db: any, empresa: string, fecha: string, cupoLibre: () => Promise<boolean>) {
+  const { data: ya } = await db.from('wa_auditor_resumenes').select('estado').eq('id_empresa', empresa).eq('fecha', fecha).maybeSingle()
+  if (ya) return `ya estaba (${ya.estado})`
+  const ayer = fechaSalta(new Date(inicioDia(fecha).getTime() - 12 * 3_600_000))
+  const texto = await armarResumen(db, empresa, ayer)
+  const fila = { id_empresa: empresa, fecha, texto: texto ?? '', estado: texto ? 'pendiente' : 'sin_novedad' }
+  const { error } = await db.from('wa_auditor_resumenes').insert(fila)
+  if (error) return `ya estaba (${error.message})` // otra corrida lo creó al mismo tiempo
+  if (!texto) return 'sin novedad'
+  let enviados = 0
+  for (const d of await destinatarios(db, empresa)) {
+    if (!(await ventanaAbierta(db, d.wa_id)) || !(await cupoLibre())) continue
+    await mandarYRegistrar(db, empresa, d.wa_id, texto, fecha)
+    enviados++
+  }
+  if (enviados) {
+    await db.from('wa_auditor_resumenes').update({ estado: 'enviado', enviado_ts: new Date().toISOString() })
+      .eq('id_empresa', empresa).eq('fecha', fecha)
+  }
+  return enviados ? 'enviado' : 'pendiente (ventana cerrada o sin cupo)'
+}
+
+/** Si hay un resumen pendiente, lo devuelve y lo marca como enviado (junto con los más viejos). Lo llama
+ * `wa-asistente` después de contestarle a un superadmin: su mensaje abrió la ventana de 24 h. */
+export async function tomarResumenPendiente(db: any, empresa: string): Promise<string | null> {
+  const { data } = await db.from('wa_auditor_resumenes').select('fecha, texto').eq('id_empresa', empresa)
+    .eq('estado', 'pendiente').order('fecha', { ascending: false }).limit(1)
+  if (!data?.length) return null
+  const { data: marcadas } = await db.from('wa_auditor_resumenes').update({ estado: 'enviado', enviado_ts: new Date().toISOString() })
+    .eq('id_empresa', empresa).eq('estado', 'pendiente').select('fecha')
+  // Otra respuesta al mismo tiempo ya lo tomó: no se manda dos veces.
+  return marcadas?.some((m: any) => m.fecha === data[0].fecha) ? data[0].texto : null
+}

@@ -2,11 +2,12 @@
 // Salió de `index.ts` el 09/11/2026 (plan 41) para que lo llamen las dos entradas con el mismo código:
 // `wa-asistente` (el webhook de hoy) y `wa-entrada` (entrada única por número, cuando se reapunte).
 // La lógica es la de siempre: solo cambió de archivo. Ver el encabezado de `index.ts`.
-import { atajo, elegirConsultas, juntar, pideAudio, pideCambio, type Eleccion, type Intercambio } from './lib/aiService.ts'
+import { atajo, atajoAprendido, atajosAprendidos, elegirConsultasDetalle, juntar, pideAudio, pideCambio, type Eleccion, type Intercambio } from './lib/aiService.ts'
 import { ejecutar, hoyEn } from './lib/consultas.ts'
 import { bienvenida, TEXTOS } from './lib/respuestas.ts'
 import { avisarEscribiendo, bajarAudio, enviarNotaDeVoz, enviarTexto } from './lib/whatsapp.ts'
 import { AudioRechazado, hablar, transcribir } from '../_compartido/voz.ts'
+import { atenderComando, comandoAuditor, tomarResumenPendiente } from '../_compartido/auditor.ts'
 
 // Meta da 1000 mensajes de servicio por mes y por número. La voz manda dos por respuesta: desde acá
 // se contesta solo con texto, para que el cupo alcance hasta fin de mes.
@@ -59,7 +60,7 @@ async function esPrimeraVez(cliente: any, waId: string, wamid: string) {
   return !count
 }
 
-async function procesar(cliente: any, msg: any, empresa: string, perfil: string, nombre: string) {
+async function procesar(cliente: any, msg: any, empresa: string, perfil: string, nombre: string, esSuper: boolean) {
   const inicio = Date.now()
   const waId: string = msg.from
   let enviados = 0
@@ -68,6 +69,14 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
   let argumentos: unknown = null
   let conVoz = false
   let respuestaFinal = ''
+  // Para el auditor (plan 44): cómo se eligió y cómo terminó cada mensaje, y cuánto tardó cada etapa.
+  let origen: string | null = null
+  let resultado: string | null = null
+  let toolCalls: unknown = null
+  let modelo: string | null = null
+  let msIa: number | null = null
+  let msConsulta: number | null = null
+  let msVoz: number | null = null
 
   const contestar = async (t: string) => {
     await enviarTexto(waId, t)
@@ -92,27 +101,57 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
     }
 
     if (!esAudio && msg.type !== 'text') {
+      origen = 'fijo'; resultado = 'no_soportado'
       await contestar(TEXTOS.soloTextoOAudio)
     } else if (audioRechazado) {
+      origen = 'fijo'; resultado = 'audio_fallido'
       await contestar(TEXTOS.audioLargo)
     } else {
       if (!texto) {
+        origen = 'fijo'; resultado = 'audio_fallido'
         await contestar(TEXTOS.audioVacio)
       } else {
         let respuesta: { texto: string; voz: string }
+        // Comandos del auditor ("aplicar 3", "auditoría"): solo el superadmin; para el resto siguen el camino normal.
+        const comando = esSuper ? comandoAuditor(texto) : null
         try {
-          const a = pideCambio(texto) ? null : atajo(texto)
-          const elecciones: Eleccion[] = pideCambio(texto) ? [] : a ? [a] : await elegirConsultas(texto, await historial(cliente, waId, msg.id))
-          ;({ consulta, argumentos } = juntar(elecciones))
-          // Varias consultas: una respuesta debajo de la otra, en el orden en que se pidieron.
-          const nombres = elecciones.map((e) => e.consulta)
-          const partes = await Promise.all(elecciones.map((e) => ejecutar(cliente, empresa, perfil, e.consulta, e.argumentos, nombres)))
-          respuesta = partes.length
-            ? { texto: partes.map((p) => p.texto).join('\n\n'), voz: partes.map((p) => p.voz).join(' ') }
-            : { texto: TEXTOS.fueraDeTema, voz: TEXTOS.fueraDeTema }
+          if (comando) {
+            origen = 'comando'; resultado = 'comando'
+            const t = await atenderComando(cliente, empresa, perfil, comando)
+            respuesta = { texto: t, voz: t }
+          } else {
+            let elecciones: Eleccion[]
+            const fijo = pideCambio(texto) ? null : atajo(texto)
+            const aprendido = pideCambio(texto) || fijo ? null : atajoAprendido(texto, await atajosAprendidos(cliente, empresa))
+            if (pideCambio(texto)) { elecciones = []; origen = 'pide_cambio' }
+            else if (fijo) { elecciones = [fijo]; origen = 'atajo' }
+            else if (aprendido) { elecciones = [aprendido]; origen = 'aprendido' }
+            else {
+              origen = 'modelo'
+              const t0 = Date.now()
+              const d = await elegirConsultasDetalle(texto, await historial(cliente, waId, msg.id))
+              msIa = Date.now() - t0
+              elecciones = d.elecciones; toolCalls = d.crudo; modelo = d.modelo
+            }
+            ;({ consulta, argumentos } = juntar(elecciones))
+            // Varias consultas: una respuesta debajo de la otra, en el orden en que se pidieron.
+            const nombres = elecciones.map((e) => e.consulta)
+            const t1 = Date.now()
+            const partes = await Promise.all(elecciones.map((e) => ejecutar(cliente, empresa, perfil, e.consulta, e.argumentos, nombres)))
+            msConsulta = partes.length ? Date.now() - t1 : null
+            respuesta = partes.length
+              ? { texto: partes.map((p) => p.texto).join('\n\n'), voz: partes.map((p) => p.voz).join(' ') }
+              : { texto: TEXTOS.fueraDeTema, voz: TEXTOS.fueraDeTema }
+            // Lo más importante de las partes: una repregunta pesa más que un "no encontré" o un dato que no hay.
+            const tipos: string[] = partes.map((p) => p.tipo ?? '')
+            resultado = !partes.length ? (origen === 'pide_cambio' ? 'pide_cambio' : 'fuera_de_tema')
+              : (['repregunta', 'no_encontrado', 'dato_no_disponible'].find((t) => tipos.includes(t)) ?? 'ok')
+          }
         } catch (e) {
           console.error('wa-asistente: consulta', String(e))
-          const t = String(e).includes('ollama') || e instanceof DOMException || e instanceof TypeError ? TEXTOS.iaCaida : TEXTOS.errorConsulta
+          const caida = String(e).includes('ollama') || e instanceof DOMException || e instanceof TypeError
+          const t = caida ? TEXTOS.iaCaida : TEXTOS.errorConsulta
+          resultado = caida ? 'ia_caida' : 'error_consulta'
           respuesta = { texto: t, voz: t }
         }
 
@@ -124,6 +163,7 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
         // Nota de voz: si la pregunta vino en audio, o si escrita pide "respondeme en audio".
         const quiereVoz = esAudio || pideAudio(texto)
         if (!yaContestado && quiereVoz && (await enviadosDelMes(cliente)) + enviados < TOPE_MENSUAL_CON_VOZ) {
+          const t2 = Date.now()
           try {
             await enviarNotaDeVoz(waId, await hablar(respuesta.voz))
             enviados++
@@ -132,12 +172,24 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
             // El texto ya salió: sin voz, la persona igual tiene su respuesta.
             console.error('wa-asistente: voz', String(e))
           }
+          msVoz = Date.now() - t2
         }
       }
     }
+
+    // El resumen del auditor que no salió a las 08:00 (ventana de 24 h cerrada) sale ahora: este mensaje
+    // la abrió. Va después de la respuesta, como un mensaje aparte.
+    if (esSuper) {
+      try {
+        const pendiente = await tomarResumenPendiente(cliente, empresa)
+        if (pendiente) { await enviarTexto(waId, pendiente); enviados++ }
+      } catch (e) { console.error('wa-asistente: resumen pendiente', String(e)) }
+    }
+
     await cliente.from('wa_mensajes').update({
       texto, consulta, argumentos, respuesta: respuestaFinal, estado: 'respondido', enviados, con_voz: conVoz,
       ms_total: Date.now() - inicio, respondido_ts: new Date().toISOString(),
+      origen, resultado, tool_calls: toolCalls, modelo, ms_ia: msIa, ms_consulta: msConsulta, ms_voz: msVoz,
     }).eq('wamid', msg.id)
   } catch (e) {
     console.error('wa-asistente: mensaje', String(e))
@@ -147,14 +199,14 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
     }
     await cliente.from('wa_mensajes').update({
       texto, consulta, argumentos, estado: 'error', error: String(e).slice(0, 500), enviados,
-      ms_total: Date.now() - inicio,
+      ms_total: Date.now() - inicio, origen, resultado, tool_calls: toolCalls, modelo, ms_ia: msIa,
     }).eq('wamid', msg.id)
   }
 }
 
 export async function recibir(cliente: any, msg: any) {
   const { data: usuario } = await cliente.from('wa_asistente_usuarios')
-    .select('id_empresa, id_perfil, perfiles(nombre)').eq('wa_id', msg.from).eq('activo', true).maybeSingle()
+    .select('id_empresa, id_perfil, perfiles(nombre, rol)').eq('wa_id', msg.from).eq('activo', true).maybeSingle()
 
   const { data: nuevo, error } = await cliente.from('wa_mensajes').upsert({
     wamid: msg.id,
@@ -172,7 +224,7 @@ export async function recibir(cliente: any, msg: any) {
   if (usados >= TOPE_RESPUESTAS) return sinCupo(cliente, msg, usados)
   // Solo el primer nombre: "Darsh Lajitas" → "Darsh".
   const nombre = String(usuario.perfiles?.nombre ?? '').trim().split(/\s+/)[0] || ''
-  await procesar(cliente, msg, usuario.id_empresa, usuario.id_perfil, nombre)
+  await procesar(cliente, msg, usuario.id_empresa, usuario.id_perfil, nombre, usuario.perfiles?.rol === 'superadmin')
 }
 
 

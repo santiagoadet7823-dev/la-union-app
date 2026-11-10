@@ -8,13 +8,21 @@ Uso (en WSL):  bash probar_frases.sh            # busca la IP del contenedor de 
           o:  python3 -I probar_frases.py http://IP:11434 [filtro]
 Meta: >= 95 % de aciertos y 0 "graves" (un pedido de cambio o un dato inexistente que
 termina en una consulta con cifras).
+
+Plan 44:
+  python3 -I probar_frases.py --json   regenera lib/frases_prueba.json (lo usa el auditor para validar
+                                       que un atajo aprendido no pise ninguna frase). Correrlo cada vez
+                                       que cambie la tabla de PREGUNTAS.md.
+  APRENDIDOS=archivo.json               suma los atajos aprendidos y las frases reales de la base
+                                       (probar_frases.sh --con-aprendidos lo arma solo).
 """
-import json, re, sys, time, unicodedata, urllib.request
+import json, os, re, sys, time, unicodedata, urllib.request
 from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
 DEF = json.loads((AQUI.parent / 'lib' / 'herramientas.json').read_text(encoding='utf-8'))
-MODELO = 'qwen3.5:4b'
+MODELO = os.environ.get('OLLAMA_MODEL') or 'qwen3.5:4b'
+APRENDIDOS = json.loads(Path(os.environ['APRENDIDOS']).read_text(encoding='utf-8')) if os.environ.get('APRENDIDOS') else {}
 CON_CIFRAS = {'ventas_resumen', 'ventas_por_vendedor', 'ventas_por_categoria', 'productos_mas_vendidos',
               'buscar_pedido', 'pedidos_de_cliente', 'precio_producto', 'rendimiento_vendedor',
               'control_visitas', 'analisis_zonas', 'clientes_sin_comprar', 'equipo_en_calle', 'avisos_equipo'}
@@ -45,12 +53,15 @@ def frases():
             continue
         esperado = None if c[1] in ('—', '-') else c[1]
         filas.append((c[0], esperado, [a.strip() for a in c[2].split(';') if a.strip()]))
+    # Frases reales que aprobó Santiago desde el auditor (wa_frases_reales): solo se controla la consulta.
+    for f in APRENDIDOS.get('frases') or []:
+        filas.append((f['frase'], f.get('consulta'), []))
     return filas
 
 
 def elegir(url, texto, tools):
     cuerpo = json.dumps({'model': MODELO, 'stream': False, 'think': False, 'tools': tools,
-                         'options': {'temperature': 0, 'num_ctx': 4096, 'num_predict': 120},
+                         'options': {'temperature': 0, 'num_ctx': 4096, 'num_predict': 240},
                          'messages': [{'role': 'system', 'content': '\n'.join(DEF['sistema'])},
                                       {'role': 'user', 'content': texto}]}).encode()
     req = urllib.request.Request(f'{url}/api/chat', data=cuerpo, headers={'Content-Type': 'application/json'})
@@ -81,6 +92,13 @@ def cumple(args, controles):
 
 
 def main():
+    if sys.argv[1:2] == ['--json']:
+        # Solo las de PREGUNTAS.md (las reales ya están en la base): frase + consulta esperada.
+        salida = AQUI.parent / 'lib' / 'frases_prueba.json'
+        lista = [{'frase': f, 'consulta': c} for f, c, _ in frases()[:len(frases()) - len(APRENDIDOS.get('frases') or [])]]
+        salida.write_text(json.dumps(lista, ensure_ascii=False, indent=0) + '\n', encoding='utf-8')
+        print(f'{len(lista)} frases → {salida}')
+        return
     url = sys.argv[1].rstrip('/')
     filtro = norm(sys.argv[2]) if len(sys.argv) > 2 else ''
     tools = herramientas()
@@ -90,6 +108,9 @@ def main():
     for texto, esperado, controles in lista:
         t0 = time.time()
         atajo = next((a for a in DEF.get('atajos', []) if re.search(a[0], norm(texto))), None)
+        if not atajo:  # mismo orden que producción: los del archivo, después los aprendidos
+            atajo = next(([a['patron'], a['consulta'], a.get('argumentos') or {}] for a in APRENDIDOS.get('atajos') or []
+                          if re.search(a['patron'], norm(texto))), None)
         if PIDE_CAMBIO.search(norm(texto)):
             elegido, args = None, {'_': 'filtro pideCambio'}
         elif atajo:

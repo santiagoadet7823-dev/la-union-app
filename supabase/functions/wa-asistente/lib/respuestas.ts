@@ -4,7 +4,8 @@
 // el detalle queda en el texto para poder releerlo.
 import { escaleraDe, precioPara } from './precios.js'
 
-export type Respuesta = { texto: string; voz: string }
+// `tipo` (plan 44): cómo terminó la consulta, para el registro del auditor. Sin tipo = respondió el dato.
+export type Respuesta = { texto: string; voz: string; tipo?: 'repregunta' | 'no_encontrado' | 'dato_no_disponible' }
 const ambos = (t: string): Respuesta => ({ texto: t, voz: t })
 
 const TZ = 'America/Argentina/Salta'

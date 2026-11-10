@@ -33,15 +33,45 @@ const PIDE_CAMBIO = /^(?:(?:che|dale|hola|por favor|porfa|podes|podrias|quiero|q
  * cobramos hoy?" daba el total vendido en 2 de 2 pruebas). Se resuelven antes del modelo, con las
  * reglas de `atajos` en herramientas.json, que la prueba automática también usa. */
 const ATAJOS = (DEF.atajos as [string, string, Record<string, unknown>][]).map(([re, consulta, argumentos]) => ({ re: new RegExp(re), consulta, argumentos }))
+
+/** Minúsculas y sin acentos: así se comparan atajos, alias y comandos. */
+export const normalizar = (texto: string) => texto.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
 export function atajo(texto: string): Eleccion | null {
-  const t = texto.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const t = normalizar(texto)
   const a = ATAJOS.find((x) => x.re.test(t))
   return a ? { consulta: a.consulta, argumentos: { ...a.argumentos } } : null
 }
 
+/** Atajos que aprobó Santiago desde el auditor (tabla `wa_atajos_aprendidos`, plan 44). Van después de
+ * los del archivo y antes del modelo. Un patrón roto se saltea: nunca deja al asistente sin contestar. */
+export type AtajoAprendido = { patron: string; consulta: string; argumentos: Record<string, unknown> }
+
+// Se releen cada 5 minutos; aplicar o deshacer desde el auditor borra la caché. Si la tabla falla, se
+// sigue sin ellos.
+let cacheAtajos: { empresa: string; hasta: number; lista: AtajoAprendido[] } | null = null
+export function olvidarAtajos() { cacheAtajos = null }
+export async function atajosAprendidos(db: any, empresa: string): Promise<AtajoAprendido[]> {
+  if (!cacheAtajos || cacheAtajos.empresa !== empresa || cacheAtajos.hasta < Date.now()) {
+    const { data } = await db.from('wa_atajos_aprendidos').select('patron, consulta, argumentos')
+      .eq('id_empresa', empresa).eq('activo', true).order('id')
+    cacheAtajos = { empresa, hasta: Date.now() + 5 * 60_000, lista: data ?? [] }
+  }
+  return cacheAtajos.lista
+}
+export function atajoAprendido(texto: string, lista: AtajoAprendido[]): Eleccion | null {
+  const t = normalizar(texto)
+  for (const a of lista) {
+    if (!NOMBRES.has(a.consulta) && a.consulta !== 'precio_servicio') continue
+    try {
+      if (new RegExp(a.patron).test(t)) return { consulta: a.consulta, argumentos: { ...(a.argumentos ?? {}) } }
+    } catch { /* patrón inválido: se ignora */ }
+  }
+  return null
+}
+
 export function pideCambio(texto: string) {
-  const t = texto.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  return PIDE_CAMBIO.test(t)
+  return PIDE_CAMBIO.test(normalizar(texto))
 }
 
 /** "respondeme en audio", "mandamelo en nota de voz": un mensaje escrito que pide la respuesta hablada. */
@@ -81,6 +111,11 @@ export function armarMensajes(texto: string, historial: Intercambio[]) {
  * Tira error si el modelo no responde. Antes se usaba solo la primera y se perdía el resto del pedido
  * (08/11: "cuánto se vendió, quién vendió y qué productos" contestó solo el total). */
 export async function elegirConsultas(texto: string, historial: Intercambio[]): Promise<Eleccion[]> {
+  return (await elegirConsultasDetalle(texto, historial)).elecciones
+}
+
+/** Igual que `elegirConsultas`, más lo que devolvió el modelo tal cual (para el auditor, plan 44). */
+export async function elegirConsultasDetalle(texto: string, historial: Intercambio[]): Promise<{ elecciones: Eleccion[]; crudo: unknown[]; modelo: string }> {
   const base = Deno.env.get('OLLAMA_URL') || 'http://ollama:11434'
   const modelo = Deno.env.get('OLLAMA_MODEL') || 'qwen3.5:4b'
   const r = await fetch(`${base}/api/chat`, {
@@ -113,5 +148,6 @@ export async function elegirConsultas(texto: string, historial: Intercambio[]): 
   }
   // "hola, cuánto vendimos": el saludo no suma una ayuda al lado de la respuesta.
   const utiles = elegidas.length > 1 ? elegidas.filter((e) => e.consulta !== 'ayuda') : elegidas
-  return utiles.slice(0, MAX_CONSULTAS)
+  const crudo = (datos?.message?.tool_calls ?? []).slice(0, 6).map((c: any) => c?.function ?? c)
+  return { elecciones: utiles.slice(0, MAX_CONSULTAS), crudo, modelo }
 }
