@@ -75,6 +75,11 @@ public class UploaderGpsPlugin extends Plugin {
         // 13/09/2026 — ventana de agrupado del POST (gpsConfig.LOTE_SUBIDA_MS). Default 0 = un POST por
         // punto, o sea lo que hacía siempre: un APK nuevo con un bundle viejo no cambia de conducta.
         int loteMs = call.getInt("loteMs", 0);
+        // 1.46.0 (plan 47) — pedir el chip de satélites directo, toda la jornada. Default PRENDIDO, al
+        // revés que las demás perillas: el APK piloto corre con el bundle OTA vigente (1.45.13), que
+        // no manda la clave, y el arreglo tiene que funcionar igual. `false` por OTA lo apaga.
+        boolean gnssDirecto = call.getBoolean("gnssDirecto", true);
+        int gnssIntervaloMs = call.getInt("gnssIntervaloMs", 1000);
         // Dueño de los puntos que capture esta sesión (id_usuario). Es lo que impide que la cola de
         // una cuenta se suba con el token de otra: ver K_DUENO en UploaderGpsService.
         String dueno = call.getString("dueno");
@@ -110,6 +115,8 @@ public class UploaderGpsPlugin extends Plugin {
             .putInt(UploaderGpsService.K_SILENCIO_MS, silencioMs)
             .putInt(UploaderGpsService.K_REPEDIDO_MIN_MS, repedidoMinMs)
             .putInt(UploaderGpsService.K_LOTE_MS, loteMs)
+            .putBoolean(UploaderGpsService.K_GNSS_DIRECTO, gnssDirecto)
+            .putInt(UploaderGpsService.K_GNSS_INTERVALO, gnssIntervaloMs)
             .apply();
         call.resolve();
     }
@@ -221,6 +228,14 @@ public class UploaderGpsPlugin extends Plugin {
         // Ver NotifDeslizadaReceiver.
         ret.put("notifDeslizada", sp.getInt(UploaderGpsService.K_NOTIF_DESLIZ, 0));
         ret.put("notifDeslizadaTs", sp.getLong(UploaderGpsService.K_NOTIF_DESLIZ_TS, 0));
+        // 1.46.0 — carril GNSS directo (plan 47): si está prendido, cuántos fixes dio el chip,
+        // satélites usados/vistos, tiempo al primer fix y cuántos fixes del fusionado se taparon.
+        ret.put("gnssDirecto", sp.getBoolean(UploaderGpsService.K_GNSS_DIRECTO, true));
+        ret.put("gnssFixes", sp.getInt(UploaderGpsService.K_TEL_GNSS_FIXES, 0));
+        ret.put("gnssSats", sp.getInt(UploaderGpsService.K_TEL_GNSS_SATS, -1));
+        ret.put("gnssVistos", sp.getInt(UploaderGpsService.K_TEL_GNSS_VISTOS, -1));
+        ret.put("gnssTtffMs", sp.getLong(UploaderGpsService.K_TEL_GNSS_TTFF, -1));
+        ret.put("fusedTapados", sp.getInt(UploaderGpsService.K_TEL_FUSED_TAPADOS, 0));
         call.resolve(ret);
     }
 }

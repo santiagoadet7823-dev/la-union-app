@@ -7,6 +7,7 @@ import {
   ACCURACY_MAX_M, ACCURACY_CAPTURA_MAX_M, MAX_SPEED_MPS, MAX_SALTOS_SEGUIDOS,
   MIN_MOVE_URBANO_M, MIN_MOVE_RUTA_M, VEL_RUTA_MPS, NEAR_LIVE_QUIETO_MS,
   ACCURACY_RED_MAX_M, SILENCIO_MS, REPEDIDO_MIN_MS, LOTE_SUBIDA_MS, NEAR_LIVE_TRANSPORTE_MS,
+  GNSS_DIRECTO, GNSS_INTERVALO_MS,
 } from './gpsConfig'
 import { paramsDePerfil } from './gpsPerfil'
 import { abierto as transporteAbierto } from './transporte'
@@ -134,6 +135,8 @@ export async function iniciarUploaderNativo(cfg = null, { intervaloMs = NEAR_LIV
       intervaloQuietoMs: NEAR_LIVE_QUIETO_MS,
       accuracyRedMaxM: ACCURACY_RED_MAX_M, silencioMs: SILENCIO_MS,
       repedidoMinMs: REPEDIDO_MIN_MS,
+      // 1.46.0 — chip de satélites pedido directo (plan 47). Los APK anteriores ignoran las claves.
+      gnssDirecto: GNSS_DIRECTO, gnssIntervaloMs: GNSS_INTERVALO_MS,
       // Va último: pisa `intervaloMs` / `intervaloRapidoMs` / `intervaloQuietoMs` / `minMoveM` para
       // las personas en prueba, y no existe para el resto. Ver `paramsDePerfil`.
       ...(perfilGps || {}),

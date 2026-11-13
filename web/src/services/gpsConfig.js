@@ -304,6 +304,23 @@ export const SILENCIO_MS = 150000
 // no recibir nada, y es el sospechoso principal de lo que le pasó a 1.8.1.
 export const REPEDIDO_MIN_MS = 60000
 
+/**
+ * 🩸 EL CHIP DE SATÉLITES SE PIDE DIRECTO, TODA LA JORNADA (APK 1.46.0, 13/11/2026 — plan 47).
+ *
+ * El proveedor fusionado de Google decide solo si enciende el chip o contesta con WiFi, y en la
+ * mitad del parque no lo encendía nunca: Nelson Rojas y Alejandro Mercado tenían 0 % de puntos con
+ * precisión < 8 m en cinco días, contra 90-98 % de los equipos sanos. Con una app de satélites
+ * abierta en paralelo, esos mismos teléfonos rastreaban perfecto. El servicio nativo ahora hace lo
+ * mismo que esa app (ver K_GNSS_DIRECTO en UploaderGpsService.java).
+ *
+ * `GNSS_DIRECTO = false` lo apaga por OTA sin APK nuevo. `GNSS_INTERVALO_MS` es cada cuánto se le
+ * pide un fix al chip para que no se enfríe; NO es la cadencia de guardado (esa sigue siendo
+ * `NEAR_LIVE_MS` y compañía), así que bajarlo no agrega puntos a la base.
+ * Un APK anterior a 1.46.0 ignora las dos claves.
+ */
+export const GNSS_DIRECTO = true
+export const GNSS_INTERVALO_MS = 1000
+
 // ── 1.11.0 · Arranque del rastreo al horario ─────────────────────────────────────────────────────
 // Cada cuánto pinguea el watchdog offline (AlarmManager). 15 min es el piso duro del plugin: por
 // debajo, Doze no lo respeta igual (rate-limit de allow-while-idle). Estaba hardcodeado en

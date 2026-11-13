@@ -140,6 +140,43 @@ public class UploaderGpsService extends Service {
     static final String K_SILENCIO_MS = "silencioMs";           // sin fix de GPS por más de esto → red + GPS crudo
     static final String K_REPEDIDO_MIN_MS = "repedidoMinMs";    // piso entre dos cambios de cadencia (anti-churn)
     static final String K_INTERVALO_QUIETO = "intervaloQuietoMs"; // cadencia con "quieto" CONFIRMADO por el acelerómetro
+
+    /* 🩸 EL CHIP SE PIDE DIRECTO, TODA LA JORNADA (1.46.0, 13/11/2026 — plan 47).
+     *
+     * Hasta 1.45 la captura le pedía la ubicación SOLO al proveedor fusionado de Google Play
+     * Services (`pedirUpdates`, PRIORITY_HIGH_ACCURACY), y es él quien decide si enciende el chip de
+     * satélites o contesta con WiFi y antenas. En la mitad del parque contestaba con WiFi y no
+     * encendía el chip nunca. Medido en `posiciones.accuracy`, 08-13/11/2026, % de puntos con
+     * precisión < 8 m (o sea, de satélite):
+     *
+     *   Gabriel 98 · Agustín 96 · Orlando 90 · Javier 73 · Eduardo 38 · Juan Abregu 25 ·
+     *   Repartidor1 3 · Nelson Rojas 0 · Alejandro Mercado 0
+     *
+     * Los malos viven en 15-30 m (un tercio de los de Juan Abregu dicen 20,0 m EXACTOS, la firma de
+     * la posición por WiFi). Y la prueba que lo cerró la hizo el usuario: con una app de satélites
+     * abierta en paralelo —que pide el GPS directo y engancha en 3-11 s— el rastreo de DisT-At en ese
+     * mismo teléfono anda perfecto. El chip anda; lo que no lo encendía era el fusionado.
+     *
+     * El respaldo que pedía GPS_PROVIDER ya existía (`encenderCarrilRed`, 1.9.0) y no actuaba nunca
+     * en estos equipos: se enciende tras un silencio de fixes CONFIABLES, y un fix de WiFi de 20 m
+     * entra por debajo del techo de 30 → el servicio se creía sano (Juan Abregu: `gps_fixes_red` 0).
+     *
+     * Ahora, dentro de la ventana, hay un pedido PERMANENTE al chip (`encenderGnss`), igual que hace
+     * la otra app. El chip se pide cada `K_GNSS_INTERVALO` (1 s, para que no se enfríe) pero se
+     * procesa uno por `intervaloVigente`, así que la cantidad de puntos guardados no cambia. Mientras
+     * el chip entrega fixes confiables, los del fusionado se tapan (ver `gnssVivo`): mezclar 2 m con
+     * 20 m es exactamente el zigzag que se quiere sacar. Si el chip se calla (interior, galpón), el
+     * fusionado y el carril de red siguen como siempre.
+     *
+     * Default PRENDIDO a propósito: el APK piloto corre con el bundle OTA vigente, que no manda la
+     * clave. `false` por OTA lo apaga sin APK nuevo. */
+    static final String K_GNSS_DIRECTO = "gnssDirecto";
+    static final String K_GNSS_INTERVALO = "gnssIntervaloMs";
+    static final String K_TEL_GNSS_FIXES = "telGnssFixes";
+    static final String K_TEL_GNSS_SATS = "telGnssSats";
+    static final String K_TEL_GNSS_VISTOS = "telGnssVistos";
+    static final String K_TEL_GNSS_TTFF = "telGnssTtffMs";
+    static final String K_TEL_FUSED_TAPADOS = "telFusedTapados";
     // 🩸 DIAGNÓSTICO DE RED (30/07/2026). Por qué el teléfono se quedó callado: sin internet, en
     // modo avión, o se reinició. Lo tiene que saber el NATIVO — el WebView congelado en Doze no
     // puede observar nada, y `navigator.onLine` miente en este WebView (regla 12).
@@ -338,6 +375,28 @@ public class UploaderGpsService extends Service {
     /** WakeLock parcial: ver `tomarWakeLock`. */
     private android.os.PowerManager.WakeLock wakeLock = null;
 
+    /* Carril GNSS directo (1.46.0): ver K_GNSS_DIRECTO. */
+    private static final String TAG_GNSS = "DistatGnss";
+    /** Cuánto tiempo sin un fix CONFIABLE del chip hace que el fusionado vuelva a contar. */
+    private static final long GNSS_VIVO_MS = 15000L;
+    private android.location.LocationListener gnssListener = null;
+    private Object gnssStatusCb = null;      // GnssStatus.Callback (API 24+); Object para no cargar la clase en 23
+    private boolean pidiendoGnss = false;
+    private long gnssIntervaloPedido = 0L;
+    private long ultimoGnssBuenoAt = 0L;     // último fix del chip con precisión ≤ techo de confianza
+    private long ultimoGnssProcesadoAt = 0L; // último fix del chip que pasó a `procesarFix`
+    private int cGnssFixes = 0, cFusedTapados = 0;
+    private int gnssSats = -1, gnssVistos = -1;
+    private long gnssTtffMs = -1L;
+    private long ultimoLogGnssAt = 0L;
+    /* 🩸 Desde cuándo se está pidiendo ubicación en esta racha de captura. El reloj del silencio se
+     * medía desde `ultimoFixAt`, y eso fallaba de dos maneras: si el primer fix confiable no llegaba
+     * nunca, `ultimoFixAt` quedaba en 0 y el silencio NO SE DETECTABA (un equipo del parque tenía
+     * el 13/11 el servicio vivo con `fix_total` 0); y al reanudar a la mañana, el último fix era el
+     * de la noche anterior, así que `gps_silencio_max_ms` anotaba la noche entera como "silencio"
+     * (Eduardo Ruiz: 906 min). El silencio cuenta desde lo que pase último de los dos. */
+    private long capturaDesde = 0L;
+
     /**
      * 🩸 EL FIX RETENIDO (02/08/2026) — la "línea ciega" al retomar marcha.
      *
@@ -524,6 +583,7 @@ public class UploaderGpsService extends Service {
         reanudar(); // no-op si no venía en pausa
         tomarWakeLock();   // idempotente: onStartCommand puede volver a entrar (AlarmReceiver, boot)
         arrancarUpdates();
+        encenderGnss();    // idempotente: si ya está pedido con el mismo intervalo, no re-pide (regla 42)
         reiniciarContadoresSiCambioElDia();
         latidoH.removeCallbacks(latido);
         latidoH.postDelayed(latido, LATIDO_MS);
@@ -563,13 +623,18 @@ public class UploaderGpsService extends Service {
                     return;
                 }
                 reanudar(); // no-op si ya estaba corriendo
+                // Reintento barato: si el proveedor GPS estaba apagado al arrancar, o la OTA cambió
+                // la perilla, se aplica acá. Si ya está pedido igual, no hace nada.
+                encenderGnss();
                 reiniciarContadoresSiCambioElDia();
                 long now = System.currentTimeMillis();
                 long silencioMs = prefs().getInt(K_SILENCIO_MS, 90000);
-                if (ultimoFixAt > 0 && now - ultimoFixAt > silencioMs) {
-                    if (now - ultimoFixAt > silencioMax) silencioMax = now - ultimoFixAt;
+                long base = baseSilencio();
+                if (base > 0 && now - base > silencioMs) {
+                    if (now - base > silencioMax) silencioMax = now - base;
                     encenderCarrilRed();
                 }
+                logGnss(now);
                 aplicarCadencia();
                 subir();
                 actualizarNotif();
@@ -597,6 +662,7 @@ public class UploaderGpsService extends Service {
         cFixes = 0; cDescPrecision = 0; cDescSalto = 0; cDescMovimiento = 0; cGuardados = 0;
         cRepedidos = 0; cFixesRed = 0; silencioMax = 0;
         cDescPrecisionSeguidos = 0; cDescPrecisionRacha = 0;
+        cGnssFixes = 0; cFusedTapados = 0; gnssTtffMs = -1L;
         volcarTelemetria(sp.edit()).putInt(K_TEL_DIA, hoy).apply();
     }
 
@@ -612,7 +678,12 @@ public class UploaderGpsService extends Service {
             .putLong(K_TEL_INTERVALO, intervaloVigente)
             .putInt(K_TEL_REPEDIDOS, cRepedidos)
             .putLong(K_TEL_SILENCIO_MAX, silencioMax)
-            .putInt(K_TEL_RED, cFixesRed);
+            .putInt(K_TEL_RED, cFixesRed)
+            .putInt(K_TEL_GNSS_FIXES, cGnssFixes)
+            .putInt(K_TEL_GNSS_SATS, gnssSats)
+            .putInt(K_TEL_GNSS_VISTOS, gnssVistos)
+            .putLong(K_TEL_GNSS_TTFF, gnssTtffMs)
+            .putInt(K_TEL_FUSED_TAPADOS, cFusedTapados);
     }
 
     /**
@@ -698,7 +769,8 @@ public class UploaderGpsService extends Service {
         // Va ANTES de todos los filtros a propósito: mide el hueco sin fixes USABLES (porque
         // `ultimoFixAt` solo lo mueve un fix confiable), y si se calculara más abajo, un teléfono
         // que solo entrega basura lo dejaría clavado en cero — que es justo el caso a detectar.
-        if (ultimoFixAt > 0 && now - ultimoFixAt > silencioMax) silencioMax = now - ultimoFixAt;
+        long base = baseSilencio();
+        if (base > 0 && now - base > silencioMax) silencioMax = now - base;
 
         // Filtro de precisión: por encima del techo de CAPTURA el fix no sirve ni para decir "por
         // acá anduvo" y se tira.
@@ -841,7 +913,13 @@ public class UploaderGpsService extends Service {
                 // que alguien abriera la app. Ahora se reanuda solo. Ver el bloque de `pausar()`.
                 if (!dentroDeVentana()) { pausar(); return; }
                 reiniciarContadoresSiCambioElDia();
-                for (Location loc : result.getLocations()) procesarFix(loc, false);
+                for (Location loc : result.getLocations()) {
+                    // Con el chip entregando fixes confiables, el fusionado no vota: en los equipos
+                    // malos son posiciones de WiFi de 15-30 m y mezclarlas con las de 2 m dibuja un
+                    // zigzag. Se cuentan para poder ver cuánto tapó el carril GNSS.
+                    if (gnssVivo(System.currentTimeMillis())) { cFusedTapados++; continue; }
+                    procesarFix(loc, false);
+                }
                 // Un cambio de cadencia que quedó pendiente por el piso de permanencia se reintenta
                 // acá: si no, quedaría anotado como "deseado" para siempre sin aplicarse nunca.
                 aplicarCadencia();
@@ -855,7 +933,145 @@ public class UploaderGpsService extends Service {
         modoRapido = false; // cada arranque parte en cadencia lenta; los primeros fixes la re-evalúan
         modoMovimiento = MODO_PIE;
         intervaloVigente = 0L;
+        capturaDesde = System.currentTimeMillis(); // ver el comentario de `capturaDesde`
         quiereCadencia(prefs().getLong(K_INTERVALO, 10000L));
+        encenderGnss();
+    }
+
+    /** Desde cuándo se mide el silencio: el último fix confiable o el arranque de la captura. */
+    private long baseSilencio() {
+        return Math.max(ultimoFixAt, capturaDesde);
+    }
+
+    /** ¿El chip está entregando fixes confiables? Mientras sí, el fusionado se tapa. */
+    private boolean gnssVivo(long now) {
+        return pidiendoGnss && ultimoGnssBuenoAt > 0 && now - ultimoGnssBuenoAt < GNSS_VIVO_MS;
+    }
+
+    /**
+     * Pide el chip directo (`GPS_PROVIDER`) y lo deja pedido hasta `pausar()`/`onDestroy()`.
+     * Idempotente y barato: el latido la llama cada 30 s. Solo vuelve a llamar a
+     * `requestLocationUpdates` si cambió el intervalo —re-pedir reinicia la agenda del proveedor
+     * (regla 42)— y nunca por un cambio de cadencia: la cadencia se aplica al PROCESAR, no al pedir.
+     */
+    private void encenderGnss() {
+        if (enPausa || callback == null) return; // fuera de ventana o sin captura: nada que pedir
+        SharedPreferences sp = prefs();
+        if (!sp.getBoolean(K_GNSS_DIRECTO, true)) { apagarGnss(); return; }
+        long cada = Math.max(1000L, sp.getInt(K_GNSS_INTERVALO, 1000));
+        if (pidiendoGnss && cada == gnssIntervaloPedido) return;
+        try {
+            android.location.LocationManager lm =
+                (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return;
+            // Con la ubicación del teléfono apagada no hay nada que pedir; el latido reintenta.
+            if (!lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) return;
+            if (gnssListener == null) {
+                gnssListener = new android.location.LocationListener() {
+                    @Override public void onLocationChanged(Location loc) { recibirGnss(loc); }
+                    @Override public void onProviderEnabled(String p) {}
+                    @Override public void onProviderDisabled(String p) {}
+                    @SuppressWarnings("deprecation")
+                    @Override public void onStatusChanged(String p, int s, android.os.Bundle e) {}
+                };
+            }
+            lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, cada, 0f, gnssListener, Looper.getMainLooper());
+            pidiendoGnss = true;
+            gnssIntervaloPedido = cada;
+            // Si el carril de red estaba prendido, tiene su propio pedido a GPS_PROVIDER y cada fix
+            // entraría dos veces. Se apaga; si el silencio sigue, el latido lo vuelve a prender ya
+            // sin el chip (ver `encenderCarrilRed`).
+            apagarCarrilRed();
+            registrarEstadoGnss(lm);
+            android.util.Log.i(TAG_GNSS, "chip pedido directo cada " + cada + " ms");
+        } catch (SecurityException e) {
+            android.util.Log.w(TAG_GNSS, "sin permiso de ubicación precisa: no se puede pedir el chip");
+        } catch (Exception e) {
+            android.util.Log.w(TAG_GNSS, "no se pudo pedir el chip: " + e);
+        }
+    }
+
+    private void apagarGnss() {
+        if (!pidiendoGnss && gnssStatusCb == null) return;
+        try {
+            android.location.LocationManager lm =
+                (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null) {
+                if (gnssListener != null) lm.removeUpdates(gnssListener);
+                if (Build.VERSION.SDK_INT >= 24 && gnssStatusCb != null) {
+                    lm.unregisterGnssStatusCallback((android.location.GnssStatus.Callback) gnssStatusCb);
+                }
+            }
+        } catch (Exception ignored) {}
+        gnssStatusCb = null;
+        pidiendoGnss = false;
+        gnssIntervaloPedido = 0L;
+        ultimoGnssBuenoAt = 0L;
+        ultimoGnssProcesadoAt = 0L;
+    }
+
+    /**
+     * Satélites usados en el fix y vistos, y el tiempo al primer fix. Es la misma información que
+     * muestra la app de satélites con la que se descubrió el problema, y lo que permite saber en el
+     * piloto si el chip está enganchando sin tener que abrir otra app.
+     */
+    @SuppressWarnings("deprecation")
+    private void registrarEstadoGnss(android.location.LocationManager lm) {
+        if (Build.VERSION.SDK_INT < 24 || gnssStatusCb != null) return;
+        try {
+            android.location.GnssStatus.Callback cb = new android.location.GnssStatus.Callback() {
+                @Override public void onFirstFix(int ttffMillis) {
+                    gnssTtffMs = ttffMillis;
+                    android.util.Log.i(TAG_GNSS, "primer fix del chip en " + ttffMillis + " ms");
+                }
+                @Override public void onSatelliteStatusChanged(android.location.GnssStatus status) {
+                    int usados = 0, n = status.getSatelliteCount();
+                    for (int i = 0; i < n; i++) if (status.usedInFix(i)) usados++;
+                    gnssSats = usados;
+                    gnssVistos = n;
+                }
+            };
+            lm.registerGnssStatusCallback(cb, new android.os.Handler(Looper.getMainLooper()));
+            gnssStatusCb = cb;
+        } catch (SecurityException ignored) {
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Fix del chip. Llega cada ~1 s; pasa a `procesarFix` uno por `intervaloVigente`, así el
+     * volumen guardado es el mismo que con el fusionado y todos los filtros (precisión, salto,
+     * movimiento, ancla, dueño) se aplican igual — es el MISMO camino, no una copia.
+     */
+    private void recibirGnss(Location loc) {
+        if (loc == null || enPausa) return;
+        long now = System.currentTimeMillis();
+        cGnssFixes++;
+        float accConf = prefs().getFloat(K_ACCURACY_CONF, ACCURACY_MAX_M);
+        if (loc.hasAccuracy() && loc.getAccuracy() <= accConf) ultimoGnssBuenoAt = now;
+        long paso = intervaloVigente > 0 ? intervaloVigente : prefs().getLong(K_INTERVALO, 10000L);
+        // 300 ms de tolerancia: los fixes llegan cada ~1 s con jitter, y sin margen un paso de 4 s
+        // terminaría procesando uno cada 5 s.
+        if (ultimoGnssProcesadoAt > 0 && now - ultimoGnssProcesadoAt < paso - 300) return;
+        ultimoGnssProcesadoAt = now;
+        reiniciarContadoresSiCambioElDia();
+        procesarFix(loc, false);
+        aplicarCadencia();
+        subir();
+        actualizarNotif();
+    }
+
+    /** Una línea por minuto en logcat (`adb logcat -s DistatGnss`): la prueba del piloto por cable. */
+    private void logGnss(long now) {
+        if (now - ultimoLogGnssAt < 60000L) return;
+        ultimoLogGnssAt = now;
+        android.util.Log.i(TAG_GNSS, "pedido=" + pidiendoGnss
+            + " vivo=" + gnssVivo(now)
+            + " sats=" + gnssSats + "/" + gnssVistos
+            + " ttffMs=" + gnssTtffMs
+            + " fixesChip=" + cGnssFixes
+            + " fusedTapados=" + cFusedTapados
+            + " guardados=" + cGuardados
+            + " fixesRed=" + cFixesRed);
     }
 
     /**
@@ -991,7 +1207,9 @@ public class UploaderGpsService extends Service {
             if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
                 lm.requestLocationUpdates(android.location.LocationManager.NETWORK_PROVIDER, cada, 0f, redListener, Looper.getMainLooper());
             }
-            if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+            // Con el carril GNSS directo prendido el chip ya está pedido (1.46.0): pedirlo de nuevo
+            // acá duplicaría cada fix por dos caminos. Solo queda la triangulación.
+            if (!pidiendoGnss && lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
                 lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, cada, 0f, redListener, Looper.getMainLooper());
             }
             pidiendoRed = true;
@@ -1195,6 +1413,14 @@ public class UploaderGpsService extends Service {
             t.put("gps_intervalo_ms", intervaloVigente);
             t.put("gps_silencio_max_ms", silencioMax);
             t.put("cuarentena_nativa", largoCuarentena());
+            // 1.46.0 — carril GNSS directo. `ingest-posiciones` todavía no tiene estas claves en su
+            // lista blanca y las ignora sin error; se suman (db/109) si el piloto funciona.
+            t.put("gnss_directo", pidiendoGnss);
+            t.put("gnss_fixes", cGnssFixes);
+            t.put("gnss_sats", gnssSats);
+            t.put("gnss_sats_vistos", gnssVistos);
+            t.put("gnss_ttff_ms", gnssTtffMs);
+            t.put("fused_tapados", cFusedTapados);
         } catch (Exception ignored) { /* la telemetría nunca puede impedir que suban los puntos */ }
         return t;
     }
@@ -1480,6 +1706,7 @@ public class UploaderGpsService extends Service {
         try { if (callback != null) fused.removeLocationUpdates(callback); } catch (Exception ignored) {}
         callback = null;
         apagarCarrilRed();
+        apagarGnss(); // fuera de horario el chip no queda pedido: es el mayor consumo del servicio
         // El WakeLock se suelta acá y no solo en onDestroy: fuera de la ventana horaria, dejar la
         // CPU despierta toda la noche sería exactamente el drenaje que la ventana vino a evitar.
         soltarWakeLock();
@@ -1522,6 +1749,7 @@ public class UploaderGpsService extends Service {
         latidoH.removeCallbacks(subidaDiferida);
         subidaProgramada.set(false);
         apagarCarrilRed();
+        apagarGnss();
         soltarWakeLock();
         // Soltar la referencia estática: sin esto queda un Service muerto retenido para siempre.
         if (instancia == this) instancia = null;
