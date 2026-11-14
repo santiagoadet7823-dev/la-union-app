@@ -236,6 +236,11 @@ public class UploaderGpsPlugin extends Plugin {
         ret.put("gnssVistos", sp.getInt(UploaderGpsService.K_TEL_GNSS_VISTOS, -1));
         ret.put("gnssTtffMs", sp.getLong(UploaderGpsService.K_TEL_GNSS_TTFF, -1));
         ret.put("fusedTapados", sp.getInt(UploaderGpsService.K_TEL_FUSED_TAPADOS, 0));
+        // 1.46.1 — se lee en el momento (no de prefs): es un ajuste del sistema, no un contador.
+        int ahorro = UploaderGpsService.modoAhorroGps(getContext());
+        ret.put("ahorroEnergia", ahorro >= 0);
+        ret.put("ahorroGpsModo", ahorro);
+        ret.put("ahorroApagaGps", UploaderGpsService.ahorroApagaGps(ahorro));
         call.resolve(ret);
     }
 }

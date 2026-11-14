@@ -1060,11 +1060,56 @@ public class UploaderGpsService extends Service {
         actualizarNotif();
     }
 
+    /**
+     * 🩸 EL AHORRO DE ENERGÍA APAGA EL GPS CON LA PANTALLA APAGADA (1.46.1, 13/11/2026).
+     *
+     * Confirmado por cable en el piloto (`repartocardix1`, SM-A075M): `low_power = 1` desde dos días
+     * antes y política efectiva `location_mode=1` (`LOCATION_MODE_GPS_DISABLED_WHEN_SCREEN_OFF`).
+     * Con la pantalla apagada el pedido directo al chip seguía registrado pero el chip daba
+     * `sats=0/32`; al prender la pantalla enganchó 31 satélites en 3,6 s. NINGUNA app puede pasar por
+     * encima de esa política (tampoco Transistorsoft): el único remedio es que la persona lo apague.
+     * Por eso el servicio no intenta "arreglarlo": lo DETECTA, lo dice en la notificación (que lleva
+     * a la pantalla del ajuste) y lo manda en la telemetría para encontrar los otros equipos.
+     *
+     * @return -1 si el ahorro está apagado. Si está prendido, el modo de ubicación que impone
+     *         (`PowerManager.LOCATION_MODE_*`: 0 no toca, 1 GPS apagado con pantalla apagada,
+     *         2 toda la ubicación apagada con pantalla apagada, 3 solo apps en primer plano,
+     *         4 frena los pedidos). Antes de Android 9 el modo no se puede leer: devuelve 1, que es
+     *         lo que hacía el ahorro de AOSP en esas versiones.
+     */
+    static int modoAhorroGps(Context ctx) {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+            if (pm == null || !pm.isPowerSaveMode()) return -1;
+            if (Build.VERSION.SDK_INT >= 28) return pm.getLocationPowerSaveMode();
+            return 1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /** ¿El modo de ahorro deja al chip sin funcionar con la pantalla apagada? (1 y 2; el 3 respeta el
+     *  foreground service y el 4 solo espacia los pedidos). */
+    static boolean ahorroApagaGps(int modo) {
+        return modo == 1 || modo == 2;
+    }
+
+    private boolean pantallaPrendida() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            return pm != null && pm.isInteractive();
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
     /** Una línea por minuto en logcat (`adb logcat -s DistatGnss`): la prueba del piloto por cable. */
     private void logGnss(long now) {
         if (now - ultimoLogGnssAt < 60000L) return;
         ultimoLogGnssAt = now;
-        android.util.Log.i(TAG_GNSS, "pedido=" + pidiendoGnss
+        android.util.Log.i(TAG_GNSS, "ahorro=" + modoAhorroGps(this)
+            + " pantalla=" + (pantallaPrendida() ? "on" : "off")
+            + " pedido=" + pidiendoGnss
             + " vivo=" + gnssVivo(now)
             + " sats=" + gnssSats + "/" + gnssVistos
             + " ttffMs=" + gnssTtffMs
@@ -1421,6 +1466,11 @@ public class UploaderGpsService extends Service {
             t.put("gnss_sats_vistos", gnssVistos);
             t.put("gnss_ttff_ms", gnssTtffMs);
             t.put("fused_tapados", cFusedTapados);
+            // 1.46.1 — ahorro de energía (-1 = apagado; si no, el modo de ubicación que impone).
+            // También fuera de la lista blanca del servidor hasta db/109.
+            int ahorro = modoAhorroGps(this);
+            t.put("ahorro_energia", ahorro >= 0);
+            t.put("ahorro_gps_modo", ahorro);
         } catch (Exception ignored) { /* la telemetría nunca puede impedir que suban los puntos */ }
         return t;
     }
@@ -1500,9 +1550,14 @@ public class UploaderGpsService extends Service {
     }
 
     private Notification construirNotificacion(String texto) {
+        // Con el ahorro de energía apagando el GPS, tocar la notificación lleva directo al ajuste:
+        // es lo único que la persona tiene que hacer, y abrir la app no le serviría de nada.
+        boolean ahorro = !enPausa && ahorroApagaGps(modoAhorroGps(this));
         return new NotificationCompat.Builder(this, CH_ID)
-            .setContentTitle("LA UNIÓN · rastreo activo")
+            .setContentTitle(ahorro ? "LA UNIÓN · GPS limitado" : "LA UNIÓN · rastreo activo")
             .setContentText(texto)
+            // El aviso del ahorro no entra en una línea: sin esto, Android lo corta con "…".
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(texto))
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             // `setOngoing(true)` alcanzaba hasta Android 13. En **Android 14 la notificación de un
             // foreground service se puede deslizar igual** y esto ya no lo impide. Se deja porque
@@ -1512,7 +1567,7 @@ public class UploaderGpsService extends Service {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             // Hasta 1.6.x tocar esta notificación no hacía absolutamente nada. Es la pieza de la app
             // que el vendedor tiene delante todo el día: tiene que abrirla.
-            .setContentIntent(intentApp())
+            .setContentIntent(ahorro ? intentAhorro() : intentApp())
             // 🩸 Y SI LA DESLIZAN, VUELVE (18/08/2026). Ver `NotifDeslizadaReceiver`: Android 14
             // permite descartarla, y `actualizarNotif()` solo repinta cuando CAMBIA el texto — que
             // con todo funcionando bien no cambia en horas. O sea que se iba hasta el próximo cambio
@@ -1542,6 +1597,16 @@ public class UploaderGpsService extends Service {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_IMMUTABLE;
         return PendingIntent.getActivity(this, 5191, i, flags);
+    }
+
+    /** Abre la pantalla del ahorro de energía del sistema (estándar de Android desde 5.1; Samsung la
+     *  tiene). Mismo criterio de `FLAG_IMMUTABLE` que `intentApp()`. */
+    private PendingIntent intentAhorro() {
+        Intent i = new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS);
+        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivity(this, 5192, i, flags);
     }
 
     /**
@@ -1602,6 +1667,11 @@ public class UploaderGpsService extends Service {
         if (enPausa) {
             String h = VentanaRastreo.hhmm(VentanaRastreo.proximoInicio(prefs(), System.currentTimeMillis()));
             return h.isEmpty() ? "En pausa · fuera de horario" : "En pausa hasta las " + h;
+        }
+        // Va antes que el estado de la red: sin GPS no hay nada que enviar que valga la pena.
+        // El latido (30 s) repinta, así que el aviso aparece y se va solo al cambiar el ajuste.
+        if (ahorroApagaGps(modoAhorroGps(this))) {
+            return "Ahorro de energía activado: con la pantalla apagada el GPS no funciona. Tocá acá para desactivarlo.";
         }
         String red = prefs().getString(K_RED, "ok");
         int cola = largoCola();

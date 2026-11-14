@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.46.0'   // 13/11/2026: plan 47 — APK piloto, chip de satélites pedido directo (sin publicar)
+export const APP_VERSION = '1.46.1'   // 14/11/2026: plan 47 — APK piloto, detecta y avisa el ahorro de energía (sin publicar)
