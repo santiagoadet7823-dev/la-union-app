@@ -50,10 +50,11 @@ const SISTEMA = [
   '- precio_servicio: cuánto cuesta el asistente',
   'Causas:',
   '- bien: la respuesta corresponde a lo que preguntó (también si dijo con dato_no_disponible que no hay un dato que el sistema no tiene, o si correctamente no respondió un pedido de cambio).',
-  '- herramienta_equivocada: había una consulta correcta en la lista y eligió otra o ninguna. Poné cuál en debio_consulta.',
-  '- falta_herramienta: la pregunta tiene sentido para el negocio pero ninguna consulta de la lista la cubre.',
+  '- herramienta_equivocada: había OTRA consulta de la lista que da exactamente lo pedido y eligió una distinta. Poné cuál en debio_consulta (nunca la misma que eligió).',
+  '- falta_herramienta: la pregunta tiene sentido para el negocio pero ninguna consulta da exactamente eso (otro orden, otro filtro, otra cantidad, otro dato, horarios). Si la elegida era la más parecida pero no responde lo pedido, es falta_herramienta.',
   '- falta_dato: pidió un dato que el sistema no tiene y la respuesta no lo aclaró bien.',
-  '- transcripcion: era un audio y la transcripción salió mal.',
+  '- transcripcion: era un audio y el texto transcripto no tiene sentido o tiene palabras cambiadas. Una queja bien transcripta («no te pregunté eso») NO es transcripcion: es otro.',
+  '- otro: quejas sobre una respuesta anterior, charla, o algo que no encaja en las demás.',
   '- nombre_no_encontrado: usó un apodo o un nombre distinto del cargado (por ejemplo "Gabi" por "Gabriel").',
   'Arreglos:',
   '- atajo: solo si una frase corta del mensaje (2 a 5 palabras, en frase_clave, copiada tal cual del mensaje) siempre significa la misma consulta.',
@@ -89,7 +90,9 @@ async function contextoDe(cliente: any, m: any, motivos: string[]) {
     cliente.from('wa_mensajes').select('texto, consulta').eq('wa_id', m.wa_id).lt('recibido_ts', m.recibido_ts)
       .not('texto', 'is', null).gte('recibido_ts', new Date(new Date(m.recibido_ts).getTime() - 30 * 60_000).toISOString())
       .order('recibido_ts', { ascending: false }).limit(1),
+    // Solo si llegó dentro de 5 min: el 10/11 la IA mezcló un mensaje de media hora después con la pregunta.
     cliente.from('wa_mensajes').select('texto').eq('wa_id', m.wa_id).gt('recibido_ts', m.recibido_ts)
+      .lt('recibido_ts', new Date(new Date(m.recibido_ts).getTime() + 5 * 60_000).toISOString())
       .not('texto', 'is', null).order('recibido_ts').limit(1),
   ])
   return [
@@ -98,8 +101,19 @@ async function contextoDe(cliente: any, m: any, motivos: string[]) {
     `${m.tipo === 'audio' || m.tipo === 'voice' ? 'Audio transcripto' : 'Pregunta'}: "${recortar(m.texto, 300)}"`,
     `Eligió: ${m.consulta ?? 'ninguna'} ${m.argumentos ? JSON.stringify(m.argumentos) : ''}`,
     `Respuesta enviada: "${recortar(m.respuesta, 600)}"`,
-    despues?.[0] ? `Lo siguiente que escribió la persona: "${recortar(despues[0].texto, 200)}"` : '',
+    despues?.[0] ? `Mensaje que mandó la persona enseguida (es OTRO mensaje; usalo solo para ver si se quejó o repitió la pregunta): "${recortar(despues[0].texto, 200)}"` : '',
   ].filter(Boolean).join('\n')
+}
+
+/** Reglas fijas sobre lo que dice la IA local (auditoría 15/11: 6 de 7 propuestas mal diagnosticadas).
+ * «Debería ser X» cuando ya eligió X no es elegir mal: la consulta existe pero no da lo pedido (otro orden,
+ * otro filtro, otro dato) → falta una herramienta. Ejemplo real: «productos menos vendidos por Agustín». */
+export function corregir(s: any, m: any) {
+  const elegidas = String(m?.consulta ?? '').split(',').filter(Boolean)
+  if (s?.causa === 'herramienta_equivocada' && s.debio_consulta && elegidas.includes(s.debio_consulta)) {
+    return { ...s, causa: 'falta_herramienta', arreglo: 'herramienta_nueva', debio_consulta: 'ninguna' }
+  }
+  return s
 }
 
 // ── Propuestas ───────────────────────────────────────────────────────────────────────────────────
@@ -214,7 +228,7 @@ async function analizar(cliente: any, dia: string) {
         await cliente.from('wa_auditor_hallazgos').update({ estado: 'analizado', causa: 'operativo', analizado_ts: new Date().toISOString() }).eq('id', h.id)
         continue
       }
-      const s = await clasificar(await contextoDe(cliente, m, h.motivos))
+      const s = corregir(await clasificar(await contextoDe(cliente, m, h.motivos)), m)
       if (!CAUSAS.includes(s.causa)) throw new Error(`causa inválida: ${s.causa}`)
       await cliente.from('wa_auditor_hallazgos').update({
         estado: 'analizado', causa: s.causa, sugerencia: s, error: null, analizado_ts: new Date().toISOString(),

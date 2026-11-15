@@ -65,13 +65,15 @@ const lineas = (a: unknown) => (Array.isArray(a) ? a : []) as any[]
 // ── Textos fijos ─────────────────────────────────────────────────────────────────────────────────
 export const TEXTOS = {
   fueraDeTema: 'Solo puedo consultar datos de La Unión: ventas, pedidos, clientes, precios, equipo, visitas y zonas. No puedo cambiar nada.',
-  ayuda: 'Hola. Podés preguntarme por escrito o por audio, por ejemplo:\n• ¿Cuánto vendimos hoy?\n• ¿Quién vendió más esta semana?\n• ¿En qué anda el pedido 687?\n• ¿Qué le vendimos a Supermercado Olé?\n• ¿A cuánto está el aceite Prado?\n• ¿Quién está en la calle?\n• ¿Qué clientes hace un mes que no compran?\n• ¿Cómo viene Juan este mes?\n• ¿Desde dónde toma los pedidos Juan?\n• ¿Qué zona conviene pasar a WhatsApp?',
+  ayuda: 'Hola. Podés preguntarme por escrito o por audio, por ejemplo:\n• ¿Cuánto vendimos hoy?\n• ¿Quién vendió más esta semana?\n• ¿En qué anda el pedido 687?\n• ¿Qué le vendimos a Supermercado Olé?\n• ¿A cuánto está el aceite Prado?\n• ¿Quién está en la calle?\n• ¿Qué clientes hace un mes que no compran?\n• ¿Cómo viene Juan este mes?\n• ¿Desde dónde toma los pedidos Juan?\n• ¿A qué hora arrancó cada vendedor hoy?\n• ¿Qué zona conviene pasar a WhatsApp?',
   stock: 'No tengo datos de stock: DisT-At no lleva existencias. Sí puedo decirte precios y ventas.',
   soloTextoOAudio: 'Por ahora solo entiendo mensajes de texto y audios.',
   audioLargo: 'El audio es muy largo. Mandame uno de menos de 2 minutos.',
   audioVacio: 'No pude entender el audio. ¿Me lo mandás de nuevo o por escrito?',
   iaCaida: 'No puedo procesar consultas en este momento. Probá de nuevo en unos minutos.',
   errorConsulta: 'No pude leer ese dato en este momento. Probá de nuevo en unos minutos.',
+  // Plan 48: el 11/11 a «yo no te pregunté por la venta» le volvió a mandar las ventas.
+  disculpa: 'Perdón, me equivoqué. ¿Me lo preguntás de otra forma? Si es un dato que no tengo, te lo digo.',
   ejemplos: '• ¿Cuánto vendimos hoy?\n• ¿Quién vendió más esta semana?\n• ¿En qué anda el pedido 687?\n• ¿A cuánto está el aceite Prado?\n• ¿Quién está en la calle?\n• ¿Cómo viene Juan este mes?\n• ¿Desde dónde toma los pedidos Juan?\n• ¿Qué zona conviene pasar a WhatsApp?',
   sinCupo: 'Se terminaron los mensajes gratis de este mes. Vuelvo a responder el 1.º del mes que viene.',
   precioServicio: 'El precio del servicio lo va a cotizar Santiago cuando termine este mes de prueba. Mientras tanto, lo podés usar gratis.',
@@ -129,6 +131,49 @@ export function productosVendidos(d: any, periodo: string, conCaida = true): Res
   return {
     texto: `Más vendidos ${periodo}:\n${a || '-'}${b ? `\n\nEn caída:\n${b}` : ''}${nota}`,
     voz: top.length ? `Más vendido ${periodo}: ${top[0].descripcion}. El detalle está en el mensaje.` : `Sin ventas ${periodo}, pero hay productos en caída. El detalle está en el mensaje.`,
+  }
+}
+
+/** Ranking de productos (plan 48): más o menos vendidos, cualquier cantidad (hasta 50) y por vendedor. */
+export function productosRanking(d: any, periodo: string, orden: 'mas' | 'menos', persona: string | null): Respuesta {
+  const filas = lineas(d?.productos)
+  const total = Number(d?.total) || 0
+  const de = persona ? ` de ${persona}` : ''
+  if (!filas.length) return ambos(`Sin ventas de productos${de} ${periodo}.`)
+  const titulo = `${orden === 'menos' ? 'Menos vendidos' : 'Más vendidos'}${de} ${periodo} (${filas.length} de ${total} productos):`
+  const cuerpo = filas.map((p, i) => `${i + 1}. ${p.descripcion}: ${plata(p.monto)} (${Number(p.cant)} u.)`).join('\n')
+  const notas = [
+    total > filas.length ? `…y ${total - filas.length} productos más. El listado completo está en la app: Gestión → Pedidos → Consolidado.` : '',
+    orden === 'menos' ? '_Solo cuentan los productos que se vendieron al menos una vez._' : '',
+    `Total vendido${de}: *${plata(d?.monto_total)}*`,
+  ].filter(Boolean)
+  return {
+    texto: `${titulo}\n${cuerpo}\n\n${notas.join('\n')}`,
+    voz: `${orden === 'menos' ? 'El menos vendido' : 'El más vendido'}${de} ${periodo} es ${filas[0].descripcion}. El detalle está en el mensaje.`,
+  }
+}
+
+const horaTs = (iso: unknown) => iso
+  ? new Intl.DateTimeFormat('es-AR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(String(iso)))
+  : null
+
+/** Primer pedido del día por vendedor (plan 48): Javier lo pidió 5 veces entre el 09 y el 13/11. */
+export function primerPedido(filas: any[], dia: string, lejosM: number): Respuesta {
+  const f = lineas(filas)
+  if (!f.length) return ambos(`Nadie de tu equipo tomó pedidos ${dia}.`)
+  const items = f.map((x) => {
+    const arranque = horaTs(x.inicio_ts) ? `arrancó ${horaTs(x.inicio_ts)}` : 'sin rastreo'
+    const comercio = `${x.cliente ?? 'comercio sin nombre'}${x.codigo_cliente ? ` (${x.codigo_cliente})` : ''}`
+    const d = x.distancia_m == null ? 'sin GPS confiable'
+      : Number(x.distancia_m) > lejosM ? `a ${distancia(Number(x.distancia_m))} del comercio ⚠️` : 'en el comercio'
+    const mapa = x.lat != null && x.lng != null ? `\n  https://maps.google.com/?q=${Number(x.lat).toFixed(5)},${Number(x.lng).toFixed(5)}` : ''
+    return `• *${x.nombre}*: ${arranque} · 1.er pedido ${horaTs(x.pedido_ts)} en ${comercio}, ${d} · ${pedidosTxt(Number(x.pedidos))} en el día${mapa}`
+  })
+  const primero = [...f].filter((x) => x.inicio_ts).sort((a, b) => String(a.inicio_ts).localeCompare(String(b.inicio_ts)))[0]
+  return {
+    texto: `Primer pedido ${dia}, por vendedor:\n${items.join('\n')}\n\n_Arrancó = primer punto de GPS del día. El lugar es el GPS del celular al confirmar el pedido; ⚠️ = más de ${lejosM} m del comercio._`,
+    voz: primero ? `${dia === 'de hoy' ? 'Hoy' : 'Ayer'} el primero en arrancar fue ${primero.nombre}, a las ${horaTs(primero.inicio_ts)}. El detalle está en el mensaje.`
+      : 'El detalle está en el mensaje.',
   }
 }
 
@@ -320,7 +365,7 @@ const fmtNum = (n: number) => (n >= 100 ? miles(n) : n.toFixed(1).replace('.', '
 
 export function rendimiento(filas: any[], control: any, periodo: string, clave: string, unaPersona: boolean): Respuesta {
   if (!filas.length) return ambos(`Sin actividad ${periodo}.`)
-  const enCurso = clave === 'hoy' || clave === 'semana' || clave === 'mes' ? '\n_El período está en curso; comparo por día trabajado._' : ''
+  const enCurso = clave === 'hoy' || clave === 'semana' || clave === 'mes' || clave.startsWith('ultimos_') ?'\n_El período está en curso; comparo por día trabajado._' : ''
   const base = '\n_Basado en: visitas y pedidos cargados en la app, comparados por día trabajado con las 4 semanas anteriores._'
   const resumen = (f: any) => {
     const ped = cambio(porDia(f.pedidos, f.dias), porDia(f.pedidos_base, f.dias_base))

@@ -13,11 +13,11 @@ import { olvidarAlias } from '../wa-asistente/lib/consultas.ts'
 import { enviarTexto } from '../wa-asistente/lib/whatsapp.ts'
 
 const TZ = 'America/Argentina/Salta'
-export const CONSULTAS = new Set<string>([...(DEF.herramientas as any[]).map((h) => h[0] as string), 'precio_servicio'])
+export const CONSULTAS = new Set<string>([...(DEF.herramientas as any[]).map((h) => h[0] as string), 'precio_servicio', 'disculpa'])
 // Consultas cuyos argumentos no salen del texto: un atajo puede atraparlas aunque la frase esté dentro de
 // otra más larga. Las demás (con período, persona, cliente…) solo con el mensaje entero, así "cuánto
 // facturamos" no le gana a "cuánto facturamos ayer".
-const SIN_ARGUMENTOS_LIBRES = new Set(['dato_no_disponible', 'ayuda', 'equipo_en_calle', 'precio_servicio'])
+const SIN_ARGUMENTOS_LIBRES = new Set(['dato_no_disponible', 'ayuda', 'equipo_en_calle', 'precio_servicio', 'disculpa'])
 
 export const fechaSalta = (d = new Date()) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
@@ -154,7 +154,9 @@ async function ver(db: any, p: any): Promise<string> {
     d.explicacion ? `Por qué: ${d.explicacion}` : '',
     ejemplos ? `Mensajes:\n${ejemplos}` : '',
     `Estado: ${p.estado}.`,
-    ['nueva', 'enviada'].includes(p.estado) ? `Respondé «aplicar ${p.id}» o «descartar ${p.id}».` : '',
+    ['nueva', 'enviada'].includes(p.estado)
+      ? `Respondé «aplicar ${p.id}» o «descartar ${p.id}».${p.peso === 'complejo' ? ' Aplicarla no cambia nada sola: la deja anotada para una sesión de Claude Code.' : ''}`
+      : '',
   ]
   return partes.filter(Boolean).join('\n')
 }
@@ -164,32 +166,62 @@ async function lista(db: any, empresa: string): Promise<string> {
     .eq('id_empresa', empresa).in('estado', ['nueva', 'enviada'])
     .order('veces', { ascending: false }).order('id').limit(8)
   if (!data?.length) return 'No hay propuestas abiertas del auditor.'
-  return `Propuestas abiertas del auditor:\n${data.map(linea).join('\n')}\n\nRespondé «ver N», «aplicar N» o «descartar N».`
+  return `Propuestas abiertas del auditor:\n${data.map(linea).join('\n')}\n\n${instrucciones(data[0].id)}`
 }
+
+/** Con un número real: el 10/11 «Respondé "ver N"» se leyó al pie de la letra («ver n 15», «Aplicar N#15»). */
+export const instrucciones = (id: number) =>
+  `Respondé con el número, por ejemplo «ver ${id}», «aplicar ${id}» o «descartar ${id}». «auditoría» muestra todas.`
 
 // ── Comandos de Santiago ─────────────────────────────────────────────────────────────────────────
-export type Comando = { accion: 'lista' | 'ver' | 'aplicar' | 'descartar' | 'deshacer'; id?: number }
+export type Comando = { accion: 'lista' | 'ver' | 'aplicar' | 'descartar' | 'deshacer' | 'formato'; id?: number; ids?: number[] }
+
+/** Tolera cómo se escribe de verdad: «ver n 15», «Ver N #15», «Aplicar N#15», «aplicá la 15», «aplicar 15 y 16».
+ * «ver …» sin números de propuesta sigue el camino normal («ver las ventas de hoy», «ver pedido 687»). Un
+ * «aplicar/descartar/deshacer» que no se entiende contesta el formato: no tiene sentido mandárselo al modelo. */
 export function comandoAuditor(texto: string): Comando | null {
-  const t = normalizar(texto).replace(/[.!¡¿?]+/g, '').replace(/\s+/g, ' ').trim()
-  if (/^(auditoria|auditor|propuestas)$/.test(t)) return { accion: 'lista' }
-  const m = t.match(/^(ver|aplicar|aplica|aplicala|descartar|descarta|deshacer|deshace)\s*(?:la\s*)?#?\s*(\d{1,7})$/)
+  const t = normalizar(texto).replace(/[.!¡¿?:]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/^(auditoria|auditor|propuestas|ver propuestas|ver auditoria)$/.test(t)) return { accion: 'lista' }
+  const m = t.match(/^(ver|mostrame|mostra|aplicar|aplica|aplicala|aplicalo|descartar|descarta|descartala|descartalo|deshacer|deshace|deshacela|deshacelo|deshaz)\b(.*)$/)
   if (!m) return null
-  const accion = m[1].startsWith('apli') ? 'aplicar' : m[1].startsWith('descart') ? 'descartar' : m[1].startsWith('deshac') ? 'deshacer' : 'ver'
-  return { accion, id: Number(m[2]) }
+  const accion: Comando['accion'] = m[1].startsWith('apli') ? 'aplicar' : m[1].startsWith('descart') ? 'descartar'
+    : m[1].startsWith('desha') ? 'deshacer' : 'ver'
+  const resto = m[2].replace(/#/g, ' ').replace(/[,;\-]/g, ' ')
+    .replace(/\b(la|las|el|los|propuestas?|prop|numeros?|nro|num|n|no|y|e)\b/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/^\d{1,7}( \d{1,7}){0,7}$/.test(resto)) {
+    const ids = [...new Set(resto.split(' ').map(Number))]
+    return { accion, id: ids[0], ids }
+  }
+  if (accion === 'ver') return resto ? null : { accion: 'lista' }
+  return { accion: 'formato' }
 }
 
-export async function atenderComando(db: any, empresa: string, perfil: string, c: Comando): Promise<string> {
-  if (c.accion === 'lista') return lista(db, empresa)
-  const p = await propuesta(db, empresa, c.id!)
-  if (!p) return `No encontré la propuesta #${c.id}.`
-  if (c.accion === 'ver') return ver(db, p)
-  if (c.accion === 'deshacer') return deshacer(db, empresa, perfil, p)
+async function uno(db: any, empresa: string, perfil: string, accion: Comando['accion'], id: number): Promise<string> {
+  const p = await propuesta(db, empresa, id)
+  if (!p) return accion === 'ver'
+    ? `No encontré la propuesta #${id}. Si buscás un pedido, escribí «pedido ${id}».`
+    : `No encontré la propuesta #${id}.`
+  if (accion === 'ver') return ver(db, p)
+  if (accion === 'deshacer') return deshacer(db, empresa, perfil, p)
   if (!['nueva', 'enviada'].includes(p.estado)) return `La #${p.id} ya está ${p.estado}.`
-  if (c.accion === 'descartar') {
+  if (accion === 'descartar') {
     await marcar(db, p.id, 'descartada', perfil)
     return `Descartada la #${p.id}.`
   }
   return aplicar(db, empresa, perfil, p)
+}
+
+export async function atenderComando(db: any, empresa: string, perfil: string, c: Comando): Promise<string> {
+  if (c.accion === 'lista') return lista(db, empresa)
+  if (c.accion === 'formato') {
+    const { data } = await db.from('wa_auditor_propuestas').select('id').eq('id_empresa', empresa)
+      .in('estado', ['nueva', 'enviada']).order('id').limit(1)
+    return `No entendí el número de la propuesta. ${instrucciones(data?.[0]?.id ?? 15)}`
+  }
+  const ids = c.ids?.length ? c.ids : [c.id!]
+  const partes: string[] = []
+  for (const id of ids) partes.push(await uno(db, empresa, perfil, c.accion, id))
+  return partes.join('\n\n')
 }
 
 // ── Resumen diario ───────────────────────────────────────────────────────────────────────────────
@@ -229,7 +261,7 @@ export async function armarResumen(db: any, empresa: string, fecha: string): Pro
   if (malMuestra) fallas.push(`${malMuestra} de la muestra al azar mal respondidas`)
   if (consultas.length) lineas.push(fallas.length ? `Señales: ${fallas.join(', ')}.` : 'Sin señales de falla.')
   if (props?.length) {
-    lineas.push('', 'Propuestas:', ...props.map(linea), '', 'Respondé «ver N», «aplicar N» o «descartar N». «auditoría» muestra todas.')
+    lineas.push('', 'Propuestas:', ...props.map(linea), '', instrucciones(props[0].id))
     await db.from('wa_auditor_propuestas').update({ estado: 'enviada', actualizado_ts: new Date().toISOString() })
       .in('id', props.map((p: any) => p.id)).eq('estado', 'nueva')
   }

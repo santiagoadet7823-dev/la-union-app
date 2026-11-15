@@ -5,12 +5,17 @@
 import * as R from './respuestas.ts'
 
 const TZ = 'America/Argentina/Salta'
-export const PERIODOS = ['hoy', 'ayer', 'semana', 'semana_pasada', 'mes', 'mes_pasado'] as const
+// `ultimos_N` (plan 48): "los últimos 30 días" contando hoy. Antes se contestaba "este mes", que el 07/11
+// eran 7 días.
+export const PERIODOS = ['hoy', 'ayer', 'semana', 'semana_pasada', 'mes', 'mes_pasado',
+  'ultimos_7', 'ultimos_15', 'ultimos_30', 'ultimos_60', 'ultimos_90'] as const
 type Periodo = (typeof PERIODOS)[number]
 
 const NOMBRE_PERIODO: Record<Periodo, string> = {
   hoy: 'de hoy', ayer: 'de ayer', semana: 'de esta semana', semana_pasada: 'de la semana pasada',
-  mes: 'de este mes', mes_pasado: 'del mes pasado',
+  mes: 'de este mes', mes_pasado: 'del mes pasado', ultimos_7: 'de los últimos 7 días',
+  ultimos_15: 'de los últimos 15 días', ultimos_30: 'de los últimos 30 días',
+  ultimos_60: 'de los últimos 60 días', ultimos_90: 'de los últimos 90 días',
 }
 
 export const hoyEn = (ahora = new Date()) =>
@@ -37,6 +42,10 @@ export function rangoDe(periodo: Periodo, ahora = new Date()) {
     case 'mes_pasado': {
       const ultimo = sumar(primero, -1)
       return { desde: `${ultimo.slice(0, 7)}-01`, hasta: ultimo }
+    }
+    default: {
+      const n = Number(periodo.slice('ultimos_'.length)) || 30
+      return { desde: sumar(hoy, -(n - 1)), hasta: hoy }
     }
   }
 }
@@ -68,14 +77,30 @@ async function alias(db: any, empresa: string, tipo: TipoAlias, texto: string) {
 }
 
 /** Persona por nombre, solo entre la gente que el perfil ve (db/103). Vacío = todo el equipo. */
-async function persona(db: any, empresa: string, perfil: string, v: unknown): Promise<{ id: string | null } | { respuesta: R.Respuesta }> {
+async function persona(db: any, empresa: string, perfil: string, v: unknown): Promise<{ id: string | null; nombre?: string } | { respuesta: R.Respuesta }> {
   const texto = await alias(db, empresa, 'persona', textoDe(v))
-  if (!texto || /^(todos|todo el equipo|equipo|el equipo|vendedores|los vendedores)$/i.test(texto)) return { id: null }
+  if (!texto || /^(todos|todo el equipo|equipo|el equipo|vendedores|los vendedores|cada uno|cada vendedor)$/i.test(texto)) return { id: null }
   const b = await rpc(db, 'wa_buscar_personas', { p_empresa: empresa, p_texto: texto, p_perfil: perfil })
-  const lista = b?.personas ?? []
+  let lista = b?.personas ?? []
+  // Plan 48: «agustin Vazquez» no encontraba a «Agustin Vasquez». Un apellido mal escrito o mal
+  // transcripto del audio no puede dejar sin respuesta: se reintenta con el nombre de pila solo.
+  const pila = texto.trim().split(/\s+/)[0]
+  if (!lista.length && pila && pila !== texto.trim() && pila.length >= 3) {
+    lista = (await rpc(db, 'wa_buscar_personas', { p_empresa: empresa, p_texto: pila, p_perfil: perfil }))?.personas ?? []
+  }
   if (!lista.length) return { respuesta: { texto: `No encontré a nadie de tu equipo con "${texto}".`, voz: 'No encontré a nadie de tu equipo con ese nombre.', tipo: 'no_encontrado' } }
   if (lista.length > 1) return { respuesta: { ...R.personaAmbigua(lista, texto), tipo: 'repregunta' } }
-  return { id: lista[0].id }
+  return { id: lista[0].id, nombre: lista[0].nombre }
+}
+
+/** "todos" → el máximo que entra en un WhatsApp. */
+const MAX_PRODUCTOS = 50
+/** Sin cantidad, 5; 0 o negativo = "todos". */
+const cantidadDe = (v: unknown) => {
+  if (v === undefined || v === null || v === '') return 5
+  const n = Math.round(Number(v))
+  if (!Number.isFinite(n)) return 5
+  return n <= 0 ? MAX_PRODUCTOS : Math.min(n, MAX_PRODUCTOS)
 }
 
 // `perfil` define el alcance (db/102): admin ve la empresa, el encargado solo a su gente. Buscar
@@ -94,8 +119,29 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
       return R.ventasPorVendedor(await rpc(db, 'wa_ventas', conRango), nombre)
     case 'ventas_por_categoria':
       return R.ventasPorCategoria(await rpc(db, 'wa_ventas_categoria', conRango), nombre)
-    case 'productos_mas_vendidos':
-      return R.productosVendidos(await rpc(db, 'wa_productos_ventas', conRango), nombre, rango.hasta < hoyEn())
+    case 'productos_mas_vendidos': {
+      // Sin nada especial, la respuesta de siempre (5 más vendidos + los que cayeron). Con orden "menos", otra
+      // cantidad o un vendedor, el ranking nuevo (db/110). cantidad 0 = "todos".
+      const orden = a.orden === 'menos' ? 'menos' : 'mas'
+      const limite = cantidadDe(a.cantidad)
+      const quien = await persona(db, empresa, perfil, a.persona)
+      if ('respuesta' in quien) return quien.respuesta
+      if (orden === 'mas' && limite <= 5 && !quien.id) {
+        return R.productosVendidos(await rpc(db, 'wa_productos_ventas', conRango), nombre, rango.hasta < hoyEn())
+      }
+      const d = await rpc(db, 'wa_productos_ranking', { ...conRango, p_persona: quien.id, p_orden: orden, p_limite: limite })
+      return R.productosRanking(d, nombre, orden, quien.id ? quien.nombre ?? textoDe(a.persona) : null)
+    }
+    case 'primer_pedido_dia': {
+      const dia = a.dia === 'ayer' ? 'ayer' : 'hoy'
+      const quien = await persona(db, empresa, perfil, a.persona)
+      if ('respuesta' in quien) return quien.respuesta
+      const d = await rpc(db, 'wa_primer_pedido', { p_empresa: empresa, p_fecha: rangoDe(dia).desde, p_perfil: perfil, p_persona: quien.id })
+      const lejos = (await db.from('wa_parametros').select('lejos_m').eq('id_empresa', empresa).maybeSingle()).data?.lejos_m ?? 150
+      return R.primerPedido(d, NOMBRE_PERIODO[dia], Number(lejos))
+    }
+    case 'disculpa':
+      return { texto: R.TEXTOS.disculpa, voz: R.TEXTOS.disculpa, tipo: 'repregunta' }
     case 'buscar_pedido': {
       const numero = textoDe(a.numero)
       if (!/\d/.test(numero)) return { texto: '¿Qué número de pedido querés ver?', voz: '¿Qué número de pedido querés ver?', tipo: 'repregunta' }
