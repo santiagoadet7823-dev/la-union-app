@@ -174,7 +174,7 @@ export const instrucciones = (id: number) =>
   `Respondé con el número, por ejemplo «ver ${id}», «aplicar ${id}» o «descartar ${id}». «auditoría» muestra todas.`
 
 // ── Comandos de Santiago ─────────────────────────────────────────────────────────────────────────
-export type Comando = { accion: 'lista' | 'ver' | 'aplicar' | 'descartar' | 'deshacer' | 'formato'; id?: number; ids?: number[] }
+export type Comando = { accion: 'lista' | 'ver' | 'aplicar' | 'descartar' | 'deshacer' | 'formato' | 'uso'; id?: number; ids?: number[] }
 
 /** Tolera cómo se escribe de verdad: «ver n 15», «Ver N #15», «Aplicar N#15», «aplicá la 15», «aplicar 15 y 16».
  * «ver …» sin números de propuesta sigue el camino normal («ver las ventas de hoy», «ver pedido 687»). Un
@@ -182,6 +182,8 @@ export type Comando = { accion: 'lista' | 'ver' | 'aplicar' | 'descartar' | 'des
 export function comandoAuditor(texto: string): Comando | null {
   const t = normalizar(texto).replace(/[.!¡¿?:]+/g, ' ').replace(/\s+/g, ' ').trim()
   if (/^(auditoria|auditor|propuestas|ver propuestas|ver auditoria)$/.test(t)) return { accion: 'lista' }
+  // Plan 49: «Cómo vienen las consultas ?» (18/11) fue a la ayuda y tardó 51 s.
+  if (/^(como (vienen|van|viene|va|anda|andan|esta|estan) (las consultas|el asistente|el bot|los mensajes)( del (asistente|bot))?|uso del (asistente|bot)|estadisticas( del (asistente|bot))?|resumen del (asistente|bot))$/.test(t)) return { accion: 'uso' }
   const m = t.match(/^(ver|mostrame|mostra|aplicar|aplica|aplicala|aplicalo|descartar|descarta|descartala|descartalo|deshacer|deshace|deshacela|deshacelo|deshaz)\b(.*)$/)
   if (!m) return null
   const accion: Comando['accion'] = m[1].startsWith('apli') ? 'aplicar' : m[1].startsWith('descart') ? 'descartar'
@@ -213,6 +215,7 @@ async function uno(db: any, empresa: string, perfil: string, accion: Comando['ac
 
 export async function atenderComando(db: any, empresa: string, perfil: string, c: Comando): Promise<string> {
   if (c.accion === 'lista') return lista(db, empresa)
+  if (c.accion === 'uso') return usoAsistente(db, empresa)
   if (c.accion === 'formato') {
     const { data } = await db.from('wa_auditor_propuestas').select('id').eq('id_empresa', empresa)
       .in('estado', ['nueva', 'enviada']).order('id').limit(1)
@@ -222,6 +225,62 @@ export async function atenderComando(db: any, empresa: string, perfil: string, c
   const partes: string[] = []
   for (const id of ids) partes.push(await uno(db, empresa, perfil, c.accion, id))
   return partes.join('\n\n')
+}
+
+/** Plan 49: cómo viene el asistente en los últimos 7 días, sin modelo. */
+export async function usoAsistente(db: any, empresa: string, ahora = new Date()): Promise<string> {
+  const desde = new Date(ahora.getTime() - 7 * 86_400_000).toISOString()
+  const [{ data: msgs }, { data: usuarios }, { data: hall }, { count: abiertas }] = await Promise.all([
+    db.from('wa_mensajes').select('wa_id, consulta, resultado, origen, ms_total').eq('id_empresa', empresa).eq('autorizado', true)
+      .in('estado', ['respondido', 'error']).gte('recibido_ts', desde),
+    db.from('wa_asistente_usuarios').select('wa_id, perfiles(nombre)').eq('id_empresa', empresa),
+    db.from('wa_auditor_hallazgos').select('motivos, causa, wa_mensajes!inner(recibido_ts)').eq('id_empresa', empresa)
+      .gte('wa_mensajes.recibido_ts', desde),
+    db.from('wa_auditor_propuestas').select('id', { count: 'exact', head: true }).eq('id_empresa', empresa).in('estado', ['nueva', 'enviada']),
+  ])
+  const consultas = (msgs ?? []).filter((m: any) => !['comando', 'auditor'].includes(m.origen ?? ''))
+  if (!consultas.length) return 'En los últimos 7 días nadie le hizo consultas al asistente.'
+  const cuenta = (claves: string[]) => {
+    const m = new Map<string, number>()
+    for (const k of claves) m.set(k, (m.get(k) ?? 0) + 1)
+    return [...m].sort((a, b) => b[1] - a[1])
+  }
+  const nombre = new Map((usuarios ?? []).map((u: any) => [u.wa_id, String(u.perfiles?.nombre ?? 'otro').split(/s+/)[0]]))
+  const porPersona = cuenta(consultas.map((m: any) => nombre.get(m.wa_id) ?? 'otro'))
+  const temas = cuenta(consultas.flatMap((m: any) => String(m.consulta ?? 'ninguna').split(',').filter(Boolean)))
+  const conDato = consultas.filter((m: any) => m.resultado === 'ok').length
+  const otros = cuenta(consultas.filter((m: any) => m.resultado && m.resultado !== 'ok').map((m: any) => NOMBRE_RESULTADO[m.resultado] ?? m.resultado))
+  const ms = consultas.map((m: any) => Number(m.ms_total)).filter((x: number) => x > 0).sort((a: number, b: number) => a - b)
+  const mediana = ms.length ? Math.round(ms[Math.floor(ms.length / 2)] / 1000) : null
+  const lentas = ms.filter((x: number) => x > 30_000).length
+  const senales = cuenta((hall ?? []).flatMap((h: any) => (h.motivos ?? []).filter((x: string) => x !== 'muestra')).map((x: string) => NOMBRE_MOTIVO[x] ?? x))
+  return [
+    '📊 *Asistente · últimos 7 días*',
+    `${consultas.length} consultas (${porPersona.map(([n, c]) => `${n} ${c}`).join(', ')}).`,
+    `Con dato: ${conDato}${otros.length ? ` · ${otros.map(([n, c]) => `${c} ${n}`).join(', ')}` : ''}.`,
+    `Lo más preguntado: ${temas.slice(0, 4).map(([n, c]) => `${NOMBRE_CONSULTA[n] ?? n} (${c})`).join(', ')}.`,
+    mediana != null ? `Tiempo de respuesta: ${mediana} s la mitad de las veces${lentas ? `; ${lentas} tardaron más de 30 s` : ''}.` : '',
+    senales.length ? `Señales del auditor: ${senales.map(([n, c]) => `${c} ${n}`).join(', ')}.` : 'El auditor no marcó problemas.',
+    abiertas ? `Propuestas abiertas: ${abiertas}. Escribí «auditoría» para verlas.` : 'Sin propuestas abiertas.',
+  ].filter(Boolean).join('\n')
+}
+
+const NOMBRE_RESULTADO: Record<string, string> = {
+  no_encontrado: 'sin encontrar el nombre', dato_no_disponible: 'datos que no tenemos', repregunta: 'repreguntas',
+  fuera_de_tema: 'fuera de tema', error: 'con error',
+}
+const NOMBRE_CONSULTA: Record<string, string> = {
+  ventas_resumen: 'ventas', ventas_por_vendedor: 'ventas por vendedor', ventas_por_categoria: 'ventas por rubro',
+  productos_mas_vendidos: 'productos', primer_pedido_dia: 'primer pedido', buscar_pedido: 'pedidos', pedidos_de_cliente: 'clientes',
+  precio_producto: 'precios', equipo_en_calle: 'equipo en la calle', clientes_sin_comprar: 'clientes sin comprar',
+  rendimiento_vendedor: 'rendimiento', control_visitas: 'control de visitas', avisos_equipo: 'avisos', analisis_zonas: 'zonas',
+  dato_no_disponible: 'datos que no tenemos', ayuda: 'ayuda',
+}
+
+const recortarTexto = (t: unknown, n: number) => { const x = String(t ?? '').replace(/s+/g, ' ').trim(); return x.length > n ? x.slice(0, n) + '…' : x }
+const NOMBRE_CAUSA: Record<string, string> = {
+  herramienta_equivocada: 'la IA cree que eligió mal', falta_herramienta: 'ninguna consulta lo cubre', falta_dato: 'dato que no tenemos',
+  transcripcion: 'audio mal transcripto', nombre_no_encontrado: 'nombre no encontrado', otro: 'dudosa',
 }
 
 // ── Resumen diario ───────────────────────────────────────────────────────────────────────────────
@@ -238,10 +297,12 @@ export async function armarResumen(db: any, empresa: string, fecha: string): Pro
     db.from('wa_mensajes').select('wa_id, origen').eq('id_empresa', empresa).eq('autorizado', true)
       .in('estado', ['respondido', 'error']).gte('recibido_ts', desde.toISOString()).lt('recibido_ts', hasta.toISOString()),
     db.from('wa_asistente_usuarios').select('wa_id, perfiles(nombre)').eq('id_empresa', empresa),
-    db.from('wa_auditor_hallazgos').select('motivos, causa, wa_mensajes!inner(recibido_ts)').eq('id_empresa', empresa)
+    db.from('wa_auditor_hallazgos').select('motivos, causa, wa_mensajes!inner(id, recibido_ts, texto, consulta)').eq('id_empresa', empresa)
       .gte('wa_mensajes.recibido_ts', desde.toISOString()).lt('wa_mensajes.recibido_ts', hasta.toISOString()),
+    // Plan 49: una propuesta compleja de UN solo mensaje no va al resumen (15/11: 4 de 4 eran falsas). Se ve
+    // con «auditoría» y entra al resumen cuando se repite.
     db.from('wa_auditor_propuestas').select('id, titulo, peso, veces').eq('id_empresa', empresa).eq('estado', 'nueva')
-      .order('veces', { ascending: false }).order('id').limit(5),
+      .or('peso.eq.liviano,veces.gte.2').order('veces', { ascending: false }).order('id').limit(5),
   ])
   const consultas = (msgs ?? []).filter((m: any) => !['comando', 'auditor'].includes(m.origen ?? ''))
   if (!consultas.length && !props?.length) return null
@@ -251,15 +312,21 @@ export async function armarResumen(db: any, empresa: string, fecha: string): Pro
   for (const m of consultas) porPersona.set(nombre.get(m.wa_id) ?? 'otro', (porPersona.get(nombre.get(m.wa_id) ?? 'otro') ?? 0) + 1)
   const motivos = new Map<string, number>()
   for (const h of hall ?? []) for (const mo of h.motivos ?? []) if (mo !== 'muestra') motivos.set(mo, (motivos.get(mo) ?? 0) + 1)
-  const malMuestra = (hall ?? []).filter((h: any) => (h.motivos ?? []).includes('muestra') && h.causa && !['bien', 'operativo'].includes(h.causa)).length
+  // Plan 49: «1 de la muestra al azar mal respondidas» no decía cuál. Se listan los mensajes: la IA local
+  // se equivoca seguido y el que decide es Santiago.
+  const revisar = (hall ?? []).filter((h: any) => h.causa && !['bien', 'operativo', 'sin_senal'].includes(h.causa))
+    .sort((a: any, b: any) => a.wa_mensajes.id - b.wa_mensajes.id)
 
   const lineas = [`🧾 *Auditor del asistente* · ${ddmm(fecha)}`]
   lineas.push(consultas.length
     ? `${consultas.length} consultas (${[...porPersona].map(([n, c]) => `${n} ${c}`).join(', ')}).`
     : 'Sin consultas ese día.')
   const fallas = [...motivos].sort((a, b) => b[1] - a[1]).map(([m, c]) => `${c} ${NOMBRE_MOTIVO[m] ?? m}`)
-  if (malMuestra) fallas.push(`${malMuestra} de la muestra al azar mal respondidas`)
   if (consultas.length) lineas.push(fallas.length ? `Señales: ${fallas.join(', ')}.` : 'Sin señales de falla.')
+  if (revisar.length) {
+    lineas.push('', `Para revisar (${revisar.length}):`, ...revisar.slice(0, 3).map((h: any) =>
+      `• «${recortarTexto(h.wa_mensajes.texto, 70)}» → ${h.wa_mensajes.consulta ?? 'ninguna'} (${NOMBRE_CAUSA[h.causa] ?? h.causa})`))
+  }
   if (props?.length) {
     lineas.push('', 'Propuestas:', ...props.map(linea), '', instrucciones(props[0].id))
     await db.from('wa_auditor_propuestas').update({ estado: 'enviada', actualizado_ts: new Date().toISOString() })

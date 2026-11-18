@@ -15,7 +15,7 @@ manda al modelo con las herramientas reales (`lib/herramientas.json`) y se compa
 
 | Consulta | Fuente en la base | Lo que NO hace |
 |---|---|---|
-| `ventas_resumen`, `ventas_por_vendedor` | `wa_ventas`: pedidos tomados no anulados | No es facturación |
+| `ventas_resumen`, `ventas_por_vendedor` | `wa_ventas`: pedidos tomados no anulados (`ventas_por_vendedor` con `persona` responde solo esa persona, plan 49) | No es facturación |
 | `ventas_por_categoria` | `wa_ventas_categoria`: renglones de pedidos × categoría del producto | — |
 | `productos_mas_vendidos` | `wa_productos_ventas`: más vendidos, y en caída contra el período anterior | — |
 | `buscar_pedido` | `wa_pedido`, por número | No cambia el pedido |
@@ -175,3 +175,7 @@ Columnas:
 | ranking de vendedores de los ultimos 15 dias | ventas_por_vendedor | periodo=ultimos_15 |
 | Yo no te pregunté por la venta por qué me mandaste mensaje | disculpa | |
 | no es lo que te pedi | disculpa | |
+| Cuánto vendió Agustín en los últimos 7 días | ventas_por_vendedor | periodo=ultimos_7; persona~agustin |
+| cuanto lleva vendido juan esta semana | ventas_por_vendedor | periodo=semana; persona~juan |
+| Hora del producto más vendido por Agustín | productos_mas_vendidos | persona~agustin |
+| el producto mas vendido de orlando | productos_mas_vendidos | periodo=mes; persona~orlando |

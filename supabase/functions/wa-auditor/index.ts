@@ -75,7 +75,7 @@ async function clasificar(contexto: string) {
     signal: AbortSignal.timeout(90_000),
     // num_ctx igual al del asistente: otro valor obliga a Ollama a recargar el modelo.
     body: JSON.stringify({
-      model: modelo, stream: false, think: false, format: ESQUEMA,
+      model: modelo, stream: false, think: false, format: ESQUEMA, keep_alive: -1,
       options: { temperature: 0, num_ctx: 4096, num_predict: 300 },
       messages: [{ role: 'system', content: SISTEMA }, { role: 'user', content: contexto }],
     }),
@@ -85,23 +85,48 @@ async function clasificar(contexto: string) {
   return JSON.parse(d?.message?.content ?? '{}')
 }
 
+/** «y ayer?», «y Juan?», «el de Pérez»: solo un seguimiento necesita el mensaje anterior para entenderse. */
+export const esSeguimiento = (texto: unknown) => {
+  const t = normalizar(String(texto ?? ''))
+  return /^(y|e|pero) /.test(t) || t.split(' ').filter(Boolean).length <= 3
+}
+
+// Palabras que no dicen de QUÉ se habla: períodos, preguntas y relleno.
+const VACIAS = new Set(['hoy', 'ayer', 'semana', 'pasada', 'pasado', 'dias', 'ultimos', 'ultimo', 'ultima', 'ultimas', 'mes',
+  'este', 'esta', 'estos', 'estas', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'como', 'cual', 'cuales', 'quien', 'quienes',
+  'donde', 'cuando', 'todos', 'todas', 'para', 'desde', 'hasta', 'sobre', 'entre', 'tiene', 'tienen', 'hay', 'dame', 'decime',
+  'mostrame', 'pasame', 'quiero', 'saber', 'favor', 'cada', 'segun', 'ahora'])
+const PERIODOS = new Set(['hoy', 'ayer', 'semana', 'pasada', 'pasado', 'mes', 'dias', 'ultimos', 'anteayer'])
+const raices = (t: string) => new Set(normalizar(t).split(/[^a-z0-9ñ]+/).filter((w) => w.length >= 4 && !VACIAS.has(w)).map((w) => w.slice(0, 5)))
+
+/** Plan 49: la señal «reformula» marcaba CUALQUIER mensaje seguido (<3 min). Santiago hace preguntas
+ * distintas una atrás de otra (15/11: 3 «preguntadas de nuevo», 1 real). Es repregunta si el siguiente
+ * comparte la mitad de las palabras con contenido. */
+export function pareceRepetida(a: string, b: string) {
+  const A = raices(a), B = raices(b)
+  if (!A.size || !B.size) return false
+  // «cuánto vendimos hoy» → «cuánto vendimos ayer»: lo mismo con otro período es un seguimiento, no una repregunta.
+  const periodos = (t: string) => normalizar(t).split(/[^a-z0-9]+/).filter((w) => PERIODOS.has(w)).sort().join(' ')
+  if (A.size === B.size && [...A].every((w) => B.has(w)) && periodos(a) !== periodos(b)) return false
+  const comunes = [...A].filter((w) => B.has(w)).length
+  return comunes >= 1 && comunes / Math.min(A.size, B.size) >= 0.5
+}
+
 async function contextoDe(cliente: any, m: any, motivos: string[]) {
-  const [{ data: antes }, { data: despues }] = await Promise.all([
-    cliente.from('wa_mensajes').select('texto, consulta').eq('wa_id', m.wa_id).lt('recibido_ts', m.recibido_ts)
+  // Plan 49: con el mensaje anterior y el siguiente a la vista, la IA local (4B) copiaba la consulta del
+  // vecino (15/11: al «cuánto vendió Agustín» le asignó la del mensaje anterior). El siguiente ya no va
+  // (la queja y la repregunta se detectan en SQL) y el anterior solo si este es un seguimiento.
+  const { data: antes } = esSeguimiento(m.texto)
+    ? await cliente.from('wa_mensajes').select('texto, consulta').eq('wa_id', m.wa_id).lt('recibido_ts', m.recibido_ts)
       .not('texto', 'is', null).gte('recibido_ts', new Date(new Date(m.recibido_ts).getTime() - 30 * 60_000).toISOString())
-      .order('recibido_ts', { ascending: false }).limit(1),
-    // Solo si llegó dentro de 5 min: el 10/11 la IA mezcló un mensaje de media hora después con la pregunta.
-    cliente.from('wa_mensajes').select('texto').eq('wa_id', m.wa_id).gt('recibido_ts', m.recibido_ts)
-      .lt('recibido_ts', new Date(new Date(m.recibido_ts).getTime() + 5 * 60_000).toISOString())
-      .not('texto', 'is', null).order('recibido_ts').limit(1),
-  ])
+      .order('recibido_ts', { ascending: false }).limit(1)
+    : { data: null }
   return [
     `Señales: ${motivos.join(', ')}`,
-    antes?.[0] ? `Mensaje anterior: "${recortar(antes[0].texto, 200)}" (consulta ${antes[0].consulta ?? 'ninguna'})` : '',
+    antes?.[0] ? `Mensaje anterior (solo para entender el seguimiento): "${recortar(antes[0].texto, 200)}" (consulta ${antes[0].consulta ?? 'ninguna'})` : '',
     `${m.tipo === 'audio' || m.tipo === 'voice' ? 'Audio transcripto' : 'Pregunta'}: "${recortar(m.texto, 300)}"`,
     `Eligió: ${m.consulta ?? 'ninguna'} ${m.argumentos ? JSON.stringify(m.argumentos) : ''}`,
     `Respuesta enviada: "${recortar(m.respuesta, 600)}"`,
-    despues?.[0] ? `Mensaje que mandó la persona enseguida (es OTRO mensaje; usalo solo para ver si se quejó o repitió la pregunta): "${recortar(despues[0].texto, 200)}"` : '',
   ].filter(Boolean).join('\n')
 }
 
@@ -222,6 +247,18 @@ async function analizar(cliente: any, dia: string) {
     if (!tomado?.length) continue // lo tomó otra corrida
     try {
       const { data: m } = await cliente.from('wa_mensajes').select('*').eq('id', h.id_mensaje).single()
+      if (h.motivos.includes('reformula') && m.texto) {
+        const { data: sig } = await cliente.from('wa_mensajes').select('texto').eq('wa_id', m.wa_id).gt('recibido_ts', m.recibido_ts)
+          .not('texto', 'is', null).order('recibido_ts').limit(1)
+        if (!sig?.[0]?.texto || !pareceRepetida(m.texto, sig[0].texto)) {
+          h.motivos = h.motivos.filter((x: string) => x !== 'reformula')
+          await cliente.from('wa_auditor_hallazgos').update({ motivos: h.motivos }).eq('id', h.id)
+          if (!h.motivos.length) {
+            await cliente.from('wa_auditor_hallazgos').update({ estado: 'analizado', causa: 'sin_senal', analizado_ts: new Date().toISOString() }).eq('id', h.id)
+            continue
+          }
+        }
+      }
       // Error o lentitud sin otra señal: es operativo, la IA no tiene nada que mirar.
       const soloOperativo = h.motivos.every((x: string) => x === 'error' || x === 'lento')
       if (soloOperativo || !m.texto) {

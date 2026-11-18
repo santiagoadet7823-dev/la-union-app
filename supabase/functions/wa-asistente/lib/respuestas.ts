@@ -110,6 +110,24 @@ export function ventasPorVendedor(d: any, periodo: string): Respuesta {
   }
 }
 
+/** Plan 49: lo que vendió UN vendedor, con su puesto en el equipo. */
+export function ventaDeVendedor(d: any, periodo: string, nombre: string): Respuesta {
+  const clave = (x: unknown) => String(x ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+  const filas = lineas(d.por_vendedor)
+  const i = filas.findIndex((f) => clave(f.nombre) === clave(nombre))
+  if (i < 0) return ambos(`${nombre} no tiene pedidos tomados ${periodo}.`)
+  const f = filas[i]
+  const total = Number(d.monto) || 0
+  const parte = total > 0 ? ` · ${Math.round((Number(f.monto) / total) * 100)} % del total` : ''
+  return {
+    texto: `*${f.nombre}* ${periodo}: *${plata(f.monto)}*
+${pedidosTxt(Number(f.pedidos))}${f.clientes != null ? ` de ${f.clientes} ${Number(f.clientes) === 1 ? 'cliente' : 'clientes'}` : ''}
+Puesto ${i + 1} de ${filas.length} vendedores${parte}.
+_Son pedidos tomados, no facturación._`,
+    voz: `${f.nombre} vendió ${plataHablada(f.monto)} ${periodo}, en ${enPalabras(Number(f.pedidos))} ${Number(f.pedidos) === 1 ? 'pedido' : 'pedidos'}. Está ${i + 1}.º de ${filas.length}.`,
+  }
+}
+
 export function ventasPorCategoria(filas: any[], periodo: string): Respuesta {
   if (!filas.length) return ambos(`Sin ventas ${periodo}.`)
   const detalle = filas.slice(0, 10).map((f, i) => `${i + 1}. ${f.categoria}: ${plata(f.monto)}`).join('\n')

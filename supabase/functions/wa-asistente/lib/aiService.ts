@@ -127,6 +127,9 @@ export async function elegirConsultasDetalle(texto: string, historial: Intercamb
       model: modelo,
       stream: false,
       think: false,
+      // Plan 49: con OLLAMA_KEEP_ALIVE=24h, después de un día sin consultas el modelo se descargaba y la
+      // primera respuesta tardó 51 s (18/11). -1 = queda en memoria (3 GB) hasta reiniciar Ollama.
+      keep_alive: -1,
       tools: HERRAMIENTAS,
       // 240: alcanza para tres llamadas con sus argumentos.
       options: { temperature: 0, num_ctx: 4096, num_predict: 240 },

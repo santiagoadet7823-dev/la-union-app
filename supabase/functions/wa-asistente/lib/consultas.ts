@@ -106,7 +106,22 @@ const cantidadDe = (v: unknown) => {
 // `perfil` define el alcance (db/102): admin ve la empresa, el encargado solo a su gente. Buscar
 // clientes y precios no lo usa: los clientes son de la distribuidora (db/40).
 /** `junto`: las otras consultas pedidas en el mismo mensaje. */
+const VENTAS_HOY = new Set(['ventas_resumen', 'ventas_por_vendedor', 'ventas_por_categoria', 'productos_mas_vendidos'])
+
+/** Plan 49: «Sin ventas de hoy» un domingo es cierto pero no ayuda (mensaje 259 del 15/11). */
+export function ayudaSinDatosHoy(r: R.Respuesta, consulta: string, periodo: string, hoy = hoyEn()): R.Respuesta {
+  if (periodo !== 'hoy' || !VENTAS_HOY.has(consulta) || !/^Sin (ventas|pedidos)/.test(r.texto)) return r
+  const domingo = new Date(`${hoy}T12:00:00Z`).getUTCDay() === 0
+  const extra = `${domingo ? 'Hoy es domingo. ' : 'Todavía no hay pedidos cargados hoy. '}Preguntame por «ayer», «esta semana» o «este mes».`
+  return { ...r, texto: `${r.texto}
+${extra}`, voz: `${r.voz} ${extra}` }
+}
+
 export async function ejecutar(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>, junto: string[] = []): Promise<R.Respuesta> {
+  return ayudaSinDatosHoy(await ejecutarUna(db, empresa, perfil, consulta, a, junto), consulta, periodoDe(a))
+}
+
+async function ejecutarUna(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>, junto: string[] = []): Promise<R.Respuesta> {
   const periodo = periodoDe(a)
   const rango = rangoDe(periodo)
   const conRango = { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }
@@ -115,8 +130,13 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
   switch (consulta) {
     case 'ventas_resumen':
       return R.ventasResumen(await rpc(db, 'wa_ventas', conRango), nombre)
-    case 'ventas_por_vendedor':
-      return R.ventasPorVendedor(await rpc(db, 'wa_ventas', conRango), nombre)
+    case 'ventas_por_vendedor': {
+      // Plan 49: «cuánto vendió Agustín en los últimos 7 días» devolvía el ranking de los 8.
+      const quien = await persona(db, empresa, perfil, a.persona)
+      if ('respuesta' in quien) return quien.respuesta
+      const d = await rpc(db, 'wa_ventas', conRango)
+      return quien.id ? R.ventaDeVendedor(d, nombre, quien.nombre ?? textoDe(a.persona)) : R.ventasPorVendedor(d, nombre)
+    }
     case 'ventas_por_categoria':
       return R.ventasPorCategoria(await rpc(db, 'wa_ventas_categoria', conRango), nombre)
     case 'productos_mas_vendidos': {

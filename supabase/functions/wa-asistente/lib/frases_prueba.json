@@ -434,5 +434,21 @@
 {
 "frase": "no es lo que te pedi",
 "consulta": "disculpa"
+},
+{
+"frase": "Cuánto vendió Agustín en los últimos 7 días",
+"consulta": "ventas_por_vendedor"
+},
+{
+"frase": "cuanto lleva vendido juan esta semana",
+"consulta": "ventas_por_vendedor"
+},
+{
+"frase": "Hora del producto más vendido por Agustín",
+"consulta": "productos_mas_vendidos"
+},
+{
+"frase": "el producto mas vendido de orlando",
+"consulta": "productos_mas_vendidos"
 }
 ]
