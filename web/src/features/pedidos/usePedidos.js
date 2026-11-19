@@ -37,6 +37,10 @@ import { codigoVendedorErp } from '../../lib/asciiPedidos'
 
 const PAGE = 1000
 const MAX_VUELTAS = 50 // 50.000 pedidos: techo de seguridad, nunca un bucle infinito
+const EN_PARALELO = 3  // páginas pedidas a la vez después de la primera (plan 50)
+
+/** Orden de la lista: lo más nuevo arriba, con desempate por id (el mismo de la consulta). */
+const masNuevoPrimero = (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
 
 // Las columnas del pedido + el comercio y la persona por relación. Se nombran una por una y no con
 // `*`: es la misma disciplina del ticket — una columna nueva en `pedidos` no debería aparecer sola
@@ -96,7 +100,9 @@ function mapPedido(p) {
  */
 export function usePedidos({ desde, hasta, idVendedor = null, papelera = false }) {
   const { idEmpresaActiva, esTodas } = useTenant()
-  const [estado, setEstado] = useState({ pedidos: [], cargando: true, error: null })
+  // `cargando`: todavía no hay NADA que mostrar. `completo`: llegaron todas las páginas (lo que
+  // necesitan el consolidado y la exportación). `total`: cuántos dice la base (para "1.000 de 4.519").
+  const [estado, setEstado] = useState({ pedidos: [], cargando: true, completo: false, total: null, error: null })
   // Cambiarlo fuerza una relectura (botón "Reintentar", cambio de rango). Después de anular,
   // corregir o asignar ya NO se usa: la pantalla aplica la fila resultante con `aplicar`/`quitar`.
   const [ciclo, setCiclo] = useState(0)
@@ -145,35 +151,79 @@ export function usePedidos({ desde, hasta, idVendedor = null, papelera = false }
     let vivo = true
     // `cargando` sólo si no hay nada que mostrar (mismo criterio que CatalogContext.recargar del
     // 10/09): una relectura con lista en pantalla es una revalidación silenciosa, no un spinner.
-    setEstado((e) => (e.pedidos.length ? e : { ...e, cargando: true }))
+    setEstado((e) => (e.pedidos.length ? { ...e, completo: false } : { ...e, cargando: true, completo: false }))
+
+    function pagina(vuelta, conConteo = false) {
+      let q = supabase.from('pedidos').select(SELECT, conConteo ? { count: 'exact' } : undefined)
+        .gte('created_at', desde).lt('created_at', hasta)
+        // Descendente: lo último que pasó es lo que se viene a revisar. El desempate por `id`
+        // no es decorativo — sin un orden TOTAL, dos pedidos con el mismo `created_at` pueden
+        // repartirse entre dos páginas y perderse o repetirse.
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(vuelta * PAGE, vuelta * PAGE + PAGE - 1)
+      // El centinela de "todas las empresas" es el string '*', no null.
+      if (!esTodas) q = q.eq('id_empresa', idEmpresaActiva)
+      if (idVendedor) q = q.eq('id_vendedor', idVendedor)
+      q = papelera ? q.eq('estado', 'Anulado') : q.neq('estado', 'Anulado')
+      return q.then(({ data, error, count }) => { if (error) throw error; return { data: data || [], count } })
+    }
+
+    /* 🩸 LA PRIMERA PÁGINA SE MUESTRA SOLA (19/11/2026, plan 50). Antes las páginas iban una detrás de
+     * otra y nada se veía hasta la última: 30 días son 4 519 pedidos ≈ 2,5 MB, y con 4G la pantalla
+     * quedaba en "Cargando pedidos…" como tildada (la base contesta cada página en ≈ 30 ms; el tiempo
+     * es todo de red). Ahora la página 1 —lo más nuevo, lo que se viene a mirar— trae además el conteo
+     * y se pinta apenas llega; las demás salen de a `EN_PARALELO` y se van sumando. Mientras tanto
+     * `completo` es false y la pantalla no deja sacar el consolidado ni exportar sobre una lista a
+     * medias. Cada página se SUMA a lo que hay (sin repetir ids) en vez de reemplazar: así una
+     * anulación aplicada mientras carga no se pisa con la llegada de la página siguiente. */
+    const agregar = (data) => setEstado((e) => {
+      const ya = new Set(e.pedidos.map((p) => p.id))
+      const nuevos = []
+      for (const p of data) if (!ya.has(p.id)) nuevos.push(mapPedido(p))
+      return nuevos.length ? { ...e, pedidos: [...e.pedidos, ...nuevos].sort(masNuevoPrimero) } : e
+    })
+
     ;(async () => {
       try {
-        const filas = []
-        for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
-          let q = supabase.from('pedidos').select(SELECT)
-            .gte('created_at', desde).lt('created_at', hasta)
-            // Descendente: lo último que pasó es lo que se viene a revisar. El desempate por `id`
-            // no es decorativo — sin un orden TOTAL, dos pedidos con el mismo `created_at` pueden
-            // repartirse entre dos páginas y perderse o repetirse.
-            .order('created_at', { ascending: false })
-            .order('id', { ascending: false })
-            .range(vuelta * PAGE, vuelta * PAGE + PAGE - 1)
-          // El centinela de "todas las empresas" es el string '*', no null.
-          if (!esTodas) q = q.eq('id_empresa', idEmpresaActiva)
-          if (idVendedor) q = q.eq('id_vendedor', idVendedor)
-          q = papelera ? q.eq('estado', 'Anulado') : q.neq('estado', 'Anulado')
-
-          const { data, error } = await q
-          if (error) throw error
-          filas.push(...(data || []))
-          if (!data || data.length < PAGE) break
-        }
+        const primera = await pagina(0, true)
         if (!vivo) return
-        setEstado({ pedidos: filas.map(mapPedido), cargando: false, error: null })
+        const total = Number.isFinite(primera.count) ? primera.count : null
+        const termina = primera.data.length < PAGE
+        // La primera página REEMPLAZA (una relectura no debe arrastrar filas que ya no corresponden).
+        setEstado({ pedidos: primera.data.map(mapPedido), cargando: false, completo: termina, total: termina ? primera.data.length : total, error: null })
+        if (termina) return
+
+        // Las que dice el conteo, de a varias. Si mientras tanto entraron pedidos nuevos, las páginas
+        // se corren: la deduplicación por id evita repetidos y el bucle de abajo junta la cola.
+        const paginas = Math.min(MAX_VUELTAS, Math.ceil((total ?? PAGE * 2) / PAGE))
+        const cola = []
+        for (let v = 1; v < paginas; v++) cola.push(v)
+        let ultimaLlena = false
+        let maxVuelta = 0
+        async function trabajador() {
+          while (cola.length && vivo) {
+            const v = cola.shift()
+            const { data } = await pagina(v)
+            if (!vivo) return
+            agregar(data)
+            if (v > maxVuelta) { maxVuelta = v; ultimaLlena = data.length === PAGE }
+          }
+        }
+        await Promise.all(Array.from({ length: Math.min(EN_PARALELO, cola.length) }, trabajador))
+        // Si la última página prevista vino llena, hay más de lo que dijo el conteo: se sigue de a una.
+        for (let v = paginas; ultimaLlena && v < MAX_VUELTAS && vivo; v++) {
+          const { data } = await pagina(v)
+          if (!vivo) return
+          agregar(data)
+          ultimaLlena = data.length === PAGE
+        }
+        if (vivo) setEstado((e) => ({ ...e, completo: true, total: e.pedidos.length }))
       } catch (e) {
         // Sin red se CONSERVA lo que había: vaciar la lista por un fallo de lectura hacía que un
         // pedido recién anulado offline "desapareciera" de la pantalla con la mutación en cola.
-        if (vivo) setEstado((prev) => ({ pedidos: prev.pedidos, cargando: false, error: e?.message || String(e) }))
+        // `completo` queda en false: lo que hay puede estar a medias, y el error lo dice.
+        if (vivo) setEstado((prev) => ({ ...prev, cargando: false, error: e?.message || String(e) }))
       }
     })()
     return () => { vivo = false }

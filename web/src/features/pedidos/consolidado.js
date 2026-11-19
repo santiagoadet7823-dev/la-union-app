@@ -88,15 +88,17 @@ function sumar(acc, l, p) {
   }
 }
 
-function cerrar(acc) {
+/** `entero`: las sumas vienen en diezmilésimos enteros (acumulador del plan 50, ver ESCALA). */
+function cerrar(acc, entero = false) {
   const { _pedidos: _pedidosAcc, _comercios, _ts, ...resto } = acc
   // `consolidar` junta los pedidos en un Set; `fusionar` los recibe ya contados por día (un pedido es
   // de un solo día, así que se suman sin contar dos veces).
   const _pedidos = typeof _pedidosAcc === 'number' ? { size: _pedidosAcc } : _pedidosAcc
   void _ts
-  const pedido = r2(resto.pedido)
-  const rendido = r2(resto.rendido)
-  const entregado = r2(resto.entregado)
+  const rd = entero ? deEntero : r2
+  const pedido = rd(resto.pedido)
+  const rendido = rd(resto.rendido)
+  const entregado = rd(resto.entregado)
   return {
     ...resto,
     pedido,
@@ -104,8 +106,8 @@ function cerrar(acc) {
     entregado: rendido > 0 ? entregado : null,
     faltante: rendido > 0 ? r2(rendido - entregado) : null,
     sinRendir: r2(pedido - rendido),
-    importe: r2(resto.importe),
-    kg: r2(resto.kg),
+    importe: rd(resto.importe),
+    kg: rd(resto.kg),
     bultos: enBultos(pedido, resto.unidadesPorBulto),
     pedidos: _pedidos.size,
     comercios: _comercios.size,
@@ -113,6 +115,9 @@ function cerrar(acc) {
 }
 
 const COLL = new Intl.Collator('es', { numeric: true, sensitivity: 'base' })
+// Desempate (plan 50): dos artículos con la misma descripción (productos distintos) quedaban en el
+// orden en que llegaron los días, que con la carga en paralelo cambia de una vez a otra.
+const porClave = (a, b) => (a.clave < b.clave ? -1 : a.clave > b.clave ? 1 : 0)
 
 /**
  * @param {object[]} pedidos  los pedidos a la vista (ya filtrados, sin anulados)
@@ -146,26 +151,27 @@ export function consolidar(pedidos, renglones) {
 }
 
 /** Lo común a `consolidar` y `fusionar`: cerrar, ordenar, totales y avisos. */
-function armarResultado(arts, porVend, pedidos, sinRenglones, montoCabeceras) {
+function armarResultado(arts, porVend, pedidos, sinRenglones, montoCabeceras, entero = false) {
   // Los totales salen de las sumas SIN redondear y se redondean una sola vez. Sumar los importes ya
   // redondeados por artículo corría el total unos centavos (30 días: $ 405.869.226,87 contra el exacto
-  // ,84 — medido el 09/11 con enteros).
+  // ,84 — medido el 09/11 con enteros). Desde el plan 50 la carga por día suma directamente en enteros.
+  const rd = entero ? deEntero : r2
   const crudo = (campo) => [...arts.values()].reduce((t, a) => t + num(a[campo]), 0)
   const pedido = crudo('pedido'), rendido = crudo('rendido'), entregado = crudo('entregado')
 
-  const articulos = [...arts.values()].map(cerrar)
-    .sort((a, b) => COLL.compare(a.descripcion, b.descripcion))
-  const porVendedor = [...porVend.values()].map(cerrar)
-    .sort((a, b) => COLL.compare(a.vendedor, b.vendedor) || COLL.compare(a.descripcion, b.descripcion))
+  const articulos = [...arts.values()].map((a) => cerrar(a, entero))
+    .sort((a, b) => COLL.compare(a.descripcion, b.descripcion) || porClave(a, b))
+  const porVendedor = [...porVend.values()].map((a) => cerrar(a, entero))
+    .sort((a, b) => COLL.compare(a.vendedor, b.vendedor) || COLL.compare(a.descripcion, b.descripcion) || porClave(a, b))
 
   const totales = {
     articulos: articulos.length,
-    pedido: r2(pedido),
-    entregado: r2(entregado),
-    faltante: r2(rendido - entregado),
-    sinRendir: r2(pedido - rendido),
-    importe: r2(crudo('importe')),
-    kg: r2(crudo('kg')),
+    pedido: rd(pedido),
+    entregado: rd(entregado),
+    faltante: rd(rendido - entregado),
+    sinRendir: rd(pedido - rendido),
+    importe: rd(crudo('importe')),
+    kg: rd(crudo('kg')),
     pedidos: pedidos.filter((p) => p.estado !== 'Anulado').length,
   }
   const diferencia = r2(totales.importe - montoCabeceras)
@@ -220,15 +226,57 @@ export function tramosPorDia(pedidos) {
  * @param {object[]} pedidos    los pedidos pedidos (los de los días que ya llegaron, para los avisos)
  */
 export function fusionar(parciales, pedidos) {
+  const acc = crearAcumulador(nombresDe(pedidos))
+  for (const r of parciales) acc.agregar(r)
+  return acc.resultado(pedidos)
+}
+
+/** id de vendedor ('sin' si no tiene) → nombre, sacado de los pedidos de la lista. */
+export function nombresDe(pedidos) {
+  return new Map(pedidos.map((p) => [p.id_vendedor || 'sin', p.nombreVendedor || '—']))
+}
+
+/** La clave con la que el consolidado identifica a un vendedor (los pedidos sin vendedor: 'sin'). */
+export const claveVendedor = (id) => id || 'sin'
+
+const CAMPOS = ['pedido', 'rendido', 'entregado', 'importe', 'kg']
+
+/* SUMAS EN ENTEROS (plan 50). Cantidad, precio y peso son `numeric(…, 2)` en la base, así que
+ * cantidad × precio y cantidad × peso tienen a lo sumo 4 decimales: en diezmilésimos son ENTEROS, y la
+ * suma de enteros es exacta y no depende del orden. Con números de punto flotante, el mismo artículo
+ * daba $ 233.886,40 o ,41 según el orden en que llegaran los días (pasaba igual en la 1.45.13, porque
+ * los días llegan en paralelo) y filtrar por vendedores corría otro centavo. Se redondea al centavo
+ * una sola vez, al cerrar, con la regla de la base (mitad hacia arriba). Un mes entero de la empresa
+ * (≈ $ 7,5 × 10⁸ → 7,5 × 10¹² diezmilésimos) queda lejos del límite de enteros exactos (9 × 10¹⁵). */
+const ESCALA = 1e4
+const aEntero = (v) => Math.round(num(v) * ESCALA)
+/** Diezmilésimos → pesos/unidades con 2 decimales, mitad hacia arriba (como `round()` de Postgres). */
+const deEntero = (i) => Math.round(i / 100) / 100
+
+/**
+ * 🩸 ACUMULADOR INCREMENTAL (19/11/2026, plan 50). La 1.45.13 llamaba a `fusionar` con TODOS los días
+ * recibidos cada vez que llegaba uno: con 30 días eran ≈ 23 fusiones crecientes (O(días²)) en el hilo
+ * de la pantalla, y la hoja se trababa mientras cargaba. Ahora cada día se suma UNA vez al llegar
+ * (`agregar`) y `resultado` sólo cierra y ordena lo acumulado. `fusionar` queda como envoltorio
+ * (equivalencia probada con los 30 días reales: igual salvo centavos, ahora exactos).
+ *
+ * `resultado(pedidos, { vendedores })` (plan 50, filtros dentro del consolidado): con un Set de claves
+ * de vendedor (`claveVendedor`) re-suma "Por artículo" con sólo las filas vendedor × artículo de esos
+ * vendedores, en memoria y sin volver a la base. Los comercios se juntan por uuid: el mismo comercio
+ * comprado por dos vendedores cuenta una vez. Con filtro, "pedidos sin renglones" no se puede saber
+ * por vendedor (la base lo devuelve por día) y queda `null`: la pantalla no lo avisa.
+ *
+ * @param {Map<string, string>} nombres  `nombresDe(pedidos)`
+ */
+export function crearAcumulador(nombres = new Map()) {
   const arts = new Map()
   const porVend = new Map()
-  const nombre = new Map(pedidos.map((p) => [p.id_vendedor || 'sin', p.nombreVendedor || '—']))
   const info = (clave) => ({ clave, codigo: '', descripcion: '', categoria: '', marca: '', unidadVenta: '', unidadesPorBulto: null })
   const nuevo = (base) => ({ ...base, pedido: 0, rendido: 0, entregado: 0, importe: 0, kg: 0, _pedidos: 0, _comercios: new Set(), _ts: '' })
   let conRenglones = 0
 
-  for (const r of parciales) {
-    if (!r) continue
+  function agregar(r) {
+    if (!r) return
     conRenglones += num(r.con_renglones)
     const vendedores = r.vendedores || []
     const clientes = r.clientes || []
@@ -252,28 +300,52 @@ export function fusionar(parciales, pedidos) {
       const clave = artDia[ai]?.[0]
       if (clave == null) continue
       const idV = vendedores[vi] ?? null
-      const kv = `${idV || 'sin'}|${clave}`
-      if (!porVend.has(kv)) porVend.set(kv, nuevo({ ...info(clave), idVendedor: idV, vendedor: nombre.get(idV || 'sin') || '—' }))
+      const kv = `${claveVendedor(idV)}|${clave}`
+      if (!porVend.has(kv)) porVend.set(kv, nuevo({ ...info(clave), idVendedor: idV, vendedor: nombres.get(claveVendedor(idV)) || '—' }))
+      const valores = [aEntero(pedido), aEntero(rendido), aEntero(entregado), aEntero(importe), aEntero(kg)]
       for (const acc of [arts.get(clave), porVend.get(kv)]) {
-        acc.pedido += num(pedido)
-        acc.rendido += num(rendido)
-        acc.entregado += num(entregado)
-        acc.importe += num(importe)
-        acc.kg += num(kg)
+        CAMPOS.forEach((c, j) => { acc[c] += valores[j] })
         acc._pedidos += num(nPedidos)
         for (const c of cls || []) if (clientes[c]) acc._comercios.add(clientes[c])
       }
     }
   }
-  // La vista por vendedor muestra los datos del artículo (descripción, código, catálogo).
-  for (const v of porVend.values()) {
-    const a = arts.get(v.clave)
-    Object.assign(v, { codigo: a.codigo, descripcion: a.descripcion, categoria: a.categoria, marca: a.marca, unidadVenta: a.unidadVenta, unidadesPorBulto: a.unidadesPorBulto })
+
+  /**
+   * @param {object[]} pedidos  los pedidos de los días que ya llegaron (para los avisos y "Pedidos")
+   * @param {{ vendedores?: Set<string>|null }} o  claves de vendedor a incluir (null = todos)
+   */
+  function resultado(pedidos, { vendedores = null } = {}) {
+    // La vista por vendedor muestra los datos del artículo (descripción, código, catálogo).
+    for (const v of porVend.values()) {
+      const a = arts.get(v.clave)
+      Object.assign(v, { codigo: a.codigo, descripcion: a.descripcion, categoria: a.categoria, marca: a.marca, unidadVenta: a.unidadVenta, unidadesPorBulto: a.unidadesPorBulto })
+    }
+    let vivos = pedidos.filter((p) => p.estado !== 'Anulado')
+    if (!vendedores) {
+      const montoCabeceras = vivos.reduce((t, p) => t + num(p.monto_total), 0)
+      return armarResultado(arts, porVend, vivos, Math.max(0, vivos.length - conRenglones), montoCabeceras, true)
+    }
+    vivos = vivos.filter((p) => vendedores.has(claveVendedor(p.id_vendedor)))
+    const pv = new Map()
+    const as = new Map()
+    for (const [k, v] of porVend) {
+      if (!vendedores.has(claveVendedor(v.idVendedor))) continue
+      pv.set(k, v)
+      let a = as.get(v.clave)
+      if (!a) {
+        a = { ...arts.get(v.clave), pedido: 0, rendido: 0, entregado: 0, importe: 0, kg: 0, _pedidos: 0, _comercios: new Set() }
+        as.set(v.clave, a)
+      }
+      for (const c of CAMPOS) a[c] += v[c]
+      a._pedidos += v._pedidos
+      for (const c of v._comercios) a._comercios.add(c)
+    }
+    const montoCabeceras = vivos.reduce((t, p) => t + num(p.monto_total), 0)
+    return armarResultado(as, pv, vivos, null, montoCabeceras, true)
   }
 
-  const vivos = pedidos.filter((p) => p.estado !== 'Anulado')
-  const montoCabeceras = vivos.reduce((t, p) => t + num(p.monto_total), 0)
-  return armarResultado(arts, porVend, vivos, Math.max(0, vivos.length - conRenglones), montoCabeceras)
+  return { agregar, resultado }
 }
 
 /**

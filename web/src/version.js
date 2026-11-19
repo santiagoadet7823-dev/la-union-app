@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.46.1'   // 14/11/2026: plan 47 — APK piloto, detecta y avisa el ahorro de energía (sin publicar)
+export const APP_VERSION = '1.46.2'   // 19/11/2026: plan 50 — Pedidos fluido con 30 días + filtros por vendedor y artículo en el consolidado (OTA; el nativo sigue en 1.45.1 salvo los piloto)

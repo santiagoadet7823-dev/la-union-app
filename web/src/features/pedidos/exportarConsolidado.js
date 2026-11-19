@@ -133,13 +133,16 @@ export async function exportarConsolidadoCsv(c, meta) {
   const lineas = []
   for (const [k, v] of lineasFiltro(meta)) lineas.push([k, v].map(celda).join(';'))
   lineas.push('')
-  lineas.push(COLS_ART.map(celda).join(';'))
-  for (const a of c.articulos) {
-    const f = filaArticulo(a)
-    lineas.push(COLS_ART.map((k) => celda(f[k])).join(';'))
+  // Con un artículo fijado en la hoja (plan 50) el CSV lleva quién lo vendió: una fila sola no sirve.
+  const conVend = !!c.csvPorVendedor
+  const cols = conVend ? ['Vendedor', ...COLS_ART] : COLS_ART
+  lineas.push(cols.map(celda).join(';'))
+  for (const a of conVend ? c.porVendedor : c.articulos) {
+    const f = conVend ? { Vendedor: a.vendedor, ...filaArticulo(a) } : filaArticulo(a)
+    lineas.push(cols.map((k) => celda(f[k])).join(';'))
   }
   const t = c.totales
-  lineas.push(['', 'TOTAL', '', '', '', t.pedido, t.entregado, t.faltante, t.sinRendir, '', '', '', t.importe, t.kg, t.pedidos, ''].map(celda).join(';'))
+  lineas.push([...(conVend ? [''] : []), '', 'TOTAL', '', '', '', t.pedido, t.entregado, t.faltante, t.sinRendir, '', '', '', t.importe, t.kg, t.pedidos, ''].map(celda).join(';'))
   const csv = '﻿' + lineas.join('\r\n') + '\r\n'
   const mime = 'text/csv;charset=utf-8'
   const filename = nombreArchivo(meta, 'csv')

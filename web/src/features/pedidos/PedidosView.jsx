@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react'
 import { sx } from '../../lib/sx'
 import { fmtPesos, hoyStr } from '../../lib/format'
 import { useAuth } from '../../context/AuthContext'
@@ -19,6 +19,7 @@ import { motivoRetencion, TEXTO_RETENCION } from './exportado'
 import { useEnvioClientesErp } from '../../hooks/useCodigoClienteMin'
 import { normalizar } from '../../lib/texto'
 import { asignarRepartidorMasivo } from '../repartidor/useEntregas'
+import useListaProgresiva from '../../hooks/useListaProgresiva'
 
 /**
  * REVISAR LOS PEDIDOS. Pantalla de gestión (encargado / admin / superadmin).
@@ -163,71 +164,95 @@ export default function PedidosView({ onToast }) {
      sin ella no habría con qué numerar la pestaña, y una papelera que no dice cuánto tiene adentro
      es una que nadie abre. Entre las dos traen las mismas filas que traía la consulta única de
      antes — el costo no cambió, se repartió. */
-  const { pedidos: activosRango, cargando, error, recargar, aplicar: aplicarActivo, quitar: quitarActivo } = usePedidos({
+  const { pedidos: activosRango, cargando, completo, total: totalRango, error, recargar, aplicar: aplicarActivo, quitar: quitarActivo } = usePedidos({
     desde, hasta, idVendedor: null,
   })
-  const { pedidos: anuladosRango, cargando: cargandoPapelera, error: errorPapelera, recargar: recargarPapelera, aplicar: aplicarAnulado, quitar: quitarAnulado } =
+  const { pedidos: anuladosRango, cargando: cargandoPapelera, completo: completoPapelera, error: errorPapelera, recargar: recargarPapelera, aplicar: aplicarAnulado, quitar: quitarAnulado } =
     usePedidos({ desde, hasta, idVendedor: null, papelera: true })
+
+  /* 🩸 FILTROS DIFERIDOS (19/11/2026, plan 50). Con 30 días (4 519 pedidos) cada letra del buscador,
+     cada filtro y cada persona tildada volvía a filtrar y dibujar todo ANTES de mostrar la letra: el
+     teclado se trababa. Con `useDeferredValue` (el mismo recurso de Supervisión) el control responde
+     al instante y la lista se pone al día detrás, interrumpible si llega otra letra. Lo que se calcula
+     sobre la lista (resumen, consolidado, exportar) usa los diferidos: coincide con lo que se ve. */
+  const busquedaDif = useDeferredValue(busqueda)
+  const vendedoresSelDif = useDeferredValue(vendedoresSel)
+  const filtroEstadoDif = useDeferredValue(filtroEstado)
+  const filtroRepartidorDif = useDeferredValue(filtroRepartidor)
+  const filtroLoteDif = useDeferredValue(filtroLote)
+  const vistaDif = useDeferredValue(vista)
   // Las personas salen de las dos listas COMPLETAS del rango: si alguien sólo tiene pedidos
   // anulados, tiene que seguir estando en el selector — si no, filtrar por esa persona sería
   // imposible justo cuando se la quiere revisar.
   const personas = useMemo(() => vendedoresDe([...activosRango, ...anuladosRango]), [activosRango, anuladosRango])
   // Lo mismo que antes hacía la consulta con `id_vendedor`: el resto de la pantalla (pestañas,
   // retenidos, "de N", Vendido, Exportar) sigue viendo sólo a las personas elegidas.
-  const dePersonas = useCallback((lista) => (vendedoresSel.size ? lista.filter((p) => vendedoresSel.has(p.id_vendedor)) : lista), [vendedoresSel])
+  const dePersonas = useCallback((lista) => (vendedoresSelDif.size ? lista.filter((p) => vendedoresSelDif.has(p.id_vendedor)) : lista), [vendedoresSelDif])
   const activos = useMemo(() => dePersonas(activosRango), [dePersonas, activosRango])
   const anulados = useMemo(() => dePersonas(anuladosRango), [dePersonas, anuladosRango])
 
   const enPapelera = vista === 'papelera'
-  const pedidosVista = enPapelera ? anulados : activos
+  // La lista sigue a la pestaña diferida: cambiar de pestaña con 4 500 filas tampoco traba el toque.
+  const enPapeleraLista = vistaDif === 'papelera'
+  const pedidosVista = enPapeleraLista ? anulados : activos
 
   // Lo que se ve: la pestaña, pasada por el buscador y los filtros. Los filtros de estado, de
   // repartidor y de exportación son de la lista viva; en la papelera sólo aplica el buscador.
   const hayFiltro = !!(busqueda.trim() || (!enPapelera && (filtroEstado || filtroRepartidor || filtroLote || filtroEntrega)))
+  const hayFiltroLista = !!(busquedaDif.trim() || (!enPapeleraLista && (filtroEstadoDif || filtroRepartidorDif || filtroLoteDif || filtroEntrega)))
   const diaEntregaFiltro = filtroEntrega === 'hoy' ? hoyStr()
     : filtroEntrega === 'manana' ? hoyStr(new Date(Date.now() + 86400000))
     : filtroEntrega === 'fecha' ? diaEntregaElegido : ''
   const pedidos = useMemo(() => {
-    const q = normalizar(busqueda.trim())
+    const q = normalizar(busquedaDif.trim())
     return pedidosVista.filter((p) => {
       if (q) {
         const pajar = normalizar(`${p.numero || ''} ${p.comercio?.name || ''} ${p.comercio?.codigo || ''} ${p.nombreVendedor || ''}`)
         if (!pajar.includes(q)) return false
       }
-      if (enPapelera) return true
-      if (filtroEstado && p.estado !== filtroEstado) return false
-      if (filtroRepartidor === 'sin' ? !!p.id_repartidor : (filtroRepartidor && p.id_repartidor !== filtroRepartidor)) return false
-      if (filtroLote === 'sin' && p.exportado_ts) return false
-      if (filtroLote === 'ret' && !retencion(p)) return false
-      if (filtroLote && filtroLote !== 'sin' && filtroLote !== 'ret' && String(p.export_lote || '') !== filtroLote) return false
+      if (enPapeleraLista) return true
+      if (filtroEstadoDif && p.estado !== filtroEstadoDif) return false
+      if (filtroRepartidorDif === 'sin' ? !!p.id_repartidor : (filtroRepartidorDif && p.id_repartidor !== filtroRepartidorDif)) return false
+      if (filtroLoteDif === 'sin' && p.exportado_ts) return false
+      if (filtroLoteDif === 'ret' && !retencion(p)) return false
+      if (filtroLoteDif && filtroLoteDif !== 'sin' && filtroLoteDif !== 'ret' && String(p.export_lote || '') !== filtroLoteDif) return false
       if (diaEntregaFiltro && diaEntrega(p) !== diaEntregaFiltro) return false
       return true
     })
-  }, [pedidosVista, busqueda, enPapelera, filtroEstado, filtroRepartidor, filtroLote, diaEntregaFiltro, retencion])
+  }, [pedidosVista, busquedaDif, enPapeleraLista, filtroEstadoDif, filtroRepartidorDif, filtroLoteDif, diaEntregaFiltro, retencion])
+  // La lista se dibuja de a poco (60 y de a 100 al bajar). Cambiar un filtro vuelve arriba; la carga
+  // progresiva (la lista que crece sola mientras llegan páginas) no.
+  const claveLista = `${vistaDif}|${desde}|${hasta}|${busquedaDif}|${filtroEstadoDif}|${filtroRepartidorDif}|${filtroLoteDif}|${diaEntregaFiltro}|${[...vendedoresSelDif].join(',')}`
+  const { visibles: pedidosDibujados, hayMas, faltan, mostrarMas, centinelaRef } = useListaProgresiva(pedidos, { clave: claveLista })
+  // ¿La lista ya refleja lo último que se tocó? Mientras no, consolidar o exportar esperan un instante.
+  const listaAlDia = busqueda === busquedaDif && vendedoresSel === vendedoresSelDif && filtroEstado === filtroEstadoDif
+    && filtroRepartidor === filtroRepartidorDif && filtroLote === filtroLoteDif && vista === vistaDif
 
   // Lo que se asigna: lo tildado que sigue en pantalla y se puede repartir. Cambiar un filtro no
   // borra la tilde, pero lo que dejó de verse no entra.
   const seleccionados = useMemo(
-    () => (seleccionando && !enPapelera ? pedidos.filter((p) => seleccion.has(p.id) && elegibleReparto(p)) : []),
-    [seleccionando, enPapelera, pedidos, seleccion],
+    () => (seleccionando && !enPapeleraLista ? pedidos.filter((p) => seleccion.has(p.id) && elegibleReparto(p)) : []),
+    [seleccionando, enPapeleraLista, pedidos, seleccion],
   )
   const elegiblesVisibles = useMemo(() => pedidos.filter(elegibleReparto), [pedidos])
   const puedeAsignar = ['superadmin', 'admin', 'encargado'].includes(rol)
 
-  function alternar(id) {
+  const alternar = useCallback((id) => {
     setSeleccion((s) => {
       const n = new Set(s)
       if (n.has(id)) n.delete(id)
       else n.add(id)
       return n
     })
-  }
+  }, [])
 
   function salirDeSeleccion() {
     setSeleccionando(false)
     setSeleccion(new Set())
   }
-  const cargandoAhora = enPapelera ? cargandoPapelera : cargando
+  const cargandoAhora = enPapeleraLista ? cargandoPapelera : cargando
+  // Todas las páginas del rango llegaron (las dos pestañas): recién ahí se consolida o se exporta.
+  const listaCompleta = completo && completoPapelera
 
   /* RETENIDOS (18/09/2026, db/74): pedidos vivos que el canal al ERP NO va a mandar hasta que alguien
      cargue el código que falta. Se cuentan sobre la lista completa del rango (no la filtrada) y se
@@ -255,7 +280,7 @@ export default function PedidosView({ onToast }) {
     if (esperanCliente) frases.push(`${esperanCliente} espera${esperanCliente === 1 ? '' : 'n'} a que su cliente nuevo llegue al ERP (sale solo, cada 30 minutos).`)
     return frases.join(' ')
   }, [retenidos, retencion])
-  const errorAhora = enPapelera ? errorPapelera : error
+  const errorAhora = enPapeleraLista ? errorPapelera : error
 
   /* Las dos listas se recargan juntas SIEMPRE (botón "Reintentar"). Anular saca una fila de una y la
      mete en la otra, y borrar la saca de la papelera: refrescar sólo la pestaña que se está mirando
@@ -277,7 +302,7 @@ export default function PedidosView({ onToast }) {
   }, [aplicarActivo, aplicarAnulado, quitarActivo, quitarAnulado])
 
   // Sobre lo que se ve: con un filtro puesto, "Vendido" es lo vendido de esa selección.
-  const totalVendido = (enPapelera ? activos : pedidos).reduce((a, p) => a + Number(p.monto_total || 0), 0)
+  const totalVendido = useMemo(() => (enPapeleraLista ? activos : pedidos).reduce((a, p) => a + Number(p.monto_total || 0), 0), [enPapeleraLista, activos, pedidos])
 
   /**
    * Bajar el archivo para facturar en el sistema del cliente, en el formato ASCII de 25 campos que
@@ -323,20 +348,20 @@ export default function PedidosView({ onToast }) {
     // Los días del rango, en hora local (el `hasta` es exclusivo: se le resta un instante).
     const desdeDia = hoyStr(new Date(desde))
     const hastaDia = hoyStr(new Date(new Date(hasta).getTime() - 1))
-    const elegidas = personas.filter((p) => vendedoresSel.has(p.id)).map((p) => p.nombre)
+    const elegidas = personas.filter((p) => vendedoresSelDif.has(p.id)).map((p) => p.nombre)
     const nombreRep = (id) => repartidores.find((r) => r.id === id)?.nombre || 'repartidor'
     const otros = []
-    if (filtroEstado) otros.push(`Estado: ${filtroEstado}`)
-    if (filtroRepartidor) otros.push(filtroRepartidor === 'sin' ? 'Sin repartidor' : `Repartidor: ${nombreRep(filtroRepartidor)}`)
-    if (filtroLote) otros.push(filtroLote === 'sin' ? 'ERP: sin exportar' : filtroLote === 'ret' ? 'ERP: retenidos' : `ERP: lote #${filtroLote}`)
+    if (filtroEstadoDif) otros.push(`Estado: ${filtroEstadoDif}`)
+    if (filtroRepartidorDif) otros.push(filtroRepartidorDif === 'sin' ? 'Sin repartidor' : `Repartidor: ${nombreRep(filtroRepartidorDif)}`)
+    if (filtroLoteDif) otros.push(filtroLoteDif === 'sin' ? 'ERP: sin exportar' : filtroLoteDif === 'ret' ? 'ERP: retenidos' : `ERP: lote #${filtroLoteDif}`)
     if (diaEntregaFiltro) otros.push(`Entrega: ${dd(diaEntregaFiltro)}`)
-    if (busqueda.trim()) otros.push(`Búsqueda: "${busqueda.trim()}"`)
+    if (busquedaDif.trim()) otros.push(`Búsqueda: "${busquedaDif.trim()}"`)
     setConsolidado({
       pedidos: lista,
       meta: {
         desdeDia, hastaDia,
         rangoTexto: desdeDia === hastaDia ? dd(desdeDia) : `${dd(desdeDia)} al ${dd(hastaDia)}`,
-        personasTexto: !vendedoresSel.size ? 'Todas las personas' : elegidas.join(', ') || `${vendedoresSel.size} personas`,
+        personasTexto: !vendedoresSelDif.size ? 'Todas las personas' : elegidas.join(', ') || `${vendedoresSelDif.size} personas`,
         otrosFiltros: otros,
         quien: perfil?.nombre || '',
       },
@@ -362,7 +387,7 @@ export default function PedidosView({ onToast }) {
     }
   }
 
-  async function abrir(pedido) {
+  const abrir = useCallback(async (pedido) => {
     setCargandoDetalle(true)
     try {
       setDetalle({ pedido, lineas: await itemsDePedido(pedido.id) })
@@ -371,7 +396,13 @@ export default function PedidosView({ onToast }) {
     } finally {
       setCargandoDetalle(false)
     }
-  }
+  }, [onToast])
+
+  // Lo que necesita cada fila, estable entre dibujos: así `FilaPedido` (memo) sólo se vuelve a
+  // dibujar si cambió SU pedido o su tilde, no todas cada vez que se toca una.
+  const conTilde = seleccionando && !enPapeleraLista
+  const onTocar = useCallback((p, elegible) => (conTilde ? (elegible && alternar(p.id)) : abrir(p)), [conTilde, alternar, abrir])
+  const nombreRepartidor = useMemo(() => new Map(repartidores.map((r) => [r.id, r.nombre])), [repartidores])
 
   return (
     <div style={sx('padding:14px;max-width:900px;margin:0 auto')}>
@@ -432,15 +463,15 @@ export default function PedidosView({ onToast }) {
         {!enPapelera && (
         <button
           onClick={abrirConsolidado}
-          disabled={cargando || esTodas || !pedidos.length}
-          title={esTodas ? 'Elegí una empresa para sacar el consolidado' : 'Total por artículo de los pedidos de la lista'}
+          disabled={!listaCompleta || !listaAlDia || esTodas || !pedidos.length}
+          title={esTodas ? 'Elegí una empresa para sacar el consolidado' : !listaCompleta ? 'Esperá a que terminen de llegar los pedidos' : 'Total por artículo de los pedidos de la lista'}
           className="lu-press"
           style={{
             ...sx('margin-left:auto;display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
             border: '1px solid var(--primary)',
             background: 'var(--primary-tint)',
             color: 'var(--deep)',
-            opacity: cargando || esTodas || !pedidos.length ? 0.5 : 1,
+            opacity: !listaCompleta || !listaAlDia || esTodas || !pedidos.length ? 0.5 : 1,
           }}
         >
           Consolidado
@@ -449,14 +480,14 @@ export default function PedidosView({ onToast }) {
         {!enPapelera && (
         <button
           onClick={exportar}
-          disabled={exportando || cargando}
+          disabled={exportando || !listaCompleta || !listaAlDia}
           className="lu-press"
           style={{
             ...sx('display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer'),
             border: '1px solid var(--line2)',
             background: 'var(--surface)',
             color: 'var(--muted)',
-            opacity: exportando || cargando ? 0.5 : 1,
+            opacity: exportando || !listaCompleta || !listaAlDia ? 0.5 : 1,
           }}
         >
           <Bajar size={14} />
@@ -593,12 +624,27 @@ export default function PedidosView({ onToast }) {
         </div>
       )}
 
+      {/* Carga progresiva (plan 50): la primera página ya se ve; el resto llega detrás. */}
+      {!cargandoAhora && !errorAhora && !(enPapeleraLista ? completoPapelera : completo) && (
+        <div role="status" style={sx('display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:9px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface2);font-size:12px;color:var(--muted)')}>
+          <span style={sx('flex:1;min-width:0')}>
+            Cargando pedidos… <b style={sx('font-family:var(--font-mono);color:var(--text)')}>{(enPapeleraLista ? anuladosRango : activosRango).length.toLocaleString('es-AR')}</b>
+            {!enPapeleraLista && totalRango ? <> de <b style={sx('font-family:var(--font-mono);color:var(--text)')}>{totalRango.toLocaleString('es-AR')}</b></> : null}
+          </span>
+          {!enPapeleraLista && totalRango ? (
+            <span style={sx('flex:none;width:90px;height:6px;border-radius:99px;background:var(--line);overflow:hidden')}>
+              <span style={{ ...sx('display:block;height:100%;background:var(--primary);transition:width .25s ease'), width: `${Math.min(100, Math.round((activosRango.length / totalRango) * 100))}%` }} />
+            </span>
+          ) : null}
+        </div>
+      )}
+
       {/* ── Resumen ─────────────────────────────────────────────────────────────────────── */}
-      {!enPapelera ? (
+      {!enPapeleraLista ? (
         <div style={sx('display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:12px;font-family:var(--font-mono);font-variant-numeric:tabular-nums')}>
           <div>
-            <div style={sx('font-size:11px;color:var(--faint)')}>{hayFiltro ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
-            <div style={sx('font-size:19px;font-weight:700')}>{pedidos.length}{hayFiltro ? <span style={sx('font-size:11px;color:var(--faint);font-weight:400')}> de {activos.length}</span> : null}</div>
+            <div style={sx('font-size:11px;color:var(--faint)')}>{hayFiltroLista ? 'Pedidos (filtrados)' : 'Pedidos'}</div>
+            <div style={sx('font-size:19px;font-weight:700')}>{pedidos.length}{hayFiltroLista ? <span style={sx('font-size:11px;color:var(--faint);font-weight:400')}> de {activos.length}</span> : null}</div>
           </div>
           <div>
             <div style={sx('font-size:11px;color:var(--faint)')}>Vendido</div>
@@ -637,21 +683,21 @@ export default function PedidosView({ onToast }) {
         <div style={sx('padding:26px;text-align:center;color:var(--faint);font-size:13px')}>Cargando pedidos…</div>
       )}
 
-      {!errorAhora && !cargandoAhora && !pedidosVista.length && enPapelera && !hayFiltro && (
+      {!errorAhora && !cargandoAhora && !pedidosVista.length && enPapeleraLista && !hayFiltroLista && (
         <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
           <b>La papelera está vacía.</b><br />
           No se anuló ningún pedido en este rango.
         </div>
       )}
 
-      {!errorAhora && !cargandoAhora && !pedidos.length && hayFiltro && (
+      {!errorAhora && !cargandoAhora && !pedidos.length && hayFiltroLista && (
         <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
           <b>Ningún pedido coincide con la búsqueda o los filtros.</b><br />
-          Hay {pedidosVista.length} en este rango{enPapelera ? ' en la papelera' : ''}.
+          Hay {pedidosVista.length} en este rango{enPapeleraLista ? ' en la papelera' : ''}.
         </div>
       )}
 
-      {!errorAhora && !cargandoAhora && !pedidosVista.length && !enPapelera && !hayFiltro && (
+      {!errorAhora && !cargandoAhora && !pedidosVista.length && !enPapeleraLista && !hayFiltroLista && (
         <div style={sx('padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg)')}>
           <b>No hay pedidos en este rango.</b><br />
           Los pedidos se empezaron a guardar el <b>19/08/2026</b>; antes de esa fecha la app los
@@ -659,100 +705,30 @@ export default function PedidosView({ onToast }) {
         </div>
       )}
 
-      {!cargandoAhora && pedidos.map((p) => {
-        const anulado = p.estado === 'Anulado'
-        // En modo selección tocar la fila marca o desmarca, no abre el detalle.
-        const conTilde = seleccionando && !enPapelera
+      {!cargandoAhora && pedidosDibujados.map((p) => {
         const elegible = conTilde && elegibleReparto(p)
-        const marcado = elegible && seleccion.has(p.id)
         return (
-          <div
+          <FilaPedido
             key={p.id}
-            onClick={() => (conTilde ? (elegible && alternar(p.id)) : abrir(p))}
-            className="lu-press"
-            role={conTilde ? 'checkbox' : 'button'}
-            aria-checked={conTilde ? marcado : undefined}
-            aria-disabled={conTilde && !elegible ? true : undefined}
-            title={conTilde && !elegible ? `No se reasigna: está ${p.estado}` : undefined}
-            style={{
-              ...sx('display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:7px;background:var(--surface);border-radius:12px'),
-              border: `1px solid ${anulado ? 'var(--danger)' : marcado ? 'var(--primary)' : 'var(--line)'}`,
-              background: marcado ? 'var(--primary-tint)' : 'var(--surface)',
-              opacity: anulado || (conTilde && !elegible) ? 0.5 : 1,
-              cursor: conTilde && !elegible ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {conTilde && (
-              <input type="checkbox" checked={marcado} disabled={!elegible} readOnly tabIndex={-1}
-                style={sx('flex:none;width:18px;height:18px;accent-color:var(--primary);pointer-events:none')} />
-            )}
-            <div style={sx('flex:1;min-width:0')}>
-              <div style={sx('display:flex;align-items:baseline;gap:7px')}>
-                <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>#{p.numero || '—'}</span>
-                <span style={{ ...sx('font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'), textDecoration: anulado ? 'line-through' : 'none' }}>
-                  {p.comercio?.name || 'Comercio dado de baja'}
-                </span>
-              </div>
-              <div style={sx('display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--font-mono)')}>
-                {/* Estado de entrega y marca de exportación (16/09/2026): hasta hoy la fila no decía
-                    si el pedido salió, llegó o ya se facturó — había que abrir cada uno. La pill
-                    sólo va en la lista viva; en la papelera el estado es siempre "Anulado" y ya lo
-                    dice la línea roja de abajo. */}
-                {!anulado && (
-                  <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
-                    {p.estado}
-                  </span>
-                )}
-                {p.exportado_ts && (
-                  <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
-                    ERP{p.export_lote ? ` #${p.export_lote}` : ''}
-                  </span>
-                )}
-                {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta.
-                    db/92: o hasta que su cliente nuevo llegue al ERP, que no pide cargar nada. */}
-                {retencion(p) && (
-                  <span title={retencion(p) === 'clienteSinEnviar'
-                    ? 'No sale al ERP hasta que su cliente nuevo llegue al sistema de gestión. Sale solo en el próximo lote.'
-                    : `No sale al ERP: ${TEXTO_RETENCION[retencion(p)]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
-                    Retenido · {TEXTO_RETENCION[retencion(p)]}
-                  </span>
-                )}
-                <span>
-                {fmtFecha(p.created_at)} · {p.nombreVendedor || '—'}
-                {p.origen === 'vidriera' ? ' · tablet' : ''}
-                {p.origen === 'whatsapp' && <> · <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#25D366', fontWeight: 600 }}><Whatsapp size={11} />WhatsApp</span></>}
-                {/* La distancia informa; no acusa. Se muestra el número y nada más — el GPS de
-                    estos equipos miente hasta 30 m y el comercio puede no tener ubicación. */}
-                {p.distancia_m != null ? ` · ${Math.round(p.distancia_m)} m` : ''}
-                {/* Para armar el reparto (plan 31): cuándo se entrega y quién lo lleva, sin abrirlo. */}
-                {diaEntrega(p) ? ` · entrega ${diaEntrega(p).slice(8, 10)}/${diaEntrega(p).slice(5, 7)}` : ''}
-                {p.id_repartidor ? ` · reparte ${repartidores.find((r) => r.id === p.id_repartidor)?.nombre || '—'}` : ''}
-                </span>
-              </div>
-              {anulado && (
-                <div style={sx('font-size:11px;color:var(--danger);margin-top:3px')}>
-                  ANULADO{p.motivo_anulacion ? ` · ${p.motivo_anulacion}` : ''}
-                </div>
-              )}
-              {/* La cuenta regresiva, sólo en la papelera: en la lista viva no hay ninguna que
-                  mostrar. Se pinta de rojo la última semana — que un pedido esté por desaparecer
-                  para siempre es lo único de esta pantalla que tiene urgencia real. */}
-              {anulado && enPapelera && (
-                <div style={{
-                  ...sx('font-size:11px;margin-top:2px;font-family:var(--font-mono)'),
-                  color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
-                  fontWeight: porVencer(p) ? 600 : 400,
-                }}>
-                  {textoPapelera(p)}
-                </div>
-              )}
-            </div>
-            <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:700')}>
-              {fmtPesos(p.monto_total)}
-            </div>
-          </div>
+            p={p}
+            enPapelera={enPapeleraLista}
+            conTilde={conTilde}
+            elegible={elegible}
+            marcado={elegible && seleccion.has(p.id)}
+            motivoRet={retencion(p)}
+            nombreRepartidor={p.id_repartidor ? (nombreRepartidor.get(p.id_repartidor) || '—') : ''}
+            onTocar={onTocar}
+          />
         )
       })}
+      {!cargandoAhora && hayMas && (
+        <div ref={centinelaRef} style={sx('padding:10px 0 4px;text-align:center')}>
+          <button type="button" className="lu-press" onClick={mostrarMas}
+            style={sx('padding:7px 14px;border:1px solid var(--line2);border-radius:99px;background:var(--surface);color:var(--deep);font-size:12px;font-weight:600;cursor:pointer')}>
+            Mostrar más · faltan {faltan.toLocaleString('es-AR')}
+          </button>
+        </div>
+      )}
 
       {/* ── Barra de asignación en masa ─────────────────────────────────────────────────
           Pegada abajo mientras se elige: el número y el botón tienen que estar a la vista aunque
@@ -853,3 +829,98 @@ export default function PedidosView({ onToast }) {
     </div>
   )
 }
+
+/**
+ * Una fila de la lista. `memo` (plan 50): con miles de pedidos, tildar uno o abrir otro no vuelve a
+ * dibujar los demás. Todo lo que recibe es estable o primitivo (`onTocar` es un useCallback, la
+ * retención y el repartidor vienen ya resueltos).
+ */
+const FilaPedido = memo(function FilaPedido({ p, enPapelera, conTilde, elegible, marcado, motivoRet, nombreRepartidor, onTocar }) {
+  const anulado = p.estado === 'Anulado'
+  return (
+    <div
+      onClick={() => onTocar(p, elegible)}
+      className="lu-press"
+      role={conTilde ? 'checkbox' : 'button'}
+      aria-checked={conTilde ? marcado : undefined}
+      aria-disabled={conTilde && !elegible ? true : undefined}
+      title={conTilde && !elegible ? `No se reasigna: está ${p.estado}` : undefined}
+      style={{
+        ...sx('display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:7px;background:var(--surface);border-radius:12px'),
+        border: `1px solid ${anulado ? 'var(--danger)' : marcado ? 'var(--primary)' : 'var(--line)'}`,
+        background: marcado ? 'var(--primary-tint)' : 'var(--surface)',
+        opacity: anulado || (conTilde && !elegible) ? 0.5 : 1,
+        cursor: conTilde && !elegible ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {conTilde && (
+        <input type="checkbox" checked={marcado} disabled={!elegible} readOnly tabIndex={-1}
+          style={sx('flex:none;width:18px;height:18px;accent-color:var(--primary);pointer-events:none')} />
+      )}
+      <div style={sx('flex:1;min-width:0')}>
+        <div style={sx('display:flex;align-items:baseline;gap:7px')}>
+          <span style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>#{p.numero || '—'}</span>
+          <span style={{ ...sx('font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'), textDecoration: anulado ? 'line-through' : 'none' }}>
+            {p.comercio?.name || 'Comercio dado de baja'}
+          </span>
+        </div>
+        <div style={sx('display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--font-mono)')}>
+          {/* Estado de entrega y marca de exportación (16/09/2026): hasta hoy la fila no decía
+              si el pedido salió, llegó o ya se facturó — había que abrir cada uno. La pill
+              sólo va en la lista viva; en la papelera el estado es siempre "Anulado" y ya lo
+              dice la línea roja de abajo. */}
+          {!anulado && (
+            <span style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.02em'), color: tonoEstado(p.estado)[0], background: tonoEstado(p.estado)[1] }}>
+              {p.estado}
+            </span>
+          )}
+          {p.exportado_ts && (
+            <span title={`Exportado al ERP · ${fmtFecha(p.exportado_ts)}${p.export_lote ? ` · lote ${p.export_lote}` : ''}`} style={sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface2);border:1px solid var(--line2)')}>
+              ERP{p.export_lote ? ` #${p.export_lote}` : ''}
+            </span>
+          )}
+          {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta.
+              db/92: o hasta que su cliente nuevo llegue al ERP, que no pide cargar nada. */}
+          {motivoRet && (
+            <span title={motivoRet === 'clienteSinEnviar'
+              ? 'No sale al ERP hasta que su cliente nuevo llegue al sistema de gestión. Sale solo en el próximo lote.'
+              : `No sale al ERP: ${TEXTO_RETENCION[motivoRet]}. Cargalo y entra solo en el próximo lote.`} style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: 'var(--warning)', background: 'var(--warning-tint)' }}>
+              Retenido · {TEXTO_RETENCION[motivoRet]}
+            </span>
+          )}
+          <span>
+          {fmtFecha(p.created_at)} · {p.nombreVendedor || '—'}
+          {p.origen === 'vidriera' ? ' · tablet' : ''}
+          {p.origen === 'whatsapp' && <> · <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#25D366', fontWeight: 600 }}><Whatsapp size={11} />WhatsApp</span></>}
+          {/* La distancia informa; no acusa. Se muestra el número y nada más — el GPS de
+              estos equipos miente hasta 30 m y el comercio puede no tener ubicación. */}
+          {p.distancia_m != null ? ` · ${Math.round(p.distancia_m)} m` : ''}
+          {/* Para armar el reparto (plan 31): cuándo se entrega y quién lo lleva, sin abrirlo. */}
+          {diaEntrega(p) ? ` · entrega ${diaEntrega(p).slice(8, 10)}/${diaEntrega(p).slice(5, 7)}` : ''}
+          {nombreRepartidor ? ` · reparte ${nombreRepartidor}` : ''}
+          </span>
+        </div>
+        {anulado && (
+          <div style={sx('font-size:11px;color:var(--danger);margin-top:3px')}>
+            ANULADO{p.motivo_anulacion ? ` · ${p.motivo_anulacion}` : ''}
+          </div>
+        )}
+        {/* La cuenta regresiva, sólo en la papelera: en la lista viva no hay ninguna que
+            mostrar. Se pinta de rojo la última semana — que un pedido esté por desaparecer
+            para siempre es lo único de esta pantalla que tiene urgencia real. */}
+        {anulado && enPapelera && (
+          <div style={{
+            ...sx('font-size:11px;margin-top:2px;font-family:var(--font-mono)'),
+            color: porVencer(p) ? 'var(--danger)' : 'var(--faint)',
+            fontWeight: porVencer(p) ? 600 : 400,
+          }}>
+            {textoPapelera(p)}
+          </div>
+        )}
+      </div>
+      <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:700')}>
+        {fmtPesos(p.monto_total)}
+      </div>
+    </div>
+  )
+})
