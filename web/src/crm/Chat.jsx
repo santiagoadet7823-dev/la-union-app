@@ -5,6 +5,7 @@ import {
   hora, horaLarga, telefono, nombreContacto, minutosVentana,
 } from './datos'
 import { formatoGrabacion, grabar } from './grabar'
+import { sugeridas } from './mensajes'
 
 const PUEDEN_FORZAR = ['superadmin', 'admin', 'encargado']
 const MAX_BYTES = 5 * 1024 * 1024
@@ -63,11 +64,24 @@ function Ventana({ conv }) {
   return <span className={`crm-pildora ${min < 120 ? 'crm-pildora-aviso' : ''}`} title="Tiempo que queda para escribirle sin plantilla">⏱ {h ? `${h} h ` : ''}{min % 60} min</span>
 }
 
-export default function Chat({ conv, yo, soloVer, onVolver, onPanel }) {
+const PESTANAS_MOVIL = [['catalogo', 'Catálogo'], ['carrito', 'Carrito'], ['pedidos', 'Pedidos'], ['cliente', 'Cliente']]
+
+export default function Chat({ conv, yo, soloVer, onVolver, onPanel, precarga, contexto, empresa }) {
   const { mensajes, cargando } = useMensajes(conv.id)
   const { presentes, escribiendo } = usePresencia(conv.id, yo)
   const [texto, setTexto] = useState('')
+  const [origen, setOrigen] = useState(null) // de dónde vino el texto precargado (catálogo, carrito, …)
+  const [menu, setMenu] = useState(null) // acciones | sugeridas | plantillas
   const [modo, setModo] = useState('responder') // responder | nota
+
+  // Texto armado desde el panel (catálogo, carrito, pedidos): entra al cuadro, editable, NUNCA se envía solo.
+  useEffect(() => {
+    if (!precarga?.n) return
+    setTexto(precarga.texto)
+    setOrigen(precarga.origen)
+    setModo('responder')
+    setMenu(null)
+  }, [precarga?.n]) // eslint-disable-line react-hooks/exhaustive-deps
   const [ocupado, setOcupado] = useState(false)
   const [aviso, setAviso] = useState(null)
   const [personas, setPersonas] = useState(null)
@@ -138,7 +152,7 @@ export default function Chat({ conv, yo, soloVer, onVolver, onPanel }) {
       ? await rpc('crm_nota', { p_conv: conv.id, p_texto: t })
       : await funcion('crm-enviar', { conversacion: conv.id, tipo: 'texto', texto: t })
     setOcupado(false)
-    if (r.ok) { setTexto(''); escribiendo(false) } else mostrar(r)
+    if (r.ok) { setTexto(''); setOrigen(null); escribiendo(false) } else mostrar(r)
   }
 
   async function enviarArchivo(file) {
@@ -187,72 +201,72 @@ export default function Chat({ conv, yo, soloVer, onVolver, onPanel }) {
   const mirando = presentes.filter((p) => !p.escribiendo).map((p) => p.nombre)
   const tecleando = presentes.filter((p) => p.escribiendo).map((p) => p.nombre)
 
+  // Píldora de control (reemplaza al cartel y la botonera de antes: las acciones van al menú).
+  let control = ['🤖 Bot', 'info']
+  if (conv.asignada_a) {
+    control = [`🔒 ${mio ? 'Vos' : conv.asignada_nombre}${conv.tomada_ts ? ` · desde ${hora(conv.tomada_ts)}` : ''}${inactivo ? ` · sin actividad ${minSinActividad} min` : ''}`,
+      inactivo ? 'aviso' : mio ? 'ok' : 'primario']
+  } else if (conv.estado === 'esperando_persona') control = [`🙋 Espera a una persona${conv.motivo_derivacion ? `: ${conv.motivo_derivacion}` : ''}`, 'error']
+  else if (cerrada) control = ['Cerrada', '']
+
+  const puedeTomar = !soloVer && !cerrada && !mio && (!deOtro || puedeForzar)
+  const acciones = soloVer || cerrada ? [] : [
+    { t: 'Devolver al bot', on: () => accion('crm_liberar', { p_conv: conv.id, p_al_bot: true }, 'Volvió al bot.'), off: !(mio || puedeForzar) || conv.estado === 'bot' },
+    { t: 'Liberar', on: () => accion('crm_liberar', { p_conv: conv.id, p_al_bot: false }, 'Liberada: queda esperando a otra persona.'), off: !mio },
+    { t: 'Pasar a…', on: verPersonas, off: !(mio || puedeForzar), mantener: true },
+    { t: '✨ Que la IA retome', off: true, title: 'Llega con el bot de ventas' },
+    { t: 'Cerrar conversación', peligro: true, off: deOtro && !puedeForzar, on: () => { if (window.confirm('¿Cerrar la conversación?')) accion('crm_cerrar', { p_conv: conv.id }, 'Conversación cerrada.') } },
+  ]
+
+  const sugs = sugeridas({ ...(contexto || {}), minutosVentana: conv.demo ? null : ventana, yo: yo.nombre, empresa })
+  const bloqueoAcciones = !soloVer && modo === 'responder' && !cerrada
+    ? deOtro ? [['Escribir nota', () => setModo('nota')]]
+      : !ventanaAbierta ? [['Elegir plantilla', () => setMenu(menu === 'plantillas' ? null : 'plantillas')]] : []
+    : []
+
   return (
     <div className="crm-chat">
       <div className="crm-chat-cabeza">
         <button className="crm-volver-movil" onClick={onVolver} aria-label="Volver a la bandeja">‹</button>
         <div className="crm-chat-titulo">
           <div className="crm-chat-nombre">{nombreContacto(conv)} {conv.demo && <span className="crm-pildora crm-pildora-chica">demo</span>}</div>
-          <div className="crm-muted crm-chico">{telefono(conv.contacto?.wa_id)}</div>
+          <div className="crm-muted crm-chico crm-mono">{telefono(conv.contacto?.wa_id)}</div>
         </div>
-        <Ventana conv={conv} />
+        <div className="crm-chat-estado">
+          <Ventana conv={conv} />
+          <span className={`crm-pildora ${control[1] ? `crm-pildora-${control[1]}` : 'crm-pildora-gris'}`}>{control[0]}</span>
+          {puedeTomar && (
+            <button className="crm-btn crm-btn-chico crm-btn-primario" disabled={ocupado}
+              onClick={() => accion('crm_tomar', { p_conv: conv.id, p_forzar: deOtro }, null)}>{deOtro ? 'Forzar la toma' : 'Tomar control'}</button>
+          )}
+          {acciones.length > 0 && (
+            <div className="crm-menu-ancla">
+              <button className="crm-btn crm-btn-chico" onClick={() => { setMenu(menu === 'acciones' ? null : 'acciones'); setPersonas(null) }}>Acciones ▾</button>
+              {menu === 'acciones' && (
+                <div className="crm-menu crm-menu-der" role="menu">
+                  {!personas && acciones.map((a) => (
+                    <button key={a.t} role="menuitem" disabled={a.off || ocupado} title={a.title || ''} className={a.peligro ? 'crm-menu-peligro' : ''}
+                      onClick={() => { a.on?.(); if (!a.mantener) setMenu(null) }}>{a.t}</button>
+                  ))}
+                  {personas && (
+                    <>
+                      <div className="crm-menu-titulo">Pasar a…</div>
+                      {!personas.length && <div className="crm-muted crm-pad crm-chico">No hay otras personas con permiso.</div>}
+                      {personas.map((p) => (
+                        <button key={p.id} role="menuitem" onClick={async () => { setPersonas(null); setMenu(null); await accion('crm_pasar', { p_conv: conv.id, p_perfil: p.id }, `Se la pasaste a ${p.nombre}.`) }}>
+                          {p.nombre}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="crm-acciones-movil">
-          <button className="crm-btn crm-btn-chico" onClick={() => onPanel('ticket')}>Ticket</button>
-          <button className="crm-btn crm-btn-chico" onClick={() => onPanel('cliente')}>Cliente</button>
+          {PESTANAS_MOVIL.map(([k, t]) => <button key={k} className="crm-btn crm-btn-chico" onClick={() => onPanel(k)}>{t}</button>)}
         </div>
-      </div>
-
-      {/* Cartel de control: lo ven todos al instante (Realtime sobre `asignada_a`). */}
-      {conv.asignada_a ? (
-        <div className={`crm-control ${inactivo ? 'crm-control-inactivo' : ''} ${mio ? 'crm-control-mio' : ''}`}>
-          <span>🔒 Controlado por <b>{mio ? 'vos' : conv.asignada_nombre}</b>{conv.tomada_ts ? ` · desde ${hora(conv.tomada_ts)}` : ''}</span>
-          {inactivo && <span>· sin actividad hace {minSinActividad} min</span>}
-        </div>
-      ) : conv.estado === 'esperando_persona' ? (
-        <div className="crm-control crm-control-espera">
-          <span>🙋 Espera a una persona{conv.motivo_derivacion ? `: ${conv.motivo_derivacion}` : ''}</span>
-        </div>
-      ) : null}
-
-      <div className="crm-botonera">
-        {!soloVer && !cerrada && !mio && (!deOtro || puedeForzar) && (
-          <button className="crm-btn crm-btn-primario" disabled={ocupado}
-            onClick={() => accion('crm_tomar', { p_conv: conv.id, p_forzar: deOtro }, null)}>
-            {deOtro ? 'Forzar la toma' : 'Tomar control'}
-          </button>
-        )}
-        {!soloVer && !cerrada && (mio || puedeForzar) && conv.estado !== 'bot' && (
-          <button className="crm-btn" disabled={ocupado} onClick={() => accion('crm_liberar', { p_conv: conv.id, p_al_bot: true }, 'Volvió al bot.')}>
-            Devolver al bot
-          </button>
-        )}
-        {!soloVer && !cerrada && mio && (
-          <button className="crm-btn" disabled={ocupado} onClick={() => accion('crm_liberar', { p_conv: conv.id, p_al_bot: false }, 'Liberada: queda esperando a otra persona.')}>
-            Liberar
-          </button>
-        )}
-        {!soloVer && !cerrada && (mio || puedeForzar) && (
-          <div className="crm-menu-ancla">
-            <button className="crm-btn" disabled={ocupado} onClick={verPersonas}>Pasar a…</button>
-            {personas && (
-              <div className="crm-menu" role="menu">
-                {!personas.length && <div className="crm-muted crm-pad">No hay otras personas con permiso.</div>}
-                {personas.map((p) => (
-                  <button key={p.id} role="menuitem" onClick={async () => { setPersonas(null); await accion('crm_pasar', { p_conv: conv.id, p_perfil: p.id }, `Se la pasaste a ${p.nombre}.`) }}>
-                    {p.nombre}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        <button className="crm-btn" disabled title="Llega con el bot de ventas (paso 5 del plan)">✨ Que la IA retome</button>
-        {!soloVer && !cerrada && (!deOtro || puedeForzar) && (
-          <button className="crm-btn crm-btn-peligro" disabled={ocupado}
-            onClick={() => { if (window.confirm('¿Cerrar la conversación?')) accion('crm_cerrar', { p_conv: conv.id }, 'Conversación cerrada.') }}>
-            Cerrar
-          </button>
-        )}
       </div>
 
       {aviso && (
@@ -278,9 +292,39 @@ export default function Chat({ conv, yo, soloVer, onVolver, onPanel }) {
           <button type="button" data-activa={modo === 'nota'} onClick={() => setModo('nota')}>Nota interna</button>
           {modo === 'responder' && !bloqueo && !mio && !conv.asignada_a && <span className="crm-muted crm-chico">Al enviar, tomás el control.</span>}
           {modo === 'nota' && <span className="crm-muted crm-chico">La ve el equipo, nunca el cliente.</span>}
+          <div className="crm-espacio" />
+          {modo === 'responder' && !bloqueo && (
+            <button type="button" className="crm-btn crm-btn-mini" onClick={() => setMenu(menu === 'sugeridas' ? null : 'sugeridas')}>⚡ Sugeridas</button>
+          )}
         </div>
+        {menu === 'sugeridas' && (
+          <div className="crm-flotante crm-flotante-der">
+            <div className="crm-menu-titulo">Según esta conversación · se precarga, no se envía</div>
+            {sugs.map(([t, txt]) => (
+              <button type="button" key={t} className="crm-sugerida" onClick={() => { setTexto(txt); setOrigen('Sugeridas'); setMenu(null) }}>
+                <b>{t}</b><span>{txt.split('\n')[0]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {menu === 'plantillas' && (
+          <div className="crm-flotante">
+            <div className="crm-menu-titulo">Plantillas aprobadas por WhatsApp<button type="button" className="crm-aviso-x-chica" onClick={() => setMenu(null)} aria-label="Cerrar">×</button></div>
+            <div className="crm-pad crm-muted crm-chico">Todavía no hay plantillas aprobadas por Meta para este número. Cuando estén, aparecen acá para mandarlas con un toque. Cuando el cliente responda, se reabre la ventana.</div>
+          </div>
+        )}
+        {origen && texto && modo === 'responder' && !bloqueo && (
+          <div className="crm-precargado">
+            <b>↓ Llegó al chat desde {origen}</b><span>Revisalo y apretá Enviar. No se envía solo.</span>
+            <div className="crm-espacio" />
+            <button type="button" className="crm-link" onClick={() => { setTexto(''); setOrigen(null) }}>Descartar</button>
+          </div>
+        )}
         {bloqueo ? (
-          <div className="crm-bloqueo">{bloqueo}</div>
+          <div className="crm-bloqueo crm-bloqueo-fila">
+            <span>{bloqueo}</span>
+            {bloqueoAcciones.map(([t, on]) => <button type="button" key={t} className="crm-btn crm-btn-chico" onClick={on}>{t}</button>)}
+          </div>
         ) : grabacion ? (
           <div className="crm-grabando">
             <span className="crm-punto-rojo" /> Grabando…
@@ -297,9 +341,9 @@ export default function Chat({ conv, yo, soloVer, onVolver, onPanel }) {
                   onChange={(e) => { enviarArchivo(e.target.files?.[0]); e.target.value = '' }} />
               </>
             )}
-            <textarea className="crm-input crm-textarea" rows={1} value={texto} disabled={ocupado}
+            <textarea className={`crm-input crm-textarea ${origen && texto ? 'crm-textarea-precargado' : ''}`} rows={1} value={texto} disabled={ocupado}
               placeholder={modo === 'nota' ? 'Escribí una nota para el equipo…' : 'Escribí un mensaje…'}
-              onChange={(e) => alEscribir(e.target.value)}
+              onChange={(e) => { alEscribir(e.target.value); if (!e.target.value) setOrigen(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) enviar(e) }} />
             {modo === 'responder' && formatoAudio && !texto.trim() ? (
               <button type="button" className="crm-icono" title="Grabar audio" disabled={ocupado} onClick={microfono}>🎤</button>

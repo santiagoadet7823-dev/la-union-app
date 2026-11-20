@@ -217,8 +217,86 @@ async function cancelar(ctx: Contexto, c: Conversacion, cuerpo: any) {
   return { ok: true, ticket }
 }
 
+// ── Pedidos ya creados del cliente (plan 46/51, db/108) ─────────────────────────────────────────────
+// Solo los ABIERTOS que nacieron en el ARM (`origen = 'whatsapp'`) y que todavía no bajaron al ERP. La
+// base decide con `select … for update` (`crm_reemplazar_items_pedido` / `crm_anular_pedido_arm`): si el
+// lote los tomó en el medio, la respuesta es 'pedido-exportado' y la pantalla los pasa a bloqueados.
+const ERROR_PEDIDO: Record<string, number> = {
+  'pedido-inexistente': 404, 'pedido-exportado': 409, 'pedido-ajeno': 409, 'pedido-no-editable': 409,
+  'pedido-cambio': 409, 'pedido-sin-renglones': 400,
+}
+
+async function pedidoDelCliente(ctx: Contexto, c: Conversacion, idPedido: unknown) {
+  if (c.demo) throw new Rechazo(409, 'pedido-demo')
+  if (typeof idPedido !== 'string' || !/^[0-9a-f-]{36}$/i.test(idPedido)) throw new Rechazo(400, 'pedido-invalido')
+  const idCliente = await idClienteDe(ctx, c)
+  const { data } = await ctx.db.from('pedidos').select('id, numero, id_cliente, id_empresa')
+    .eq('id', idPedido).eq('id_empresa', c.id_empresa).maybeSingle()
+  if (!data || !idCliente || data.id_cliente !== idCliente) throw new Rechazo(404, 'pedido-inexistente')
+  return data
+}
+
+async function reemplazar(ctx: Contexto, c: Conversacion, idPedido: string, token: unknown, items: Renglon[]) {
+  if (!items.length) throw new Rechazo(400, 'pedido-sin-renglones')
+  const total = totalDe(items)
+  const { data, error } = await ctx.db.rpc('crm_reemplazar_items_pedido', {
+    p_pedido: idPedido, p_empresa: c.id_empresa, p_token: typeof token === 'string' ? token : null,
+    p_items: items.map((r) => ({
+      id_producto: r.id_producto, descripcion: r.descripcion, cantidad: r.cantidad,
+      precio_unitario: r.precio_unitario, peso_kg: r.peso_kg, codigo_producto: r.codigo,
+    })),
+    p_monto: total, p_peso: centavos(items.reduce((s, r) => s + r.peso_kg * r.cantidad, 0)),
+  })
+  if (error) throw new Error(`crm_reemplazar_items_pedido: ${error.message}`)
+  if (!data?.ok) throw new Rechazo(ERROR_PEDIDO[data?.error] ?? 409, data?.error ?? 'pedido-fallo', data ?? {})
+  return { ...data, total }
+}
+
+/** Corrige los renglones de un pedido abierto del ARM. `items`: [{ id_producto, cantidad }]. */
+async function pedido_guardar(ctx: Contexto, c: Conversacion, cuerpo: any) {
+  const p = await pedidoDelCliente(ctx, c, cuerpo.id_pedido)
+  const items = await armarRenglones(ctx, c.id_empresa, cuerpo.items)
+  const r = await reemplazar(ctx, c, p.id, cuerpo.token, items)
+  await sistema(ctx, c, `${ctx.yo.nombre} corrigió el pedido N° ${r.numero} (${pesos(r.total)})`)
+  return { ok: true, numero: r.numero, token: r.token, total: r.total }
+}
+
+async function pedido_anular(ctx: Contexto, c: Conversacion, cuerpo: any) {
+  const p = await pedidoDelCliente(ctx, c, cuerpo.id_pedido)
+  const { data, error } = await ctx.db.rpc('crm_anular_pedido_arm', {
+    p_pedido: p.id, p_empresa: c.id_empresa, p_perfil: ctx.yo.id,
+    p_motivo: `Anulado desde el ARM por ${ctx.yo.nombre}${cuerpo.motivo ? ': ' + String(cuerpo.motivo).slice(0, 200) : ''}`,
+  })
+  if (error) throw new Error(`crm_anular_pedido_arm: ${error.message}`)
+  if (!data?.ok) throw new Rechazo(ERROR_PEDIDO[data?.error] ?? 409, data?.error ?? 'pedido-fallo', data ?? {})
+  await sistema(ctx, c, `${ctx.yo.nombre} anuló el pedido N° ${data.numero}`)
+  return { ok: true, numero: data.numero }
+}
+
+/** Suma el carrito (ticket en borrador) a un pedido abierto del ARM en vez de crear otro. */
+async function sumar_a_pedido(ctx: Contexto, c: Conversacion, cuerpo: any) {
+  const t = await borrador(ctx, c)
+  if (!t) throw new Rechazo(404, 'sin-ticket')
+  if (t.version !== Number(cuerpo.version)) throw new Rechazo(409, 'ticket-cambio', { ticket: t })
+  if (!t.items?.length) throw new Rechazo(409, 'ticket-vacio')
+  const p = await pedidoDelCliente(ctx, c, cuerpo.id_pedido)
+  const { data: actuales, error } = await ctx.db.from('pedido_items').select('id_producto, cantidad').eq('id_pedido', p.id)
+  if (error) throw new Error(`pedido_items: ${error.message}`)
+  if ((actuales ?? []).some((i: any) => !i.id_producto)) throw new Rechazo(409, 'pedido-no-editable')
+  const juntos = [...(actuales ?? []), ...(t.items as Renglon[])].map((i: any) => ({ id_producto: i.id_producto, cantidad: Number(i.cantidad) }))
+  const items = await armarRenglones(ctx, c.id_empresa, juntos)
+  const reservado = await cambiar(ctx, c, t.version, {})
+  const r = await reemplazar(ctx, c, p.id, cuerpo.token, items)
+  const { data: fin } = await ctx.db.from('crm_tickets').update({
+    estado: 'confirmado', id_pedido: p.id, numero_pedido: r.numero, confirmado_ts: new Date().toISOString(),
+    version: reservado.version + 1, editado_por: ctx.yo.id, editado_nombre: ctx.yo.nombre, updated_at: new Date().toISOString(),
+  }).eq('id', reservado.id).select('*').single()
+  await sistema(ctx, c, `${ctx.yo.nombre} sumó ${(t.items as Renglon[]).length} productos al pedido N° ${r.numero} (queda en ${pesos(r.total)})`)
+  return { ok: true, ticket: fin, numero_pedido: r.numero, total: r.total }
+}
+
 const ACCIONES: Record<string, (ctx: Contexto, c: Conversacion, cuerpo: any) => Promise<unknown>> = {
-  guardar, enviar, confirmar, cancelar,
+  guardar, enviar, confirmar, cancelar, pedido_guardar, pedido_anular, sumar_a_pedido,
 }
 
 Deno.serve((req) => atender(req, async (ctx, cuerpo) => {

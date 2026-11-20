@@ -9,7 +9,7 @@ import { TODAS } from '../context/TenantContext'
  * no escribe ninguna tabla directo, y el servidor revalida todo.
  */
 
-const SEL_CONV = '*, contacto:crm_contactos(id, wa_id, nombre_perfil, id_cliente)'
+const SEL_CONV = '*, contacto:crm_contactos(id, wa_id, nombre_perfil, id_cliente, vinculo_origen)'
 
 const porFecha = (a, b) => new Date(b.ultimo_mensaje_ts || b.created_at) - new Date(a.ultimo_mensaje_ts || a.created_at)
 
@@ -215,6 +215,14 @@ export function textoError(r) {
     'sin-red': 'Sin conexión con el servidor.',
     'sin-sesion': 'La sesión se cerró: volvé a ingresar.',
     'texto-largo': 'El mensaje es demasiado largo.',
+    'pedido-exportado': 'Ese pedido ya bajó al ERP: no se puede cambiar. Ya se muestra bloqueado.',
+    'pedido-ajeno': 'Ese pedido lo tomó un vendedor en la app: corregilo desde allí.',
+    'pedido-no-editable': 'Ese pedido ya no está abierto: no se puede cambiar.',
+    'pedido-cambio': 'Otra persona cambió el pedido recién. Ya se muestra la versión nueva.',
+    'pedido-inexistente': 'Ese pedido ya no existe para este cliente.',
+    'pedido-sin-renglones': 'El pedido tiene que quedar con al menos un producto. Para sacarlo entero, anulalo.',
+    'pedido-demo': 'Conversación de demostración: los pedidos reales se ven pero no se cambian.',
+    'cliente-inexistente': 'Ese cliente ya no está activo.',
   }
   if (tabla[c]) return tabla[c]
   if (typeof c === 'string' && c.includes('crm-sin-permiso')) return tabla['sin-permiso']
@@ -251,4 +259,139 @@ export const nombreContacto = (c) => c?.contacto?.nombre_perfil || telefono(c?.c
 export function minutosVentana(conv, ahora = Date.now()) {
   if (!conv?.ultima_entrante_ts) return null
   return Math.floor((new Date(conv.ultima_entrante_ts).getTime() + 24 * 3600 * 1000 - ahora) / 60000)
+}
+
+// ── Catálogo, pedidos y clientes (plan 46/51, db/108) ───────────────────────────────────────────
+
+/** Categorías y marcas del catálogo, con cuántos productos tiene cada par. Una vez por empresa. */
+export function useFiltrosCatalogo(idEmpresa) {
+  const [filtros, setFiltros] = useState({ total: 0, pares: [] })
+  useEffect(() => {
+    if (!idEmpresa) return undefined
+    let vivo = true
+    supabase.rpc('crm_catalogo_filtros', { p_empresa: idEmpresa }).then(({ data }) => { if (vivo && data) setFiltros(data) })
+    return () => { vivo = false }
+  }, [idEmpresa])
+  return filtros
+}
+
+/** Catálogo con búsqueda (espera 250 ms entre teclas), filtros, orden y "ver más" de a 40. */
+export function useCatalogo(idEmpresa, { texto, categoria, marca, orden }) {
+  const [items, setItems] = useState([])
+  const [total, setTotal] = useState(0)
+  const [cargando, setCargando] = useState(true)
+  const [pagina, setPagina] = useState(0)
+  const turno = useRef(0)
+
+  useEffect(() => { setPagina(0) }, [idEmpresa, texto, categoria, marca, orden])
+
+  useEffect(() => {
+    if (!idEmpresa) return undefined
+    const n = ++turno.current
+    setCargando(true)
+    const reloj = setTimeout(async () => {
+      const { data, error } = await supabase.rpc('crm_catalogo', {
+        p_texto: texto?.trim() || null, p_categoria: categoria ?? null, p_marca: marca ?? null,
+        p_limite: 40, p_offset: pagina * 40, p_empresa: idEmpresa, p_orden: orden || 'relevancia',
+      })
+      if (n !== turno.current) return
+      const filas = error ? [] : data || []
+      setItems((l) => (pagina ? [...l, ...filas.filter((f) => !l.some((x) => x.id === f.id))] : filas))
+      setTotal(filas[0]?.total_filas ?? (pagina ? total : 0))
+      setCargando(false)
+    }, pagina ? 0 : 250)
+    return () => clearTimeout(reloj)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idEmpresa, texto, categoria, marca, orden, pagina])
+
+  return { items, total, cargando, masPaginas: items.length < total, verMas: () => setPagina((p) => p + 1) }
+}
+
+/** Pedidos del cliente vinculado (abiertos + exportados de 30 días). Se refresca cada 60 s. */
+export function usePedidosCliente(idConv, idCliente) {
+  const [pedidos, setPedidos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const cargar = useCallback(async () => {
+    if (!idConv) return
+    const { data } = await supabase.rpc('crm_pedidos_cliente', { p_conv: idConv })
+    setPedidos(Array.isArray(data) ? data : [])
+    setCargando(false)
+  }, [idConv])
+  useEffect(() => {
+    setCargando(true)
+    cargar()
+    const t = setInterval(cargar, 60000)
+    const alVolver = () => { if (document.visibilityState === 'visible') cargar() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver) }
+  }, [cargar, idCliente])
+  return { pedidos, cargando, recargar: cargar }
+}
+
+/** Datos del cliente vinculado (para la franja del panel y la pestaña Cliente). */
+export function useCliente(idCliente) {
+  const [cli, setCli] = useState(null)
+  const [vuelta, setVuelta] = useState(0)
+  useEffect(() => {
+    if (!idCliente) { setCli(null); return undefined }
+    let vivo = true
+    ;(async () => {
+      const { data: c } = await supabase.from('clientes')
+        .select('id, codigo, nombre_comercio, direccion, localidad, telefono, contacto, dias_visita, frecuencia, horario, id_vendedor, zona:zonas(nombre)')
+        .eq('id', idCliente).maybeSingle()
+      let vendedor = null
+      if (c?.id_vendedor) {
+        const { data: v } = await supabase.from('perfiles').select('nombre').eq('id', c.id_vendedor).maybeSingle()
+        vendedor = v?.nombre || null
+      }
+      const { data: ult } = await supabase.from('pedidos').select('created_at, monto_total')
+        .eq('id_cliente', idCliente).neq('estado', 'Anulado').order('created_at', { ascending: false }).limit(1)
+      if (vivo) setCli(c ? { ...c, vendedor, ultima: ult?.[0] || null } : null)
+    })()
+    return () => { vivo = false }
+  }, [idCliente, vuelta])
+  return { cli, recargar: () => setVuelta((n) => n + 1) }
+}
+
+/** Sugerencias de cliente para un contacto sin vincular (teléfono repetido y parecido por nombre). */
+export function useSugerencias(idConv, activo) {
+  const [sug, setSug] = useState({ coinciden_telefono: 0, sugerencias: [] })
+  useEffect(() => {
+    if (!idConv || !activo) return undefined
+    let vivo = true
+    supabase.rpc('crm_sugerencias_cliente', { p_conv: idConv }).then(({ data }) => { if (vivo && data) setSug(data) })
+    return () => { vivo = false }
+  }, [idConv, activo])
+  return sug
+}
+
+/** Base de clientes con el estado del teléfono (ok / revisar / repetido / sin). */
+export function useClientesBase(idEmpresa, { filtro, texto }) {
+  const [res, setRes] = useState({ totales: null, filtrados: 0, filas: [] })
+  const [cargando, setCargando] = useState(true)
+  const [limite, setLimite] = useState(100)
+  const [vuelta, setVuelta] = useState(0)
+  const turno = useRef(0)
+  useEffect(() => { setLimite(100) }, [idEmpresa, filtro, texto])
+  useEffect(() => {
+    if (!idEmpresa) return undefined
+    const n = ++turno.current
+    setCargando(true)
+    const reloj = setTimeout(async () => {
+      const { data } = await supabase.rpc('crm_clientes_base', {
+        p_empresa: idEmpresa, p_filtro: filtro || 'todos', p_texto: texto?.trim() || null, p_limite: limite, p_offset: 0,
+      })
+      if (n !== turno.current) return
+      if (data) setRes(data)
+      setCargando(false)
+    }, 250)
+    return () => clearTimeout(reloj)
+  }, [idEmpresa, filtro, texto, limite, vuelta])
+  return { ...res, cargando, verMas: () => setLimite((l) => l + 200), recargar: () => setVuelta((v) => v + 1) }
+}
+
+/** Todas las filas de un filtro (para bajar el CSV). */
+export async function clientesParaCsv(idEmpresa, filtro) {
+  const { data } = await supabase.rpc('crm_clientes_base', { p_empresa: idEmpresa, p_filtro: filtro, p_texto: null, p_limite: 5000, p_offset: 0 })
+  return data?.filas || []
 }
