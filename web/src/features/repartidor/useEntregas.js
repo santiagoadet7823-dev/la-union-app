@@ -57,7 +57,7 @@ const A_BASE = { pendiente: 'Pendiente', en_camino: 'En camino', entregado: 'Ent
 const DE_BASE = { Pendiente: 'pendiente', 'En camino': 'en_camino', Entregado: 'entregado', 'No entregado': 'no_entregado' }
 
 const SELECT = `
-  id, numero, estado, monto_total, peso_total, created_at, fecha_entrega, ts_en_camino, ts_entregado,
+  id, numero, estado, monto_total, peso_total, created_at, fecha_entrega, ts_en_camino, ts_entregado, erp_estado, erp_total,
   cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, direccion, lat, lng )
 `
 
@@ -107,8 +107,9 @@ export function useEntregas(idRepartidor) {
         // Las líneas en lote: son las cantidades que el repartidor confirma una por una, así que acá
         // sí se piden con la lista (a diferencia de gestión, que las trae recién al abrir un pedido).
         const lineas = await itemsDePedidos(pedidos.map((p) => p.id))
+        const erp = await cantidadesErp(pedidos.filter((p) => p.erp_estado).map((p) => p.id))
         if (!vivo) return
-        setEstado({ cargando: false, error: null, entregas: pedidos.map((p) => mapEntrega(p, lineas.get(p.id) || [])) })
+        setEstado({ cargando: false, error: null, entregas: pedidos.map((p) => mapEntrega(p, lineas.get(p.id) || [], erp.get(p.id))) })
       } catch (e) {
         if (vivo) setEstado({ entregas: [], cargando: false, error: e?.message || 'sin conexión' })
       }
@@ -120,7 +121,27 @@ export function useEntregas(idRepartidor) {
 }
 
 /** Un pedido de la base → la forma que ya dibuja `RepartidorView`. */
-function mapEntrega(p, lineas) {
+const codigoNorm = (c) => String(c ?? '').replace(/\s/g, '').toLowerCase().replace(/^0+/, '')
+
+async function cantidadesErp(ids) {
+  const porPedido = new Map()
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from('pedido_lineas_erp')
+      .select('id_pedido, codigo_producto, cantidad')
+      .in('id_pedido', ids.slice(i, i + 100))
+    if (error) throw error
+    for (const l of data || []) {
+      const m = porPedido.get(l.id_pedido) || new Map()
+      const k = codigoNorm(l.codigo_producto)
+      m.set(k, (m.get(k) || 0) + (Number(l.cantidad) || 0))
+      porPedido.set(l.id_pedido, m)
+    }
+  }
+  return porPedido
+}
+
+function mapEntrega(p, lineas, erp) {
   return {
     id: p.id,
     // Lo que se MUESTRA es el número legible (`000001`), el mismo del ticket impreso y del export
@@ -132,7 +153,8 @@ function mapEntrega(p, lineas) {
     lat: p.cliente?.lat ?? null,
     lng: p.cliente?.lng ?? null,
     kg: Number(p.peso_total) || 0,
-    monto: Number(p.monto_total) || 0,
+    monto: Number(erp ? p.erp_total : p.monto_total) || 0,
+    confirmadoErp: p.erp_estado || null,
     status: DE_BASE[p.estado] || 'pendiente',
     // Lo de otro día dice el día: "Tomado 14:05" de un pedido de anteayer confunde.
     tomado: (hoyStr(new Date(p.created_at)) === hoyStr() ? hhmm(p.created_at) : fmtDiaHora(p.created_at)) || '—',
@@ -143,7 +165,8 @@ function mapEntrega(p, lineas) {
     items: lineas.map((l) => ({
       idLinea: l.id,
       name: l.descripcion || '—',
-      gen: Number(l.cantidad) || 0,
+      gen: erp ? (erp.get(codigoNorm(l.codigoProducto)) || 0) : (Number(l.cantidad) || 0),
+      tomada: Number(l.cantidad) || 0,
       entregada: l.cantidad_entregada,
     })),
   }

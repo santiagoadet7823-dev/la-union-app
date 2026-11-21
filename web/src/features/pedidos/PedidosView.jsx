@@ -215,7 +215,11 @@ export default function PedidosView({ onToast }) {
       if (filtroRepartidorDif === 'sin' ? !!p.id_repartidor : (filtroRepartidorDif && p.id_repartidor !== filtroRepartidorDif)) return false
       if (filtroLoteDif === 'sin' && p.exportado_ts) return false
       if (filtroLoteDif === 'ret' && !retencion(p)) return false
-      if (filtroLoteDif && filtroLoteDif !== 'sin' && filtroLoteDif !== 'ret' && String(p.export_lote || '') !== filtroLoteDif) return false
+      if (filtroLoteDif === 'erp_sin' && (!p.exportado_ts || p.erp_estado)) return false
+      if (filtroLoteDif === 'erp_igual' && p.erp_estado !== 'igual') return false
+      if (filtroLoteDif === 'erp_mod' && p.erp_estado !== 'modificado') return false
+      if (filtroLoteDif === 'erp_asignar' && (!p.erp_estado || p.id_repartidor)) return false
+      if (filtroLoteDif && !ETIQUETA_FILTRO_ERP[filtroLoteDif] && filtroLoteDif !== 'sin' && filtroLoteDif !== 'ret' && String(p.export_lote || '') !== filtroLoteDif) return false
       if (diaEntregaFiltro && diaEntrega(p) !== diaEntregaFiltro) return false
       return true
     })
@@ -353,7 +357,7 @@ export default function PedidosView({ onToast }) {
     const otros = []
     if (filtroEstadoDif) otros.push(`Estado: ${filtroEstadoDif}`)
     if (filtroRepartidorDif) otros.push(filtroRepartidorDif === 'sin' ? 'Sin repartidor' : `Repartidor: ${nombreRep(filtroRepartidorDif)}`)
-    if (filtroLoteDif) otros.push(filtroLoteDif === 'sin' ? 'ERP: sin exportar' : filtroLoteDif === 'ret' ? 'ERP: retenidos' : `ERP: lote #${filtroLoteDif}`)
+    if (filtroLoteDif) otros.push(filtroLoteDif === 'sin' ? 'ERP: sin exportar' : filtroLoteDif === 'ret' ? 'ERP: retenidos' : ETIQUETA_FILTRO_ERP[filtroLoteDif] || `ERP: lote #${filtroLoteDif}`)
     if (diaEntregaFiltro) otros.push(`Entrega: ${dd(diaEntregaFiltro)}`)
     if (busquedaDif.trim()) otros.push(`Búsqueda: "${busquedaDif.trim()}"`)
     setConsolidado({
@@ -574,6 +578,7 @@ export default function PedidosView({ onToast }) {
             <option value="">ERP: todos</option>
             <option value="sin">Sin exportar</option>
             {retenidos.length > 0 && <option value="ret">Retenidos · {retenidos.length}</option>}
+            {Object.entries(ETIQUETA_FILTRO_ERP).map(([v, t]) => <option key={v} value={v}>{t.replace('ERP: ', '')}</option>)}
             {lotes.map((l) => <option key={l.lote} value={String(l.lote)}>Lote #{l.lote} · {fmtFecha(l.ts)} · {l.pedidos}</option>)}
           </select>
           {/* Día de entrega (plan 31): el reparto se arma por cuándo se entrega, no por cuándo se tomó. */}
@@ -835,6 +840,27 @@ export default function PedidosView({ onToast }) {
  * dibujar los demás. Todo lo que recibe es estable o primitivo (`onTocar` es un useCallback, la
  * retención y el repartidor vienen ya resueltos).
  */
+const ETIQUETA_FILTRO_ERP = {
+  erp_sin: 'ERP: sin confirmar',
+  erp_igual: 'ERP: confirmado igual',
+  erp_mod: 'ERP: modificado',
+  erp_asignar: 'ERP: confirmados sin repartidor',
+}
+
+function ChipErp({ p }) {
+  if (!p?.erp_estado) return null
+  const igual = p.erp_estado === 'igual'
+  const comp = (p.erp_comprobantes || []).join(', ')
+  return (
+    <span
+      title={`${igual ? 'Llegó igual al pedido tomado' : 'Modificado en el ERP'} · ${fmtFecha(p.erp_confirmado_ts)}${comp ? ` · ${comp}` : ''}`}
+      style={{ ...sx('padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700'), color: igual ? 'var(--success)' : 'var(--warning)', background: igual ? 'var(--success-tint)' : 'var(--warning-tint)' }}
+    >
+      {igual ? '✓ ERP igual' : `✎ ERP modificado · ${p.erp_diferencias || 0}`}
+    </span>
+  )
+}
+
 const FilaPedido = memo(function FilaPedido({ p, enPapelera, conTilde, elegible, marcado, motivoRet, nombreRepartidor, onTocar }) {
   const anulado = p.estado === 'Anulado'
   return (
@@ -879,6 +905,7 @@ const FilaPedido = memo(function FilaPedido({ p, enPapelera, conTilde, elegible,
               ERP{p.export_lote ? ` #${p.export_lote}` : ''}
             </span>
           )}
+          <ChipErp p={p} />
           {/* Retenido (db/74): el canal no lo manda hasta que se cargue el código que falta.
               db/92: o hasta que su cliente nuevo llegue al ERP, que no pide cargar nada. */}
           {motivoRet && (

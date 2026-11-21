@@ -40,6 +40,14 @@ export function fmtFecha(ts) {
   return `${d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
+const ETIQUETA_DIFERENCIA = {
+  quitado: 'Sin stock',
+  reducido: 'Reducido',
+  aumentado: 'Aumentado',
+  agregado: 'Agregado',
+  precio: 'Precio',
+}
+
 export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast, onAplicado, onTicket, onEditar }) {
   const [motivo, setMotivo] = useState('')
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false)
@@ -145,6 +153,15 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
       .catch(() => { if (vivo) setEdiciones([]) }) // sin historial no es un error para quien mira
     return () => { vivo = false }
   }, [pedido?.id])
+
+  const [comparacionErp, setComparacionErp] = useState(null)
+  useEffect(() => {
+    if (!pedido?.id || !pedido?.erp_estado) { setComparacionErp(null); return }
+    let vivo = true
+    supabase.rpc('pedido_comparacion_erp', { p_pedido: pedido.id })
+      .then(({ data, error }) => { if (vivo) setComparacionErp(error ? [] : (data || [])) })
+    return () => { vivo = false }
+  }, [pedido?.id, pedido?.erp_estado, pedido?.erp_confirmado_ts])
 
   return (
     <Overlay
@@ -302,6 +319,36 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
                   Exportado al ERP el {fmtFecha(pedido.exportado_ts)}{pedido.export_lote ? ` · lote ${pedido.export_lote}` : ''}
                 </div>
               )}
+            </div>
+          )}
+
+          {pedido.erp_estado && (
+            <div style={sx('margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>
+              <div style={sx('display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:7px')}>
+                <div style={{ ...sx('font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase'), color: pedido.erp_estado === 'igual' ? 'var(--success)' : 'var(--warning)' }}>
+                  {pedido.erp_estado === 'igual' ? '✓ Llegó igual desde el ERP' : '✎ Modificado en el ERP'}
+                </div>
+                <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint)')}>{fmtFecha(pedido.erp_confirmado_ts)}</div>
+              </div>
+              <div style={sx('display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px')}>
+                <span>Tomado {fmtPesos(pedido.monto_total)}</span>
+                <b style={sx('color:var(--text)')}>ERP {fmtPesos(pedido.erp_total)}</b>
+              </div>
+              {(pedido.erp_comprobantes || []).length > 0 && (
+                <div style={sx('font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-bottom:4px')}>{pedido.erp_comprobantes.join(' · ')}</div>
+              )}
+              {comparacionErp === null && <div style={sx('font-size:11.5px;color:var(--faint)')}>Cargando comparación…</div>}
+              {(comparacionErp || []).filter((c) => c.diferencia !== 'igual').map((c) => (
+                <div key={c.codigo} style={sx('display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12px')}>
+                  <div style={{ ...sx('flex:1;min-width:0;line-height:1.35'), textDecoration: c.diferencia === 'quitado' ? 'line-through' : 'none' }}>{c.descripcion || c.codigo}</div>
+                  <div style={sx('flex:none;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:11.5px')}>
+                    {fmtCant(c.cantidad_tomada)} → <b>{fmtCant(c.cantidad_erp)}</b>
+                  </div>
+                  <div style={{ ...sx('flex:none;font-size:10.5px;font-weight:700;min-width:64px;text-align:right'), color: c.diferencia === 'agregado' ? 'var(--info)' : 'var(--warning)' }}>
+                    {ETIQUETA_DIFERENCIA[c.diferencia] || c.diferencia}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

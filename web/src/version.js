@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.46.2'   // 19/11/2026: plan 50 — Pedidos fluido con 30 días + filtros por vendedor y artículo en el consolidado (OTA; el nativo sigue en 1.45.1 salvo los piloto)
+export const APP_VERSION = '1.46.3'   // 21/11/2026: plan 52 — pedidos confirmados desde el ERP (chip, filtro, detalle, repartidor con cantidad ERP)

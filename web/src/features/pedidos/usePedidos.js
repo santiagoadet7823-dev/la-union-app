@@ -49,6 +49,7 @@ const SELECT = `
   id, numero, id_empresa, id_vendedor, id_cliente, id_repartidor, id_visita, estado, monto_total, peso_total,
   created_at, lat, lng, accuracy, distancia_m, origen, motivo_anulacion, anulado_por, anulado_ts,
   anulado_srv_ts, forma_pago, fecha_entrega, observaciones, exportado_ts, export_lote,
+  erp_estado, erp_confirmado_ts, erp_total, erp_comprobantes, erp_diferencias,
   cliente:clientes!pedidos_id_cliente_fkey ( id, codigo, nombre_comercio, localidad, direccion, lat, lng, telefono, contacto, exportado_ts ),
   vendedor:perfiles!pedidos_id_vendedor_fkey ( id, nombre, codigo_erp, numero )
 `
