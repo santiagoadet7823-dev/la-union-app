@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { sx } from '../../../lib/sx'
+import { supabase } from '../../../services/supabase'
 import { identidadVisible, esEmailSintetico } from '../../../context/AuthContext'
 import { PALETA } from '../../../lib/colors'
 import { fmtPesos, fmtDuracion, hace, hoyStr } from '../../../lib/format'
@@ -882,6 +883,18 @@ export function TelefonoAlertas({ i, f }) {
   const permUbic = e && (e.permiso === 'granted' || e.permiso === 'always')
   const sinRed = e && (e.red === 'none' || e.red === 'sin_red')
   const cola = e?.cola_pendiente ?? 0
+  const idUsuario = i.p?.id
+  const [ahorro, setAhorro] = useState(null)
+  useEffect(() => {
+    if (!idUsuario) { setAhorro(null); return }
+    let vivo = true
+    supabase.from('dispositivo_ahorro')
+      .select('ahorro_energia, ahorro_gps_modo, ahorro_apaga_gps, desde_ts, ts')
+      .eq('id_usuario', idUsuario)
+      .maybeSingle()
+      .then(({ data }) => { if (vivo) setAhorro(data || null) }, () => { if (vivo) setAhorro(null) })
+    return () => { vivo = false }
+  }, [idUsuario, e?.updated_at])
   return (
     <GrupoLista titulo="Teléfono" extra={edad ? `reportó ${edad}` : null}>
       {e ? (
@@ -893,6 +906,11 @@ export function TelefonoAlertas({ i, f }) {
               : <span style={{ ...mono, ...sx('flex:none;font-size:var(--fs-sm);color:var(--muted)') }}>{e.app_version ? `APK ${e.app_version}` : '—'}</span>} />
           <FilaLista etiqueta="Batería" detalle={bat != null ? 'Del último punto' : 'Sin dato: viaja con cada punto'}
             valor={bat != null ? `${Math.round(bat <= 1 ? bat * 100 : bat)} %` : '—'} valorMono />
+          {ahorro && (
+            <FilaLista etiqueta="Ahorro de energía"
+              detalle={`${ahorro.ahorro_energia ? (ahorro.ahorro_apaga_gps ? 'Apaga el GPS con pantalla apagada' : 'Prendido, el GPS sigue') : 'Apagado'} · desde ${hhmm(ahorro.desde_ts)} · solo superadmin`}
+              extremo={<PildoraEstado tipo={!ahorro.ahorro_energia ? 'ok' : (ahorro.ahorro_apaga_gps ? 'error' : 'aviso')}>{ahorro.ahorro_energia ? 'Prendido' : 'Apagado'}</PildoraEstado>} />
+          )}
           <FilaLista etiqueta="GPS" detalle={e.gps_ok && e.gps_desde ? `Encendido desde ${hhmm(e.gps_desde)}` : null}
             extremo={<PildoraEstado tipo={e.gps_ok ? 'ok' : 'error'}>{e.gps_ok ? 'Encendido' : 'Apagado'}</PildoraEstado>} />
           <FilaLista etiqueta="Permisos" detalle={[permUbic ? 'Ubicación' : `Ubicación: ${e.permiso || '—'}`, e.notif_permiso === 'granted' ? 'avisos' : 'sin avisos'].join(' · ')}

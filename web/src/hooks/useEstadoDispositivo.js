@@ -164,6 +164,7 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
   const enviandoRef = useRef(false)
   const pendingRef = useRef(false)
   const ultimoPayloadRef = useRef(null) // último estado efectivamente subido
+  const ahorroRef = useRef({ clave: null, ts: 0 })
   const ultimoEnvioRef = useRef(0)
   const enviar = useCallback(async () => {
     if (!enabled || !hasSupabase || !id || !idEmpresa) return
@@ -307,6 +308,19 @@ export function useEstadoDispositivo({ enabled, id, idEmpresa, rol, pos, error }
         ...(modelo ? { modelo } : {}),
       } : {}
       const estado = { cola_pendiente: cola, cuarentena_pendiente: cuar, ...identidad, ...(fcm ? { fcm_token: fcm } : {}), ...diagRed, ...diagCaptura, ...diagArranque, ...diagNotif, ...s }
+      if (nat && typeof nat.ahorroEnergia === 'boolean') {
+        const clave = `${nat.ahorroEnergia}|${nat.ahorroGpsModo}|${nat.ahorroApagaGps}`
+        if (clave !== ahorroRef.current.clave || Date.now() - ahorroRef.current.ts >= FORZAR_MS) {
+          const { error } = await supabase.from('dispositivo_ahorro').upsert({
+            id_usuario: id, id_empresa: idEmpresa,
+            ahorro_energia: nat.ahorroEnergia,
+            ahorro_gps_modo: typeof nat.ahorroGpsModo === 'number' ? nat.ahorroGpsModo : null,
+            ahorro_apaga_gps: typeof nat.ahorroApagaGps === 'boolean' ? nat.ahorroApagaGps : null,
+            ts: new Date().toISOString(),
+          }, { onConflict: 'id_usuario' }).then((r) => r, (e) => ({ error: e }))
+          if (!error) ahorroRef.current = { clave, ts: Date.now() }
+        }
+      }
       const vencido = Date.now() - ultimoEnvioRef.current >= FORZAR_MS
       if (mismoEstado(ultimoPayloadRef.current, estado) && !vencido) continue
       try {
