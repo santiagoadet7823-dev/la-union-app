@@ -1673,6 +1673,11 @@ public class UploaderGpsService extends Service {
         if (ahorroApagaGps(modoAhorroGps(this))) {
             return "Ahorro de energía activado: con la pantalla apagada el GPS no funciona. Tocá acá para desactivarlo.";
         }
+        // Plan 54: batería baja sin cargar. Repinta una vez por punto de batería, no más.
+        int[] bat = datosBateria(this);
+        if (bat[0] >= 0 && bat[0] < BATERIA_BAJA && bat[1] == 0) {
+            return "Batería baja (" + bat[0] + " %): poné el teléfono a cargar.";
+        }
         String red = prefs().getString(K_RED, "ok");
         int cola = largoCola();
         if ("avion".equals(red)) return cola > 0 ? "Modo avión · " + cola + " puntos guardados" : "Modo avión · sin enviar";
@@ -1705,6 +1710,30 @@ public class UploaderGpsService extends Service {
     private boolean dentroDeVentana() {
         return VentanaRastreo.dentro(prefs(), System.currentTimeMillis());
     }
+
+    /**
+     * Plan 54 (APK piloto modificaciones): nivel, carga y temperatura de la batería en un solo
+     * vistazo al broadcast "sticky" ACTION_BATTERY_CHANGED (no registra nada: con receiver null
+     * devuelve el último valor). {pct 0-100 o -1, cargando 0/1, temp en décimas de °C o -1000}.
+     */
+    static int[] datosBateria(Context ctx) {
+        int pct = -1, cargando = 0, temp = -1000;
+        try {
+            Intent i = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (i != null) {
+                int lvl = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int esc = i.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                if (lvl >= 0 && esc > 0) pct = Math.round(lvl * 100f / esc);
+                int st = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                cargando = (st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL) ? 1 : 0;
+                temp = i.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1000);
+            }
+        } catch (Exception ignored) {}
+        return new int[] { pct, cargando, temp };
+    }
+
+    /** Plan 54: umbral fijo del aviso de batería baja en la notificación (el del cartel lo elige el superadmin). */
+    static final int BATERIA_BAJA = 40;
 
     /** % de batería 0-100, o -1 si no se puede leer. Nativo (BatteryManager): no depende del WebView,
      *  a diferencia de navigator.getBattery() del pipeline JS, que muere congelado en Doze. */

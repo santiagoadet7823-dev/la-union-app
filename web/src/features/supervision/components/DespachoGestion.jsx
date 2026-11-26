@@ -41,6 +41,7 @@ const CatalogoTab = lazy(() => import('../../admin/tabs/CatalogoTab'))
 const FaltanteTab = lazy(() => import('../../admin/tabs/FaltanteTab'))
 const UsuariosView = lazy(() => import('../../admin/UsuariosView'))
 const EmpresasView = lazy(() => import('../../admin/EmpresasView'))
+const SaludParqueView = lazy(() => import('../../admin/SaludParqueView'))
 const InvitarModal = lazy(() => import('../../../components/InvitarModal'))
 const RespaldoDatos = lazy(() => import('../../gestion/RespaldoDatos'))
 const PedidosView = lazy(() => import('../../pedidos/PedidosView'))
@@ -85,6 +86,7 @@ export default function DespachoGestion({
       {invitarInline && vista === 'invitar' && <InvitarModal open onClose={onCerrarInvitar} onToast={onToast} />}
       {vista === 'usuarios' && <UsuariosView onToast={onToast} onIrA={onIrA} onVerEnMapa={reportes?.onVerEnMapa} />}
       {vista === 'empresas' && <EmpresasView onToast={onToast} />}
+      {vista === 'salud' && <SaludParqueView onToast={onToast} />}
       {vista === 'respaldo' && <RespaldoDatos onToast={onToast} />}
     </Suspense>
   )

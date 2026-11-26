@@ -63,6 +63,8 @@ export const GESTION_ITEMS = [
   // del historial fuera de Supabase. Solo admin y superadmin — exporta la empresa entera.
   { key: 'respaldo', label: 'Respaldo', grupo: 'sistema', roles: ['admin', 'superadmin'] },
   { key: 'empresas', label: 'Empresas', grupo: 'sistema', roles: ['superadmin'] },
+  // Plan 54 (db/116): batería, ahorro, precisión y huecos de los teléfonos piloto o monitoreados.
+  { key: 'salud', label: 'Salud del parque', grupo: 'sistema', roles: ['superadmin'] },
 ]
 
 export const GESTION_TITLES = Object.fromEntries(GESTION_ITEMS.map((i) => [i.key, i.label]))

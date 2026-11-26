@@ -12,6 +12,7 @@ import {
   ListaCuenta, BloqueActividad, Historial, PedidosAnulados, TelefonoAlertas, RecorridoCard, SinRastreo,
 } from './FichaBloques'
 import { ResultadoReset, ResultadoResetMfa, ConfirmarAccion } from './Dialogos'
+import MonitoreoBloque from './MonitoreoBloque'
 import { tarjeta, Segmentado, IcoMapa, IcoInforme, IcoBarras, IcoCarrito, IcoPlay } from './ui'
 
 /**
@@ -172,7 +173,12 @@ export default function Ficha({ i, v, ctx, bor, periodo, setPeriodo, layout, anc
   ].filter(Boolean)
 
   const asignaciones = <ListaAsignaciones i={i} perm={perm} ctx={ctx} bor={bor} onEditar={(campo) => setHoja('asig:' + campo)} />
-  const telefono = rastreado && <TelefonoAlertas i={i} f={f} />
+  const telefono = rastreado && (
+    <>
+      <TelefonoAlertas i={i} f={f} />
+      {v.esSuper && <MonitoreoBloque i={i} onToast={ctx.onToast} />}
+    </>
+  )
   const cuenta = (
     <>
       <ListaCuenta i={i} perm={perm} movil={movil} esSuperYPuede={v.esSuper && !perm.bloqueo && p.id !== v.uid}

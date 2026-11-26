@@ -309,6 +309,7 @@ const GEST_PATHS = {
   invitar: <><circle cx="9" cy="8" r="3.2" /><path d="M4 21c0-3.4 2.4-5.5 5-5.5s5 2.1 5 5.5" /><path d="M18 8v6M15 11h6" /></>,
   usuarios: <><circle cx="9" cy="8" r="3" /><path d="M2.5 21c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" /><path d="M17 7.7a3 3 0 0 1 0 5.6" /></>,
   empresas: <><path d="M3 21V7l8-4 8 4v14" /><path d="M9 21v-6h6v6" /></>,
+  salud: <><rect x="2" y="7" width="17" height="10" rx="2" /><path d="M22 11v2" /><path d="M6 10v4M9 10v4" /></>,
   respaldo: <><rect x="2" y="3" width="20" height="5" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></>,
 }
 

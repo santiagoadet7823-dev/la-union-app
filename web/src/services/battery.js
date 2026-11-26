@@ -12,7 +12,7 @@
 import { registerPlugin } from '@capacitor/core'
 import { isNative } from './platform'
 
-const BatteryOptimization = registerPlugin('BatteryOptimization')
+export const BatteryOptimization = registerPlugin('BatteryOptimization')
 
 /** ¿La app está exenta de optimización de batería? En web/sin plugin → true. */
 export async function estaExento() {

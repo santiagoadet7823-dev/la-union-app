@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect } from 'react'
 import { useAuth, identidadVisible } from './AuthContext'
 import { usePublishPosition } from '../hooks/usePublishPosition'
 import { useEstadoDispositivo } from '../hooks/useEstadoDispositivo'
+import { useMonitoreoDispositivo } from '../hooks/useMonitoreoDispositivo'
+import CartelMonitoreo from '../features/movil/CartelMonitoreo'
 import { initPush } from '../services/push'
 import { initAlarm } from '../services/alarm'
 import { chequearYNotificarUpdate } from '../services/updateNotify'
@@ -41,6 +43,10 @@ export function GpsProvider({ children }) {
   // vendedor/repartidor/encargado — las filas de admin/superadmin nunca se leen.
   useEstadoDispositivo({ enabled: esMovil || esSupervisor, id, idEmpresa, rol, pos: gps.pos, error: gps.error })
 
+  // Plan 54: carteles de batería crítica, ahorro de energía y demás, solo en teléfonos que designó el
+  // superadmin y que tienen APK piloto (en cualquier otro caso la lista viene vacía).
+  const monitoreo = useMonitoreoDispositivo({ enabled: esMovil && isNative(), id, gpsError: gps.error })
+
   // Watchdog por push (FCM): registra el token para que el backend pueda despertar la app cada
   // ~30 min. Solo en la APK y para roles móviles. Al recibir el ping, disparamos un
   // visibilitychange sintético → refresca el latido Y destapa las colas (mismo handler que ya
@@ -77,6 +83,7 @@ export function GpsProvider({ children }) {
   return (
     <GpsContext.Provider value={{ ...gps, id, nombre, rol, idEmpresa, esMovil }}>
       {children}
+      <CartelMonitoreo {...monitoreo} />
     </GpsContext.Provider>
   )
 }

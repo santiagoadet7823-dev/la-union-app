@@ -235,8 +235,8 @@ export default function UsuariosView({ onToast, onIrA, onVerEnMapa }) {
   const ctx = useMemo(() => m && ({
     esSuper, empresas: datos.empresas, categorias: datos.categorias, empresaNombre: m.empresaNombre,
     categoriaNombre: m.categoriaNombre, nombres: m.nombres, rolesDisponibles: v.rolesDisponibles,
-    miEmpresa: idEmpresa, onIrA, onVerEnMapa,
-  }), [m, datos, esSuper, v.rolesDisponibles, idEmpresa, onIrA, onVerEnMapa])
+    miEmpresa: idEmpresa, onIrA, onVerEnMapa, onToast,
+  }), [m, datos, esSuper, v.rolesDisponibles, idEmpresa, onIrA, onVerEnMapa, onToast])
 
   const abrirPersona = useCallback((id) => {
     setSel({ tipo: 'persona', id }); setVistaMovil('ficha')

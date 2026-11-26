@@ -241,6 +241,20 @@ public class UploaderGpsPlugin extends Plugin {
         ret.put("ahorroEnergia", ahorro >= 0);
         ret.put("ahorroGpsModo", ahorro);
         ret.put("ahorroApagaGps", UploaderGpsService.ahorroApagaGps(ahorro));
+        // Plan 54 (APK piloto modificaciones): batería y ubicación del sistema para los carteles.
+        int[] bat = UploaderGpsService.datosBateria(getContext());
+        ret.put("bateriaPct", bat[0]);
+        ret.put("cargando", bat[1] == 1);
+        ret.put("bateriaTemp", bat[2] > -1000 ? bat[2] / 10.0 : -1000);
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null) {
+                boolean act = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? lm.isLocationEnabled()
+                    : lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
+                ret.put("ubicacionActiva", act);
+            }
+        } catch (Exception ignored) {}
         call.resolve(ret);
     }
 }

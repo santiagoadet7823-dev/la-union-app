@@ -112,6 +112,35 @@ public class BatteryOptimizationPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /** Plan 54: abre un ajuste del sistema; true si alguna de las acciones existió. */
+    private boolean abrirAjuste(String... acciones) {
+        for (String a : acciones) {
+            try {
+                Intent i = new Intent(a);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+                return true;
+            } catch (Exception ignored) { /* ese OEM no la tiene → la siguiente */ }
+        }
+        return false;
+    }
+
+    /** Plan 54: ajuste del ahorro de energía (botón "Desactivar" del cartel). */
+    @PluginMethod
+    public void abrirAhorro(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("abierto", abrirAjuste(Settings.ACTION_BATTERY_SAVER_SETTINGS, "android.settings.BATTERY_SAVER_SETTINGS"));
+        call.resolve(ret);
+    }
+
+    /** Plan 54: ajuste de ubicación del sistema (botón "Prender" del cartel). */
+    @PluginMethod
+    public void abrirUbicacion(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("abierto", abrirAjuste(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+        call.resolve(ret);
+    }
+
     private boolean isIgnoringBatteryOptimizations() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
         PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);

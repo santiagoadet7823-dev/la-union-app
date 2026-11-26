@@ -33,7 +33,7 @@ export default function GestionHost({ title, onClose, children }) {
   useEffect(() => apilarAtras(onClose), [onClose])
 
   return (
-    <div className="lu-rise" style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)' }}>
+    <div className="lu-rise" style={{ position: 'fixed', top: 'var(--cartel-h, 0px)', right: 0, bottom: 0, left: 0, zIndex: 'var(--z-screen)', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)' }}>
 
       {/* ===== HEADER (fijo arriba) =====
           (02/10/2026) `--surface` plano con borde, sin `backdrop-filter`: acá no hay mapa que desenfocar

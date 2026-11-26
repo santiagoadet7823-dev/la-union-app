@@ -81,7 +81,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
 
   return (
     <ChromeContext.Provider value={chrome}>
-    <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', '--chrome-h': chromeOculto ? '0px' : `${headerAlto}px` }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-app)', color: 'var(--text)', display: 'flex', flexDirection: 'column', paddingTop: 'var(--cartel-h, 0px)', '--chrome-h': chromeOculto ? '0px' : `${headerAlto}px` }}>
       {/* Al esconderse no se desmonta: se colapsa el alto y se desliza hacia arriba, para que la
           animación de vuelta tenga desde dónde entrar. `overflow:hidden` es lo que evita que el
           contenido asome mientras el alto va a 0, y `visibility` lo saca del foco por teclado —
@@ -98,7 +98,7 @@ export default function AppShell({ children, encargadoVista = null, onCambiarVis
           // El padding vertical se colapsa junto con el alto: con `height:0` y `content-box`, los
           // 6+6 px seguirían dejando una franja de la topbar a la vista.
           padding: chromeOculto ? '0 10px' : (isMobile ? '6px 10px' : '0 18px'), flexWrap: 'wrap',
-          background: 'var(--surface)', borderBottom: chromeOculto ? 'none' : '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 'var(--z-chrome)',
+          background: 'var(--surface)', borderBottom: chromeOculto ? 'none' : '1px solid var(--line)', position: 'sticky', top: 'var(--cartel-h, 0px)', zIndex: 'var(--z-chrome)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 'none' }}>
