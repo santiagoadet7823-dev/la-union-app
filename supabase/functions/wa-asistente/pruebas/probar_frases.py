@@ -61,7 +61,7 @@ def frases():
 
 def elegir(url, texto, tools):
     cuerpo = json.dumps({'model': MODELO, 'stream': False, 'think': False, 'tools': tools,
-                         'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 240},
+                         'options': {'temperature': 0, 'num_ctx': 4096, 'num_predict': 240},
                          'messages': [{'role': 'system', 'content': '\n'.join(DEF['sistema'])},
                                       {'role': 'user', 'content': texto}]}).encode()
     req = urllib.request.Request(f'{url}/api/chat', data=cuerpo, headers={'Content-Type': 'application/json'})
