@@ -16,6 +16,7 @@ import TicketPedido from '../pedidos/TicketPedido'
 import SinPedidoSheet from './tabs/SinPedidoSheet'
 import UbicarComercioSheet from './UbicarComercioSheet'
 import ElegirTicketSheet from './ElegirTicketSheet'
+import { estadoDePedido } from '../pedidos/estadoPedido'
 import EditarPedidoSheet from '../pedidos/EditarPedidoSheet'
 import { useUltimoPedido } from './useSugeridos'
 import { itemsDePedido } from '../pedidos/usePedidos'
@@ -99,6 +100,10 @@ export default function VendedorView() {
   // El hook devuelve null mientras no haya id, así que se puede llamar siempre (los hooks no van
   // adentro de un `if`).
   const ultimoDelElegido = useUltimoPedido(elegir?.id || null)
+  // Plan 53: la hoja de ticket salta SOLO si ese pedido todavía se puede corregir (Pendiente y sin
+  // bajar al ERP). Antes saltaba ante cualquier pedido viejo, en casi todos los check-ins; lo demás se
+  // ve en la tira de la visita y en "Ver historial de pedidos".
+  const hayQueElegir = !!ultimoDelElegido && !!estadoDePedido(ultimoDelElegido)?.corregible
 
   /**
    * Lo que hace el botón de la tarjeta de cliente en `InicioTab`.
@@ -136,10 +141,10 @@ export default function VendedorView() {
    * ya hace `onNuevo` acá abajo para un comercio no-`pendiente`.
    */
   useEffect(() => {
-    if (!elegir || ultimoDelElegido !== null) return   // undefined = la consulta sigue en vuelo
+    if (!elegir || ultimoDelElegido === undefined || hayQueElegir) return   // undefined = la consulta sigue en vuelo
     if (elegir.status !== 'pendiente') j.startVisit(elegir.id)
     setElegir(null)
-  }, [elegir, ultimoDelElegido])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [elegir, ultimoDelElegido, hayQueElegir])   // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Abre la corrección: las líneas se leen de la base, que es donde están los precios congelados. */
   async function abrirCorreccion() {
@@ -228,7 +233,7 @@ export default function VendedorView() {
       {/* Sólo aparece si hay algo que decidir: sin pedido previo, el check-in es un toque y esto no
           se ve nunca. Un diálogo que pregunta cuando hay una sola respuesta posible es un toque de
           más, todos los días. */}
-      {elegir && ultimoDelElegido && (
+      {elegir && hayQueElegir && (
         <ElegirTicketSheet
           comercio={elegir}
           ultimoPedido={ultimoDelElegido}

@@ -6,6 +6,7 @@
     "Si preguntan por un dato que el sistema no tiene (stock, deudas, plata cobrada, ganancia, sueldos, pedidos entregados por los repartidores), usá dato_no_disponible: nunca otra herramienta parecida. Vender no es cobrar ni entregar.",
     "Si piden algo que ninguna herramienta da exactamente (comparar dos clientes, el detalle de una visita, datos de un día puntual que no sea el primer pedido), usá dato_no_disponible tema \"otro\": nunca la herramienta más parecida.",
     "Si preguntan si alguien bajó o está flojo, usá rendimiento_vendedor aunque mencionen las ventas.",
+    "Si nombran a un vendedor, poné su nombre en persona, sea quien sea: los ejemplos usan nombres al azar. \"Pedidos a más de N metros\" o \"lejos del comercio\" es control_visitas, nunca ventas.",
     "Los mensajes pueden venir de un audio transcripto y tener errores: interpretá la intención.",
     "Si el mensaje sigue la charla anterior (\"y ayer?\", \"y el de Pérez?\", \"y Juan?\"), usá la misma herramienta y cambiá solo lo que pide.",
     "\"hace un mes\" son 30 días; \"dos meses\", 60. \"los últimos 30 días\" o \"el último mes\" → periodo ultimos_30; \"este mes\" → mes. Si no dicen período: hoy para ventas; mes para productos más vendidos, rendimiento y control de visitas.",
@@ -13,13 +14,16 @@
     "\"horario y ubicacion del primer pedido de cada vendedor\" → primer_pedido_dia hoy, persona \"\"",
     "\"a que hora arranco juan ayer\" → primer_pedido_dia ayer, persona \"juan\"",
     "\"ranking de todos los productos de los ultimos 30 dias\" → productos_mas_vendidos ultimos_30, cantidad 0",
-    "\"productos menos vendidos por agustin\" → productos_mas_vendidos orden menos, persona \"agustin\", mes",
+    "\"productos menos vendidos por nelson\" → productos_mas_vendidos orden menos, persona \"nelson\", mes",
     "\"que es lo que mas vendemos\" → productos_mas_vendidos mes, cantidad 5",
-    "\"el producto mas vendido por agustin\" → productos_mas_vendidos mes, persona \"agustin\", cantidad 1",
-    "\"cuanto vendio agustin en los ultimos 7 dias\" → ventas_por_vendedor ultimos_7, persona \"agustin\"",
+    "\"el producto mas vendido por orlando\" → productos_mas_vendidos mes, persona \"orlando\", cantidad 1",
+    "\"cuanto vendio eduardo ruiz en los ultimos 7 dias\" → ventas_por_vendedor ultimos_7, persona \"eduardo ruiz\"",
     "\"cuanto vendimos\" → ventas_resumen hoy",
     "\"juan anda flojo?\" → rendimiento_vendedor persona \"juan\", mes",
     "\"agustin esta visitando o toma los pedidos desde la casa?\" → control_visitas persona \"agustin\", mes",
+    "\"cuantos pedidos a mas de 150 mts tomo alejandro mercado esta semana\" → control_visitas semana, persona \"alejandro mercado\"",
+    "\"clientes que le tocaban hoy a juan abregu y no visito\" → clientes_sin_visitar hoy, persona \"juan abregu\"",
+    "\"quien dejo clientes sin visitar ayer\" → clientes_sin_visitar ayer, persona \"\"",
     "\"quien se apago el celular esta semana\" → avisos_equipo semana",
     "\"que zona conviene pasar a whatsapp\" → analisis_zonas zona \"\"",
     "\"cuanto me cuesta la zona de taco pozo\" → analisis_zonas zona \"taco pozo\"",
@@ -34,32 +38,227 @@
   ],
   "_atajos": "Se prueban en orden sobre el texto en minúsculas y sin acentos, ANTES del modelo. El primero que coincide gana.",
   "atajos": [
-    ["(cuanto|precio|costo|tarifa|abono|valor|pagar|pago|cobras|cobran).*\\b(servicio|asistente|bot|esto|este whatsapp|el whatsapp|sistema|prueba)\\b|cuanto (te|les?) (pago|tengo que pagar|debo)|cuanto (va a|me va a) (salir|costar)", "precio_servicio", {}],
-    ["\\bsueldos?\\b|\\bcomision(es)?\\b|\\bsalarios?\\b", "dato_no_disponible", { "tema": "sueldos" }],
-    ["\\bcobr(o|a|an|amos|aron|ado|ados|anza|anzas|ar)\\b|cuentas? corrientes?|\\bdeud|\\bnos deben?\\b|\\bfiado", "dato_no_disponible", { "tema": "deudas" }],
-    ["\\b(stock|existencias?)\\b", "dato_no_disponible", { "tema": "stock" }],
-    ["^(pero |che |eh |ey )?(yo )?(no te (pregunte|pedi|dije) (eso|por|que|lo)|no (es|era) (eso|lo que (te )?(pregunte|pedi))|eso no (es lo que )?(te )?(pregunte|pedi)|no me (sirve|entendiste)|no entendiste|esta mal (eso|la respuesta)|por que me (mandaste|mandas|respondiste))", "disculpa", {}]
+    [
+      "(cuanto|precio|costo|tarifa|abono|valor|pagar|pago|cobras|cobran).*\\b(servicio|asistente|bot|esto|este whatsapp|el whatsapp|sistema|prueba)\\b|cuanto (te|les?) (pago|tengo que pagar|debo)|cuanto (va a|me va a) (salir|costar)",
+      "precio_servicio",
+      {}
+    ],
+    [
+      "\\bsueldos?\\b|\\bcomision(es)?\\b|\\bsalarios?\\b",
+      "dato_no_disponible",
+      {
+        "tema": "sueldos"
+      }
+    ],
+    [
+      "\\bcobr(o|a|an|amos|aron|ado|ados|anza|anzas|ar)\\b|cuentas? corrientes?|\\bdeud|\\bnos deben?\\b|\\bfiado",
+      "dato_no_disponible",
+      {
+        "tema": "deudas"
+      }
+    ],
+    [
+      "\\b(stock|existencias?)\\b",
+      "dato_no_disponible",
+      {
+        "tema": "stock"
+      }
+    ],
+    [
+      "^(pero |che |eh |ey )?(yo )?(no te (pregunte|pedi|dije) (eso|por|que|lo)|no (es|era) (eso|lo que (te )?(pregunte|pedi))|eso no (es lo que )?(te )?(pregunte|pedi)|no me (sirve|entendiste)|no entendiste|esta mal (eso|la respuesta)|por que me (mandaste|mandas|respondiste))",
+      "disculpa",
+      {}
+    ]
   ],
   "tipos": {
-    "periodo": { "type": "string", "enum": ["hoy", "ayer", "semana", "semana_pasada", "mes", "mes_pasado", "ultimos_7", "ultimos_15", "ultimos_30", "ultimos_60", "ultimos_90"], "description": "semana y mes son los que están en curso; ultimos_N = los últimos N días contando hoy" },
-    "persona": { "type": "string", "description": "nombre del vendedor o repartidor; vacío si preguntan por todo el equipo" }
+    "periodo": {
+      "type": "string",
+      "enum": [
+        "hoy",
+        "ayer",
+        "semana",
+        "semana_pasada",
+        "mes",
+        "mes_pasado",
+        "ultimos_7",
+        "ultimos_15",
+        "ultimos_30",
+        "ultimos_60",
+        "ultimos_90"
+      ],
+      "description": "semana y mes son los que están en curso; ultimos_N = los últimos N días contando hoy"
+    },
+    "persona": {
+      "type": "string",
+      "description": "nombre del vendedor o repartidor; vacío si preguntan por todo el equipo"
+    }
   },
   "herramientas": [
-    ["ventas_resumen", "Total vendido y cantidad de pedidos de un período", { "periodo": "periodo" }],
-    ["ventas_por_vendedor", "Cuánto vendió cada vendedor en un período (ranking, sin comparar con antes), o uno solo si nombran a la persona", { "periodo": "periodo", "persona": "persona" }],
-    ["ventas_por_categoria", "Ventas por rubro o categoría en un período", { "periodo": "periodo" }],
-    ["productos_mas_vendidos", "Ranking de productos de un período: los más o los menos vendidos, de toda la empresa o de un vendedor", { "periodo": "periodo", "orden": { "type": "string", "enum": ["mas", "menos"] }, "cantidad": { "type": "integer", "description": "cuántos productos mostrar; 0 si piden todos; 5 si no dicen" }, "persona": "persona" }],
-    ["primer_pedido_dia", "A qué hora arrancó cada vendedor y su primer pedido del día: hora, comercio y lugar desde donde lo tomó. Para \"primer pedido\", \"a qué hora arrancó\", \"inicio de jornada\"", { "dia": { "type": "string", "enum": ["hoy", "ayer"] }, "persona": "persona" }],
-    ["buscar_pedido", "Estado de un pedido por su número", { "numero": { "type": "string" } }],
-    ["pedidos_de_cliente", "Qué compró, qué pidió o qué se le vendió a un cliente o comercio: sus últimos pedidos, buscado por nombre o código", { "cliente": { "type": "string" } }],
-    ["precio_producto", "Precio y ofertas de un producto del catálogo", { "producto": { "type": "string" } }],
-    ["equipo_en_calle", "Qué vendedores y repartidores están trabajando AHORA, si reportan y su último reporte", {}],
-    ["clientes_sin_comprar", "Clientes que dejaron de comprar hace N días", { "dias": { "type": "integer" } }],
-    ["rendimiento_vendedor", "Cómo viene un vendedor o todo el equipo: visitas, pedidos y ventas comparados con sus 4 semanas anteriores (tendencia). Para \"está flojo\", \"bajó\", \"cómo viene\", \"rinde\"", { "persona": "persona", "periodo": "periodo" }],
-    ["control_visitas", "Si un vendedor visita de verdad a los comercios o carga pedidos sin ir: desde dónde tomó los pedidos (lejos del comercio, desde la casa o la oficina), km recorridos y horas en la calle", { "persona": "persona", "periodo": "periodo" }],
-    ["avisos_equipo", "Avisos automáticos del equipo: celular apagado o sin reportar, quieto mucho tiempo, viaje sin declarar", { "periodo": "periodo" }],
-    ["analisis_zonas", "Costo operativo de atender cada zona (km, horas, visitas) y cuáles conviene pasar a venta por WhatsApp con menos visitas para bajar costos, con el ahorro estimado", { "zona": { "type": "string", "description": "nombre o número de zona, o nombre del vendedor; vacío para todas" } }],
-    ["dato_no_disponible", "Preguntas por datos que el sistema NO tiene: stock o depósito, deudas, cuenta corriente, cobranzas o plata cobrada, ganancia o margen, sueldos o comisiones, cuántos pedidos entregaron los repartidores, motivos de no compra", { "tema": { "type": "string", "enum": ["stock", "deudas", "ganancia", "sueldos", "entregas", "motivos", "otro"] } }],
-    ["ayuda", "Saludos, gracias, agradecimientos o preguntas sobre qué puede hacer el asistente", {}]
+    [
+      "ventas_resumen",
+      "Total vendido y cantidad de pedidos de un período",
+      {
+        "periodo": "periodo"
+      }
+    ],
+    [
+      "ventas_por_vendedor",
+      "Cuánto vendió cada vendedor en un período (ranking, sin comparar con antes), o uno solo si nombran a la persona",
+      {
+        "periodo": "periodo",
+        "persona": "persona"
+      }
+    ],
+    [
+      "ventas_por_categoria",
+      "Ventas por rubro o categoría en un período",
+      {
+        "periodo": "periodo"
+      }
+    ],
+    [
+      "productos_mas_vendidos",
+      "Ranking de productos de un período: los más o los menos vendidos, de toda la empresa o de un vendedor",
+      {
+        "periodo": "periodo",
+        "orden": {
+          "type": "string",
+          "enum": [
+            "mas",
+            "menos"
+          ]
+        },
+        "cantidad": {
+          "type": "integer",
+          "description": "cuántos productos mostrar; 0 si piden todos; 5 si no dicen"
+        },
+        "persona": "persona"
+      }
+    ],
+    [
+      "primer_pedido_dia",
+      "A qué hora arrancó cada vendedor y su primer pedido del día: hora, comercio y lugar desde donde lo tomó. Para \"primer pedido\", \"a qué hora arrancó\", \"inicio de jornada\"",
+      {
+        "dia": {
+          "type": "string",
+          "enum": [
+            "hoy",
+            "ayer"
+          ]
+        },
+        "persona": "persona"
+      }
+    ],
+    [
+      "buscar_pedido",
+      "Estado de un pedido por su número",
+      {
+        "numero": {
+          "type": "string"
+        }
+      }
+    ],
+    [
+      "pedidos_de_cliente",
+      "Qué compró, qué pidió o qué se le vendió a un cliente o comercio: sus últimos pedidos, buscado por nombre o código",
+      {
+        "cliente": {
+          "type": "string"
+        }
+      }
+    ],
+    [
+      "precio_producto",
+      "Precio y ofertas de un producto del catálogo",
+      {
+        "producto": {
+          "type": "string"
+        }
+      }
+    ],
+    [
+      "equipo_en_calle",
+      "Qué vendedores y repartidores están trabajando AHORA, si reportan y su último reporte",
+      {}
+    ],
+    [
+      "clientes_sin_comprar",
+      "Clientes que dejaron de comprar hace N días",
+      {
+        "dias": {
+          "type": "integer"
+        }
+      }
+    ],
+    [
+      "rendimiento_vendedor",
+      "Cómo viene un vendedor o todo el equipo: visitas, pedidos y ventas comparados con sus 4 semanas anteriores (tendencia). Para \"está flojo\", \"bajó\", \"cómo viene\", \"rinde\"",
+      {
+        "persona": "persona",
+        "periodo": "periodo"
+      }
+    ],
+    [
+      "control_visitas",
+      "Si un vendedor visita de verdad a los comercios o carga pedidos sin ir: cuántos pedidos tomó a más de N metros (m, mt, mts) o lejos del comercio, desde la casa o la oficina, km recorridos y horas en la calle",
+      {
+        "persona": "persona",
+        "periodo": "periodo"
+      }
+    ],
+    [
+      "clientes_sin_visitar",
+      "Clientes que le tocaba visitar a un vendedor ese día (según sus días de visita) y no visitó ni le compraron. Para \"sin visitar\", \"no pasó por\", \"le tocaban\"",
+      {
+        "dia": {
+          "type": "string",
+          "enum": [
+            "hoy",
+            "ayer"
+          ]
+        },
+        "persona": "persona"
+      }
+    ],
+    [
+      "avisos_equipo",
+      "Avisos automáticos del equipo: celular apagado o sin reportar, quieto mucho tiempo, viaje sin declarar",
+      {
+        "periodo": "periodo"
+      }
+    ],
+    [
+      "analisis_zonas",
+      "Costo operativo de atender cada zona (km, horas, visitas) y cuáles conviene pasar a venta por WhatsApp con menos visitas para bajar costos, con el ahorro estimado",
+      {
+        "zona": {
+          "type": "string",
+          "description": "nombre o número de zona, o nombre del vendedor; vacío para todas"
+        }
+      }
+    ],
+    [
+      "dato_no_disponible",
+      "Preguntas por datos que el sistema NO tiene: stock o depósito, deudas, cuenta corriente, cobranzas o plata cobrada, ganancia o margen, sueldos o comisiones, cuántos pedidos entregaron los repartidores, motivos de no compra",
+      {
+        "tema": {
+          "type": "string",
+          "enum": [
+            "stock",
+            "deudas",
+            "ganancia",
+            "sueldos",
+            "entregas",
+            "motivos",
+            "otro"
+          ]
+        }
+      }
+    ],
+    [
+      "ayuda",
+      "Saludos, gracias, agradecimientos o preguntas sobre qué puede hacer el asistente",
+      {}
+    ]
   ]
 }

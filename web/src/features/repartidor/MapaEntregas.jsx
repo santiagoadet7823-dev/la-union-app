@@ -49,7 +49,7 @@ const pintar = (status, isDark) => {
   return { color: isDark ? e.dark : e.light, glifo: e.glifo, hueco: false }
 }
 
-export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
+export default function MapaEntregas({ entregas, recorrido = null, actualId = null, alto = '60vh', onAbrir }) {
   const { theme } = useTheme()
   const { pos: livePos } = useGps()
   const isDark = theme === 'dark'
@@ -95,16 +95,25 @@ export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
   // ⚠️ `optimize` va en FALSE: el orden ya lo resolvió `calcularRecorrido` y volver a pedir el TSP
   // acá sería una segunda llamada a OSRM para el mismo problema. Se dibuja el camino en el orden
   // que ya se decidió.
+  /**
+   * Plan 53: SOLO EL TRAMO HASTA LA PARADA ACTUAL. Antes se dibujaba el recorrido entero de una vez y no
+   * se sabía cuál seguía. Ahora la línea va de mi posición a la parada que toca (la elegida o la primera
+   * abierta del orden); al cerrar esa entrega, la pantalla pasa `actualId` a la siguiente y se dibuja
+   * ese tramo. Las demás quedan como pines numerados.
+   *
+   * La posición se "ancla": sólo cambia si me moví más de 75 m. Antes cada fix de GPS cambiaba el primer
+   * punto y la ruta se volvía a pedir a OSRM.
+   */
+  const ancla = useRef(null)
+  if (livePos && (!ancla.current || distanciaMetros(ancla.current, { lat: livePos.lat, lng: livePos.lng }) > 75)) {
+    ancla.current = { lat: livePos.lat, lng: livePos.lng }
+  }
+  const desde = ancla.current
+  const destino = actualId ? ubicadas.find((d) => d.id === actualId && (d.status === 'pendiente' || d.status === 'en_camino')) : null
   const ruta = useMemo(() => {
-    if (!recorrido || !livePos) return null
-    const paradas = ubicadas
-      // (01/10/2026, C10) `no_entregado` tampoco se dibuja: es una parada cerrada, igual que en el
-      // cálculo de `RepartidorView` (`abierta`). Antes sólo se excluía `entregado`.
-      .filter((d) => (d.status === 'pendiente' || d.status === 'en_camino') && recorrido.orden?.[d.id] != null)
-      .sort((a, b) => recorrido.orden[a.id] - recorrido.orden[b.id])
-      .map((d) => ({ lat: d.lat, lng: d.lng }))
-    return paradas.length ? [livePos, ...paradas] : null
-  }, [recorrido, ubicadas, livePos])
+    if (!desde || !destino) return null
+    return [desde, { lat: destino.lat, lng: destino.lng }]
+  }, [desde, destino?.id, destino?.lat, destino?.lng]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const leyenda = (
     <LeyendaMapa
@@ -133,7 +142,7 @@ export default function MapaEntregas({ entregas, recorrido = null, onAbrir }) {
       live={livePos}
       ruta={ruta}
       leyenda={leyenda}
-      alto="60vh"
+      alto={alto}
       encuadrarPuntos
       // Hoja "Mapa del Repartidor" 3b: el estilo del mapa es un botón redondo de 44 en la columna
       // de la derecha, separado de la píldora de paradas (antes, un control de 34 px arriba a la

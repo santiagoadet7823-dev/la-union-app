@@ -11,6 +11,7 @@ import { compartirPdfNodo, montarImpresion } from '../../services/report/imprimi
 import { supabase } from '../../services/supabase'
 import { cargarPorDia, claveVendedor, crearAcumulador, nombresDe, textoBultos, tramosPorDia } from './consolidado'
 import { exportarConsolidadoCsv, exportarConsolidadoXlsx, lineasFiltro, nombreArchivo } from './exportarConsolidado'
+import ComerciosDelArticulo from './ComerciosDelArticulo'
 
 /**
  * CONSOLIDADO DE ARTÍCULOS (plan 42, 09/11/2026). Cuánto se vendió de cada artículo en los pedidos
@@ -125,7 +126,7 @@ const chip = (on) => ({
   color: on ? 'var(--deep)' : 'var(--muted)',
 })
 
-export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
+export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast, nombreRepartidor, onAbrirPedido }) {
   const { isMobile } = useDevice()
   const tramos = useMemo(() => tramosPorDia(pedidos), [pedidos])
   // El acumulador vive lo que vive la hoja (la lista que recibe es una foto: no cambia).
@@ -138,6 +139,7 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
   const [busqueda, setBusqueda] = useState('')
   const [vendSel, setVendSel] = useState(() => new Set()) // claves de vendedor; vacío = todos
   const [artSel, setArtSel] = useState(null)              // clave de artículo fijado
+  const [filasComercios, setFilasComercios] = useState(null) // plan 53: comercios del artículo fijado
   const [orden, alternarOrden] = useOrdenColumna()
   const [bajando, setBajando] = useState('')
   // La tabla del PDF (cientos de filas) se arma recién cuando hace falta: al tocar "PDF" o cuando el
@@ -256,8 +258,9 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
     setBajando(tipo)
     try {
       const m = metaCompleta()
-      if (tipo === 'xlsx') await exportarConsolidadoXlsx(visto, m)
-      else if (tipo === 'csv') await exportarConsolidadoCsv(visto, m)
+      const conComercios = artSelDif && filasComercios ? { ...visto, comercios: filasComercios } : visto
+      if (tipo === 'xlsx') await exportarConsolidadoXlsx(conComercios, m)
+      else if (tipo === 'csv') await exportarConsolidadoCsv(conComercios, m)
       else {
         flushSync(() => setPdfMontado(true))
         await compartirPdfNodo(ID_PDF, titulo, nombreArchivo(m, 'pdf').replace(/\.pdf$/, ''))
@@ -447,7 +450,7 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
               style={sx('flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);color:var(--text);font-size:max(12.5px, var(--piso-entrada))')} />
           </div>
           {tocable && filas.length > 0 && (
-            <div className="lu-no-print" style={sx('font-size:11px;color:var(--faint);margin:-4px 0 8px')}>Tocá un artículo para ver quién lo vendió.</div>
+            <div className="lu-no-print" style={sx('font-size:11px;color:var(--faint);margin:-4px 0 8px')}>Tocá un artículo para ver quién lo vendió y a qué comercios.</div>
           )}
 
           {visto && !filas.length && (
@@ -530,6 +533,18 @@ export default function ConsolidadoSheet({ pedidos, meta, onCerrar, onToast }) {
                 Mostrar más · faltan {faltan.toLocaleString('es-AR')}
               </button>
             </div>
+          )}
+
+          {artSelDif && completo && (
+            <ComerciosDelArticulo
+              clave={artSelDif}
+              pedidos={pedidos}
+              vendSel={vendSelDif}
+              unidadVenta={artFijado?.unidadVenta}
+              nombreRepartidor={nombreRepartidor}
+              onAbrirPedido={onAbrirPedido}
+              onFilas={setFilasComercios}
+            />
           )}
 
           <div style={sx('font-size:11px;color:var(--faint);margin-top:10px;line-height:1.5')}>

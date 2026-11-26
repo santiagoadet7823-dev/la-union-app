@@ -19,4 +19,4 @@
  *
  * Quien SÍ la lee es `services/updateNotify.js`, para no avisar de un APK que ya se tiene.
  */
-export const APP_VERSION = '1.46.4'   // 23/11/2026: modo ahorro de energía del teléfono, visible solo para superadmin (db/113)
+export const APP_VERSION = '1.46.5'   // 26/11/2026: plan 53 — comercios por artículo, historial en el check-in, reparto tramo a tramo y novedades (db/114)

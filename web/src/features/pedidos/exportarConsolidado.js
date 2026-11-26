@@ -77,6 +77,21 @@ function hoja(XLSX, filas, columnas, anchos, { formatos = {} } = {}) {
 }
 
 const FMT_CANT = '#,##0.##'
+
+/** Plan 53: con un artículo fijado, los comercios que lo pidieron (fecha, comercio, cantidad, pedido). */
+const COLS_COM = ['Fecha', 'Hora', 'Código cliente', 'Comercio', 'Localidad', 'Cantidad', 'Entregado', 'Importe', 'Pedido N.º', 'Vendedor', 'Estado', 'Repartidor', 'Fecha de entrega']
+const ANCHOS_COM = [11, 7, 12, 36, 16, 10, 10, 14, 10, 18, 26, 18, 14]
+function filaComercio(f) {
+  const d = new Date(f.fecha)
+  return {
+    Fecha: d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    Hora: d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+    'Código cliente': f.codigo, Comercio: f.comercio, Localidad: f.localidad,
+    Cantidad: f.cantidad, Entregado: f.entregada == null ? '' : f.entregada, Importe: f.importe,
+    'Pedido N.º': f.numero ?? '', Vendedor: f.vendedor, Estado: f.estado?.texto || '',
+    Repartidor: f.repartidor, 'Fecha de entrega': f.fechaEntrega ? f.fechaEntrega.split('-').reverse().join('/') : '',
+  }
+}
 const FMT_PESOS = '"$" #,##0.00'
 
 /**
@@ -104,6 +119,11 @@ export async function exportarConsolidadoXlsx(c, meta) {
   const colsV = ['Vendedor', ...COLS_ART.filter((k) => k !== 'Comercios'), 'Comercios']
   const filasV = c.porVendedor.map((a) => ({ Vendedor: a.vendedor, ...filaArticulo(a) }))
   XLSX.utils.book_append_sheet(wb, hoja(XLSX, filasV, colsV, [18, ...ANCHOS_ART], { formatos }), 'Por vendedor')
+
+  if (c.comercios?.length) {
+    XLSX.utils.book_append_sheet(wb, hoja(XLSX, c.comercios.map(filaComercio), COLS_COM, ANCHOS_COM,
+      { formatos: { Cantidad: FMT_CANT, Entregado: FMT_CANT, Importe: FMT_PESOS } }), 'Comercios')
+  }
 
   const wsF = XLSX.utils.aoa_to_sheet([['Consolidado de artículos', ''], ...lineasFiltro(meta)])
   wsF['!cols'] = [{ wch: 18 }, { wch: 90 }]
@@ -143,6 +163,10 @@ export async function exportarConsolidadoCsv(c, meta) {
   }
   const t = c.totales
   lineas.push([...(conVend ? [''] : []), '', 'TOTAL', '', '', '', t.pedido, t.entregado, t.faltante, t.sinRendir, '', '', '', t.importe, t.kg, t.pedidos, ''].map(celda).join(';'))
+  if (c.comercios?.length) {
+    lineas.push('', 'Comercios que lo pidieron', COLS_COM.map(celda).join(';'))
+    for (const f of c.comercios) { const r = filaComercio(f); lineas.push(COLS_COM.map((k) => celda(r[k])).join(';')) }
+  }
   const csv = '﻿' + lineas.join('\r\n') + '\r\n'
   const mime = 'text/csv;charset=utf-8'
   const filename = nombreArchivo(meta, 'csv')

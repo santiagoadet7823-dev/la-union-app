@@ -12,6 +12,9 @@ import { useAuth } from '../../context/AuthContext'
 import { useEntregas, marcarEstado, guardarEntregado, MOTIVO_CHIPS, MOTIVO_POR_DEFECTO } from './useEntregas'
 import { obtenerRutaOptimaTSP } from '../../services/routing'
 import MapaEntregas from './MapaEntregas'
+import NovedadEntrega, { NOVEDAD_VACIA } from './NovedadEntrega'
+import { guardarNovedad, novedadVacia, reintentarFotos } from './novedades'
+import { distanciaMetros } from '../../services/geolocation/geofence'
 import { Route } from '../../components/icons'
 
 /**
@@ -86,6 +89,9 @@ export default function RepartidorView() {
   // Guardan el ID, y el cuerpo retiene el último valor para la animación de salida (ver `mdView`).
   const [detalleId, setDetalleId] = useState(null)
   const [noPudeId, setNoPudeId] = useState(null)
+  // Plan 53: la observación o novedad de la entrega y el motivo de "No pude entregar".
+  const [novedad, setNovedad] = useState(NOVEDAD_VACIA)
+  const [novedadNP, setNovedadNP] = useState(NOVEDAD_VACIA)
   /**
    * El recorrido óptimo. `{ orden: {idPedido: posición}, km, min }` o null.
    *
@@ -96,19 +102,9 @@ export default function RepartidorView() {
    */
   const [recorrido, setRecorrido] = useState(null)
   const [calculando, setCalculando] = useState(false)
-  /**
-   * El mapa arranca PLEGADO y se recuerda (17/09/2026). Es un pedido explícito de pantalla: la hoja
-   * de entregas es una lista de trabajo y el repartidor la recorre de arriba abajo; un mapa de
-   * 60 vh fijo arriba le empuja la primera entrega fuera de cuadro todas las mañanas. Desplegado,
-   * es la vista de "por dónde sigo".
-   */
-  const [mapaAbierto, setMapaAbierto] = useState(() => {
-    try { return localStorage.getItem('lu-reparto-mapa') === 'on' } catch (_) { return false }
-  })
-  const alternarMapa = () => setMapaAbierto((v) => {
-    try { localStorage.setItem('lu-reparto-mapa', v ? 'off' : 'on') } catch (_) { /* igual funciona */ }
-    return !v
-  })
+  // Plan 53: el mapa ya no es un panel que se abre y se cierra dentro de la lista (estorbaba): es un
+  // botón flotante abajo a la derecha que lo abre a pantalla completa.
+  const [mapaAbierto, setMapaAbierto] = useState(false)
 
   // El repartidor emite su ubicación en vivo (GPS del contexto) para que el Admin lo siga.
   const { pos: livePos, error: gpsError, request: pedirGps } = useGps()
@@ -119,6 +115,17 @@ export default function RepartidorView() {
   const toastRef = useRef(null)
 
   useEffect(() => () => clearTimeout(toastRef.current), [])
+  // Las fotos de novedades que quedaron sin señal suben solas (al abrir y cada minuto).
+  useEffect(() => {
+    reintentarFotos().catch(() => {})
+    const t = setInterval(() => { reintentarFotos().catch(() => {}) }, 60000)
+    return () => clearInterval(t)
+  }, [])
+  function anotarNovedad(d, n) {
+    if (novedadVacia(n)) return
+    guardarNovedad(d, n, { idEmpresa: perfilAuth?.id_empresa, idRepartidor: perfilAuth?.id })
+      .catch(() => showToast('No se pudo guardar la novedad: probá de nuevo'))
+  }
 
   function showToast(msg) {
     clearTimeout(toastRef.current)
@@ -134,7 +141,7 @@ export default function RepartidorView() {
     // producto equivocado — delante del cliente y sin que nada se vea raro.
     const q = {}
     d.items.forEach((it) => { q[it.idLinea] = it.gen })
-    setQty(q); setMotivos({}); setHasInk(false); setStep('cant'); setModal(d.id)
+    setQty(q); setMotivos({}); setHasInk(false); setStep('cant'); setNovedad(NOVEDAD_VACIA); setModal(d.id)
   }
 
   // --- signature pad ---
@@ -281,11 +288,13 @@ export default function RepartidorView() {
     setNoPudeId(null)
     if (elegidaId === d.id) setElegidaId(null)
     marcarEstado(d, 'no_entregado').catch(() => showToast('Se guardó local: sube al volver la señal'))
+    anotarNovedad(d, novedadNP)
     showToast(`${d.numero} quedó como no entregado`)
   }
 
   const arts = (d) => fmtCant(d.items.reduce((a, it) => a + it.gen, 0))
   const nav = actual ? urlNavegar(actual) : null
+  const distProxima = actual && livePos && actual.lat != null ? distanciaMetros({ lat: livePos.lat, lng: livePos.lng }, { lat: actual.lat, lng: actual.lng }) : null
 
   return (
     <div className="lu-mob" style={sx('height:100%;min-height:600px;display:flex;flex-direction:column;background:var(--bg-app);font-family:Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;position:relative')}>
@@ -321,6 +330,15 @@ export default function RepartidorView() {
 
         <BotonTransporte style={{ marginTop: 12 }} />
 
+        {/* Plan 53: hacia dónde va AHORA. El mapa dibuja sólo este tramo; al cerrar la entrega pasa a la siguiente. */}
+        {actual && (
+          <div style={sx('margin-top:10px;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:var(--primary-tint);color:var(--deep);font-size:12.5px')}>
+            <Pin size={14} />
+            <span style={sx('flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>Próxima: <b>{actual.client}</b></span>
+            {distProxima != null && <span style={sx('flex:none;font-family:var(--font-mono)')}>{distProxima < 1000 ? `a ${Math.round(distProxima)} m` : `a ${(distProxima / 1000).toFixed(1).replace('.', ',')} km`}</span>}
+          </div>
+        )}
+
         {/* El recorrido óptimo. Va en el header y no flotando sobre la lista: es una decisión que se
             toma UNA vez al arrancar el reparto, no algo que se toque todo el tiempo. */}
         {abiertas.filter((d) => d.lat != null).length >= 2 && (
@@ -352,28 +370,7 @@ export default function RepartidorView() {
       </div>
 
       {/* LISTA */}
-      <div style={sx('flex:1;overflow-y:auto;padding:12px 12px 28px')}>
-        {/* EL MAPA DE LAS ENTREGAS. Va DENTRO del scroll y plegado por defecto: la hoja de
-            entregas es la vista principal de este rol y el mapa es el complemento, no al revés.
-            Sólo aparece si hay algo que dibujar — con la cartera sin geolocalizar del todo, un
-            mapa vacío sería una promesa incumplida arriba de la pantalla. */}
-        {deliveries.some((d) => d.lat != null) && (
-          <>
-            <button
-              onClick={alternarMapa}
-              className="lu-press"
-              aria-expanded={mapaAbierto}
-              style={sx('width:100%;margin-bottom:10px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);color:var(--deep);font-weight:600;font-size:14px;cursor:pointer')}
-            >
-              <Pin size={15} />{mapaAbierto ? 'Ocultar el mapa' : 'Ver las entregas en el mapa'}
-            </button>
-            {mapaAbierto && (
-              <div style={sx('margin-bottom:12px')}>
-                <MapaEntregas entregas={deliveries} recorrido={recorrido} onAbrir={openModal} />
-              </div>
-            )}
-          </>
-        )}
+      <div style={sx('flex:1;overflow-y:auto;padding:12px 12px 96px')}>
 
         {cargandoEntregas && deliveries.length === 0 && (
           <div style={sx('margin-top:20px;padding:26px;text-align:center;color:var(--faint);font-size:13px')}>Buscando tus entregas de hoy…</div>
@@ -439,7 +436,7 @@ export default function RepartidorView() {
               ) : (
                 <button type="button" disabled title="Sin dirección ni ubicación cargada" style={sx('flex:1;min-width:0;min-height:48px;padding:0 8px;border-radius:12px;border:1px solid var(--line);background:transparent;font-size:14px;font-weight:600;color:var(--faint);opacity:.6')}>Sin dirección</button>
               )}
-              <button type="button" onClick={() => setNoPudeId(actual.id)} className="lu-press" style={sx('flex:1;min-width:0;min-height:48px;padding:0 8px;border-radius:12px;border:1px solid var(--line2);background:transparent;font-size:14px;font-weight:600;color:var(--danger);cursor:pointer;line-height:1.2')}>No pude entregar</button>
+              <button type="button" onClick={() => { setNovedadNP(NOVEDAD_VACIA); setNoPudeId(actual.id) }} className="lu-press" style={sx('flex:1;min-width:0;min-height:48px;padding:0 8px;border-radius:12px;border:1px solid var(--line2);background:transparent;font-size:14px;font-weight:600;color:var(--danger);cursor:pointer;line-height:1.2')}>No pude entregar</button>
             </div>
           </div>
         )}
@@ -564,6 +561,7 @@ export default function RepartidorView() {
                   .then(() => guardarEntregado(md, qty, motivos))
                   .catch(() => showToast('Se guardó local: sube al volver la señal'))
                 showToast(`${md.numero} entregado${faltantes > 0 ? ` · ${fmtCant(faltantes)} u. a reporte de faltante` : ' · completo'}`)
+                anotarNovedad(md, novedad)
               }}
               style={{ ...sx('flex:1;min-height:56px;display:grid;place-items:center;border-radius:var(--r-md);font-weight:600;font-size:16px;border:none'), background: hasInk ? 'var(--primary)' : 'var(--surface2)', color: hasInk ? 'var(--on-primary)' : 'var(--faint)', cursor: hasInk ? 'pointer' : 'not-allowed' }}
             >Confirmar entrega</button>
@@ -637,6 +635,7 @@ export default function RepartidorView() {
                   <div style={sx('font-size:var(--fs-xs);color:var(--faint);font-family:var(--font-mono)')}>{kgFmt(mdView.kg)} kg · {fmtPesos(mdView.monto)}</div>
                   <button type="button" onClick={clearSig} className="lu-press" style={sx('min-height:44px;padding:0 14px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer;background:transparent')}>Limpiar</button>
                 </div>
+                <NovedadEntrega valor={novedad} onCambio={setNovedad} />
               </>
             )}
       </Overlay>
@@ -686,7 +685,29 @@ export default function RepartidorView() {
           El pedido queda como <b style={sx('color:var(--text)')}>No entregado</b>: no pide firma y no cuenta como entrega. La oficina lo ve en Pedidos y decide si se reprograma.
           <div style={sx('margin-top:8px')}>Si te equivocaste, desde <b style={sx('color:var(--text)')}>Cerradas</b> lo podés volver a intentar.</div>
         </div>
+        <NovedadEntrega valor={novedadNP} onCambio={setNovedadNP} modo="no_entregado" />
       </Overlay>
+
+      {deliveries.some((d) => d.lat != null) && !mapaAbierto && (
+        <button type="button" onClick={() => setMapaAbierto(true)} className="lu-press" aria-label="Ver las entregas en el mapa"
+          style={sx('position:absolute;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:5;width:58px;height:58px;border-radius:99px;border:none;background:var(--primary);color:var(--on-primary);box-shadow:var(--shadow-lg);display:grid;place-items:center;cursor:pointer')}>
+          <Pin size={24} />
+        </button>
+      )}
+      {mapaAbierto && (
+        <div role="dialog" aria-label="Mapa de entregas" style={sx('position:absolute;top:0;right:0;bottom:0;left:0;z-index:20;display:flex;flex-direction:column;background:var(--bg-app)')}>
+          <div style={sx('flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--line)')}>
+            <span style={sx('flex:1;min-width:0;font-family:var(--font-display);font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>
+              {actual ? <>Hacia <span style={sx('color:var(--deep)')}>{actual.client}</span></> : 'Mapa de entregas'}
+            </span>
+            <button type="button" onClick={() => setMapaAbierto(false)} className="lu-press" aria-label="Cerrar el mapa"
+              style={sx('flex:none;min-height:44px;padding:0 16px;border:1px solid var(--line2);border-radius:12px;background:transparent;color:var(--text);font-weight:600;font-size:14px;cursor:pointer')}>Cerrar</button>
+          </div>
+          <div style={sx('flex:1;min-height:0')}>
+            <MapaEntregas entregas={deliveries} recorrido={recorrido} actualId={actual?.id || null} alto="100%" onAbrir={(d) => { setMapaAbierto(false); openModal(d) }} />
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div style={sx('position:absolute;top:14px;left:14px;right:14px;z-index:var(--z-toast);background:var(--surface);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 14px;display:flex;align-items:center;gap:9px')}>

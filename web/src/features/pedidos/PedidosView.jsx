@@ -785,6 +785,17 @@ export default function PedidosView({ onToast }) {
         <div style={sx('padding:10px;text-align:center;color:var(--faint);font-size:12px')}>Abriendo…</div>
       )}
 
+      {consolidado && (
+        <ConsolidadoSheet
+          pedidos={consolidado.pedidos}
+          meta={consolidado.meta}
+          onCerrar={() => setConsolidado(null)}
+          onToast={onToast}
+          nombreRepartidor={nombreRepartidor}
+          onAbrirPedido={abrir}
+        />
+      )}
+
       {/* ── El pedido abierto ───────────────────────────────────────────────────────────── */}
       <DetallePedido
         detalle={detalle}
@@ -811,14 +822,6 @@ export default function PedidosView({ onToast }) {
         />
       )}
 
-      {consolidado && (
-        <ConsolidadoSheet
-          pedidos={consolidado.pedidos}
-          meta={consolidado.meta}
-          onCerrar={() => setConsolidado(null)}
-          onToast={onToast}
-        />
-      )}
 
       {/* El comprobante, con el MISMO componente que imprime el vendedor al confirmar. Un segundo
           ticket "para gestión" serían dos papeles que dicen cosas distintas del mismo pedido. */}

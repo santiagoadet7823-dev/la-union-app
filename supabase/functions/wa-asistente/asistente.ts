@@ -4,6 +4,7 @@
 // La lógica es la de siempre: solo cambió de archivo. Ver el encabezado de `index.ts`.
 import { atajo, atajoAprendido, atajosAprendidos, elegirConsultasDetalle, juntar, pideAudio, pideCambio, type Eleccion, type Intercambio } from './lib/aiService.ts'
 import { ejecutar, hoyEn } from './lib/consultas.ts'
+import { corregir } from './lib/correcciones.ts'
 import { bienvenida, TEXTOS } from './lib/respuestas.ts'
 import { avisarEscribiendo, bajarAudio, enviarNotaDeVoz, enviarTexto } from './lib/whatsapp.ts'
 import { AudioRechazado, hablar, transcribir } from '../_compartido/voz.ts'
@@ -18,6 +19,17 @@ const TOPE_MENSUAL_CON_VOZ = 800
 const TOPE_MENSUAL = 1000
 const TOPE_RESPUESTAS = TOPE_MENSUAL - 5
 const VENTANA_CHARLA_MS = 30 * 60 * 1000
+
+// Plan 53: los nombres del equipo, para completar la persona que el modelo deja vacía (caché 5 min).
+let cacheEquipo: { empresa: string; hasta: number; nombres: string[] } | null = null
+async function nombresEquipo(cliente: any, empresa: string): Promise<string[]> {
+  if (cacheEquipo && cacheEquipo.empresa === empresa && cacheEquipo.hasta > Date.now()) return cacheEquipo.nombres
+  const { data } = await cliente.from('perfiles').select('nombre').eq('id_empresa', empresa).eq('activo', true)
+    .in('rol', ['vendedor', 'repartidor', 'encargado', 'admin'])
+  const nombres = (data ?? []).map((p: any) => String(p.nombre || '').trim()).filter(Boolean)
+  cacheEquipo = { empresa, hasta: Date.now() + 5 * 60_000, nombres }
+  return nombres
+}
 
 // ── Procesamiento de un mensaje ──────────────────────────────────────────────────────────────────
 async function historial(cliente: any, waId: string, wamid: string): Promise<Intercambio[]> {
@@ -132,6 +144,10 @@ async function procesar(cliente: any, msg: any, empresa: string, perfil: string,
               const d = await elegirConsultasDetalle(texto, await historial(cliente, waId, msg.id))
               msIa = Date.now() - t0
               elecciones = d.elecciones; toolCalls = d.crudo; modelo = d.modelo
+            }
+            // Plan 53: lo que el modelo confunde y se puede decidir con el texto (pedidos lejos, persona, fechas).
+            if (elecciones.length && origen !== 'pide_cambio') {
+              elecciones = corregir(texto, elecciones, await nombresEquipo(cliente, empresa).catch(() => []), hoyEn())
             }
             ;({ consulta, argumentos } = juntar(elecciones))
             // Varias consultas: una respuesta debajo de la otra, en el orden en que se pidieron.

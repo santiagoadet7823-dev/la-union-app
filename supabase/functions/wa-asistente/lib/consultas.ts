@@ -50,6 +50,15 @@ export function rangoDe(periodo: Periodo, ahora = new Date()) {
   }
 }
 
+// Plan 53: rango libre leído del texto («desde el 22 de noviembre hasta hoy»), lo pone correcciones.ts.
+const FECHA = /^d{4}-d{2}-d{2}$/
+const ddmm = (f: string) => `${f.slice(8, 10)}/${f.slice(5, 7)}`
+export function rangoLibreDe(a: Record<string, unknown>) {
+  const d = String(a._desde ?? ''), h = String(a._hasta ?? '')
+  if (!FECHA.test(d) || !FECHA.test(h) || d > h) return null
+  return { desde: d, hasta: h, nombre: d === h ? `del ${ddmm(d)}` : `del ${ddmm(d)} al ${ddmm(h)}` }
+}
+
 const periodoDe = (a: Record<string, unknown>): Periodo =>
   PERIODOS.includes(a.periodo as Periodo) ? (a.periodo as Periodo) : 'hoy'
 const textoDe = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
@@ -123,9 +132,10 @@ export async function ejecutar(db: any, empresa: string, perfil: string, consult
 
 async function ejecutarUna(db: any, empresa: string, perfil: string, consulta: string, a: Record<string, unknown>, junto: string[] = []): Promise<R.Respuesta> {
   const periodo = periodoDe(a)
-  const rango = rangoDe(periodo)
+  const libre = rangoLibreDe(a)
+  const rango = libre ?? rangoDe(periodo)
   const conRango = { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }
-  const nombre = NOMBRE_PERIODO[periodo]
+  const nombre = libre?.nombre ?? NOMBRE_PERIODO[periodo]
 
   switch (consulta) {
     case 'ventas_resumen':
@@ -196,14 +206,22 @@ async function ejecutarUna(db: any, empresa: string, perfil: string, consulta: s
     case 'control_visitas': {
       // Sin período explícito, un mes: con un día no se puede comparar ni sacar conclusiones.
       const p = PERIODOS.includes(a.periodo as Periodo) ? (a.periodo as Periodo) : 'mes'
-      const r = rangoDe(p)
+      const r = libre ?? rangoDe(p)
+      const nomP = libre?.nombre ?? NOMBRE_PERIODO[p]
       const quien = await persona(db, empresa, perfil, a.persona)
       if ('respuesta' in quien) return quien.respuesta
       const args = { p_empresa: empresa, p_desde: r.desde, p_hasta: r.hasta, p_perfil: perfil, p_persona: quien.id }
       // Si en el mismo mensaje también pidieron control_visitas, el rendimiento no repite "dónde tomó los pedidos".
       const control = consulta === 'control_visitas' || !junto.includes('control_visitas') ? await rpc(db, 'wa_control_visitas', args) : null
-      if (consulta === 'control_visitas') return R.controlVisitas(control, NOMBRE_PERIODO[p], !!quien.id)
-      return R.rendimiento(await rpc(db, 'wa_rendimiento', args), control, NOMBRE_PERIODO[p], p, !!quien.id)
+      if (consulta === 'control_visitas') return R.controlVisitas(control, nomP, !!quien.id)
+      return R.rendimiento(await rpc(db, 'wa_rendimiento', args), control, nomP, p, !!quien.id)
+    }
+    case 'clientes_sin_visitar': {
+      // Plan 53: los clientes que le tocaban ese día (clientes.dias_visita) y no se visitaron ni compraron.
+      const d = a.dia === 'ayer' ? 'ayer' : 'hoy'
+      const quien = await persona(db, empresa, perfil, a.persona)
+      if ('respuesta' in quien) return quien.respuesta
+      return R.clientesSinVisitar(await rpc(db, 'wa_clientes_sin_visitar', { p_empresa: empresa, p_fecha: rangoDe(d).desde, p_perfil: perfil, p_persona: quien.id }), NOMBRE_PERIODO[d], !!quien.id)
     }
     case 'avisos_equipo':
       return R.avisos(await rpc(db, 'wa_avisos', { p_empresa: empresa, p_desde: rango.desde, p_hasta: rango.hasta, p_perfil: perfil }), nombre)

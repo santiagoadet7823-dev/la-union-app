@@ -10,6 +10,7 @@ import { yaExportado, MSG_EXPORTADO } from './exportado'
 import { textoPapelera, porVencer } from './papelera'
 import { edicionesDePedido } from './editarPedido'
 import { supabase } from '../../services/supabase'
+import NovedadesPedido from './NovedadesPedido'
 
 /**
  * UN PEDIDO ABIERTO, con sus líneas y sus acciones.
@@ -321,6 +322,8 @@ export default function DetallePedido({ detalle, rol, userId, onCerrar, onToast,
               )}
             </div>
           )}
+
+          <NovedadesPedido idPedido={pedido.id} />
 
           {pedido.erp_estado && (
             <div style={sx('margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface2)')}>

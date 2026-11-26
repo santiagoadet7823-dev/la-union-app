@@ -513,3 +513,23 @@ export function clientesSinComprar(d: any): Respuesta {
     voz: `${enPalabras(total)} ${total === 1 ? 'cliente lleva' : 'clientes llevan'} más de ${enPalabras(Number(d.dias))} días sin comprar. La lista está en el mensaje.`,
   }
 }
+
+/** Plan 53: clientes que le tocaban al vendedor ese día (días de visita) y no se visitaron ni compraron. */
+export function clientesSinVisitar(d: any, dia: string, unaPersona: boolean): Respuesta {
+  const vs: any[] = d?.vendedores ?? []
+  if (!vs.length) return ambos('No encontré clientes con días de visita para ese día. Los días de visita se cargan en la ficha de cada cliente.')
+  const nota = '_Según los días de visita cargados en cada cliente; cuenta como visitado si tuvo check-in o pedido ese día._'
+  if (unaPersona && vs.length === 1) {
+    const v = vs[0]
+    const lista = (v.lista ?? []).slice(0, 15).map((c: any) => `• ${c.nombre}${c.codigo ? ` (${c.codigo})` : ''}`).join('\n')
+    const mas = v.sin_visitar > 15 ? `\n…y ${v.sin_visitar - 15} más.` : ''
+    const t = `*${v.vendedor}* ${dia}: le tocaban ${v.tocaban} clientes, visitó ${v.visitados} y quedaron *${v.sin_visitar} sin visitar*.` +
+      (v.sin_visitar ? `\n\n${lista}${mas}` : '') + `\n\n${nota}`
+    return { texto: t, voz: `${v.vendedor} ${dia}: le tocaban ${v.tocaban} clientes, visitó ${v.visitados} y quedaron ${v.sin_visitar} sin visitar.` }
+  }
+  const filas = vs.map((v) => `• ${v.vendedor}: ${v.sin_visitar} sin visitar de ${v.tocaban} (visitó ${v.visitados})`).join('\n')
+  return {
+    texto: `Clientes sin visitar ${dia}, según sus días de visita:\n${filas}\n\n${nota}`,
+    voz: `Clientes sin visitar ${dia}: ` + vs.map((v) => `${v.vendedor}, ${v.sin_visitar} de ${v.tocaban}`).join('; '),
+  }
+}

@@ -115,7 +115,7 @@ export function useUltimoPedido(idCliente) {
           // "Corregir" sobre un pedido que La Unión ya había bajado al ERP —sigue `Pendiente` hasta el
           // reparto— y `frenarSiExportado` lo dejaba pasar porque el campo venía vacío. La base lo
           // rechazaba (db/62), la cola lo mandaba a cuarentena y lo agregado no le llegaba a nadie.
-          .select('id, numero, estado, created_at, monto_total, exportado_ts, export_lote, pedido_items ( id_producto, cantidad )')
+          .select('id, numero, estado, created_at, monto_total, exportado_ts, export_lote, erp_estado, id_repartidor, pedido_items ( id_producto, cantidad )')
           .eq('id_cliente', idCliente)
           // Un pedido anulado no es "lo que suele llevar": es un error que alguien corrigió.
           // Repetirlo sería resucitar exactamente lo que se decidió que no iba.

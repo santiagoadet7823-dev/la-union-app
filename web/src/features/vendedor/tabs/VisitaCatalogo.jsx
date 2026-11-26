@@ -12,6 +12,8 @@ import { useAltoMedido } from '../../../hooks/useAltoMedido'
 import { useTecladoAbierto } from '../../../hooks/useTecladoAbierto'
 import { useCatalog } from '../../../context/CatalogContext'
 import { useSugeridos, useUltimoPedido } from '../useSugeridos'
+import HistorialPedidosCliente from '../HistorialPedidosCliente'
+import { estadoDePedido } from '../../pedidos/estadoPedido'
 
 /**
  * Pestaña "Catálogo/Visita": header de la visita en curso (timer + acciones), buscador,
@@ -43,6 +45,8 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
   const sugeridosIds = useSugeridos(visitC?.id)
   // 🔴 Debajo del destructuring de `j`, por el mismo motivo que la línea de arriba (regla 51).
   const ultimoPedido = useUltimoPedido(visitC?.id)
+  const [verHistorial, setVerHistorial] = useState(false) // plan 53
+  const estadoUltimo = ultimoPedido ? estadoDePedido(ultimoPedido) : null
 
   // 🩸 EL ALTO DE LA BARRA DEL PEDIDO SE MIDE (20/08/2026). El renglón de "sin pedir" se apoyaba
   // sobre un `186px` escrito a mano que era el alto estimado de esta barra; la barra cambia de alto
@@ -286,6 +290,25 @@ export default function VisitaCatalogo({ j, inmersivo = false, onToggleInmersivo
         {/* Los dos bloques de sugeridos se desmontan en inmersivo en vez de colapsarse: son
             `children` de la grilla, entre el buscador y los chips, y animarles el alto ahí empuja
             los chips y la grilla entera en cada frame. Lo que se gana es espacio, que es el punto. */}
+        {/* Plan 53: el último pedido y su estado en una tira, con el historial a un toque (antes la hoja
+            de "ya hay un pedido" salía en cada check-in). */}
+        {!plegarArriba && visitC && ultimoPedido !== undefined && (
+          <div style={sx('flex:none;display:flex;align-items:center;gap:8px;padding:0 14px 8px;font-size:11.5px;color:var(--muted)')}>
+            <span style={sx('flex:1;min-width:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap')}>
+              {ultimoPedido ? (
+                <>
+                  <span>Último pedido <b style={sx('color:var(--text)')}>#{ultimoPedido.numero ?? '—'}</b> · {hace(ultimoPedido.created_at)}</span>
+                  {estadoUltimo && <span style={{ ...sx('padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:700'), color: estadoUltimo.color, background: estadoUltimo.fondo }}>{estadoUltimo.texto}</span>}
+                </>
+              ) : <span>Sin pedidos anteriores.</span>}
+            </span>
+            <button type="button" className="lu-press" onClick={() => setVerHistorial(true)}
+              style={sx('flex:none;min-height:32px;padding:0 12px;border:1px solid var(--line2);border-radius:99px;background:var(--surface);color:var(--deep);font-size:12px;font-weight:700;cursor:pointer')}>
+              Ver historial de pedidos
+            </button>
+          </div>
+        )}
+        {verHistorial && visitC && <HistorialPedidosCliente comercio={visitC} onCerrar={() => setVerHistorial(false)} />}
         {!plegarArriba && !!ultimoPedido && (
           <div style={sx('flex:none;padding:0 14px 10px')}>
             <button

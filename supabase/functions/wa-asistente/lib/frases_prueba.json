@@ -450,5 +450,41 @@
 {
 "frase": "el producto mas vendido de orlando",
 "consulta": "productos_mas_vendidos"
+},
+{
+"frase": "Cuántos pedidos a más de 150 mt tomo Alejandro mercado está semana",
+"consulta": "control_visitas"
+},
+{
+"frase": "Alejandro mercado cuántos pedidos a más de 150mt",
+"consulta": "control_visitas"
+},
+{
+"frase": "Eduardo ruiz cuantos pedidos lejos del comercio tomo hoy",
+"consulta": "control_visitas"
+},
+{
+"frase": "Cuántos clientes tocaba hoy Juan abregu sin visitar hoy",
+"consulta": "clientes_sin_visitar"
+},
+{
+"frase": "Juan abregu sin visitar todavía hoy",
+"consulta": "clientes_sin_visitar"
+},
+{
+"frase": "quien dejo clientes sin visitar ayer",
+"consulta": "clientes_sin_visitar"
+},
+{
+"frase": "cuanto vendio nelson rojas esta semana",
+"consulta": "ventas_por_vendedor"
+},
+{
+"frase": "cuanto vendio orlando chavez ayer",
+"consulta": "ventas_por_vendedor"
+},
+{
+"frase": "gabriel tevez esta flojo?",
+"consulta": "rendimiento_vendedor"
 }
 ]

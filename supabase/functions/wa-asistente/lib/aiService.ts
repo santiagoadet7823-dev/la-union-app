@@ -132,7 +132,7 @@ export async function elegirConsultasDetalle(texto: string, historial: Intercamb
       keep_alive: -1,
       tools: HERRAMIENTAS,
       // 240: alcanza para tres llamadas con sus argumentos.
-      options: { temperature: 0, num_ctx: 4096, num_predict: 240 },
+      options: { temperature: 0, num_ctx: 8192, num_predict: 240 },
       messages: armarMensajes(texto, historial),
     }),
   })

@@ -179,3 +179,12 @@ Columnas:
 | cuanto lleva vendido juan esta semana | ventas_por_vendedor | periodo=semana; persona~juan |
 | Hora del producto más vendido por Agustín | productos_mas_vendidos | persona~agustin |
 | el producto mas vendido de orlando | productos_mas_vendidos | periodo=mes; persona~orlando |
+| Cuántos pedidos a más de 150 mt tomo Alejandro mercado está semana | control_visitas | periodo=semana; persona~alejandro |
+| Alejandro mercado cuántos pedidos a más de 150mt | control_visitas | persona~alejandro |
+| Eduardo ruiz cuantos pedidos lejos del comercio tomo hoy | control_visitas | periodo=hoy; persona~eduardo |
+| Cuántos clientes tocaba hoy Juan abregu sin visitar hoy | clientes_sin_visitar | persona~juan |
+| Juan abregu sin visitar todavía hoy | clientes_sin_visitar | persona~juan |
+| quien dejo clientes sin visitar ayer | clientes_sin_visitar | dia=ayer |
+| cuanto vendio nelson rojas esta semana | ventas_por_vendedor | periodo=semana; persona~nelson |
+| cuanto vendio orlando chavez ayer | ventas_por_vendedor | periodo=ayer; persona~orlando |
+| gabriel tevez esta flojo? | rendimiento_vendedor | persona~gabriel |
